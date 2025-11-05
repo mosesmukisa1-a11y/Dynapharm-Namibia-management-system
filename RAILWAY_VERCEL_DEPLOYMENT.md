@@ -493,3 +493,5 @@ If you encounter issues:
 4. Verify all environment variables are set correctly
 
 **You're all set! Your global real-time system is now live! 🎉**
+
+

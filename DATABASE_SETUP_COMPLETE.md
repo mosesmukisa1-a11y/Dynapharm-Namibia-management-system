@@ -32,3 +32,5 @@ export DATABASE_URL='postgresql://moseswalker@localhost:5432/dynapharm'
 3. **Configure Realtime Gateway:** Add PostgreSQL LISTEN support
 
 See `QUICK_START_GUIDE.md` for detailed instructions.
+
+

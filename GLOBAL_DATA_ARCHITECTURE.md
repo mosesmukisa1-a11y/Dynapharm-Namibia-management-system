@@ -129,3 +129,5 @@ ws.onmessage = (event) => {
 ✅ Real-time updates (< 100ms)
 ✅ Offline capability
 ✅ Scalable to 100+ locations
+
+

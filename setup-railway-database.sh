@@ -131,3 +131,5 @@ echo ""
 echo "📋 Your DATABASE_URL (save this!):"
 echo "   $DATABASE_URL"
 echo ""
+
+
