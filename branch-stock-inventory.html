@@ -97,7 +97,21 @@
         function setIframe(){
             // Keep simple: open stock management portal in iframe
             const iframe = document.getElementById('invFrame');
+            if (!iframe) return;
+            
+            // Try to load stock-management-portal.html, fallback to main system stock tab
             iframe.src = './stock-management-portal.html';
+            
+            // Handle iframe load errors
+            iframe.onerror = function() {
+                console.warn('stock-management-portal.html not found, using fallback');
+                // Fallback: embed the stock portal section from main system
+                iframe.style.display = 'none';
+                const container = iframe.parentElement;
+                if (container) {
+                    container.innerHTML = '<div style="padding: 20px; text-align: center;"><p>Stock management portal is accessible from the main system.</p><a href="./dynapharm-complete-system.html#stock" class="btn primary">Open Stock Portal</a></div>';
+                }
+            };
         }
 
         async function renderSales(){

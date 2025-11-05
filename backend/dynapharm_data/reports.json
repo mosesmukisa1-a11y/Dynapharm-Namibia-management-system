@@ -1,0 +1,113 @@
+[
+  {
+    "id": "RPT1762181445255",
+    "clientId": "CLT-MUKISA-1762181369672",
+    "clientInfo": {
+      "fullName": "mukisa Moses",
+      "phone": "0814137106",
+      "email": "jamomaxwell@gmail.com",
+      "nbNumber": ""
+    },
+    "consultant": "MOSES MUKISA",
+    "consultantInfo": {
+      "fullName": "MOSES MUKISA",
+      "email": "mosesmukisa1@gmail.com",
+      "phone": "0817317160"
+    },
+    "notes": "ds",
+    "prescription": "Mens Health Package",
+    "medicines": [
+      {
+        "name": "Mens Health Package",
+        "dispensed": false,
+        "currentPrice": {
+          "dp": 2033,
+          "cp": 2362,
+          "bv": 388,
+          "isPackage": true,
+          "updatedAt": "2025-11-04T09:36:48.212Z"
+        },
+        "packageStatus": {
+          "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml": "given",
+          "GINALI CAPSULE 100's": "given"
+        }
+      }
+    ],
+    "symptoms": [
+      {
+        "system": "Nervous System",
+        "symptom": "Headaches and dizziness",
+        "recommendation": "Practice stress-management techniques like meditation, prayer, or deep breathing."
+      },
+      {
+        "system": "Cardiovascular System",
+        "symptom": "Shortness of breath",
+        "recommendation": "Engage in aerobic exercise (walking, swimming, cycling) for at least 30 minutes, 4–5 times weekly."
+      }
+    ],
+    "followUpDate": "2025-11-17",
+    "followUpNotes": "",
+    "pdf": null,
+    "timestamp": "2025-11-03T14:50:45.255Z",
+    "dispensed": false
+  },
+  {
+    "id": "RPT1762257031718",
+    "clientId": "CLT-MOSES-1762256895594",
+    "clientInfo": {
+      "fullName": "MOSES",
+      "phone": "0817317160",
+      "email": "jamomaxwell@gmail.com",
+      "nbNumber": ""
+    },
+    "consultant": "MOSES MUKISA",
+    "consultantInfo": {
+      "fullName": "MOSES MUKISA",
+      "email": "mosesmukisa1@gmail.com",
+      "phone": "0817317160"
+    },
+    "notes": "H20",
+    "prescription": "Tongkat Ali & Maca - C",
+    "medicines": [
+      {
+        "name": "Tongkat Ali & Maca - C",
+        "dispensed": true,
+        "currentPrice": {
+          "dp": 250,
+          "cp": 300,
+          "bv": 38,
+          "isPackage": false,
+          "updatedAt": "2025-11-04T11:50:31.718Z"
+        },
+        "dispensedBy": "NAEM HANGULA",
+        "dispensedAt": "2025-11-04T12:18:38.725Z",
+        "paymentHistory": [
+          {
+            "amount": 250,
+            "method": "Cash",
+            "paidBy": "NAEM HANGULA",
+            "paidAt": "2025-11-04T12:58:03.731Z",
+            "reference": "PAY1762261083731"
+          }
+        ],
+        "paid": true,
+        "paidBy": "NAEM HANGULA",
+        "paidAt": "2025-11-04T12:58:03.731Z",
+        "paymentMethod": "Cash",
+        "amountPaid": 250
+      }
+    ],
+    "symptoms": [
+      {
+        "system": "Nervous System",
+        "symptom": "Poor concentration and memory loss",
+        "recommendation": "Take short breaks from screens to rest the mind and eat foods rich in B-vitamins, omega-3, and magnesium (e.g., fish, nuts, leafy greens)."
+      }
+    ],
+    "followUpDate": "2025-11-18",
+    "followUpNotes": "",
+    "pdf": null,
+    "timestamp": "2025-11-04T11:50:31.718Z",
+    "dispensed": false
+  }
+]

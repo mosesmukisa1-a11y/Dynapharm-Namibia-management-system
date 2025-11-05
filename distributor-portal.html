@@ -273,12 +273,65 @@
             }
         }
 
-        // Load distributors from IndexedDB, localStorage, or CSV
+        // Load distributors from database API, IndexedDB, localStorage, or CSV
         async function loadDistributors() {
             let distributors = [];
             
+            // Try database API first (primary source of truth)
             try {
-                // Try IndexedDB first (where admin uploads are stored)
+                const response = await fetch('/api/distributors');
+                if (response.ok) {
+                    distributors = await response.json();
+                    if (distributors && distributors.length > 0) {
+                        // Normalize for compatibility
+                        distributors = distributors.map(d => ({
+                            ...d,
+                            distributorCode: d.distributor_code || d.distributorCode || d.code,
+                            distributorName: d.distributor_name || d.distributorName || d.name,
+                            code: d.distributor_code || d.distributorCode || d.code,
+                            name: d.distributor_name || d.distributorName || d.name,
+                            mobileNo: d.mobile_no || d.mobileNo || d.mobile,
+                            email: d.email || '',
+                            birthdate: d.birthdate || d.birth_date || null
+                        }));
+                        console.log(`✅ Loaded ${distributors.length} distributors from database API`);
+                        
+                        // Cache in localStorage for offline access
+                        try {
+                            localStorage.setItem('dyna_distributors_cache', JSON.stringify({
+                                data: distributors,
+                                timestamp: Date.now()
+                            }));
+                        } catch(e) {
+                            console.debug('Could not cache distributors:', e);
+                        }
+                        
+                        return distributors;
+                    }
+                } else {
+                    console.debug('Database API not available, trying fallbacks');
+                }
+            } catch(e) {
+                console.debug('Database API error:', e);
+            }
+            
+            // Fallback 1: Try cached data (if less than 1 hour old)
+            try {
+                const cached = localStorage.getItem('dyna_distributors_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    const age = Date.now() - (parsed.timestamp || 0);
+                    if (age < 3600000 && parsed.data && parsed.data.length > 0) { // 1 hour
+                        console.log(`✅ Loaded ${parsed.data.length} distributors from cache`);
+                        return parsed.data;
+                    }
+                }
+            } catch(e) {
+                console.debug('Cache read error:', e);
+            }
+            
+            // Fallback 2: Try IndexedDB (where admin uploads are stored)
+            try {
                 const dbName = 'DynapharmDB';
                 const dbVersion = 1;
                 const storeName = 'distributors';
@@ -292,7 +345,6 @@
                     };
                     
                     request.onupgradeneeded = (event) => {
-                        // Database doesn't exist or needs upgrade
                         const db = event.target.result;
                         if (!db.objectStoreNames.contains(storeName)) {
                             const objectStore = db.createObjectStore(storeName, { keyPath: 'id' });
@@ -320,7 +372,6 @@
                             const getAllRequest = store.getAll();
                             getAllRequest.onsuccess = () => {
                                 const results = getAllRequest.result || [];
-                                // Ensure aliases are set for compatibility
                                 const normalized = results.map(d => ({
                                     ...d,
                                     code: d.code || d.distributorCode,
@@ -349,7 +400,7 @@
                 console.debug('IndexedDB not available:', e);
             }
             
-            // Fallback to localStorage
+            // Fallback 3: localStorage
             try {
                 const stored = localStorage.getItem('dyna_distributors');
                 if (stored) {
@@ -375,8 +426,8 @@
                     console.warn('Could not save distributors to localStorage:', e);
                 }
             } else {
-                console.warn('⚠️ No distributors found in IndexedDB, localStorage, or CSV files');
-                console.info('💡 To upload distributors, go to Admin Portal → Distributor Management');
+                console.warn('⚠️ No distributors found in database, IndexedDB, localStorage, or CSV files');
+                console.info('💡 To upload distributors, go to Admin Portal → Distributor Management or Branch Portal → Distributor Registration');
             }
             
             return distributors;
@@ -393,29 +444,60 @@
                 return;
             }
 
-            const distributors = await loadDistributors();
-            const distributor = distributors.find(d => {
-                const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
-                return code === nbNumber;
-            });
+            // Show loading state
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Logging in...';
+            showLoginError(''); // Clear previous errors
 
-            if (!distributor) {
-                showLoginError('Distributor not found. Please check your NB number.');
-                return;
+            try {
+                const distributors = await loadDistributors();
+                const distributor = distributors.find(d => {
+                    const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
+                    return code === nbNumber;
+                });
+
+                if (!distributor) {
+                    showLoginError('Distributor not found. Please check your NB number or contact support.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                    return;
+                }
+
+                // Verify DOB if available in distributor data
+                if (distributor.birthdate || distributor.birth_date) {
+                    const storedDOB = distributor.birthdate || distributor.birth_date;
+                    // Compare dates (ignore time)
+                    const storedDate = new Date(storedDOB).toISOString().split('T')[0];
+                    if (storedDate !== dob) {
+                        showLoginError('Date of birth does not match. Please check and try again.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                        return;
+                    }
+                } else {
+                    // DOB not stored - log warning but allow login (for backward compatibility)
+                    console.warn('DOB not stored for distributor, allowing login without verification');
+                }
+
+                currentDistributor = distributor;
+                localStorage.setItem('distributor_portal_session', JSON.stringify({
+                    nbNumber: nbNumber,
+                    distributorName: distributor.distributorName || distributor.name,
+                    distributorId: distributor.id,
+                    loginTime: new Date().toISOString()
+                }));
+
+                // Load dashboard data
+                await loadDashboardData();
+                showDashboard();
+            } catch (error) {
+                console.error('Login error:', error);
+                showLoginError('An error occurred during login. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
             }
-
-            // For now, we'll accept any DOB (in production, verify against stored DOB)
-            // You can add DOB to distributor data structure later
-            currentDistributor = distributor;
-            localStorage.setItem('distributor_portal_session', JSON.stringify({
-                nbNumber: nbNumber,
-                distributorName: distributor.distributorName || distributor.name,
-                loginTime: new Date().toISOString()
-            }));
-
-            // Load dashboard data
-            await loadDashboardData();
-            showDashboard();
         });
 
         function showLoginError(message) {
