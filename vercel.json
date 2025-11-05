@@ -1,21 +1,6 @@
 {
   "version": 2,
   "name": "dynapharm-namibia-health",
-  "builds": [
-    { "src": "api/*.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    {
-      "src": "/api/transactions.js",
-      "dest": "/web-modules/transactions.js"
-    }
-  ],
-  "functions": {
-    "api/*.js": {
-      "memory": 256,
-      "maxDuration": 10
-    }
-  },
   "redirects": [
     { "source": "/", "destination": "/dynapharm-complete-system.html", "permanent": false },
     { "source": "/dynapharm-complete-system", "destination": "/dynapharm-complete-system.html", "permanent": false },
@@ -57,5 +42,3 @@
     }
   ]
 }
-
-
