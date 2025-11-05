@@ -1,7 +1,7 @@
 {
   "version": 2,
   "name": "dynapharm-namibia-health",
-  "buildCommand": "",
+  "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
   "installCommand": "npm install",
   "framework": null,
