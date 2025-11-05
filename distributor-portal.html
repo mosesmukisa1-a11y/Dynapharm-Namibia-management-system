@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dynapharm | Distributor Portal</title>
+    <link rel="icon" href="./favicon.ico">
+    <meta name="description" content="Distributor portal for viewing referrals, profits, BVs, bonuses, and communications.">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#c41e3a">
+    <style>
+        :root { 
+            --brand: #c41e3a; 
+            --bg: #f6f8fb; 
+            --ink: #1f2a37; 
+            --muted: #64748b; 
+            --card: #ffffff; 
+            --ok: #0f9d58; 
+            --warn: #ef6c00; 
+            --danger: #dc2626;
+        }
+        * { box-sizing: border-box; }
+        html, body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif; 
+            background: var(--bg); 
+            color: var(--ink); 
+        }
+        .hidden { display: none !important; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .card { 
+            background: var(--card); 
+            border: 1px solid #e5e7eb; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,.04); 
+            padding: 24px; 
+            margin-bottom: 20px;
+        }
+        .btn { 
+            appearance: none; 
+            border: none; 
+            border-radius: 8px; 
+            padding: 12px 24px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--brand); color: #fff; }
+        .btn-primary:hover { background: #a0182a; }
+        .btn-secondary { background: #6b7280; color: #fff; }
+        .btn-secondary:hover { background: #4b5563; }
+        input, select { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid #d1d5db; 
+            border-radius: 8px; 
+            font-size: 14px;
+        }
+        label { 
+            display: block; 
+            margin-bottom: 8px; 
+            font-weight: 600; 
+            font-size: 14px; 
+            color: #374151;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, var(--brand) 0%, #8b0000 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-card h3 { margin: 0 0 8px; font-size: 32px; }
+        .stat-card p { margin: 0; opacity: 0.9; }
+        .grid { display: grid; gap: 20px; }
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f9fafb; font-weight: 600; }
+        .header {
+            background: var(--card);
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 0;
+            margin-bottom: 24px;
+        }
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--brand);
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .tab-btn { background: transparent; border: none; padding: 12px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+        .tab-btn:hover { border-bottom-color: var(--brand); }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="container">
+        <div style="max-width: 400px; margin: 100px auto;">
+            <div class="card">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <div class="logo-brand" style="justify-content: center; margin-bottom: 16px;">
+                        <span style="font-size: 28px;">Dynapharm Namibia</span>
+                    </div>
+                    <h1 style="margin: 0 0 8px; color: var(--brand);">Distributor Portal</h1>
+                    <p style="color: var(--muted); margin: 0;">Login with your NB number and date of birth</p>
+                </div>
+                <form id="loginForm">
+                    <div style="margin-bottom: 16px;">
+                        <label for="nbNumber">NB Number *</label>
+                        <input type="text" id="nbNumber" name="nbNumber" placeholder="e.g., NB001544" required pattern="NB[0-9]+" autocomplete="off">
+                        <small style="color: var(--muted); font-size: 12px; display: block; margin-top: 4px;">Your distributor NB number from the uploaded CSV</small>
+                    </div>
+                    <div style="margin-bottom: 24px;">
+                        <label for="dob">Date of Birth *</label>
+                        <input type="date" id="dob" name="dob" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+                    <div id="loginError" style="margin-top: 16px; color: var(--danger); display: none;"></div>
+                    <div id="loginInfo" style="margin-top: 16px; padding: 12px; background: #f0f9ff; border-radius: 8px; font-size: 12px; color: #1e40af;">
+                        <strong>ℹ️ Note:</strong> Distributors are loaded from Admin Portal uploads (IndexedDB), localStorage cache, or CSV files.<br>
+                        <span id="distributorCount" style="font-weight: 600; margin-top: 4px; display: inline-block;">Loading distributor count...</span>
+                        <button onclick="refreshDistributorList()" class="btn btn-secondary" style="margin-top: 8px; width: 100%; padding: 8px; font-size: 11px;">🔄 Refresh Distributor List</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard (hidden initially) -->
+    <div id="dashboard" class="hidden">
+        <div class="header">
+            <div class="container">
+                <div class="header-content">
+                    <div class="logo-brand">
+                        <span>Dynapharm Namibia</span>
+                        <span class="badge badge-info">Distributor Portal</span>
+                    </div>
+                    <div>
+                        <span id="distributorName" style="font-weight: 600; margin-right: 16px;"></span>
+                        <button class="btn btn-secondary" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- Stats Overview -->
+            <div class="grid grid-3" style="margin-bottom: 24px;">
+                <div class="stat-card">
+                    <p>Total Referred Clients</p>
+                    <h3 id="totalClients">0</h3>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #0f9d58 0%, #0a7a45 100%);">
+                    <p>Total BVs Earned</p>
+                    <h3 id="totalBVs">0</h3>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #ef6c00 0%, #e65100 100%);">
+                    <p>Total Bonus Earned</p>
+                    <h3 id="totalBonus">N$ 0.00</h3>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+                <button class="tab-btn btn" onclick="showTab('clients')" data-tab="clients">👥 Referred Clients</button>
+                <button class="tab-btn btn" onclick="showTab('bonus')" data-tab="bonus">💰 Bonus & Payments</button>
+                <button class="tab-btn btn" onclick="showTab('bvs')" data-tab="bvs">📊 BVs & Sales</button>
+                <button class="tab-btn btn" onclick="showTab('communications')" data-tab="communications">📢 Communications</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="tabContent"></div>
+        </div>
+    </div>
+    <script>
+        // Global state
+        let currentDistributor = null;
+        let referredClients = [];
+        let bonusPayments = [];
+        let salesData = [];
+        let communications = [];
+
+        // Parse CSV text into array of objects
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(line => line.trim());
+            if (lines.length < 2) return [];
+            
+            // Detect delimiter (comma, semicolon, or tab)
+            const firstLine = lines[0];
+            let delimiter = ',';
+            if (firstLine.includes('\t')) delimiter = '\t';
+            else if (firstLine.includes(';')) delimiter = ';';
+            
+            // Parse headers
+            const headers = lines[0].split(delimiter).map(h => h.trim().toUpperCase().replace(/"/g, ''));
+            
+            // Find DRN and NAME column indices
+            const drnIdx = headers.findIndex(h => h === 'DRN' || h === 'DNR' || h === 'DISTRIBUTORCODE' || h === 'CODE');
+            const nameIdx = headers.findIndex(h => h === 'NAME' || h === 'DISTRIBUTORNAME' || h === 'DISTRIBUTOR NAME');
+            
+            if (drnIdx === -1 || nameIdx === -1) {
+                console.warn('CSV missing required columns (DRN/NAME)');
+                return [];
+            }
+            
+            // Parse data rows
+            const distributors = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
+                if (values.length > Math.max(drnIdx, nameIdx)) {
+                    const drn = values[drnIdx] || '';
+                    const name = values[nameIdx] || '';
+                    if (drn && name) {
+                        distributors.push({
+                            id: 'DIST-' + Date.now() + '-' + i,
+                            distributorCode: drn.toUpperCase().trim(),
+                            distributorName: name.trim(),
+                            code: drn.toUpperCase().trim(),
+                            name: name.trim()
+                        });
+                    }
+                }
+            }
+            return distributors;
+        }
+
+        // Load distributors from CSV file as fallback
+        async function loadDistributorsFromCSV() {
+            try {
+                // Try both CSV files
+                const csvFiles = ['sample-distributor-comma.csv', 'sample-distributor.csv'];
+                
+                for (const csvFile of csvFiles) {
+                    try {
+                        const response = await fetch(csvFile);
+                        if (response.ok) {
+                            const text = await response.text();
+                            const distributors = parseCSV(text);
+                            if (distributors.length > 0) {
+                                console.log(`Loaded ${distributors.length} distributors from ${csvFile}`);
+                                return distributors;
+                            }
+                        }
+                    } catch(e) {
+                        console.debug(`Could not load ${csvFile}:`, e);
+                    }
+                }
+                return [];
+            } catch(e) {
+                console.error('Error loading CSV:', e);
+                return [];
+            }
+        }
+
+        // Load distributors from IndexedDB, localStorage, or CSV
+        async function loadDistributors() {
+            let distributors = [];
+            
+            try {
+                // Try IndexedDB first (where admin uploads are stored)
+                const dbName = 'DynapharmDB';
+                const dbVersion = 1;
+                const storeName = 'distributors';
+                
+                distributors = await new Promise((resolve) => {
+                    const request = indexedDB.open(dbName, dbVersion);
+                    
+                    request.onerror = () => {
+                        console.debug('IndexedDB open error:', request.error);
+                        resolve([]);
+                    };
+                    
+                    request.onupgradeneeded = (event) => {
+                        // Database doesn't exist or needs upgrade
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(storeName)) {
+                            const objectStore = db.createObjectStore(storeName, { keyPath: 'id' });
+                            objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
+                            objectStore.createIndex('distributorName', 'distributorName', { unique: false });
+                            console.log('Created IndexedDB store for distributors');
+                        }
+                    };
+                    
+                    request.onsuccess = () => {
+                        const db = request.result;
+                        if (!db) { 
+                            console.debug('IndexedDB database not available');
+                            resolve([]); 
+                            return; 
+                        }
+                        try {
+                            if (!db.objectStoreNames.contains(storeName)) {
+                                console.debug('Distributors store does not exist in IndexedDB');
+                                resolve([]);
+                                return;
+                            }
+                            const transaction = db.transaction([storeName], 'readonly');
+                            const store = transaction.objectStore(storeName);
+                            const getAllRequest = store.getAll();
+                            getAllRequest.onsuccess = () => {
+                                const results = getAllRequest.result || [];
+                                // Ensure aliases are set for compatibility
+                                const normalized = results.map(d => ({
+                                    ...d,
+                                    code: d.code || d.distributorCode,
+                                    name: d.name || d.distributorName
+                                }));
+                                resolve(normalized);
+                            };
+                            getAllRequest.onerror = () => {
+                                console.debug('Error getting distributors from IndexedDB:', getAllRequest.error);
+                                resolve([]);
+                            };
+                        } catch(e) {
+                            console.debug('Error accessing IndexedDB store:', e);
+                            resolve([]);
+                        }
+                    };
+                });
+                
+                if (distributors.length > 0) {
+                    console.log(`✅ Loaded ${distributors.length} distributors from IndexedDB (Admin Portal uploads)`);
+                    return distributors;
+                } else {
+                    console.log('ℹ️ No distributors found in IndexedDB');
+                }
+            } catch(e) {
+                console.debug('IndexedDB not available:', e);
+            }
+            
+            // Fallback to localStorage
+            try {
+                const stored = localStorage.getItem('dyna_distributors');
+                if (stored) {
+                    distributors = JSON.parse(stored);
+                    if (distributors.length > 0) {
+                        console.log(`Loaded ${distributors.length} distributors from localStorage`);
+                        return distributors;
+                    }
+                }
+            } catch(e) {
+                console.debug('localStorage not available:', e);
+            }
+            
+            // Final fallback: Load from CSV file
+            distributors = await loadDistributorsFromCSV();
+            if (distributors.length > 0) {
+                console.log(`✅ Loaded ${distributors.length} distributors from CSV file`);
+                // Store in localStorage for future use
+                try {
+                    localStorage.setItem('dyna_distributors', JSON.stringify(distributors));
+                    console.log('✅ Distributors saved to localStorage for faster loading');
+                } catch(e) {
+                    console.warn('Could not save distributors to localStorage:', e);
+                }
+            } else {
+                console.warn('⚠️ No distributors found in IndexedDB, localStorage, or CSV files');
+                console.info('💡 To upload distributors, go to Admin Portal → Distributor Management');
+            }
+            
+            return distributors;
+        }
+
+        // Login function
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const nbNumber = document.getElementById('nbNumber').value.trim().toUpperCase();
+            const dob = document.getElementById('dob').value;
+            
+            if (!nbNumber || !dob) {
+                showLoginError('Please enter both NB number and date of birth');
+                return;
+            }
+
+            const distributors = await loadDistributors();
+            const distributor = distributors.find(d => {
+                const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
+                return code === nbNumber;
+            });
+
+            if (!distributor) {
+                showLoginError('Distributor not found. Please check your NB number.');
+                return;
+            }
+
+            // For now, we'll accept any DOB (in production, verify against stored DOB)
+            // You can add DOB to distributor data structure later
+            currentDistributor = distributor;
+            localStorage.setItem('distributor_portal_session', JSON.stringify({
+                nbNumber: nbNumber,
+                distributorName: distributor.distributorName || distributor.name,
+                loginTime: new Date().toISOString()
+            }));
+
+            // Load dashboard data
+            await loadDashboardData();
+            showDashboard();
+        });
+
+        function showLoginError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function showDashboard() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('distributorName').textContent = currentDistributor.distributorName || currentDistributor.name;
+            showTab('clients');
+        }
+
+        function logout() {
+            currentDistributor = null;
+            localStorage.removeItem('distributor_portal_session');
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('loginForm').reset();
+        }
+
+        // Refresh distributor list and update count
+        async function refreshDistributorList() {
+            const countEl = document.getElementById('distributorCount');
+            if (countEl) countEl.textContent = 'Loading...';
+            
+            const distributors = await loadDistributors();
+            if (countEl) {
+                if (distributors.length > 0) {
+                    countEl.textContent = `✅ ${distributors.length} distributor(s) available`;
+                    countEl.style.color = '#0f9d58';
+                } else {
+                    countEl.textContent = '⚠️ No distributors found. Upload via Admin Portal → Distributor Management';
+                    countEl.style.color = '#ef6c00';
+                }
+            }
+            return distributors;
+        }
+
+        // Check if already logged in and load distributor count
+        window.addEventListener('DOMContentLoaded', async function() {
+            // Load and display distributor count
+            await refreshDistributorList();
+            
+            // Check for existing session
+            const session = localStorage.getItem('distributor_portal_session');
+            if (session) {
+                try {
+                    const sessionData = JSON.parse(session);
+                    const distributors = await loadDistributors();
+                    const distributor = distributors.find(d => {
+                        const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
+                        return code === sessionData.nbNumber.toUpperCase();
+                    });
+                    if (distributor) {
+                        currentDistributor = distributor;
+                        await loadDashboardData();
+                        showDashboard();
+                    } else {
+                        // Distributor not found - clear session
+                        localStorage.removeItem('distributor_portal_session');
+                    }
+                } catch(e) {
+                    console.error('Session restore error:', e);
+                }
+            }
+        });
+        // Load all dashboard data
+        async function loadDashboardData() {
+            if (!currentDistributor) return;
+            
+            const nbNumber = (currentDistributor.distributorCode || currentDistributor.code || '').toString().toUpperCase().trim();
+            
+            // Load referred clients
+            await loadReferredClients(nbNumber);
+            
+            // Load bonus payments
+            await loadBonusPayments(nbNumber);
+            
+            // Load sales and BVs
+            await loadSalesAndBVs(nbNumber);
+            
+            // Load communications
+            await loadCommunications();
+            
+            // Update stats
+            updateStats();
+        }
+
+        async function loadReferredClients(nbNumber) {
+            try {
+                // Try API first
+                const base = window.location.origin;
+                let clients = [];
+                
+                try {
+                    const response = await fetch(`${base}/api/clients`);
+                    if (response.ok) {
+                        clients = await response.json();
+                    }
+                } catch(e) {
+                    // Fallback to localStorage
+                    const stored = localStorage.getItem('dyna_clients');
+                    if (stored) clients = JSON.parse(stored);
+                }
+                
+                // Filter clients referred by this distributor (case-insensitive matching)
+                referredClients = (clients || []).filter(c => {
+                    // Try multiple field names for referral NB number
+                    const refNB = (
+                        c.referralNbNumber || 
+                        c.referralNB || 
+                        c.referralNb ||
+                        c.referralCode ||
+                        c.distributorReferral?.nbNumber ||
+                        c.distributorReferral?.id ||
+                        c.distributorReferral?.code ||
+                        ''
+                    ).toString().toUpperCase().trim();
+                    return refNB === nbNumber;
+                });
+            } catch(e) {
+                console.error('Error loading clients:', e);
+                referredClients = [];
+            }
+        }
+
+        async function loadBonusPayments(nbNumber) {
+            try {
+                // Load from localStorage (finance data)
+                const financeData = localStorage.getItem('finance_enhanced_data');
+                let cashBonuses = [];
+                let bankBonuses = [];
+                
+                if (financeData) {
+                    try {
+                        const data = JSON.parse(financeData);
+                        cashBonuses = data.cashBonuses || [];
+                        bankBonuses = data.bankBonuses || [];
+                    } catch(e) {
+                        // Try separate keys
+                        const cashData = localStorage.getItem('finance_bonuses');
+                        const bankData = localStorage.getItem('finance_bank_bonuses');
+                        if (cashData) cashBonuses = JSON.parse(cashData);
+                        if (bankData) bankBonuses = JSON.parse(bankData);
+                    }
+                }
+                
+                // Filter bonuses for this distributor
+                bonusPayments = [
+                    ...(cashBonuses || []).filter(b => (b.distributorNB || '').toString().toUpperCase() === nbNumber).map(b => ({...b, type: 'Cash'})),
+                    ...(bankBonuses || []).filter(b => (b.distributorNB || '').toString().toUpperCase() === nbNumber).map(b => ({...b, type: 'Bank'}))
+                ].sort((a, b) => {
+                    const dateA = new Date(a.date || a.createdAt || 0);
+                    const dateB = new Date(b.date || b.createdAt || 0);
+                    return dateB - dateA;
+                });
+            } catch(e) {
+                console.error('Error loading bonuses:', e);
+                bonusPayments = [];
+            }
+        }
+
+        async function loadSalesAndBVs(nbNumber) {
+            try {
+                // Load walk-in sales
+                const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+                
+                // Load reports (prescriptions)
+                let reports = [];
+                try {
+                    const reportsData = localStorage.getItem('dyna_reports');
+                    if (reportsData) reports = JSON.parse(reportsData);
+                } catch(e) {}
+                
+                // Filter sales by distributor referral (case-insensitive matching)
+                salesData = [
+                    ...walkInSales.filter(s => {
+                        // Try multiple field names for distributor referral
+                        const refNB = (
+                            s.distributorReferral?.nbNumber || 
+                            s.distributorReferral?.id || 
+                            s.distributorReferral?.code ||
+                            s.distributorReferral?.distributorCode ||
+                            s.distributorNB ||
+                            ''
+                        ).toString().toUpperCase().trim();
+                        return refNB === nbNumber;
+                    }),
+                    ...reports.filter(r => {
+                        // Try multiple field names for distributor referral
+                        const refNB = (
+                            r.distributorReferral?.nbNumber || 
+                            r.distributorReferral?.id || 
+                            r.distributorReferral?.code ||
+                            r.distributorReferral?.distributorCode ||
+                            r.distributorNB ||
+                            ''
+                        ).toString().toUpperCase().trim();
+                        return refNB === nbNumber;
+                    }).map(r => ({
+                        type: 'Prescription',
+                        customerName: r.clientName || r.clientInfo?.fullName || 'Unknown',
+                        date: r.timestamp || r.createdAt,
+                        total: (r.medicines || []).reduce((sum, m) => sum + (m.amountPaid || 0), 0),
+                        totalBV: (r.medicines || []).reduce((sum, m) => sum + ((m.bv || 0) * (m.quantity || 1)), 0),
+                        items: r.medicines || []
+                    }))
+                ].sort((a, b) => {
+                    const dateA = new Date(a.date || a.timestamp || 0);
+                    const dateB = new Date(b.date || b.timestamp || 0);
+                    return dateB - dateA;
+                });
+            } catch(e) {
+                console.error('Error loading sales:', e);
+                salesData = [];
+            }
+        }
+
+        async function loadCommunications() {
+            try {
+                // Try API first
+                const base = window.location.origin;
+                try {
+                    const response = await fetch(`${base}/api/notifications`);
+                    if (response.ok) {
+                        communications = await response.json();
+                        // Filter for distributor-specific or general communications
+                        communications = communications.filter(c => 
+                            !c.targetRole || c.targetRole === 'distributor' || !c.targetRole
+                        ).sort((a, b) => {
+                            const dateA = new Date(a.createdAt || 0);
+                            const dateB = new Date(b.createdAt || 0);
+                            return dateB - dateA;
+                        });
+                    }
+                } catch(e) {
+                    // Fallback to localStorage
+                    const stored = localStorage.getItem('dyna_notifications');
+                    if (stored) communications = JSON.parse(stored);
+                }
+            } catch(e) {
+                console.error('Error loading communications:', e);
+                communications = [];
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('totalClients').textContent = referredClients.length;
+            
+            const totalBVs = salesData.reduce((sum, s) => sum + (s.totalBV || 0), 0);
+            document.getElementById('totalBVs').textContent = totalBVs.toLocaleString();
+            
+            const totalBonus = bonusPayments.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+            document.getElementById('totalBonus').textContent = `N$ ${totalBonus.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+        // Tab management
+        function showTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-secondary');
+            });
+            const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            if (activeBtn) {
+                activeBtn.classList.remove('btn-secondary');
+                activeBtn.classList.add('btn-primary');
+            }
+            
+            // Render tab content
+            const contentDiv = document.getElementById('tabContent');
+            switch(tabName) {
+                case 'clients':
+                    renderClientsTab(contentDiv);
+                    break;
+                case 'bonus':
+                    renderBonusTab(contentDiv);
+                    break;
+                case 'bvs':
+                    renderBVSTab(contentDiv);
+                    break;
+                case 'communications':
+                    renderCommunicationsTab(contentDiv);
+                    break;
+            }
+        }
+
+        function renderClientsTab(container) {
+            if (referredClients.length === 0) {
+                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No referred clients yet.</p></div>';
+                return;
+            }
+            
+            let html = '<div class="card"><h2 style="margin-top: 0;">👥 Referred Clients</h2><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Registration Date</th><th>Status</th></tr></thead><tbody>';
+            
+            referredClients.forEach(client => {
+                const regDate = client.timestamp || client.createdAt || client.date || 'N/A';
+                const dateStr = regDate !== 'N/A' ? new Date(regDate).toLocaleDateString('en-GB') : 'N/A';
+                html += `<tr>
+                    <td>${client.fullName || 'N/A'}</td>
+                    <td>${client.phone || 'N/A'}</td>
+                    <td>${client.email || 'N/A'}</td>
+                    <td>${dateStr}</td>
+                    <td><span class="badge badge-success">Active</span></td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        function renderBonusTab(container) {
+            if (bonusPayments.length === 0) {
+                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No bonus payments recorded yet.</p></div>';
+                return;
+            }
+            
+            const totalEarned = bonusPayments.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+            const totalPaid = bonusPayments.filter(b => b.status === 'paid' || b.paidAt).reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+            const totalPending = totalEarned - totalPaid;
+            
+            let html = `<div class="card">
+                <h2 style="margin-top: 0;">💰 Bonus & Payments</h2>
+                <div class="grid grid-3" style="margin-bottom: 24px;">
+                    <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; text-align: center;">
+                        <p style="margin: 0 0 8px; color: var(--muted);">Total Earned</p>
+                        <h3 style="margin: 0; color: var(--brand);">N$ ${totalEarned.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                    </div>
+                    <div style="background: #d1fae5; padding: 20px; border-radius: 8px; text-align: center;">
+                        <p style="margin: 0 0 8px; color: var(--muted);">Total Paid</p>
+                        <h3 style="margin: 0; color: var(--ok);">N$ ${totalPaid.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                    </div>
+                    <div style="background: #fef3c7; padding: 20px; border-radius: 8px; text-align: center;">
+                        <p style="margin: 0 0 8px; color: var(--muted);">Pending</p>
+                        <h3 style="margin: 0; color: var(--warn);">N$ ${totalPending.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                    </div>
+                </div>
+                <table><thead><tr><th>Date</th><th>Amount</th><th>Type</th><th>Reason</th><th>Status</th></tr></thead><tbody>`;
+            
+            bonusPayments.forEach(bonus => {
+                const date = bonus.date || bonus.createdAt || 'N/A';
+                const dateStr = date !== 'N/A' ? new Date(date).toLocaleDateString('en-GB') : 'N/A';
+                const amount = parseFloat(bonus.amount) || 0;
+                const status = bonus.status === 'paid' || bonus.paidAt ? 'Paid' : 'Pending';
+                const statusClass = status === 'Paid' ? 'badge-success' : 'badge-warning';
+                
+                html += `<tr>
+                    <td>${dateStr}</td>
+                    <td><strong>N$ ${amount.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                    <td>${bonus.type || 'Cash'}</td>
+                    <td>${bonus.reason || 'N/A'}</td>
+                    <td><span class="badge ${statusClass}">${status}</span></td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+        function renderBVSTab(container) {
+            if (salesData.length === 0) {
+                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No sales data available yet.</p></div>';
+                return;
+            }
+            
+            const totalSales = salesData.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+            const totalBVs = salesData.reduce((sum, s) => sum + (s.totalBV || 0), 0);
+            
+            let html = `<div class="card">
+                <h2 style="margin-top: 0;">📊 BVs & Sales</h2>
+                <div class="grid grid-2" style="margin-bottom: 24px;">
+                    <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; text-align: center;">
+                        <p style="margin: 0 0 8px; color: var(--muted);">Total Sales</p>
+                        <h3 style="margin: 0; color: var(--brand);">N$ ${totalSales.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                    </div>
+                    <div style="background: #d1fae5; padding: 20px; border-radius: 8px; text-align: center;">
+                        <p style="margin: 0 0 8px; color: var(--muted);">Total BVs</p>
+                        <h3 style="margin: 0; color: var(--ok);">${totalBVs.toLocaleString()}</h3>
+                    </div>
+                </div>
+                <table><thead><tr><th>Date</th><th>Customer</th><th>Type</th><th>Sales Amount</th><th>BVs</th></tr></thead><tbody>`;
+            
+            salesData.forEach(sale => {
+                const date = sale.date || sale.timestamp || sale.createdAt || 'N/A';
+                const dateStr = date !== 'N/A' ? new Date(date).toLocaleDateString('en-GB') : 'N/A';
+                const amount = parseFloat(sale.total) || 0;
+                const bvs = sale.totalBV || 0;
+                
+                html += `<tr>
+                    <td>${dateStr}</td>
+                    <td>${sale.customerName || 'Unknown'}</td>
+                    <td>${sale.type || 'Walk-in'}</td>
+                    <td><strong>N$ ${amount.toLocaleString('en-NA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                    <td><span class="badge badge-success">${bvs.toLocaleString()}</span></td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        function renderCommunicationsTab(container) {
+            if (communications.length === 0) {
+                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No communications available.</p></div>';
+                return;
+            }
+            
+            let html = '<div class="card"><h2 style="margin-top: 0;">📢 Company Communications</h2>';
+            
+            communications.forEach(comm => {
+                const date = comm.createdAt || comm.date || 'N/A';
+                const dateStr = date !== 'N/A' ? new Date(date).toLocaleDateString('en-GB', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }) : 'N/A';
+                const typeClass = comm.type === 'warning' ? 'badge-warning' : comm.type === 'error' ? 'badge-danger' : 'badge-info';
+                
+                html += `<div style="border-left: 4px solid var(--brand); padding: 16px; margin-bottom: 16px; background: #f9fafb; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <h3 style="margin: 0; font-size: 18px;">${comm.title || 'Announcement'}</h3>
+                        <span class="badge ${typeClass}">${comm.type || 'info'}</span>
+                    </div>
+                    <p style="margin: 8px 0; color: var(--ink);">${comm.message || ''}</p>
+                    <small style="color: var(--muted);">${dateStr}</small>
+                </div>`;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

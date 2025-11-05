@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <title>Director Portal - Executive Dashboard</title>
+    <link rel="icon" href="./favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            padding: 24px;
+            color: #0b1220;
+        }
+        .container { max-width: 1500px; margin: 0 auto; }
+        .header {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        }
+        .logo img { display:block; height:32px; width:auto; margin-bottom:8px; }
+        .header h1 { font-size: 2.2rem; color: #0f172a; margin-bottom: 6px; }
+        .header p { color: #475569; }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .kpi {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        }
+        .kpi h3 { font-size: 0.9rem; color: #64748b; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+        .kpi .value { font-size: 2.2rem; font-weight: 800; color: #0f172a; }
+        .kpi .sub { margin-top: 8px; font-size: .9rem; color: #16a34a; }
+
+        .filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+        .select, .input {
+            padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 1rem;
+        }
+        .btn { padding: 10px 16px; border: none; border-radius: 10px; background: #0ea5e9; color: #fff; font-weight: 700; cursor: pointer; }
+        .btn:hover { background: #0284c7; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+        .card { background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+        .card h2 { font-size: 1.25rem; color: #0f172a; padding-bottom: 10px; border-bottom: 3px solid #0ea5e9; margin-bottom: 14px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eef2f7; }
+        th { font-size: .85rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; background: #f8fafc; }
+        .status { padding: 6px 10px; border-radius: 999px; font-size: .8rem; font-weight: 700; }
+        .status.pending { background: #fff7ed; color: #c2410c; }
+        .status.completed { background: #ecfdf5; color: #065f46; }
+
+        .bar { height: 12px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+        .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #f97316, #ef4444); }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 1024px) { 
+            .grid { grid-template-columns: 1fr; }
+        }
+        
+        @media (max-width: 768px) {
+            body { padding: 12px !important; }
+            .container { max-width: 100% !important; }
+            .header { padding: 20px !important; margin-bottom: 16px !important; }
+            .header h1 { font-size: 1.5rem !important; }
+            .header p { font-size: 0.9rem !important; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+            .kpi { padding: 16px !important; }
+            .kpi .value { font-size: 1.5rem !important; }
+            .filters { flex-direction: column !important; gap: 10px !important; }
+            .select, .input, .btn { width: 100% !important; min-height: 44px; font-size: 16px; }
+            .grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+            .card { padding: 16px !important; }
+            .card h2 { font-size: 1.1rem !important; }
+            table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+            th, td { padding: 8px 6px !important; font-size: 0.85rem !important; }
+            thead th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+        }
+        
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1.2rem !important; }
+            .kpi-grid { grid-template-columns: 1fr !important; }
+            .kpi .value { font-size: 1.3rem !important; }
+            th, td { padding: 6px 4px !important; font-size: 0.75rem !important; }
+        }
+        
+        /* Touch-friendly */
+        @media (hover: none) and (pointer: coarse) {
+            .btn { min-height: 44px; }
+            * { -webkit-tap-highlight-color: rgba(14, 165, 233, 0.2); }
+        }
+    </style>
+    <script defer src="./cloud-sync.js"></script>
+    <script defer src="./auto-cloud-sync.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
+            <h1>🏢 Director Portal</h1>
+            <p>Executive KPIs: Revenue, CIF, BV, Margin, Remittance, Stock Depletion</p>
+        </div>
+
+        <div class="filters">
+            <select id="dateRange" class="select">
+                <option value="month" selected>This Month</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="year">This Year</option>
+                <option value="all">All Time</option>
+            </select>
+            <select id="branchFilter" class="select">
+                <option value="all" selected>All Branches</option>
+            </select>
+            <button class="btn" id="refreshBtn">Refresh</button>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi"><h3>Total Revenue</h3><div class="value" id="kpiRevenue">NAD 0</div><div class="sub" id="kpiRevenueSub">+0% vs prev. period</div></div>
+            <div class="kpi"><h3>Total CIF Value</h3><div class="value" id="kpiCIF">NAD 0</div><div class="sub" id="kpiCIFSub">Computed from CP</div></div>
+            <div class="kpi"><h3>Total BV</h3><div class="value" id="kpiBV">0</div><div class="sub" id="kpiBVSub">Business Volume</div></div>
+            <div class="kpi"><h3>Gross Margin</h3><div class="value" id="kpiMargin">NAD 0</div><div class="sub" id="kpiMarginSub">Revenue - CIF</div></div>
+            <div class="kpi"><h3>Remittance (Est.)</h3><div class="value" id="kpiRemit">NAD 0</div><div class="sub" id="kpiRemitSub">Paid/Collected</div></div>
+            <div class="kpi"><h3>Transactions</h3><div class="value" id="kpiTxn">0</div><div class="sub" id="kpiTxnSub">in selected period</div></div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Recent Transactions</h2>
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Client</th>
+                                <th>Branch</th>
+                                <th>Amount</th>
+                                <th>CIF</th>
+                                <th>BV</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txBody">
+                            <tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Stock Depletion (Top 10)</h2>
+                <div id="stockList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Lightweight price lookup using PRICE_LIST if present in global context
+        function findPrice(name) {
+            if (!name || typeof name !== 'string') return { dp: 0, cp: 0, bv: 0 };
+            if (window.PRICE_LIST && Array.isArray(window.PRICE_LIST)) {
+                const item = window.PRICE_LIST.find(p => p.description?.toLowerCase() === name.toLowerCase());
+                if (item) return { dp: item.dp || 0, cp: item.cp || 0, bv: item.bv || 0 };
+            }
+            return { dp: 0, cp: 0, bv: 0 };
+        }
+
+        async function loadReports() {
+            try {
+                const res = await fetch('./reports_data.json');
+                const data = await res.json();
+                // Support both array root and {reports: []}
+                return Array.isArray(data) ? data : (data.reports || []);
+            } catch (e) {
+                console.error('Failed to load reports_data.json', e);
+                return [];
+            }
+        }
+
+        function withinRange(dateStr, range) {
+            if (range === 'all') return true;
+            const now = new Date();
+            const d = new Date(dateStr || now.toISOString());
+            switch (range) {
+                case 'today': return d.toDateString() === now.toDateString();
+                case 'week': return d >= new Date(now.getTime() - 7*24*60*60*1000);
+                case 'month': return d >= new Date(now.getTime() - 30*24*60*60*1000);
+                case 'year': return d >= new Date(now.getTime() - 365*24*60*60*1000);
+                default: return true;
+            }
+        }
+
+        function computeTxnFigures(report) {
+            let revenue = 0, cif = 0, bv = 0;
+            const products = Array.isArray(report.products) ? report.products : [];
+            products.forEach(p => {
+                const qty = parseFloat(p.quantity) || 0;
+                const price = parseFloat(p.price) || 0; // selling
+                const lookup = findPrice(p.name || p.product || p.description);
+                const cp = lookup.cp || 0; // CIF approximated as CP
+                const productBV = lookup.bv || 0;
+                revenue += qty * price;
+                cif += qty * cp;
+                bv += qty * productBV;
+            });
+            return { revenue, cif, bv };
+        }
+
+        function currency(n) { return 'NAD ' + (parseFloat(n)||0).toFixed(2); }
+
+        function summarize(reports, range, branch) {
+            const filtered = reports.filter(r => withinRange(r.date, range) && (branch==='all' || (r.branch||'Unknown')===branch));
+            let totalRevenue = 0, totalCIF = 0, totalBV = 0;
+            const rows = filtered.map((r, i) => {
+                const { revenue, cif, bv } = computeTxnFigures(r);
+                totalRevenue += revenue; totalCIF += cif; totalBV += bv;
+                return {
+                    id: r.id || ('RPT-' + (i+1)),
+                    client: r.clientName || r.clientInfo?.fullName || 'Unknown',
+                    branch: r.branch || 'Unknown',
+                    amount: revenue,
+                    cif: cif,
+                    bv: bv,
+                    date: r.date || r.timestamp,
+                    status: r.status || (r.dispensed ? 'completed' : 'pending')
+                };
+            });
+            return { rows, totalRevenue, totalCIF, totalBV };
+        }
+
+        function renderKPIs(sum, rows) {
+            const margin = sum.totalRevenue - sum.totalCIF;
+            document.getElementById('kpiRevenue').textContent = currency(sum.totalRevenue);
+            document.getElementById('kpiCIF').textContent = currency(sum.totalCIF);
+            document.getElementById('kpiBV').textContent = String(Math.round(sum.totalBV));
+            document.getElementById('kpiMargin').textContent = currency(margin);
+            // Remittance proxy: sum of items marked paid/dispensed with price available
+            let remit = 0;
+            rows.forEach(r => { remit += r.amount; });
+            document.getElementById('kpiRemit').textContent = currency(remit);
+            document.getElementById('kpiTxn').textContent = String(rows.length);
+        }
+
+        function renderTable(rows) {
+            const body = document.getElementById('txBody');
+            if (rows.length === 0) {
+                body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px;">No transactions</td></tr>';
+                return;
+            }
+            body.innerHTML = rows.slice(0, 12).map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.client}</td>
+                    <td>${r.branch}</td>
+                    <td>${currency(r.amount)}</td>
+                    <td>${currency(r.cif)}</td>
+                    <td>${Math.round(r.bv)}</td>
+                    <td>${new Date(r.date).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</td>
+                    <td><span class="status ${r.status}">${r.status.toUpperCase()}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        function estimateStockDepletion(reports) {
+            const counts = {};
+            reports.forEach(r => {
+                (r.products||[]).forEach(p => {
+                    const name = p.name || p.product || p.description;
+                    const qty = parseFloat(p.quantity)||0;
+                    if (!name) return;
+                    counts[name] = (counts[name]||0) + qty;
+                });
+            });
+            // Convert to list and sort desc
+            return Object.entries(counts).map(([name, qty]) => ({ name, qty })).sort((a,b)=>b.qty-a.qty).slice(0,10);
+        }
+
+        function renderStock(list) {
+            const container = document.getElementById('stockList');
+            if (list.length === 0) { container.innerHTML = '<div style="color:#64748b;">No data</div>'; return; }
+            const max = Math.max(...list.map(i=>i.qty)) || 1;
+            container.innerHTML = list.map(item => {
+                const pct = Math.round((item.qty/max)*100);
+                return `
+                    <div style="margin-bottom:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <strong style="color:#0f172a;">${item.name}</strong>
+                            <span style="color:#64748b;">${item.qty}</span>
+                        </div>
+                        <div class="bar"><span style="width:${pct}%"></span></div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function populateBranches(reports) {
+            const select = document.getElementById('branchFilter');
+            const branches = Array.from(new Set(reports.map(r => r.branch || 'Unknown')));
+            select.innerHTML = '<option value="all">All Branches</option>' + branches.map(b=>`<option value="${b}">${b}</option>`).join('');
+        }
+
+        async function refresh() {
+            const range = document.getElementById('dateRange').value;
+            const branch = document.getElementById('branchFilter').value;
+            const reports = await loadReports();
+            if (document.getElementById('branchFilter').options.length <= 1) populateBranches(reports);
+            const sum = summarize(reports, range, branch);
+            renderKPIs(sum, sum.rows);
+            renderTable(sum.rows);
+            renderStock(estimateStockDepletion(reports));
+        }
+
+        document.getElementById('refreshBtn').addEventListener('click', refresh);
+        document.getElementById('dateRange').addEventListener('change', refresh);
+        document.getElementById('branchFilter').addEventListener('change', refresh);
+
+        // Initial load
+        refresh();
+        // Auto-refresh every 60s
+        setInterval(refresh, 60000);
+    </script>
+</body>
+</html>
+
+

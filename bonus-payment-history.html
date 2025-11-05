@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Individual Bonus Payment History</title>
+	<style>
+		* { box-sizing: border-box; }
+		body { font-family: Arial, sans-serif; background:#f6f8fb; margin:0; padding:20px; }
+		.container { max-width: 1200px; margin: 0 auto; background:#fff; border-radius:12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); overflow:hidden; }
+		.header { background: linear-gradient(135deg,#c41e3a,#8b0000); color:#fff; padding:24px; }
+		.header h1 { margin:0 0 4px 0; font-size: 22px; }
+		.header p { margin:0; opacity:0.9; }
+		.content { padding:24px; }
+		.section { background:#fafbfc; border-left:4px solid #c41e3a; padding:16px; border-radius:8px; margin-bottom:16px; }
+		.controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+		input, select, button { padding:10px 12px; border:2px solid #e3e7ee; border-radius:8px; background:#fff; }
+		button { cursor:pointer; font-weight:600; }
+		.btn-primary { background:#c41e3a; color:#fff; border-color:#c41e3a; }
+		.btn-secondary { background:#34495e; color:#fff; border-color:#34495e; }
+		.info-card { background:#fff; padding:20px; border-radius:8px; border:2px solid #e3e7ee; margin-bottom:16px; }
+		.info-card h2 { margin:0 0 12px 0; color:#334e68; font-size:18px; }
+		.info-row { display:flex; gap:24px; flex-wrap:wrap; }
+		.info-item { flex:1; min-width:150px; }
+		.info-item label { font-size:12px; color:#6b7c93; text-transform:uppercase; display:block; margin-bottom:4px; }
+		.info-item .value { font-size:16px; color:#334e68; font-weight:600; }
+		.table-wrap { overflow:auto; border:1px solid #e3e7ee; border-radius:8px; margin-top:16px; }
+		table { width:100%; border-collapse:collapse; min-width:800px; }
+		th, td { padding:10px 12px; border-bottom:1px solid #eef2f7; text-align:left; }
+		th { background:#f2f5f9; position:sticky; top:0; z-index:1; }
+		.status-badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
+		.status-paid { background:#d4edda; color:#155724; }
+		.status-unpaid { background:#f8d7da; color:#721c24; }
+		.method-cash { background:#d1ecf1; color:#0c5460; }
+		.method-bank { background:#e2d9f3; color:#6f42c1; }
+		.hidden { display:none; }
+		.loading { text-align:center; padding:40px; color:#6b7c93; }
+		.summary-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-top:16px; }
+		.summary-card { background:#f8f9fa; padding:12px; border-radius:6px; text-align:center; }
+		.summary-card .label { font-size:11px; color:#6b7c93; text-transform:uppercase; margin-bottom:4px; }
+		.summary-card .value { font-size:20px; font-weight:bold; color:#334e68; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Individual Bonus Payment History</h1>
+			<p>View complete bonus payment history per distributor across all months</p>
+		</div>
+		<div class="content">
+			<div class="section">
+				<div class="controls">
+					<label style="font-size:13px; color:#334e68; font-weight:600;">Search by DRN or Name:</label>
+					<input id="searchInput" type="text" placeholder="Enter DRN or distributor name..." style="flex:1; min-width:200px;" />
+					<button id="btnSearch" class="btn-primary">Search</button>
+					<button id="btnExport" class="btn-secondary" disabled>Export CSV</button>
+				</div>
+			</div>
+
+			<div id="historyArea" class="hidden">
+				<div class="info-card" id="distributorInfo"></div>
+				<div class="summary-stats" id="summaryStats"></div>
+				<div class="table-wrap">
+					<table id="historyTable">
+						<thead>
+							<tr>
+								<th>Month</th>
+								<th>DRN</th>
+								<th>Stockist</th>
+								<th>Area</th>
+								<th>Amount (NAD)</th>
+								<th>Payment Method</th>
+								<th>Payment Status</th>
+								<th>Paid By</th>
+								<th>Payment Date</th>
+							</tr>
+						</thead>
+						<tbody id="historyBody"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<div id="loadingArea" class="loading hidden">
+				Loading history...
+			</div>
+
+			<div id="noDataArea" class="loading">
+				Enter a DRN or distributor name and click "Search" to view bonus payment history
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const els = {
+			search: document.getElementById('searchInput'),
+			searchBtn: document.getElementById('btnSearch'),
+			export: document.getElementById('btnExport'),
+			historyArea: document.getElementById('historyArea'),
+			loadingArea: document.getElementById('loadingArea'),
+			noDataArea: document.getElementById('noDataArea'),
+			distributorInfo: document.getElementById('distributorInfo'),
+			summaryStats: document.getElementById('summaryStats'),
+			body: document.getElementById('historyBody')
+		};
+
+		let currentHistory = [];
+
+		function getApiBase() {
+			if (location.hostname.includes('railway.app')) {
+				return `${location.protocol}//${location.hostname}/api`;
+			} else if (location.hostname.includes('vercel.app')) {
+				return '/api';
+			} else {
+				return 'http://localhost:8001/api';
+			}
+		}
+
+		async function searchHistory() {
+			const query = els.search.value.trim();
+			if (!query) {
+				alert('Please enter a DRN or distributor name');
+				return;
+			}
+
+			els.historyArea.classList.add('hidden');
+			els.loadingArea.classList.remove('hidden');
+			els.noDataArea.classList.add('hidden');
+
+			try {
+				const res = await fetch(`${getApiBase()}/bonus?action=history&drn=${encodeURIComponent(query)}`);
+				
+				if (!res.ok) {
+					throw new Error('Failed to load history');
+				}
+
+				currentHistory = await res.json();
+				
+				if (!currentHistory || currentHistory.length === 0) {
+					els.loadingArea.classList.add('hidden');
+					els.noDataArea.classList.remove('hidden');
+					els.noDataArea.textContent = `No bonus history found for "${query}". This distributor may not have any bonus records.`;
+					return;
+				}
+
+				renderHistory(currentHistory);
+				els.loadingArea.classList.add('hidden');
+				els.historyArea.classList.remove('hidden');
+				els.export.disabled = false;
+
+			} catch (error) {
+				els.loadingArea.classList.add('hidden');
+				els.noDataArea.classList.remove('hidden');
+				els.noDataArea.textContent = `Error: ${error.message}. Please check API connection.`;
+				console.error('Error loading history:', error);
+			}
+		}
+
+		function renderHistory(history) {
+			if (history.length === 0) return;
+
+			// Get unique distributor info from first record
+			const first = history[0];
+			els.distributorInfo.innerHTML = `
+				<h2>${first.name}</h2>
+				<div class="info-row">
+					<div class="info-item">
+						<label>DRN</label>
+						<div class="value">${first.drn}</div>
+					</div>
+					<div class="info-item">
+						<label>Stockist</label>
+						<div class="value">${first.stockist || 'N/A'}</div>
+					</div>
+					<div class="info-item">
+						<label>Area</label>
+						<div class="value">${first.area || 'N/A'}</div>
+					</div>
+				</div>
+			`;
+
+			// Calculate summary statistics
+			const totalAmount = history.reduce((sum, h) => sum + (h.amount || 0), 0);
+			const paidAmount = history.filter(h => h.paymentStatus === 'paid').reduce((sum, h) => sum + (h.amount || 0), 0);
+			const unpaidAmount = history.filter(h => h.paymentStatus !== 'paid').reduce((sum, h) => sum + (h.amount || 0), 0);
+			const paidCount = history.filter(h => h.paymentStatus === 'paid').length;
+			const unpaidCount = history.filter(h => h.paymentStatus !== 'paid').length;
+
+			els.summaryStats.innerHTML = `
+				<div class="summary-card">
+					<div class="label">Total Records</div>
+					<div class="value">${history.length}</div>
+				</div>
+				<div class="summary-card">
+					<div class="label">Total Amount</div>
+					<div class="value">N$${totalAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="summary-card">
+					<div class="label">Paid (${paidCount})</div>
+					<div class="value" style="color:#27ae60;">N$${paidAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="summary-card">
+					<div class="label">Unpaid (${unpaidCount})</div>
+					<div class="value" style="color:#e74c3c;">N$${unpaidAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+			`;
+
+			// Sort by month (newest first)
+			history.sort((a, b) => b.month.localeCompare(a.month));
+
+			// Render table
+			els.body.innerHTML = '';
+			history.forEach((item) => {
+				const tr = document.createElement('tr');
+				const statusClass = item.paymentStatus === 'paid' ? 'status-paid' : 'status-unpaid';
+				const methodClass = item.paymentMethod === 'cash' ? 'method-cash' : (item.paymentMethod === 'bank' ? 'method-bank' : '');
+				
+				const monthLabel = new Date(item.month + '-01').toLocaleDateString('en-NA', { year: 'numeric', month: 'long' });
+				
+				tr.innerHTML = `
+					<td>${monthLabel}</td>
+					<td>${item.drn}</td>
+					<td>${item.stockist || ''}</td>
+					<td>${item.area || ''}</td>
+					<td>N$${item.amount.toLocaleString('en-NA', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+					<td>${item.paymentMethod ? `<span class="status-badge ${methodClass}">${item.paymentMethod.toUpperCase()}</span>` : '-'}</td>
+					<td><span class="status-badge ${statusClass}">${item.paymentStatus || 'UNPAID'}</span></td>
+					<td>${item.paidBy || '-'}</td>
+					<td>${item.paidAt ? new Date(item.paidAt).toLocaleDateString('en-NA') : '-'}</td>
+				`;
+				els.body.appendChild(tr);
+			});
+		}
+
+		function exportCSV() {
+			if (!currentHistory || currentHistory.length === 0) return;
+
+			const first = currentHistory[0];
+			let csv = `Distributor Bonus History - ${first.name} (${first.drn})\n\n`;
+			csv += 'MONTH,DRN,STOCKIST,AREA,AMOUNT (NAD),PAYMENT METHOD,PAYMENT STATUS,PAID BY,PAID DATE\n';
+			
+			currentHistory.sort((a, b) => b.month.localeCompare(a.month));
+			currentHistory.forEach(item => {
+				const monthLabel = new Date(item.month + '-01').toLocaleDateString('en-NA', { year: 'numeric', month: 'long' });
+				csv += `"${monthLabel}","${item.drn}","${item.stockist || ''}","${item.area || ''}",${item.amount},"${item.paymentMethod || ''}","${item.paymentStatus || 'unpaid'}","${item.paidBy || ''}","${item.paidAt ? new Date(item.paidAt).toLocaleDateString('en-NA') : ''}"\n`;
+			});
+
+			const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `bonus_history_${first.drn}_${first.name.replace(/\s+/g, '_')}.csv`;
+			a.click();
+			URL.revokeObjectURL(url);
+		}
+
+		els.searchBtn.addEventListener('click', searchHistory);
+		els.search.addEventListener('keypress', (e) => {
+			if (e.key === 'Enter') searchHistory();
+		});
+		els.export.addEventListener('click', exportCSV);
+	</script>
+</body>
+</html>
+

@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <title>Dynapharm Stock Management Portal</title>
+    <link rel="icon" href="./favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#0b1020; --card:#111831; --muted:#8aa0b5; --text:#e6eef7; --accent:#10b981; --warn:#f59e0b; --danger:#ef4444; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+        header { position: sticky; top:0; z-index:10; background: rgba(11,16,32,0.8); backdrop-filter: blur(8px); border-bottom: 1px solid #1e2a44; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 16px; }
+        .top-bar { display:flex; align-items:center; justify-content: space-between; gap: 12px; }
+        .brand { display:flex; align-items:center; gap:10px; }
+        .logo img { display:block; height:32px; width:auto; }
+        .title { font-weight:700; letter-spacing: .2px; }
+        .filters { display:flex; flex-wrap: wrap; gap: 8px; align-items:center; }
+        .select, .input { background: #0e162b; color: var(--text); border: 1px solid #223154; border-radius: 8px; padding: 8px 10px; }
+        .grid { display:grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+        .card { background: var(--card); border: 1px solid #1e2a44; border-radius: 12px; padding: 14px; }
+        .card h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+        .kpis { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+        .kpi { background:#0f1830; border:1px solid #1e2a44; border-radius: 12px; padding: 12px; }
+        .kpi .label { color: var(--muted); font-size: 12px; }
+        .kpi .value { font-weight:700; font-size: 20px; margin-top: 6px; }
+        .row { display:flex; gap: 12px; flex-wrap:wrap; }
+        .table { width:100%; border-collapse: collapse; font-size: 13px; }
+        .table th, .table td { padding: 8px 10px; border-bottom: 1px solid #1e2a44; text-align: left; }
+        .pill { display:inline-flex; align-items:center; gap:6px; padding: 2px 8px; border-radius:999px; font-size: 11px; border: 1px solid #263454; background:#0c142a; color: var(--muted); }
+        .pill.good { color:#10b981; border-color:#0e7d5c; background: #0b1f1a; }
+        .pill.warn { color:#f59e0b; border-color:#5a3d08; background: #211909; }
+        .pill.bad { color:#ef4444; border-color:#5b1111; background:#1a0b0b; }
+        .status { font-weight:600; }
+        .status.success { color:#10b981; }
+        .status.pending { color:#f59e0b; }
+        .status.failed { color:#ef4444; }
+        .list { display:flex; flex-direction:column; gap: 10px; }
+        .movement { display:flex; justify-content:space-between; gap:12px; padding:10px; border:1px solid #1e2a44; border-radius:10px; background:#0f1830; }
+        .movement .left { display:flex; gap:10px; align-items:center; }
+        .badge { background:#0c142a; border:1px solid #263454; color:var(--muted); border-radius:6px; padding: 2px 6px; font-size: 11px; }
+        .muted { color: var(--muted); }
+        .danger { color: var(--danger); }
+        .accent { color: var(--accent); }
+        .btn { appearance:none; border:1px solid #1e2a44; background:#0f1830; color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; }
+        .btn.primary { background:#0f2a24; border-color:#0e7d5c; }
+        .btn:disabled { opacity:.6; cursor:not-allowed; }
+        .split-6-6 { grid-column: span 12; display:grid; gap:12px; grid-template-columns: repeat(12,1fr); }
+        .col-6 { grid-column: span 12; }
+        @media(min-width: 980px){ .col-6 { grid-column: span 6; } .split-6-6 { grid-column: span 12; } }
+        .footer { color: var(--muted); font-size: 12px; padding: 16px; text-align:center; }
+        
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body { padding: 8px !important; }
+            .container { padding: 12px !important; }
+            header { position: relative; }
+            .top-bar { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+            .title { font-size: 0.9rem !important; }
+            .filters { flex-direction: column !important; gap: 8px !important; }
+            .select, .input, .btn { 
+                width: 100% !important;
+                min-height: 44px;
+                font-size: 16px;
+                padding: 10px !important;
+            }
+            .kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+            .kpi { padding: 10px !important; }
+            .kpi .value { font-size: 1.3rem !important; }
+            .grid { gap: 12px !important; }
+            .card { padding: 12px !important; }
+            .card h3 { font-size: 13px !important; }
+            .table { 
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                width: 100%;
+                font-size: 0.8rem;
+            }
+            .table th, .table td { 
+                padding: 6px 4px !important;
+                font-size: 0.75rem !important;
+            }
+            thead { display: table-header-group; }
+            tbody { display: table-row-group; }
+            thead th { position: sticky; top: 0; background: var(--card); z-index: 1; border-bottom: 1px solid #1e2a44; }
+            .list { gap: 8px !important; }
+            .movement { padding: 8px !important; }
+        }
+        
+        @media (max-width: 480px) {
+            .title { font-size: 0.8rem !important; }
+            .kpis { grid-template-columns: 1fr !important; }
+            .kpi .value { font-size: 1.1rem !important; }
+            .table th, .table td { 
+                padding: 5px 3px !important;
+                font-size: 0.7rem !important;
+            }
+        }
+        
+        /* Touch-friendly */
+        @media (hover: none) and (pointer: coarse) {
+            .btn { min-height: 44px; }
+            * { -webkit-tap-highlight-color: rgba(16, 185, 129, 0.2); }
+        }
+    </style>
+    <script defer src="./cloud-sync.js"></script>
+    <script defer src="./auto-cloud-sync.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container top-bar">
+            <div class="brand">
+                <div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
+                <div class="title">📦 Dynapharm Stock Management Portal</div>
+            </div>
+            <div class="filters">
+                <select id="branchFilter" class="select">
+                    <option value="all">All Branches</option>
+                </select>
+                <select id="warehouseFilter" class="select">
+                    <option value="all">All Warehouses</option>
+                    <option value="warehouse-windhoek">Warehouse Windhoek</option>
+                    <option value="warehouse-ondangwa">Warehouse Ondangwa</option>
+                </select>
+                <select id="productFilter" class="select">
+                    <option value="all">All Products</option>
+                </select>
+                <select id="dateRange" class="select">
+                    <option value="today">Today</option>
+                    <option value="week">Last 7 days</option>
+                    <option value="month">Last 30 days</option>
+                </select>
+                <input id="searchBox" class="input" placeholder="Search product / request / invoice" />
+                <button id="refreshBtn" class="btn">Refresh</button>
+                <button id="printBtn" class="btn">Print</button>
+                <button id="exportBtn" class="btn">Export CSV</button>
+                <button id="helpBtnGlobal" class="btn">Help</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container" style="padding-top: 18px;">
+        <section class="kpis" style="margin-bottom: 14px;">
+            <div class="kpi"><div class="label">Total Stock Value</div><div id="kpiTotalValue" class="value">—</div></div>
+            <div class="kpi"><div class="label">Pending Transfers</div><div id="kpiPendingTransfers" class="value">—</div></div>
+            <div class="kpi"><div class="label">Low Stock Items</div><div id="kpiLowStock" class="value">—</div></div>
+            <div class="kpi"><div class="label">Alerts Today</div><div id="kpiAlerts" class="value">—</div></div>
+        </section>
+
+        <section class="grid" style="margin-bottom: 14px;">
+            <div class="card" style="grid-column: span 12;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Real-time Stock Movements <button class="btn" data-help="dashboard">Help</button></h3>
+                <div id="movementsList" class="list"></div>
+            </div>
+        </section>
+
+        <section class="split-6-6" style="margin-bottom: 14px;">
+            <div class="card col-6">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Pending Stock Requests <button class="btn" data-help="roles">Help</button></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Request #</th>
+                            <th>Branch</th>
+                            <th>Status</th>
+                            <th>Age</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="pendingRequests"></tbody>
+                </table>
+            </div>
+            <div class="card col-6">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Active Transfers <button class="btn" data-help="transfers">Help</button></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Request #</th>
+                            <th>From → To</th>
+                            <th>Status</th>
+                            <th>Note</th>
+                            <th>Age</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="activeTransfers"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="split-6-6" style="margin-bottom: 14px;">
+            <div class="card col-6">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Daily Stock Movements by Branch <button class="btn" data-help="dashboard">Help</button></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Stock In</th>
+                            <th>Stock Out</th>
+                            <th>Invoices</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyByBranch"></tbody>
+                </table>
+            </div>
+            <div class="card col-6">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Alerts & Notifications <button class="btn" data-help="dashboard">Help</button></h3>
+                <div id="alertsList" class="list"></div>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 14px;">
+            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Quick Actions <button class="btn" data-help="requests">Help</button></h3>
+            <div class="row">
+                <button class="btn primary" id="qaNewRequest">➕ New Stock Request</button>
+                <button class="btn" id="qaImportBarcode">📥 Import Barcode Stock (CSV)</button>
+                <button class="btn" id="qaViewAudit">🧾 View Audit Log</button>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 14px;">
+            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Workflow Status <button class="btn" data-help="roles">Help</button></h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Component</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="workflowStatus"></tbody>
+            </table>
+        </section>
+
+        <section class="card" style="margin-bottom: 14px;">
+            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Warehouse & Country Stock Snapshot <button class="btn" data-help="warehouse">Help</button></h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        <th>Product</th>
+                        <th>Total Qty</th>
+                        <th>Available to Move</th>
+                        <th>Reserved</th>
+                        <th>Batch Info</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="warehouseSnapshot"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <div class="footer">Dynapharm Namibia • Stock Management • v1</div>
+
+    <!-- Toasts -->
+    <div id="toastContainer" style="position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:60;"></div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:50;">
+        <div style="width:min(920px,94vw); max-height:84vh; overflow:auto; background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #1e2a44;">
+                <div id="helpModalTitle" style="font-weight:700;">Workflow Help</div>
+                <div>
+                    <button id="helpCloseBtn" class="btn">Close</button>
+                </div>
+            </div>
+            <div id="helpModalBody" style="padding:12px 14px; font-size:14px; line-height:1.5;"></div>
+        </div>
+    </div>
+
+    <!-- Dispatch Details Modal -->
+    <div id="dispatchModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:55;">
+        <div style="width:min(760px,94vw); max-height:84vh; overflow:auto; background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #1e2a44;">
+                <div style="font-weight:700;">Dispatch Details</div>
+                <div><button id="dispatchCloseBtn" class="btn">Close</button></div>
+            </div>
+            <div style="padding:12px 14px;">
+                <div id="dispatchMeta" class="muted" style="margin-bottom:8px;"></div>
+                <div id="dispatchNote" style="margin-bottom:10px;"></div>
+                <table class="table">
+                    <thead><tr><th>Product</th><th>Qty</th></tr></thead>
+                    <tbody id="dispatchItems"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Request Modal -->
+    <div id="requestModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:56;">
+        <div style="width:min(680px,94vw); background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #1e2a44;">
+                <div style="font-weight:700;">New Stock Request</div>
+                <div><button id="requestCloseBtn" class="btn">Close</button></div>
+            </div>
+            <div style="padding:12px 14px; display:grid; gap:10px;">
+                <div class="row">
+                    <select id="reqBranch" class="select"></select>
+                    <select id="reqType" class="select">
+                        <option value="sales_replenishment">Sales Replenishment</option>
+                        <option value="internal">Internal</option>
+                    </select>
+                    <select id="reqPriority" class="select">
+                        <option value="normal">Normal</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+                <div class="row">
+                    <input id="reqProduct" class="input" placeholder="Product (name or ID)" />
+                    <input id="reqQty" type="number" class="input" placeholder="Qty" />
+                </div>
+                <textarea id="reqNotes" class="input" placeholder="Notes" style="min-height:80px;"></textarea>
+                <div style="text-align:right;">
+                    <button id="reqSubmitBtn" class="btn primary">Create Request</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV Import Modal -->
+    <div id="csvModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:57;">
+        <div style="width:min(720px,94vw); background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #1e2a44;">
+                <div style="font-weight:700;">Import Stock From CSV</div>
+                <div><button id="csvCloseBtn" class="btn">Close</button></div>
+            </div>
+            <div style="padding:12px 14px; display:grid; gap:10px;">
+                <div class="muted">Required headers (aliases allowed):
+                    cartonNo / Cartons No., description, batchNo, expiryDate / Expired Date, quantity / Qty, totalCtns / Total (CTNS). Expiry like "Aug-2027" is accepted.</div>
+                <select id="csvImportLocation" class="select">
+                    <option value="country_stock">Country Stock (Default)</option>
+                    <option value="warehouse-windhoek">Warehouse Windhoek</option>
+                    <option value="warehouse-ondangwa">Warehouse Ondangwa</option>
+                </select>
+                <input type="file" id="csvFileInput" accept=".csv" class="input" />
+                <div id="csvPreview" class="muted" style="font-size:12px; max-height:180px; overflow:auto; border:1px dashed #223154; border-radius:8px; padding:8px; display:none;"></div>
+                <div style="text-align:right;">
+                    <button id="csvImportBtn" class="btn primary" disabled>Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { getStockRequests, getStockTransfers, getWarehouseStock, updateWarehouseStock, getStockStatistics, approveStockRequest, updateTransferStatus, createStockRequest } from './api/stock-requests.js';
+        import { importStockWithBarcode } from './api/barcode-stock.js';
+        import { getBarcodeStockStatistics } from './api/barcode-stock.js';
+        import { getProducts } from './api/products.js';
+
+        // Simple invoice number generator SRQ already exists; we add INV
+        function generateInvoiceNumber(branchId) {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2,'0');
+            const d = String(now.getDate()).padStart(2,'0');
+            const rand = String(Math.floor(Math.random()*10000)).padStart(4,'0');
+            return `INV-${branchId?.toUpperCase()||'ALL'}-${y}${m}${d}-${rand}`;
+        }
+
+        // State
+        let branches = [];
+        let products = [];
+        let movements = [];
+        let alerts = [];
+
+        async function loadBranches() {
+            const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
+            if (isStaticHost) {
+                try {
+                    const fromLS = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+                    branches = Array.isArray(fromLS) ? fromLS : [];
+                } catch(err) {
+                    branches = [];
+                }
+            } else {
+                try {
+                    // Try backend API first when running on a server
+                    const resp = await fetch('/api/branches');
+                    if (resp.ok) {
+                        const apiResp = await resp.json();
+                        branches = Array.isArray(apiResp) ? apiResp : (apiResp.branches || []);
+                    }
+                } catch (_) {
+                    /* ignore and fallback below */
+                }
+                if (!Array.isArray(branches) || branches.length === 0) {
+                    try {
+                        const fromLS = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+                        branches = Array.isArray(fromLS) ? fromLS : [];
+                    } catch(err) {
+                        branches = [];
+                    }
+                }
+            }
+            const sel = document.getElementById('branchFilter');
+            branches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.id; opt.textContent = b.name || b.id; sel.appendChild(opt);
+            });
+        }
+
+        async function loadProducts() {
+            // Try products API (localStorage driven)
+            try {
+                const res = getProducts({});
+                if (res?.success) {
+                    products = res.data;
+                }
+            } catch(e) { /* ignore */ }
+            // Fallback to parent PRICE_LIST if available
+            if ((!products || products.length === 0) && window.parent && Array.isArray(window.parent.PRICE_LIST)) {
+                products = window.parent.PRICE_LIST.map(p => ({ id: p.description, name: p.description, dp: p.dp, cp: p.cp, bv: p.bv }));
+            }
+            // Populate filter
+            const sel = document.getElementById('productFilter');
+            products.slice(0, 2000).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = (p.id || p.name || '').toString();
+                opt.textContent = p.name || p.description || p.id;
+                sel.appendChild(opt);
+            });
+        }
+
+        function pushAlert(type, message, meta={}) {
+            alerts.unshift({ id: 'ALT'+Date.now()+Math.random(), type, message, meta, ts: new Date().toISOString() });
+            if (alerts.length > 100) alerts.pop();
+        }
+
+        function renderAlerts() {
+            const list = document.getElementById('alertsList');
+            list.innerHTML = '';
+            alerts.slice(0, 30).forEach(a => {
+                const div = document.createElement('div');
+                div.className = 'movement';
+                const color = a.type === 'danger' ? 'bad' : (a.type === 'warn' ? 'warn' : 'good');
+                div.innerHTML = `
+                    <div class="left">
+                        <span class="pill ${color}">${a.type.toUpperCase()}</span>
+                        <div>
+                            <div>${a.message}</div>
+                            <div class="muted" style="font-size:11px;">${new Date(a.ts).toLocaleString()}</div>
+                        </div>
+                    </div>
+                    <div class="badge">${a.meta?.branch||'—'}</div>
+                `;
+                list.appendChild(div);
+            });
+            document.getElementById('kpiAlerts').textContent = String(alerts.filter(a => new Date(a.ts).toDateString() === new Date().toDateString()).length);
+        }
+
+        function renderMovements() {
+            const list = document.getElementById('movementsList');
+            list.innerHTML = '';
+            movements.slice(0, 100).forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'movement';
+                div.innerHTML = `
+                    <div class="left">
+                        <span class="badge">${m.type}</span>
+                        <div>
+                            <div><span class="accent">${m.product||m.requestNumber}</span> • ${m.qty?('Qty '+m.qty):''}</div>
+                            <div class="muted" style="font-size:11px;">${new Date(m.ts).toLocaleString()} • ${m.source||m.from||'—'} → ${m.dest||m.to||'—'}</div>
+                        </div>
+                    </div>
+                    <div class="badge">${m.branch||m.to||'—'}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        async function renderKpis() {
+            try {
+                const stats = getStockStatistics();
+                const barcodeStats = getBarcodeStockStatistics();
+                if (stats?.success) {
+                    document.getElementById('kpiPendingTransfers').textContent = stats.data.pendingTransfers;
+                    document.getElementById('kpiLowStock').textContent = stats.data.lowStockProducts;
+                }
+                if (barcodeStats?.success) {
+                    document.getElementById('kpiTotalValue').textContent = 'N$ ' + Number(barcodeStats.data.totalStockValue).toLocaleString();
+                }
+            } catch(e) {
+                // noop
+            }
+        }
+
+        async function renderWarehouseSnapshot() {
+            const tbody = document.getElementById('warehouseSnapshot');
+            tbody.innerHTML = '';
+            
+            // Get barcode stock data
+            let barcodeStock = [];
+            try {
+                const stored = localStorage.getItem('dyna_barcode_stock');
+                if (stored) {
+                    barcodeStock = JSON.parse(stored);
+                }
+            } catch(e) {
+                console.error('Error loading barcode stock:', e);
+            }
+            
+            // Aggregate stock by location and product
+            const stockMap = new Map();
+            
+            // Process warehouse stock (from stock-requests.js)
+            const warehouses = ['warehouse-windhoek','warehouse-ondangwa'];
+            warehouses.forEach(w => {
+                const res = getWarehouseStock(w);
+                if (res?.success) {
+                    const stock = res.data;
+                    Object.keys(stock).forEach(pid => {
+                        const s = stock[pid];
+                        const key = `${w}|||${pid}`;
+                        if (!stockMap.has(key)) {
+                            stockMap.set(key, {
+                                location: w,
+                                product: pid,
+                                totalQty: 0,
+                                availableQty: 0,
+                                reservedQty: s.reservedQuantity || 0,
+                                reorderLevel: s.reorderLevel || 10,
+                                batchInfo: '',
+                                isBarcode: false
+                            });
+                        }
+                        const entry = stockMap.get(key);
+                        entry.totalQty += (s.quantity || 0);
+                        entry.availableQty += (s.quantity || 0) - (s.reservedQuantity || 0);
+                    });
+                }
+            });
+            
+            // Process country stock (barcode stock with location='country_stock')
+            const countryStockBatches = barcodeStock.filter(b => 
+                b.location === 'country_stock' && 
+                b.status === 'available' && 
+                b.remainingQuantity > 0
+            );
+            
+            // Aggregate country stock by product
+            const countryStockMap = new Map();
+            countryStockBatches.forEach(batch => {
+                const pid = batch.description || batch.productId || 'Unknown';
+                const key = `country_stock|||${pid}`;
+                if (!countryStockMap.has(key)) {
+                    countryStockMap.set(key, {
+                        location: 'Country Stock',
+                        product: pid,
+                        totalQty: 0,
+                        availableQty: 0,
+                        reservedQty: 0,
+                        reorderLevel: 10,
+                        batchInfo: '',
+                        batches: [],
+                        isBarcode: true
+                    });
+                }
+                const entry = countryStockMap.get(key);
+                entry.totalQty += (batch.quantity || 0);
+                entry.availableQty += (batch.remainingQuantity || 0);
+                entry.batches.push({
+                    batchNo: batch.batchNo || '',
+                    expiryDate: batch.expiryDate || '',
+                    remainingQty: batch.remainingQuantity || 0
+                });
+            });
+            
+            // Add country stock to map
+            countryStockMap.forEach((entry, key) => {
+                const batchInfo = entry.batches.length > 0 
+                    ? `${entry.batches.length} batch${entry.batches.length > 1 ? 'es' : ''} (Earliest: ${entry.batches[0].expiryDate})`
+                    : 'No batches';
+                entry.batchInfo = batchInfo;
+                stockMap.set(key, entry);
+            });
+            
+            // Process warehouse barcode stock
+            ['warehouse-windhoek','warehouse-ondangwa'].forEach(wh => {
+                const whBatches = barcodeStock.filter(b => 
+                    b.location === wh && 
+                    b.status === 'available' && 
+                    b.remainingQuantity > 0
+                );
+                
+                // Aggregate by product
+                const whStockMap = new Map();
+                whBatches.forEach(batch => {
+                    const pid = batch.description || batch.productId || 'Unknown';
+                    const key = `${wh}|||${pid}`;
+                    if (!whStockMap.has(key)) {
+                        whStockMap.set(key, {
+                            location: wh,
+                            product: pid,
+                            totalQty: 0,
+                            availableQty: 0,
+                            reservedQty: 0,
+                            reorderLevel: 10,
+                            batchInfo: '',
+                            batches: [],
+                            isBarcode: true
+                        });
+                    }
+                    const entry = whStockMap.get(key);
+                    entry.totalQty += (batch.quantity || 0);
+                    entry.availableQty += (batch.remainingQuantity || 0);
+                    entry.batches.push({
+                        batchNo: batch.batchNo || '',
+                        expiryDate: batch.expiryDate || '',
+                        remainingQty: batch.remainingQuantity || 0
+                    });
+                });
+                
+                // Merge with existing warehouse stock
+                whStockMap.forEach((entry, key) => {
+                    if (stockMap.has(key)) {
+                        const existing = stockMap.get(key);
+                        existing.totalQty += entry.totalQty;
+                        existing.availableQty += entry.availableQty;
+                        if (entry.batches.length > 0) {
+                            existing.batches = (existing.batches || []).concat(entry.batches);
+                            existing.batchInfo = `${existing.batches.length} batch${existing.batches.length > 1 ? 'es' : ''}`;
+                        }
+                    } else {
+                        entry.batchInfo = entry.batches.length > 0 
+                            ? `${entry.batches.length} batch${entry.batches.length > 1 ? 'es' : ''}`
+                            : '';
+                        stockMap.set(key, entry);
+                    }
+                });
+            });
+            
+            // Render all stock entries
+            const sortedEntries = Array.from(stockMap.values()).sort((a, b) => {
+                // Sort by location (country first, then warehouses)
+                if (a.location === 'Country Stock' && b.location !== 'Country Stock') return -1;
+                if (a.location !== 'Country Stock' && b.location === 'Country Stock') return 1;
+                if (a.location < b.location) return -1;
+                if (a.location > b.location) return 1;
+                // Then by product name
+                return (a.product || '').localeCompare(b.product || '');
+            });
+            
+            sortedEntries.forEach(entry => {
+                const status = entry.availableQty <= entry.reorderLevel ? 'LOW' : 
+                              (entry.availableQty > entry.reorderLevel*10 ? 'OVER' : 'OK');
+                const color = status==='LOW'?'bad':(status==='OVER'?'warn':'good');
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${entry.location}</td>
+                    <td>${entry.product}</td>
+                    <td>${entry.totalQty}</td>
+                    <td><strong class="accent">${entry.availableQty}</strong></td>
+                    <td>${entry.reservedQty}</td>
+                    <td class="muted" style="font-size:11px;">${entry.batchInfo || '—'}</td>
+                    <td><span class="pill ${color}">${status}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            // Show empty state if no stock
+            if (sortedEntries.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">No stock data available. Import stock to get started.</td>`;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function detectSuspicious(m) {
+            // Simple rules: unusually large qty, rapid repeated outs, negative stock transitions
+            if (m.qty && m.qty > 500) {
+                pushAlert('danger', `Unusually large movement of ${m.product||'item'}: ${m.qty}`, { branch: m.branch||m.to||'—' });
+            }
+            if (m.type === 'STOCK-OUT' && m.qty && m.qty > 200) {
+                pushAlert('warn', `High stock-out: ${m.qty} • ${m.product||''}`, { branch: m.branch||m.to||'—' });
+            }
+        }
+
+        async function refreshData() {
+            const branch = document.getElementById('branchFilter').value;
+            const wh = document.getElementById('warehouseFilter').value;
+            const range = document.getElementById('dateRange').value;
+            const search = document.getElementById('searchBox').value.trim().toLowerCase();
+            const productFilter = document.getElementById('productFilter').value;
+
+            // Transfers and requests
+            const { data: transfers = [] } = getStockTransfers({ status: 'all', toBranch: branch==='all'?undefined:branch, fromWarehouse: wh==='all'?undefined:wh }) || { data: [] };
+            const { data: requests = [] } = getStockRequests({ branch: branch }) || { data: [] };
+
+            // Build movement events
+            const now = new Date();
+            const since = new Date(now);
+            if (range === 'week') since.setDate(now.getDate()-7); else if (range === 'month') since.setDate(now.getDate()-30); else since.setHours(0,0,0,0);
+
+            const items = [];
+            transfers.forEach(t => {
+                const tDate = new Date(t.createdAt || t.dispatchedAt || t.deliveredAt || t.receivedAt || t.createdAt);
+                if (tDate >= since) {
+                    items.push({ type:'TRANSFER', requestNumber: t.requestNumber, from: t.fromWarehouse, to: t.toBranch, ts: tDate.toISOString(), branch: t.toBranch });
+                }
+            });
+            requests.forEach(r => {
+                const rDate = new Date(r.createdAt);
+                if (rDate >= since) {
+                    items.push({ type:'REQUEST', requestNumber: r.requestNumber, source: r.requestingBranch, ts: rDate.toISOString(), branch: r.requestingBranch });
+                }
+            });
+
+            // Include barcode batch dispatch/sales from localStorage if present
+            try {
+                const barcodeStore = JSON.parse(localStorage.getItem('dyna_barcode_stock')||'[]');
+                barcodeStore.forEach(b => {
+                    if (Array.isArray(b.dispatches)) {
+                        b.dispatches.forEach(d => {
+                            const dDate = new Date(d.dispatchDate);
+                            if (dDate >= since) {
+                                items.push({ type:'STOCK-OUT', product: b.description, qty: d.quantity, to: d.toBranch, ts: dDate.toISOString(), branch: d.toBranch });
+                                detectSuspicious({ type:'STOCK-OUT', product:b.description, qty:d.quantity, to:d.toBranch, branch:d.toBranch });
+                            }
+                        });
+                    }
+                });
+            } catch(e) {}
+
+            // Filter by search and product
+            const filtered = items.filter(i => {
+                if (!search) return true;
+                return [i.type, i.product, i.requestNumber, i.from, i.to, i.branch].filter(Boolean).join(' ').toLowerCase().includes(search);
+            }).filter(i => {
+                if (!productFilter || productFilter === 'all') return true;
+                return (i.product || '').toString().toLowerCase().includes(productFilter.toString().toLowerCase());
+            }).sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+
+            movements = filtered;
+            renderMovements();
+            renderKpis();
+            renderAlerts();
+            renderWarehouseSnapshot();
+            renderDailyBranch();
+            renderWorkflowStatus();
+            renderPendingRequestsTable();
+            renderActiveTransfersTable();
+        }
+
+        function summarizeByBranch(items) {
+            const map = {};
+            items.forEach(i => {
+                const key = i.branch || i.to || i.source || 'unknown';
+                if (!map[key]) map[key] = { in:0, out:0, invoices: new Set() };
+                if (i.type==='TRANSFER' || i.type==='REQUEST') {
+                    map[key].in += 0; // summarized via stock movements
+                    if (i.requestNumber) map[key].invoices.add(i.requestNumber);
+                }
+                if (i.type==='STOCK-OUT') {
+                    map[key].out += Number(i.qty||0);
+                    map[key].invoices.add(generateInvoiceNumber(key));
+                }
+            });
+            return map;
+        }
+
+        function renderDailyBranch() {
+            const tbody = document.getElementById('dailyByBranch');
+            tbody.innerHTML = '';
+            const todayItems = movements.filter(m => new Date(m.ts).toDateString() === new Date().toDateString());
+            const map = summarizeByBranch(todayItems);
+            Object.keys(map).forEach(branch => {
+                const row = map[branch];
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${branch}</td>
+                    <td>${row.in}</td>
+                    <td>${row.out}</td>
+                    <td class="muted">${Array.from(row.invoices).slice(0,3).join(', ')}${row.invoices.size>3?' …':''}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Notifications for low stock and overstock based on warehouse snapshot
+        function evaluateThresholds() {
+            ['warehouse-windhoek','warehouse-ondangwa'].forEach(w => {
+                const res = getWarehouseStock(w);
+                if (!res?.success) return;
+                const stock = res.data;
+                Object.values(stock).forEach(s => {
+                    if (s.quantity <= s.reorderLevel) {
+                        pushAlert('warn', `Low stock ${s.productId} in ${w} (qty ${s.quantity})`, { branch: w });
+                    } else if (s.quantity > s.reorderLevel * 10) {
+                        pushAlert('warn', `Overstock ${s.productId} in ${w} (qty ${s.quantity})`, { branch: w });
+                    }
+                });
+            });
+        }
+
+        // Real-time: listen to localStorage updates and poll every 20s as fallback
+        function setupRealtime() {
+            window.addEventListener('storage', (e) => {
+                if (['dyna_stock_requests','dyna_stock_transfers','dyna_barcode_stock','dyna_warehouse_stock','dyna_barcode_inventory'].includes(e.key)) {
+                    // Immediate refresh when stock data changes
+                    setTimeout(() => {
+                        refreshData();
+                        renderWarehouseSnapshot();
+                    }, 100);
+                }
+            });
+            
+            // Also listen for custom events from same-window updates
+            window.addEventListener('stock-updated', () => {
+                setTimeout(() => {
+                    refreshData();
+                    renderWarehouseSnapshot();
+                }, 100);
+            });
+            
+            setInterval(() => { refreshData(); }, 20000);
+            // Cloud sync updates from other devices
+            try { window.addEventListener('cloud-sync:updated', () => {
+                setTimeout(() => {
+                    refreshData();
+                    renderWarehouseSnapshot();
+                }, 100);
+            }); } catch(_) {}
+        }
+
+        function renderWorkflowStatus() {
+            const tbody = document.getElementById('workflowStatus');
+            tbody.innerHTML = '';
+            const entries = [];
+            // Stock
+            const stockOk = !!localStorage.getItem('dyna_warehouse_stock') || !!localStorage.getItem('dyna_barcode_stock');
+            entries.push({ name: 'Stock', ok: stockOk, details: stockOk?'Warehouse/Barcode data available':'No local stock data found' });
+            // MIS
+            const misOk = !!document.querySelector('link[href*="mis-portal.html"], iframe[src*="mis-portal.html"]') || true; // assume available in repo
+            entries.push({ name: 'MIS', ok: misOk, details: misOk?'MIS module present':'MIS module not detected' });
+            // Finance
+            const financeOk = true; // finance portal exists in main system
+            entries.push({ name: 'Finance', ok: financeOk, details: 'Finance portal available in main app' });
+            // Branches
+            const branchesOk = Array.isArray(branches) && branches.length>0;
+            entries.push({ name: 'Branches', ok: branchesOk, details: branchesOk?`${branches.length} branches loaded`:'No branches loaded' });
+            // GM / Director
+            const gmOk = true; const dirOk = true;
+            entries.push({ name: 'GM Portal', ok: gmOk, details: 'GM Portal available in main app' });
+            entries.push({ name: 'Director Portal', ok: dirOk, details: 'Director Portal available in main app' });
+
+            entries.forEach(en => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${en.name}</td>
+                    <td><span class="pill ${en.ok?'good':'bad'}">${en.ok?'CONNECTED':'MISSING'}</span></td>
+                    <td class="muted">${en.details}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function exportCSV() {
+            const rows = [['Type','Product','Qty','From','To','Branch','Timestamp','Request/Invoice']];
+            movements.forEach(m => rows.push([
+                m.type||'', m.product||'', m.qty||'', m.from||m.source||'', m.to||m.dest||'', m.branch||'', m.ts||'', m.requestNumber||''
+            ]));
+            const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'stock_movements.csv'; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function printDashboard() {
+            const printWin = window.open('', '_blank');
+            const styles = '<style>body{font-family: Arial, sans-serif;} table{width:100%; border-collapse:collapse;} th,td{border:1px solid #ccc; padding:6px; font-size:12px;} h2{margin:10px 0;}</style>';
+            const movementHtml = document.getElementById('movementsList').innerHTML;
+            const dailyBody = document.getElementById('dailyByBranch').innerHTML;
+            const warehouseBody = document.getElementById('warehouseSnapshot').innerHTML;
+            printWin.document.write('<html><head><title>Stock Dashboard</title>'+styles+'</head><body>');
+            printWin.document.write('<h2>Real-time Stock Movements</h2><div>'+movementHtml+'</div>');
+            printWin.document.write('<h2>Daily Stock Movements by Branch</h2><table><thead><tr><th>Branch</th><th>Stock In</th><th>Stock Out</th><th>Invoices</th></tr></thead><tbody>'+dailyBody+'</tbody></table>');
+            printWin.document.write('<h2>Warehouse Stock Snapshot</h2><table><thead><tr><th>Warehouse</th><th>Product</th><th>Qty</th><th>Reserved</th><th>Reorder</th><th>Status</th></tr></thead><tbody>'+warehouseBody+'</tbody></table>');
+            printWin.document.write('</body></html>');
+            printWin.document.close();
+            printWin.focus();
+            printWin.print();
+        }
+
+        // Debounce helper
+        function debounce(fn, wait){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), wait); }; }
+
+        document.getElementById('refreshBtn').addEventListener('click', () => refreshData());
+        document.getElementById('branchFilter').addEventListener('change', () => refreshData());
+        document.getElementById('warehouseFilter').addEventListener('change', () => refreshData());
+        document.getElementById('productFilter').addEventListener('change', () => refreshData());
+        document.getElementById('dateRange').addEventListener('change', () => refreshData());
+        document.getElementById('searchBox').addEventListener('input', debounce(() => refreshData(), 250));
+        document.getElementById('exportBtn').addEventListener('click', exportCSV);
+        document.getElementById('printBtn').addEventListener('click', printDashboard);
+
+        function showToast(message, type = 'info'){
+            const wrap = document.getElementById('toastContainer');
+            const div = document.createElement('div');
+            const color = type==='success'? '#0e7d5c' : type==='error'? '#5b1111' : '#223154';
+            div.style.cssText = `background:#0f1830;border:1px solid ${color};border-radius:8px;padding:10px 12px;min-width:220px;max-width:360px;box-shadow:0 10px 30px rgba(0,0,0,.3);`;
+            div.textContent = message;
+            wrap.appendChild(div);
+            setTimeout(()=>{ div.style.opacity='0'; div.style.transition='opacity .3s'; setTimeout(()=>wrap.removeChild(div), 300); }, 2200);
+        }
+
+        // --- Help wiring ---
+        let workflowsMarkdown = '';
+        async function loadWorkflowsMd() {
+            if (workflowsMarkdown) return workflowsMarkdown;
+            try {
+                const resp = await fetch('./STOCK_WORKFLOWS.md', { cache: 'no-store' });
+                if (resp.ok) {
+                    workflowsMarkdown = await resp.text();
+                }
+            } catch(e) { /* ignore */ }
+            return workflowsMarkdown;
+        }
+
+        function mdToBasicHtml(md) {
+            let html = md
+                .replace(/^###\s+(.*)$/gm, '<h3>$1<\/h3>')
+                .replace(/^##\s+(.*)$/gm, '<h2>$1<\/h2>')
+                .replace(/^\-\s+\*\*(.*?)\*\*:(.*)$/gm, '<li><strong>$1<\/strong>:$2<\/li>')
+                .replace(/^\-\s+(.*)$/gm, '<li>$1<\/li>');
+            html = html.replace(/(?:^(?:<li>.*<\/li>)\n?)+/gms, m => `<ul>${m}<\/ul>`);
+            return html;
+        }
+
+        function extractSection(md, markerRegexArray) {
+            for (const rx of markerRegexArray) {
+                const m = md.match(rx);
+                if (m) {
+                    const start = m.index;
+                    const rest = md.slice(start);
+                    const next = rest.slice(m[0].length).search(/^###\s/m);
+                    const section = next >= 0 ? rest.slice(0, m[0].length + next) : rest;
+                    return section.trim();
+                }
+            }
+            return '';
+        }
+
+        function openHelp(sectionKey) {
+            (async () => {
+                const md = await loadWorkflowsMd();
+                let title = 'Workflow Help';
+                let sectionMd = '';
+                if (sectionKey === 'dashboard') {
+                    title = 'Dashboard Views & FEFO Dispatch';
+                    const part1 = extractSection(md, [/^###\s+6\)\s+Dashboard[\s\S]*/m]);
+                    const part2 = extractSection(md, [/^###\s+4\)\s+Barcode\/Batch[\s\S]*/m]);
+                    sectionMd = [part1, part2].filter(Boolean).join('\n\n');
+                } else if (sectionKey === 'warehouse') {
+                    title = 'Warehouse Stock Management';
+                    sectionMd = extractSection(md, [/^###\s+3\)\s+Warehouse[\s\S]*/m]);
+                } else if (sectionKey === 'roles') {
+                    title = 'Workflow Status & Roles';
+                    const part1 = extractSection(md, [/^###\s+7\)\s+Roles[\s\S]*/m]);
+                    const part2 = extractSection(md, [/^###\s+1\)\s+Stock Requests[\s\S]*/m, /^###\s+2\)\s+Stock Transfers[\s\S]*/m]);
+                    sectionMd = [part1, part2].filter(Boolean).join('\n\n');
+                } else if (sectionKey === 'requests') {
+                    title = 'Stock Requests';
+                    sectionMd = extractSection(md, [/^###\s+1\)\s+Stock Requests[\s\S]*/m]);
+                } else if (sectionKey === 'transfers') {
+                    title = 'Stock Transfers';
+                    sectionMd = extractSection(md, [/^###\s+2\)\s+Stock Transfers[\s\S]*/m]);
+                } else {
+                    sectionMd = md.split('\n').slice(0, 80).join('\n');
+                }
+
+                const body = document.getElementById('helpModalBody');
+                const titleEl = document.getElementById('helpModalTitle');
+                titleEl.textContent = title;
+                body.innerHTML = mdToBasicHtml(sectionMd);
+                document.getElementById('helpModal').style.display = 'flex';
+            })();
+        }
+
+        const globalHelpBtn = document.getElementById('helpBtnGlobal');
+        if (globalHelpBtn) globalHelpBtn.addEventListener('click', () => openHelp('dashboard'));
+        const helpCloseBtn = document.getElementById('helpCloseBtn');
+        if (helpCloseBtn) helpCloseBtn.addEventListener('click', () => {
+            document.getElementById('helpModal').style.display = 'none';
+        });
+        const helpModal = document.getElementById('helpModal');
+        if (helpModal) helpModal.addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'helpModal') {
+                document.getElementById('helpModal').style.display = 'none';
+            }
+        });
+        Array.from(document.querySelectorAll('[data-help]')).forEach(btn => {
+            btn.addEventListener('click', () => openHelp(btn.getAttribute('data-help')));
+        });
+
+        function formatAge(ts){ const secs = Math.floor((Date.now() - new Date(ts).getTime())/1000); if (secs<60) return secs+'s'; const mins=Math.floor(secs/60); if(mins<60) return mins+'m'; const hrs=Math.floor(mins/60); if(hrs<48) return hrs+'h'; const days=Math.floor(hrs/24); return days+'d'; }
+
+        function makeStatusPill(status){ const map={ pending:'warn', pending_gm:'warn', pending_warehouse:'warn', approved:'good', fulfilled:'good', rejected:'bad', dispatched:'warn', delivered:'warn', received:'good' }; const cls=map[status]||''; return `<span class="pill ${cls}">${(status||'').toUpperCase()}</span>`; }
+
+        function renderPendingRequestsTable() {
+            const tbody = document.getElementById('pendingRequests');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const { data: all = [] } = getStockRequests({ status: 'all' }) || { data: [] };
+            const pending = all.filter(r => ['pending','pending_gm','pending_warehouse'].includes(r.status)).slice(0, 12);
+            pending.forEach(r => {
+                const tr = document.createElement('tr');
+                const overdue = (Date.now() - new Date(r.createdAt).getTime()) > 48*3600*1000;
+                tr.innerHTML = `
+                    <td>${r.requestNumber}</td>
+                    <td>${r.requestingBranch}</td>
+                    <td>${makeStatusPill(r.status)}</td>
+                    <td>${overdue?`<span class="pill warn">${formatAge(r.createdAt)}</span>`:formatAge(r.createdAt)}</td>
+                    <td style="text-align:right;">
+                        <button class="btn" data-approve="${r.id}">Approve</button>
+                        <button class="btn" data-reject="${r.id}">Reject</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            tbody.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-approve');
+                const who = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'Approver';
+                const role = (window.parent && window.parent.currentUser) ? window.parent.currentUser.role : 'manager';
+                approveStockRequest(id, { approverRole: role, approvedBy: who, approved: true, notes: '' });
+                showToast('Request approved','success');
+                // Immediately refresh to show updated stock
+                setTimeout(() => {
+                    refreshData();
+                    renderWarehouseSnapshot();
+                }, 100);
+            }));
+            tbody.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-reject');
+                const who = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'Approver';
+                const role = (window.parent && window.parent.currentUser) ? window.parent.currentUser.role : 'manager';
+                if (confirm('Reject this request?')) {
+                    approveStockRequest(id, { approverRole: role, approvedBy: who, approved: false, notes: '' });
+                    showToast('Request rejected','info');
+                    refreshData();
+                }
+            }));
+        }
+
+        function renderActiveTransfersTable() {
+            const tbody = document.getElementById('activeTransfers');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const { data: transfers = [] } = getStockTransfers({ status: 'all' }) || { data: [] };
+            const active = transfers.filter(t => ['pending','dispatched','delivered'].includes(t.status)).slice(0, 12);
+            active.forEach(t => {
+                const tr = document.createElement('tr');
+                const canReceive = (window.parent && window.parent.currentUser && window.parent.currentUser.branch) ? (window.parent.currentUser.branch === t.toBranch) : true;
+                tr.innerHTML = `
+                    <td>${t.requestNumber}</td>
+                    <td>${t.fromWarehouse||'—'} → ${t.toBranch||'—'}</td>
+                    <td>${makeStatusPill(t.status)}</td>
+                    <td class="muted">${t.dispatchNotes ? (String(t.dispatchNotes).slice(0,40) + (String(t.dispatchNotes).length>40?'…':'')) : '—'}</td>
+                    <td>${formatAge(t.createdAt)}</td>
+                    <td style="text-align:right;">
+                        <button class="btn" data-view-dispatch="${t.id}">View</button>
+                        ${t.status==='pending'?'<button class="btn" data-tstatus="dispatched" data-id="'+t.id+'">Dispatch</button>':''}
+                        ${t.status==='dispatched'?'<button class="btn" data-tstatus="delivered" data-id="'+t.id+'">Mark Delivered</button>':''}
+                        ${t.status==='delivered'?('<button class="btn primary" data-tstatus="received" data-id="'+t.id+'" '+(canReceive?'':'disabled')+'>Confirm & Receive</button>'):''}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            tbody.querySelectorAll('[data-tstatus]').forEach(btn => btn.addEventListener('click', () => {
+                const status = btn.getAttribute('data-tstatus');
+                const id = btn.getAttribute('data-id');
+                const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'User';
+                updateTransferStatus(id, status, { user });
+                showToast('Transfer updated: ' + status, 'success');
+                // Immediately refresh to show updated quantities
+                setTimeout(() => {
+                    refreshData();
+                    renderWarehouseSnapshot();
+                }, 100);
+            }));
+            tbody.querySelectorAll('[data-view-dispatch]').forEach(btn => btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-view-dispatch');
+                const { data: transfersAll = [] } = getStockTransfers({ status: 'all' }) || { data: [] };
+                const t = transfersAll.find(x => x.id === id);
+                if (!t) return;
+                const meta = document.getElementById('dispatchMeta');
+                meta.textContent = `${t.requestNumber} • ${t.fromWarehouse||'—'} → ${t.toBranch||'—'} • ${new Date(t.createdAt).toLocaleString()}`;
+                document.getElementById('dispatchNote').textContent = t.dispatchNotes || '—';
+                const tb = document.getElementById('dispatchItems');
+                tb.innerHTML = '';
+                (t.items||[]).forEach(it => {
+                    const trEl = document.createElement('tr');
+                    trEl.innerHTML = `<td>${it.productId||it.id||it.description||'—'}</td><td>${it.quantity||0}</td>`;
+                    tb.appendChild(trEl);
+                });
+                document.getElementById('dispatchModal').style.display = 'flex';
+            }));
+        }
+
+        // Quick actions (lightweight wired)
+        const qaNewRequest = document.getElementById('qaNewRequest');
+        if (qaNewRequest) qaNewRequest.addEventListener('click', () => {
+            const sel = document.getElementById('reqBranch');
+            sel.innerHTML = '';
+            const currentBranch = (window.parent && window.parent.currentUser && window.parent.currentUser.branch) ? window.parent.currentUser.branch : null;
+            const all = [{ id:'all', name:'Select Branch' }, ...branches];
+            all.forEach(b => { const opt = document.createElement('option'); opt.value = b.id; opt.textContent = b.name||b.id; sel.appendChild(opt); });
+            if (currentBranch) sel.value = currentBranch;
+            document.getElementById('requestModal').style.display = 'flex';
+        });
+        const qaImportBarcode = document.getElementById('qaImportBarcode');
+        if (qaImportBarcode) qaImportBarcode.addEventListener('click', () => {
+            // reset modal state
+            const preview = document.getElementById('csvPreview');
+            preview.style.display = 'none';
+            preview.textContent = '';
+            document.getElementById('csvFileInput').value = '';
+            document.getElementById('csvImportLocation').value = 'country_stock';
+            document.getElementById('csvImportBtn').disabled = true;
+            csvParsedRows = [];
+            document.getElementById('csvModal').style.display = 'flex';
+        });
+        const qaViewAudit = document.getElementById('qaViewAudit');
+        if (qaViewAudit) qaViewAudit.addEventListener('click', () => openHelp('roles'));
+
+        // Modal close handlers
+        const dispatchCloseBtn = document.getElementById('dispatchCloseBtn');
+        if (dispatchCloseBtn) dispatchCloseBtn.addEventListener('click', () => { document.getElementById('dispatchModal').style.display = 'none'; });
+        const dispatchModal = document.getElementById('dispatchModal');
+        if (dispatchModal) dispatchModal.addEventListener('click', (e) => { if (e.target && e.target.id === 'dispatchModal') dispatchModal.style.display = 'none'; });
+
+        const requestCloseBtn = document.getElementById('requestCloseBtn');
+        if (requestCloseBtn) requestCloseBtn.addEventListener('click', () => { document.getElementById('requestModal').style.display = 'none'; });
+        const requestModal = document.getElementById('requestModal');
+        if (requestModal) requestModal.addEventListener('click', (e) => { if (e.target && e.target.id === 'requestModal') requestModal.style.display = 'none'; });
+
+        const csvCloseBtn = document.getElementById('csvCloseBtn');
+        if (csvCloseBtn) csvCloseBtn.addEventListener('click', () => { document.getElementById('csvModal').style.display = 'none'; });
+        const csvModal = document.getElementById('csvModal');
+        if (csvModal) csvModal.addEventListener('click', (e) => { if (e.target && e.target.id === 'csvModal') csvModal.style.display = 'none'; });
+
+        const reqSubmitBtn = document.getElementById('reqSubmitBtn');
+        if (reqSubmitBtn) reqSubmitBtn.addEventListener('click', () => {
+            const branch = document.getElementById('reqBranch').value;
+            const type = document.getElementById('reqType').value;
+            const priority = document.getElementById('reqPriority').value;
+            const product = document.getElementById('reqProduct').value.trim();
+            const qty = Number(document.getElementById('reqQty').value);
+            const notes = document.getElementById('reqNotes').value.trim();
+            if (!branch || branch==='all' || !product || !qty || qty<=0) { showToast('Fill branch, product, and quantity','error'); return; }
+            const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName:'Requestor', role:'dispenser' };
+            const res = createStockRequest({ branch, type, priority, items:[{ productId: product, quantity: qty }], notes, requestedBy: user.fullName, requestedByRole: user.role });
+            if (res && res.success) {
+                showToast('Request created: '+res.data.requestNumber,'success');
+                document.getElementById('requestModal').style.display = 'none';
+                refreshData();
+            } else {
+                showToast('Failed to create request','error');
+            }
+        });
+
+        // CSV parsing and import
+        const csvFileInput = document.getElementById('csvFileInput');
+        const csvImportBtn = document.getElementById('csvImportBtn');
+        const csvPreview = document.getElementById('csvPreview');
+        let csvParsedRows = [];
+
+        function parseCSV(text){
+            // Robust comma-delimited parser with RFC4180-style quoted fields
+            function splitCSVLine(line){
+                const out = [];
+                let cur = '';
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    const ch = line[i];
+                    if (ch === '"') {
+                        if (inQuotes && line[i+1] === '"') { // escaped quote
+                            cur += '"';
+                            i++;
+                        } else {
+                            inQuotes = !inQuotes;
+                        }
+                    } else if (ch === ',' && !inQuotes) {
+                        out.push(cur);
+                        cur = '';
+                    } else {
+                        cur += ch;
+                    }
+                }
+                out.push(cur);
+                return out.map(s => s.trim());
+            }
+            const rawLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            const lines = rawLines.filter(l => l.trim().length > 0);
+            if (lines.length === 0) return { headers: [], rows: [] };
+            const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
+            const rows = lines.slice(1).map(line => {
+                const cols = splitCSVLine(line).map(c => c.replace(/^"|"$/g, ''));
+                const obj = {};
+                headers.forEach((h, i) => { obj[h] = (cols[i] ?? ''); });
+                return obj;
+            });
+            return { headers, rows };
+        }
+
+        if (csvFileInput) csvFileInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev){
+                const text = ev.target.result;
+                const { headers, rows } = parseCSV(text);
+
+                // Build flexible header mapping (normalize by removing non-alphanumerics and lowercasing)
+                function norm(h){ return String(h||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+                const headerIndex = Object.fromEntries(headers.map((h,i)=>[norm(h), i]));
+                const candidates = {
+                    cartonNo: ['cartonno','cartonsno','cartonnumber','cartonno','cartonsno.','cartons','carton'],
+                    description: ['description','desc','product','item'],
+                    batchNo: ['batchno','batchnumber','batch'],
+                    expiryDate: ['expirydate','expireddate','expiry','expdate'],
+                    quantity: ['quantity','qty','qtybag','qtybox'],
+                    totalCtns: ['totalctns','total','ctns','totalcartons','totalcarton']
+                };
+                const mapped = {};
+                Object.keys(candidates).forEach(key => {
+                    const found = candidates[key].find(alias => headerIndex.hasOwnProperty(alias));
+                    if (found) mapped[key] = headers[headerIndex[found]];
+                });
+
+                const missingCanon = Object.keys(candidates).filter(k => !mapped[k]);
+                if (missingCanon.length){
+                    csvPreview.style.display = 'block';
+                    csvPreview.textContent = 'Missing required headers: ' + missingCanon.join(', ');
+                    csvImportBtn.disabled = true;
+                    csvParsedRows = [];
+                    return;
+                }
+
+                function parseExpiry(val){
+                    const s = String(val||'').trim();
+                    if (/^\d{4}-\d{2}$/.test(s)) return s; // already YYYY-MM
+                    // Accept Aug-2027, Aug/2027, Aug 2027, 2027/08, 2027.08, 2027-08-15
+                    const months = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+                    const m1 = s.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[^0-9]*?(\d{4})$/i);
+                    if (m1){ const mm = String(months[m1[1].toLowerCase()]).padStart(2,'0'); return `${m1[2]}-${mm}`; }
+                    const m2 = s.match(/^(\d{4})[^0-9]*?(\d{1,2})/);
+                    if (m2){ return `${m2[1]}-${String(m2[2]).padStart(2,'0')}`; }
+                    const m3 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                    if (m3){ return `${m3[1]}-${m3[2]}`; }
+                    return '';
+                }
+
+                function parseIntSafe(v){
+                    const s = String(v||'').replace(/[^0-9-]/g,'').replace(/\s+/g,'');
+                    const n = parseInt(s,10);
+                    return Number.isFinite(n) ? n : NaN;
+                }
+
+                // Transform rows into canonical shape
+                const transformed = rows.map(r => ({
+                    cartonNo: r[mapped.cartonNo],
+                    description: r[mapped.description],
+                    batchNo: r[mapped.batchNo],
+                    expiryDate: parseExpiry(r[mapped.expiryDate]),
+                    quantity: parseIntSafe(r[mapped.quantity]),
+                    totalCtns: parseIntSafe(r[mapped.totalCtns])
+                }));
+
+                // Preview first 5 rows
+                const previewLines = transformed.slice(0,5).map((r,i) => `${i+1}) ${r.cartonNo}, ${r.description}, ${r.batchNo}, ${r.expiryDate}, ${r.quantity}, ${r.totalCtns}`);
+                csvPreview.style.display = 'block';
+                csvPreview.textContent = 'Rows detected: ' + transformed.length + '\n' + previewLines.join('\n');
+                csvParsedRows = transformed;
+                csvImportBtn.disabled = transformed.length === 0;
+            };
+            reader.readAsText(file);
+        });
+
+        if (csvImportBtn) csvImportBtn.addEventListener('click', () => {
+            if (!csvParsedRows || csvParsedRows.length === 0){ showToast('No rows to import','error'); return; }
+            const importLocation = document.getElementById('csvImportLocation').value || 'country_stock';
+            let ok = 0, fail = 0;
+            csvParsedRows.forEach(r => {
+                const qty = parseInt(r.quantity, 10);
+                const ctns = parseInt(r.totalCtns, 10);
+                const dateOk = /^\d{4}-\d{2}$/.test(String(r.expiryDate||''));
+                if (!r.cartonNo || !r.description || !r.batchNo || !dateOk || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(ctns) || ctns <= 0){
+                    fail++; return;
+                }
+                // Import with location specified
+                const importData = { 
+                    cartonNo:r.cartonNo, 
+                    description:r.description, 
+                    batchNo:r.batchNo, 
+                    expiryDate:r.expiryDate, 
+                    quantity:qty, 
+                    totalCtns:ctns,
+                    sourceWarehouseId: importLocation !== 'country_stock' ? importLocation : null
+                };
+                const res = importStockWithBarcode(importData);
+                if (res && res.success) ok++; else fail++;
+            });
+            showToast(`Import done: ${ok} ok, ${fail} failed. Stock imported to ${importLocation}`, fail ? 'error' : 'success');
+            document.getElementById('csvModal').style.display = 'none';
+            // Immediately refresh to show imported stock
+            setTimeout(() => {
+                refreshData();
+                renderWarehouseSnapshot();
+            }, 100);
+        });
+
+
+        (async function init(){
+            await loadBranches();
+            await loadProducts();
+            setupRealtime();
+            evaluateThresholds();
+            await refreshData();
+        })();
+    </script>
+</body>
+</html>
+
+

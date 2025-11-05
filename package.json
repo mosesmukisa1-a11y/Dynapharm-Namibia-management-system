@@ -1,0 +1,42 @@
+{
+  "name": "dynapharm-cloud",
+  "version": "2.0.0",
+  "description": "Dynapharm International Namibia - Cloud Health Management System",
+  "main": "dynapharm_backend.py",
+  "type": "module",
+  "scripts": {
+    "start": "python3 dynapharm_backend.py",
+    "dev": "python3 dynapharm_backend.py",
+    "test": "curl http://localhost:8001/api/health",
+    "auto-commit": "node tools/auto-commit.js",
+    "guard": "node tools/guard-inline-events.js",
+    "predeploy": "npm run guard"
+  },
+  "keywords": [
+    "healthcare",
+    "management",
+    "namibia",
+    "dynapharm",
+    "medical"
+  ],
+  "author": "Moses Mukisa",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mosesmukisa1-a11y/dynapharm-cloud.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mosesmukisa1-a11y/dynapharm-cloud/issues"
+  },
+  "homepage": "https://dynapharm-cloud.vercel.app",
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "chokidar": "^3.6.0"
+  }
+}

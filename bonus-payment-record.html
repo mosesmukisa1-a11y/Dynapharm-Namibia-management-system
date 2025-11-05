@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Record Bonus Payment</title>
+	<style>
+		* { box-sizing: border-box; }
+		body { font-family: Arial, sans-serif; background:#f6f8fb; margin:0; padding:20px; }
+		.container { max-width: 900px; margin: 0 auto; background:#fff; border-radius:12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); overflow:hidden; }
+		.header { background: linear-gradient(135deg,#c41e3a,#8b0000); color:#fff; padding:24px; }
+		.header h1 { margin:0 0 4px 0; font-size: 22px; }
+		.header p { margin:0; opacity:0.9; }
+		.content { padding:24px; }
+		.section { background:#fafbfc; border-left:4px solid #c41e3a; padding:20px; border-radius:8px; margin-bottom:16px; }
+		.form-group { margin-bottom:16px; }
+		.form-group label { display:block; font-size:13px; color:#334e68; font-weight:600; margin-bottom:6px; }
+		.form-group input, .form-group select, .form-group textarea { width:100%; padding:10px 12px; border:2px solid #e3e7ee; border-radius:8px; background:#fff; font-size:14px; }
+		.form-group textarea { min-height:80px; resize:vertical; }
+		.form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+		button { padding:12px 24px; border:2px solid; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; }
+		.btn-primary { background:#c41e3a; color:#fff; border-color:#c41e3a; }
+		.btn-secondary { background:#34495e; color:#fff; border-color:#34495e; }
+		.btn-ghost { background:#fff; color:#c41e3a; border-color:#c41e3a; }
+		.distributor-info { background:#e8f5e9; border:2px solid #4caf50; padding:16px; border-radius:8px; margin-bottom:16px; }
+		.distributor-info h3 { margin:0 0 8px 0; color:#2e7d32; }
+		.distributor-info p { margin:4px 0; color:#1b5e20; }
+		.error { background:#ffebee; border:2px solid #f44336; padding:16px; border-radius:8px; color:#c62828; margin-bottom:16px; }
+		.success { background:#e8f5e9; border:2px solid #4caf50; padding:16px; border-radius:8px; color:#2e7d32; margin-bottom:16px; }
+		.hidden { display:none; }
+		.payment-method-toggle { display:flex; gap:8px; margin-bottom:16px; }
+		.payment-method-toggle button { flex:1; padding:12px; }
+		.payment-method-toggle button.active { background:#c41e3a; color:#fff; }
+		.payment-method-toggle button:not(.active) { background:#fff; color:#334e68; border-color:#e3e7ee; }
+		.warning { background:#fff3cd; border:2px solid #ffc107; padding:12px; border-radius:8px; margin-bottom:16px; color:#856404; font-size:13px; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Record Bonus Payment</h1>
+			<p>Record cash payments (branches) or bank payments (finance). Only distributors in monthly CSV can be paid.</p>
+		</div>
+		<div class="content">
+			<div id="errorMessage" class="error hidden"></div>
+			<div id="successMessage" class="success hidden"></div>
+
+			<div class="section">
+				<h2 style="margin-top:0; color:#334e68;">1. Select Month & Find Distributor</h2>
+				<div class="form-row">
+					<div class="form-group">
+						<label>Month *</label>
+						<input id="monthSelect" type="month" required />
+					</div>
+					<div class="form-group">
+						<label>Search by DRN or Name *</label>
+						<input id="searchInput" type="text" placeholder="Enter DRN or name..." required />
+					</div>
+				</div>
+				<button id="btnSearch" class="btn-secondary">Search Distributor</button>
+			</div>
+
+			<div id="distributorSection" class="section hidden">
+				<h2 style="margin-top:0; color:#334e68;">2. Distributor Information</h2>
+				<div id="distributorInfo" class="distributor-info"></div>
+				<div class="warning">
+					⚠️ <strong>Payment Validation:</strong> This distributor must appear in the bonus CSV for the selected month to process payment.
+				</div>
+			</div>
+
+			<div id="paymentSection" class="section hidden">
+				<h2 style="margin-top:0; color:#334e68;">3. Payment Details</h2>
+				
+				<div class="payment-method-toggle">
+					<button id="btnCash" class="active" onclick="selectPaymentMethod('cash')">💰 Cash Payment<br><small>(Branch)</small></button>
+					<button id="btnBank" onclick="selectPaymentMethod('bank')">🏦 Bank Payment<br><small>(Finance)</small></button>
+				</div>
+
+				<input type="hidden" id="paymentMethod" value="cash" />
+
+				<div class="form-row">
+					<div class="form-group">
+						<label>Amount (NAD) *</label>
+						<input id="amountInput" type="number" step="0.01" min="0" required />
+					</div>
+					<div class="form-group" id="branchGroup">
+						<label>Branch * <small>(for cash payments)</small></label>
+						<select id="branchSelect" required>
+							<option value="">Select branch...</option>
+							<option>NB1</option>
+							<option>NB2</option>
+							<option>NB3</option>
+							<option>NB4</option>
+						</select>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label>Paid By *</label>
+					<input id="paidByInput" type="text" placeholder="Enter name or user ID..." required />
+				</div>
+
+				<div class="form-group">
+					<label>Notes (Optional)</label>
+					<textarea id="notesInput" placeholder="Additional payment notes..."></textarea>
+				</div>
+
+				<div style="display:flex; gap:12px;">
+					<button id="btnRecord" class="btn-primary">Record Payment</button>
+					<button id="btnCancel" class="btn-ghost">Clear Form</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const els = {
+			month: document.getElementById('monthSelect'),
+			search: document.getElementById('searchInput'),
+			searchBtn: document.getElementById('btnSearch'),
+			distributorSection: document.getElementById('distributorSection'),
+			distributorInfo: document.getElementById('distributorInfo'),
+			paymentSection: document.getElementById('paymentSection'),
+			paymentMethod: document.getElementById('paymentMethod'),
+			amount: document.getElementById('amountInput'),
+			branch: document.getElementById('branchSelect'),
+			paidBy: document.getElementById('paidByInput'),
+			notes: document.getElementById('notesInput'),
+			record: document.getElementById('btnRecord'),
+			cancel: document.getElementById('btnCancel'),
+			error: document.getElementById('errorMessage'),
+			success: document.getElementById('successMessage'),
+			branchGroup: document.getElementById('branchGroup')
+		};
+
+		let currentDistributor = null;
+		let currentMonth = null;
+
+		// Set default to current month
+		const today = new Date();
+		els.month.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+		function getApiBase() {
+			if (location.hostname.includes('railway.app')) {
+				return `${location.protocol}//${location.hostname}/api`;
+			} else if (location.hostname.includes('vercel.app')) {
+				return '/api';
+			} else {
+				return 'http://localhost:8001/api';
+			}
+		}
+
+		function showError(message) {
+			els.error.textContent = message;
+			els.error.classList.remove('hidden');
+			els.success.classList.add('hidden');
+			setTimeout(() => els.error.classList.add('hidden'), 5000);
+		}
+
+		function showSuccess(message) {
+			els.success.textContent = message;
+			els.success.classList.remove('hidden');
+			els.error.classList.add('hidden');
+			setTimeout(() => els.success.classList.add('hidden'), 5000);
+		}
+
+		function selectPaymentMethod(method) {
+			els.paymentMethod.value = method;
+			document.getElementById('btnCash').classList.toggle('active', method === 'cash');
+			document.getElementById('btnBank').classList.toggle('active', method === 'bank');
+			els.branchGroup.style.display = method === 'cash' ? 'block' : 'none';
+			els.branch.required = method === 'cash';
+		}
+
+		async function searchDistributor() {
+			const month = els.month.value;
+			const query = els.search.value.trim();
+
+			if (!month) {
+				showError('Please select a month');
+				return;
+			}
+
+			if (!query) {
+				showError('Please enter a DRN or distributor name');
+				return;
+			}
+
+			currentMonth = month;
+
+			try {
+				// First, get the monthly upload to find the distributor
+				const monthRes = await fetch(`${getApiBase()}/bonus?action=month&month=${month}`);
+				if (!monthRes.ok) {
+					throw new Error('Failed to load monthly bonus data');
+				}
+
+				const monthData = await monthRes.json();
+				if (!monthData || !monthData.items) {
+					showError(`No bonus upload found for ${month}. Please upload the bonus CSV first.`);
+					return;
+				}
+
+				// Find distributor
+				const distributor = monthData.items.find(item => 
+					item.drn.toLowerCase() === query.toLowerCase() || 
+					item.name.toLowerCase().includes(query.toLowerCase())
+				);
+
+				if (!distributor) {
+					showError(`Distributor "${query}" not found in bonus CSV for ${month}. Cannot process payment - distributor must be in the monthly CSV.`);
+					els.distributorSection.classList.add('hidden');
+					els.paymentSection.classList.add('hidden');
+					return;
+				}
+
+				currentDistributor = distributor;
+				
+				// Check if already paid
+				const paymentRes = await fetch(`${getApiBase()}/bonus?action=payments&month=${month}`);
+				let existingPayment = null;
+				if (paymentRes.ok) {
+					const payments = await paymentRes.json();
+					existingPayment = payments.find(p => p.drn === distributor.drn && p.month === month && p.status === 'paid');
+				}
+
+				els.distributorInfo.innerHTML = `
+					<h3>${distributor.name}</h3>
+					<p><strong>DRN:</strong> ${distributor.drn}</p>
+					<p><strong>Stockist:</strong> ${distributor.stockist || 'N/A'}</p>
+					<p><strong>Area:</strong> ${distributor.area || 'N/A'}</p>
+					<p><strong>Bonus Amount:</strong> N$${distributor.amount.toLocaleString('en-NA', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+					${existingPayment ? `<p style="color:#f44336; margin-top:8px;"><strong>⚠️ Status:</strong> Already paid via ${existingPayment.method} on ${new Date(existingPayment.paidAt).toLocaleDateString('en-NA')}</p>` : ''}
+				`;
+
+				els.amount.value = distributor.amount.toFixed(2);
+				els.distributorSection.classList.remove('hidden');
+				els.paymentSection.classList.remove('hidden');
+
+				if (existingPayment) {
+					els.record.disabled = true;
+					els.record.textContent = 'Already Paid';
+				} else {
+					els.record.disabled = false;
+					els.record.textContent = 'Record Payment';
+				}
+
+			} catch (error) {
+				showError(`Error: ${error.message}`);
+				console.error('Search error:', error);
+			}
+		}
+
+		async function recordPayment() {
+			if (!currentDistributor) {
+				showError('Please search for a distributor first');
+				return;
+			}
+
+			const method = els.paymentMethod.value;
+			const amount = parseFloat(els.amount.value);
+			const paidBy = els.paidBy.value.trim();
+			const notes = els.notes.value.trim();
+			const branch = method === 'cash' ? els.branch.value : null;
+
+			if (!amount || amount <= 0) {
+				showError('Please enter a valid amount');
+				return;
+			}
+
+			if (!paidBy) {
+				showError('Please enter who processed the payment');
+				return;
+			}
+
+			if (method === 'cash' && !branch) {
+				showError('Please select a branch for cash payments');
+				return;
+			}
+
+			const payload = {
+				action: 'payment',
+				drn: currentDistributor.drn,
+				month: currentMonth,
+				method: method,
+				amount: amount,
+				paidBy: paidBy,
+				branch: branch,
+				notes: notes,
+				status: 'paid'
+			};
+
+			try {
+				const res = await fetch(`${getApiBase()}/bonus`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				});
+
+				if (!res.ok) {
+					const error = await res.json();
+					throw new Error(error.error || 'Failed to record payment');
+				}
+
+				const result = await res.json();
+				showSuccess(`✅ Payment recorded successfully! ${method === 'cash' ? `Cash payment at ${branch}` : 'Bank payment'} for ${currentDistributor.name}`);
+				
+				// Reset form
+				setTimeout(() => {
+					els.cancel.click();
+				}, 2000);
+
+			} catch (error) {
+				showError(`Error: ${error.message}`);
+				console.error('Payment recording error:', error);
+			}
+		}
+
+		function clearForm() {
+			els.search.value = '';
+			els.amount.value = '';
+			els.branch.value = '';
+			els.paidBy.value = '';
+			els.notes.value = '';
+			els.distributorSection.classList.add('hidden');
+			els.paymentSection.classList.add('hidden');
+			currentDistributor = null;
+			selectPaymentMethod('cash');
+		}
+
+		els.searchBtn.addEventListener('click', searchDistributor);
+		els.search.addEventListener('keypress', (e) => {
+			if (e.key === 'Enter') searchDistributor();
+		});
+		els.record.addEventListener('click', recordPayment);
+		els.cancel.addEventListener('click', clearForm);
+	</script>
+</body>
+</html>
+

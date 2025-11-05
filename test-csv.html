@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSV Test</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>CSV Upload Test</h1>
+    <input type="file" id="csvFile" accept=".csv">
+    <div id="output" style="margin-top: 20px; white-space: pre-wrap; font-family: monospace;"></div>
+
+    <script>
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                
+                const output = document.getElementById('output');
+                output.innerHTML = 'File: ' + file.name + '\n';
+                output.innerHTML += 'Total lines: ' + lines.length + '\n\n';
+                
+                lines.forEach((line, index) => {
+                    output.innerHTML += `Line ${index + 1}: ${line}\n`;
+                    const parts = line.split(',');
+                    output.innerHTML += `  Split into ${parts.length} parts: ${JSON.stringify(parts)}\n\n`;
+                });
+            };
+            reader.readAsText(file);
+        });
+    </script>
+</body>
+</html>

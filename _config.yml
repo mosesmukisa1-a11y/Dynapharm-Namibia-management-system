@@ -1,0 +1,20 @@
+title: Dynapharm Namibia Health Management System
+description: Complete health management portal for Dynapharm International Namibia
+baseurl: ""
+url: "https://mosesmukisa1-a11y.github.io"
+repository: mosesmukisa1-a11y/dynapharm-namibia-health
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+theme: minima
+
+# Pages settings
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+# Redirect to standalone version
+redirect_from:
+  - /
+  - /index.html

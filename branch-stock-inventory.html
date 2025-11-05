@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <title>Branch Stock Inventory</title>
+    <link rel="icon" href="./favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#0b1020; --card:#111831; --muted:#8aa0b5; --text:#e6eef7; --accent:#10b981; --warn:#f59e0b; --danger:#ef4444; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+        header { position: sticky; top:0; z-index:10; background: rgba(11,16,32,0.8); backdrop-filter: blur(8px); border-bottom: 1px solid #1e2a44; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 12px 16px; }
+        .top-bar { display:flex; align-items:center; justify-content: space-between; gap: 12px; }
+        .brand { display:flex; align-items:center; gap:10px; }
+        .logo img { display:block; height:32px; width:auto; }
+        .title { font-weight:700; letter-spacing: .2px; }
+        .filters { display:flex; flex-wrap: wrap; gap: 8px; align-items:center; }
+        .select, .input { background: #0e162b; color: var(--text); border: 1px solid #223154; border-radius: 8px; padding: 8px 10px; }
+        .btn { appearance:none; border:1px solid #1e2a44; background:#0f1830; color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; }
+        .btn.primary { background:#0f2a24; border-color:#0e7d5c; }
+        .tabs { display:flex; gap:6px; flex-wrap:wrap; padding:8px 0; }
+        .tab { padding:8px 10px; border-radius:8px; border:1px solid #1e2a44; background:#0f1830; cursor:pointer; font-weight:600; color:var(--muted); }
+        .tab.active { color: var(--text); border-color:#0e7d5c; background:#0f2a24; }
+        .card { background: var(--card); border: 1px solid #1e2a44; border-radius: 12px; padding: 14px; }
+        .muted { color: var(--muted); }
+        .grid { display:grid; gap: 12px; grid-template-columns: repeat(12, 1fr); }
+        .col-12 { grid-column: span 12; }
+        .table { width:100%; border-collapse: collapse; font-size: 13px; }
+        .table th, .table td { padding: 8px 10px; border-bottom: 1px solid #1e2a44; text-align: left; }
+        .section { margin: 12px 0; }
+        iframe { width:100%; height: 72vh; border: 1px solid #1e2a44; border-radius: 10px; background:#0b1020; }
+        
+        @media (max-width: 768px) {
+            .filters { flex-direction: column; align-items: stretch; }
+            .select, .input, .btn { width: 100%; min-height: 44px; font-size: 16px; }
+            iframe { height: 66vh; }
+        }
+    </style>
+    <script defer src="./cloud-sync.js"></script>
+    <script defer src="./auto-cloud-sync.js"></script>
+    <script type="module">
+        import { getTransactions } from './web-modules/transactions.js';
+
+        let branches = [];
+
+        async function loadBranches() {
+            const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
+            if (isStaticHost) {
+                try {
+                    const fromLS = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+                    branches = Array.isArray(fromLS) ? fromLS : [];
+                } catch(err) {
+                    branches = [];
+                }
+            } else {
+                try {
+                    const resp = await fetch('/api/branches');
+                    if (resp.ok) {
+                        const apiResp = await resp.json();
+                        branches = Array.isArray(apiResp) ? apiResp : (apiResp.branches || []);
+                    }
+                } catch (_) {}
+                if (!Array.isArray(branches) || branches.length === 0) {
+                    try {
+                        const fromLS = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+                        branches = Array.isArray(fromLS) ? fromLS : [];
+                    } catch(err) { branches = []; }
+                }
+            }
+            const sel = document.getElementById('branchFilter');
+            sel.innerHTML = '<option value="all">All Branches</option>';
+            branches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.id; opt.textContent = b.name || b.id; sel.appendChild(opt);
+            });
+        }
+
+        function switchTab(name){
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===name));
+            document.querySelectorAll('[data-view]')
+                .forEach(v => v.style.display = (v.dataset.view===name) ? 'block' : 'none');
+            if (name === 'sales') renderSales();
+            if (name === 'invoices') renderInvoices();
+        }
+
+        function applyFilters(){
+            const branch = document.getElementById('branchFilter').value;
+            const range = document.getElementById('dateRange').value;
+            const q = document.getElementById('searchBox').value.trim().toLowerCase();
+            return { branch, range, q };
+        }
+
+        function setIframe(){
+            // Keep simple: open stock management portal in iframe
+            const iframe = document.getElementById('invFrame');
+            iframe.src = './stock-management-portal.html';
+        }
+
+        async function renderSales(){
+            const tbody = document.getElementById('salesBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+            const { branch, range, q } = applyFilters();
+            const res = await getTransactions({ dateRange: range, branch: branch });
+            let rows = res.transactions;
+            if (q) {
+                rows = rows.filter(t => [t.id, t.clientName, t.branch].filter(Boolean).join(' ').toLowerCase().includes(q));
+            }
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="muted">No sales found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.slice(0,50).map(t => `
+                <tr>
+                    <td>${t.id}</td>
+                    <td>${t.clientName}</td>
+                    <td>${t.branch}</td>
+                    <td>N$ ${parseFloat(t.amount).toFixed(2)}</td>
+                    <td>${t.date}</td>
+                    <td>${t.status}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function renderInvoices(){
+            // For now, invoices mirror sales transactions list
+            const tbody = document.getElementById('invBody');
+            tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
+            const { branch, range, q } = applyFilters();
+            const res = await getTransactions({ dateRange: range, branch: branch });
+            let rows = res.transactions;
+            if (q) {
+                rows = rows.filter(t => [t.id, t.clientName, t.branch].filter(Boolean).join(' ').toLowerCase().includes(q));
+            }
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="muted">No invoices found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.slice(0,50).map(t => `
+                <tr>
+                    <td>${t.id}</td>
+                    <td>${t.clientName}</td>
+                    <td>${t.branch}</td>
+                    <td>N$ ${parseFloat(t.amount).toFixed(2)}</td>
+                    <td>${t.date}</td>
+                </tr>
+            `).join('');
+        }
+
+        function onFiltersChanged(){
+            const active = document.querySelector('.tab.active')?.dataset.tab || 'inventory';
+            if (active === 'inventory') setIframe();
+            if (active === 'sales') renderSales();
+            if (active === 'invoices') renderInvoices();
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadBranches();
+            setIframe();
+            switchTab('inventory');
+            document.getElementById('branchFilter').addEventListener('change', onFiltersChanged);
+            document.getElementById('dateRange').addEventListener('change', onFiltersChanged);
+            document.getElementById('searchBox').addEventListener('input', () => { clearTimeout(window.__t); window.__t=setTimeout(onFiltersChanged, 250); });
+            document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <div class="container top-bar">
+            <div class="brand">
+                <div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
+                <div class="title">🏬 Branch Stock Inventory</div>
+            </div>
+            <div class="filters">
+                <select id="branchFilter" class="select">
+                    <option value="all">All Branches</option>
+                </select>
+                <select id="dateRange" class="select">
+                    <option value="today">Today</option>
+                    <option value="week">Last 7 days</option>
+                    <option value="month" selected>Last 30 days</option>
+                    <option value="year">Last 12 months</option>
+                </select>
+                <input id="searchBox" class="input" placeholder="Search sales/invoices (id, client, branch)" />
+                <a class="btn" href="./stock-management-portal.html" target="_blank" rel="noopener">Open Full Stock Portal ↗</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container" style="padding-top: 12px;">
+        <div class="tabs">
+            <div class="tab active" data-tab="inventory">Inventory Dashboard</div>
+            <div class="tab" data-tab="sales">Daily Sales</div>
+            <div class="tab" data-tab="invoices">Invoices</div>
+        </div>
+
+        <section class="section card" data-view="inventory">
+            <div class="muted" style="margin-bottom:8px;">Embedded stock dashboard with movements, requests, transfers and warehouse snapshot.</div>
+            <iframe id="invFrame" title="Stock Management"></iframe>
+        </section>
+
+        <section class="section card" data-view="sales" style="display:none;">
+            <div class="muted" style="margin-bottom:8px;">Sales filtered by date range and branch.</div>
+            <div style="overflow:auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Client</th>
+                            <th>Branch</th>
+                            <th>Amount</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="section card" data-view="invoices" style="display:none;">
+            <div class="muted" style="margin-bottom:8px;">Invoices overview (based on sales transactions).</div>
+            <div style="overflow:auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Client</th>
+                            <th>Branch</th>
+                            <th>Amount</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
+
+

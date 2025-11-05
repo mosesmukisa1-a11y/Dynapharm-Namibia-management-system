@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <title>MIS Portal — Sales Encoding & Verification</title>
+    <link rel="icon" href="./favicon.ico">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; margin: 0; background: #f4f6f8; color: #2c3e50; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); color: #fff; padding: 20px; border-radius: 12px; }
+        .header h1 { margin: 0 0 6px 0; font-size: 24px; }
+        .logo img { display:block; height:36px; width:auto; margin-bottom:8px; }
+        .tabs { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+        .tab { padding: 10px 14px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .tab.active { background: #e8f5e9; border-color: #27ae60; color: #186a3b; }
+        .section { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-top: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+        .col-12 { grid-column: span 12; }
+        .col-6 { grid-column: span 6; }
+        .col-4 { grid-column: span 4; }
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .btn-primary { background: #c41e3a; color: #fff; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-warning { background: #f39c12; color: #fff; }
+        .btn-info { background: #3498db; color: #fff; }
+        .btn-light { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+        .input, select { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 13px; }
+        th { background: #f9fafb; text-align: left; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+        .status-draft { background: #f3f4f6; color: #374151; }
+        .status-verified { background: #e8f5e9; color: #186a3b; }
+        .status-mismatch { background: #fff3cd; color: #7a5c00; }
+        .status-error { background: #fdecea; color: #7a1f1f; }
+        .pill { background: #eef2ff; color: #3730a3; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+        .help { color: #6b7280; font-size: 12px; }
+        .right { text-align: right; }
+        .mt-8 { margin-top: 8px; }
+        .mt-12 { margin-top: 12px; }
+        .mt-16 { margin-top: 16px; }
+        .hidden { display: none; }
+        /* Mobile Responsive Styles */
+        @media (max-width: 900px) { 
+            .col-6, .col-4 { grid-column: span 12; }
+        }
+        
+        @media (max-width: 768px) {
+            body { padding: 10px !important; }
+            .container { padding: 12px !important; max-width: 100% !important; }
+            .header { padding: 16px !important; }
+            .header h1 { font-size: 1.3rem !important; }
+            .tabs { 
+                flex-wrap: wrap;
+                gap: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .tab { 
+                padding: 8px 10px !important;
+                font-size: 0.85rem !important;
+                white-space: nowrap;
+                min-width: fit-content;
+            }
+            .section { padding: 12px !important; }
+            .controls { flex-direction: column !important; gap: 8px !important; }
+            .input, select, .btn { 
+                width: 100% !important;
+                min-height: 44px;
+                font-size: 16px;
+            }
+            .grid { gap: 10px !important; }
+            table { 
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                width: 100%;
+                font-size: 0.8rem;
+            }
+            th, td { 
+                padding: 6px 4px !important;
+                font-size: 0.75rem !important;
+            }
+            thead { display: table-header-group; }
+            tbody { display: table-row-group; }
+            thead th { position: sticky; top: 0; background: #f9fafb; z-index: 1; }
+        }
+        
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1.1rem !important; }
+            .tab { font-size: 0.75rem !important; padding: 6px 8px !important; }
+            .section { padding: 10px !important; }
+            th, td { padding: 5px 3px !important; font-size: 0.7rem !important; }
+        }
+        
+        /* Touch-friendly */
+        @media (hover: none) and (pointer: coarse) {
+            .btn { min-height: 44px; }
+            * { -webkit-tap-highlight-color: rgba(196, 30, 58, 0.2); }
+        }
+    </style>
+    <script defer src="./cloud-sync.js"></script>
+    <script defer src="./auto-cloud-sync.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
+            <h1>MIS Portal — Sales Encoding & Verification</h1>
+            <div class="tabs">
+                <div class="tab active" data-tab="daily-receipts" onclick="switchTab('daily-receipts')">Daily Receipts</div>
+                <div class="tab" data-tab="stock-sales" onclick="switchTab('stock-sales')">Stock Sold Reports</div>
+                <div class="tab" data-tab="monthly-reports" onclick="switchTab('monthly-reports')">Monthly Reports</div>
+                <div class="tab" data-tab="encode" onclick="switchTab('encode')">Sales Encoding</div>
+                <div class="tab" data-tab="integration" onclick="switchTab('integration')">Branch Integration</div>
+                <div class="tab" data-tab="verification" onclick="switchTab('verification')">Verification</div>
+                <div class="tab" data-tab="reconciliation" onclick="switchTab('reconciliation')">Reconciliation</div>
+                <div class="tab" data-tab="reports" onclick="switchTab('reports')">Reports & Submission</div>
+                <div class="tab" data-tab="audit" onclick="switchTab('audit')">Audit Logs</div>
+            </div>
+        </div>
+
+        <!-- Daily Receipts -->
+        <div class="section" id="tab-daily-receipts">
+            <h2>📋 Daily Receipts from All Branches</h2>
+            <div class="controls">
+                <input class="input" id="dailyReceiptDate" type="date" style="max-width: 220px;" value="">
+                <button class="btn btn-info" onclick="loadDailyReceipts()">Load Receipts</button>
+                <button class="btn btn-success" onclick="exportDailyReceiptsExcel()">Export to Excel</button>
+                <button class="btn btn-light" onclick="refreshDailyReceipts()">🔄 Refresh</button>
+            </div>
+            <div class="grid mt-12">
+                <div class="col-4">
+                    <div class="pill" id="dailyReceiptTotal">Total Receipts: 0</div>
+                </div>
+                <div class="col-4">
+                    <div class="pill" id="dailyReceiptAmount">Total Amount: N$ 0.00</div>
+                </div>
+                <div class="col-4">
+                    <div class="pill" id="dailyReceiptBranches">Branches: 0</div>
+                </div>
+            </div>
+            <div class="mt-12">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Receipt #</th>
+                            <th>Type</th>
+                            <th>Branch</th>
+                            <th>Client</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Amount (N$)</th>
+                            <th>Items</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyReceiptsTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Stock Sold Reports -->
+        <div class="section hidden" id="tab-stock-sales">
+            <h2>📊 Stock Sold Per Branch</h2>
+            <div class="controls">
+                <input class="input" id="stockSoldStartDate" type="date" style="max-width: 220px;">
+                <input class="input" id="stockSoldEndDate" type="date" style="max-width: 220px;">
+                <select id="stockSoldBranchFilter" class="input" style="max-width: 220px;">
+                    <option value="all">All Branches</option>
+                </select>
+                <button class="btn btn-info" onclick="loadStockSold()">Load Stock Sold</button>
+                <button class="btn btn-success" onclick="exportStockSoldExcel()">Export Excel (All Branches)</button>
+                <button class="btn btn-warning" onclick="exportStockSoldByBranchExcel()">Export by Branch</button>
+            </div>
+            <div class="grid mt-12">
+                <div class="col-4">
+                    <div class="pill" id="stockSoldTotalItems">Total Products: 0</div>
+                </div>
+                <div class="col-4">
+                    <div class="pill" id="stockSoldTotalQty">Total Quantity: 0</div>
+                </div>
+                <div class="col-4">
+                    <div class="pill" id="stockSoldTotalValue">Total Value: N$ 0.00</div>
+                </div>
+            </div>
+            <div class="mt-12">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Product</th>
+                            <th>Quantity Sold</th>
+                            <th>Total Amount (N$)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockSoldTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Monthly Reports -->
+        <div class="section hidden" id="tab-monthly-reports">
+            <h2>📅 Monthly Combined Reports</h2>
+            <div class="controls">
+                <select id="monthlyYear" class="input" style="max-width: 150px;"></select>
+                <select id="monthlyMonth" class="input" style="max-width: 150px;">
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+                <select id="monthlyBranchFilter" class="input" style="max-width: 220px;">
+                    <option value="all">All Branches Combined</option>
+                </select>
+                <button class="btn btn-info" onclick="loadMonthlyReport()">Load Monthly Report</button>
+                <button class="btn btn-success" onclick="exportMonthlyExcel()">Export Monthly Excel</button>
+            </div>
+            <div class="grid mt-12">
+                <div class="col-6">
+                    <h3>Summary by Branch</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Branch</th>
+                                <th>Total Quantity</th>
+                                <th>Total Value (N$)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlySummaryTbody"></tbody>
+                    </table>
+                </div>
+                <div class="col-6">
+                    <h3>Top Products</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Quantity</th>
+                                <th>Value (N$)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTopProductsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="mt-12">
+                <h3>Detailed Stock Sold</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Amount (N$)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthlyDetailsTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sales Encoding -->
+        <div class="section hidden" id="tab-encode">
+            <div class="grid">
+                <div class="col-12">
+                    <div class="controls">
+                        <input class="input" id="searchDistributor" placeholder="Search distributor (Name or NB Number)">
+                        <input class="input" id="searchProduct" placeholder="Search product / SKU">
+                        <select id="branchSelect" class="input" style="max-width: 220px;"></select>
+                        <input class="input" id="txnDate" type="datetime-local" style="max-width: 220px;">
+                        <button class="btn btn-primary" onclick="addSalesLine()">Add Line</button>
+                        <label class="btn btn-light">Import CSV <input id="csvFile" type="file" accept=".csv" style="display:none" onchange="importCsv(event)"></label>
+                        <button class="btn btn-success" onclick="saveDraft()">Save Draft</button>
+                        <button class="btn btn-warning" onclick="verifySelected()">Verify Selected</button>
+                    </div>
+                </div>
+                <div class="col-12 mt-12">
+                    <table id="encodeTable">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
+                                <th>Status</th>
+                                <th>Distributor</th>
+                                <th>NB Number</th>
+                                <th>Product / SKU</th>
+                                <th>Qty</th>
+                                <th>Unit Price</th>
+                                <th>Branch</th>
+                                <th>Datetime</th>
+                                <th>Value</th>
+                                <th>Validation</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="encodeTbody"></tbody>
+                    </table>
+                    <div class="help mt-8">All entries are auto-validated against Distributor and Product catalogs.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Branch Integration -->
+        <div class="section hidden" id="tab-integration">
+            <div class="controls">
+                <input class="input" id="integrationDate" type="date" style="max-width: 220px;">
+                <button class="btn btn-info" onclick="refreshBranchStatus()">Refresh Status</button>
+            </div>
+            <div class="grid mt-12">
+                <div class="col-6">
+                    <h3>Pending Branch Uploads</h3>
+                    <table>
+                        <thead><tr><th>Branch</th><th>Pending</th><th>Last Upload</th></tr></thead>
+                        <tbody id="pendingUploads"></tbody>
+                    </table>
+                </div>
+                <div class="col-6">
+                    <h3>Encoded Entries per Branch</h3>
+                    <table>
+                        <thead><tr><th>Branch</th><th>Encoded</th><th>Verified</th></tr></thead>
+                        <tbody id="encodedPerBranch"></tbody>
+                    </table>
+                </div>
+                <div class="col-12">
+                    <h3>Reconciliation Status</h3>
+                    <table>
+                        <thead><tr><th>Branch</th><th>Matched</th><th>Unmatched</th><th>Discrepancies</th></tr></thead>
+                        <tbody id="reconStatus"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verification -->
+        <div class="section hidden" id="tab-verification">
+            <div class="controls">
+                <select id="filterVerificationBranch" class="input" style="max-width: 220px;"></select>
+                <select id="filterStatus" class="input" style="max-width: 220px;">
+                    <option value="all">All</option>
+                    <option value="draft">Draft</option>
+                    <option value="verified">Verified</option>
+                    <option value="error">Error</option>
+                </select>
+                <button class="btn btn-info" onclick="loadVerification()">Refresh</button>
+            </div>
+            <div class="mt-12">
+                <table>
+                    <thead><tr><th>Distributor</th><th>SKU</th><th>Qty</th><th>Unit Price</th><th>Branch</th><th>Date</th><th>Status</th><th>Validation</th><th>Actions</th></tr></thead>
+                    <tbody id="verificationTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reconciliation -->
+        <div class="section hidden" id="tab-reconciliation">
+            <div class="controls">
+                <input class="input" id="reconStart" type="date" style="max-width: 220px;">
+                <input class="input" id="reconEnd" type="date" style="max-width: 220px;">
+                <button class="btn btn-info" onclick="runReconciliation()">Run Reconciliation</button>
+            </div>
+            <div class="mt-12">
+                <table>
+                    <thead><tr><th>Distributor</th><th>SKU</th><th>Qty</th><th>Value (Encoded)</th><th>Stock Qty</th><th>Finance Value</th><th>Status</th><th>Notes</th></tr></thead>
+                    <tbody id="reconTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reports & Submission -->
+        <div class="section hidden" id="tab-reports">
+            <div class="controls">
+                <input class="input" id="reportStart" type="date" style="max-width: 220px;">
+                <input class="input" id="reportEnd" type="date" style="max-width: 220px;">
+                <select id="reportBranch" class="input" style="max-width: 220px;"></select>
+                <button class="btn btn-success" onclick="generateEncodedSalesReport()">Generate Report</button>
+                <button class="btn btn-light" onclick="exportReportCsv()">Export CSV</button>
+                <button class="btn btn-light" onclick="printReportPdf()">Print PDF</button>
+                <button class="btn btn-primary" onclick="submitToManagement()">Submit to GM/Director</button>
+            </div>
+            <div class="mt-12" id="reportContainer"></div>
+        </div>
+
+        <!-- Audit Logs -->
+        <div class="section hidden" id="tab-audit">
+            <div class="controls">
+                <input class="input" id="auditStart" type="date" style="max-width: 220px;">
+                <input class="input" id="auditEnd" type="date" style="max-width: 220px;">
+                <select id="auditBranch" class="input" style="max-width: 220px;"></select>
+                <button class="btn btn-info" onclick="loadAuditLogs()">Load Logs</button>
+                <button class="btn btn-light" onclick="exportAuditCsv()">Export CSV</button>
+            </div>
+            <div class="mt-12">
+                <table>
+                    <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Record ID</th><th>Changes</th><th>Version</th></tr></thead>
+                    <tbody id="auditTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            loadCatalogs,
+            getBranches,
+            createSalesDraft,
+            verifySalesLines,
+            parseCsvFile,
+            getBranchSyncStatus,
+            reconcilePeriod,
+            buildEncodedSalesReport,
+            submitReport,
+            getAuditLogs,
+            exportCsv,
+            getDailyReceipts,
+            getReceiptsByDateRange,
+            getStockSoldPerBranch,
+            getMonthlyStockSoldReport,
+            exportStockSoldToExcel,
+            exportDailyReceiptsToExcel
+        } from './api/mis-sales.js';
+
+        let catalogs = { products: [], distributors: [] };
+        let currentUser = { username: 'mis.officer', fullName: 'MIS Officer', role: 'mis' };
+        let draft = { id: '', lines: [] };
+        let currentDailyReceipts = [];
+        let currentStockSold = [];
+
+        function $(id) { return document.getElementById(id); }
+
+        function setBranches(selectId) {
+            const branches = getBranches();
+            const el = $(selectId);
+            el.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+        }
+
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+            $(`tab-${name}`).classList.remove('hidden');
+        }
+
+        function addSalesLine() {
+            const line = {
+                tempId: 'L' + Date.now(),
+                distributorName: '',
+                distributorNb: '',
+                sku: '',
+                quantity: 1,
+                unitPrice: 0,
+                branch: $('branchSelect').value,
+                timestamp: $('txnDate').value || new Date().toISOString(),
+                status: 'draft',
+                validation: { distributor: null, product: null, notes: [] }
+            };
+            draft.lines.unshift(line);
+            renderEncodeTable();
+        }
+
+        function renderEncodeTable() {
+            const tbody = $('encodeTbody');
+            tbody.innerHTML = draft.lines.map(l => {
+                const valBadge = (valid) => valid === true ? '<span class="pill">OK</span>' : valid === false ? '<span class="status-badge status-error">Invalid</span>' : '<span class="help">Unchecked</span>';
+                const statusCls = l.status === 'verified' ? 'status-verified' : l.status === 'error' ? 'status-error' : 'status-draft';
+                const value = (Number(l.quantity) * Number(l.unitPrice) || 0).toFixed(2);
+                return `<tr>
+                    <td><input type="checkbox" data-id="${l.tempId}"></td>
+                    <td><span class="status-badge ${statusCls}">${l.status}</span></td>
+                    <td><input class="input" value="${l.distributorName||''}" oninput="onLineChange('${l.tempId}','distributorName',this.value)"></td>
+                    <td><input class="input" value="${l.distributorNb||''}" oninput="onLineChange('${l.tempId}','distributorNb',this.value)"></td>
+                    <td><input class="input" value="${l.sku||''}" oninput="onLineChange('${l.tempId}','sku',this.value)"></td>
+                    <td><input class="input" type="number" min="1" value="${l.quantity}" oninput="onLineChange('${l.tempId}','quantity',this.value)"></td>
+                    <td><input class="input" type="number" min="0" step="0.01" value="${l.unitPrice}" oninput="onLineChange('${l.tempId}','unitPrice',this.value)"></td>
+                    <td>
+                        <select class="input" onchange="onLineChange('${l.tempId}','branch',this.value)">
+                            ${getBranches().map(b => `<option value="${b.id}" ${b.id===l.branch?'selected':''}>${b.name}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td><input class="input" type="datetime-local" value="${toLocalInput(l.timestamp)}" oninput="onLineChange('${l.tempId}','timestamp',this.value)"></td>
+                    <td class="right">${value}</td>
+                    <td>${valBadge(l.validation?.distributor)} ${valBadge(l.validation?.product)}</td>
+                    <td><button class="btn btn-light" onclick="removeLine('${l.tempId}')">Remove</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function toLocalInput(iso) {
+            try { return iso ? new Date(iso).toISOString().slice(0,16) : ''; } catch { return ''; }
+        }
+
+        window.onLineChange = (id, field, value) => {
+            const i = draft.lines.findIndex(l => l.tempId === id);
+            if (i === -1) return;
+            draft.lines[i][field] = field === 'quantity' || field === 'unitPrice' ? Number(value) : value;
+        };
+
+        window.removeLine = (id) => {
+            draft.lines = draft.lines.filter(l => l.tempId !== id);
+            renderEncodeTable();
+        };
+
+        window.toggleAll = (el) => {
+            document.querySelectorAll('#encodeTbody input[type="checkbox"]').forEach(cb => cb.checked = el.checked);
+        };
+
+        async function saveDraft() {
+            draft.branch = $('branchSelect').value;
+            draft.timestamp = new Date().toISOString();
+            draft = await createSalesDraft(draft, currentUser, catalogs);
+            renderEncodeTable();
+            alert('Draft saved');
+        }
+
+        async function verifySelected() {
+            const ids = Array.from(document.querySelectorAll('#encodeTbody input[type="checkbox"]:checked')).map(cb => cb.getAttribute('data-id'));
+            if (ids.length === 0) { alert('Select at least one row'); return; }
+            draft = await verifySalesLines(draft, ids, currentUser, catalogs);
+            renderEncodeTable();
+        }
+
+        async function importCsv(e) {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const rows = await parseCsvFile(file);
+            // Expect headers: distributorName,distributorNb,sku,quantity,unitPrice,branch,timestamp
+            const mapped = rows.map(r => ({
+                tempId: 'L' + Date.now() + Math.random().toString(16).slice(2),
+                distributorName: r.distributorName || '',
+                distributorNb: r.distributorNb || '',
+                sku: r.sku || '',
+                quantity: Number(r.quantity || 1),
+                unitPrice: Number(r.unitPrice || 0),
+                branch: r.branch || $('branchSelect').value,
+                timestamp: r.timestamp || new Date().toISOString(),
+                status: 'draft',
+                validation: { distributor: null, product: null, notes: [] }
+            }));
+            draft.lines = [...mapped, ...draft.lines];
+            renderEncodeTable();
+        }
+
+        async function refreshBranchStatus() {
+            const date = $('integrationDate').value || new Date().toISOString().slice(0,10);
+            const status = await getBranchSyncStatus(date);
+            $('pendingUploads').innerHTML = status.pending.map(b => `<tr><td>${b.branch}</td><td>${b.pending}</td><td>${b.lastUpload || '-'}</td></tr>`).join('');
+            $('encodedPerBranch').innerHTML = status.encoded.map(b => `<tr><td>${b.branch}</td><td>${b.draft}</td><td>${b.verified}</td></tr>`).join('');
+            $('reconStatus').innerHTML = status.reconciliation.map(b => `<tr><td>${b.branch}</td><td>${b.matched}</td><td>${b.unmatched}</td><td>${b.discrepancies}</td></tr>`).join('');
+        }
+
+        async function loadVerification() {
+            // Minimal stub: reuse draft to display; real impl would query persisted storage
+            const branch = $('filterVerificationBranch').value;
+            const status = $('filterStatus').value;
+            const rows = draft.lines.filter(l => (branch ? l.branch === branch : true) && (status==='all' || l.status === status));
+            $('verificationTbody').innerHTML = rows.map(l => `<tr>
+                <td>${l.distributorName}</td><td>${l.sku}</td><td>${l.quantity}</td><td>${l.unitPrice}</td><td>${l.branch}</td><td>${new Date(l.timestamp).toLocaleString()}</td>
+                <td><span class="status-badge ${l.status==='verified'?'status-verified':l.status==='error'?'status-error':'status-draft'}">${l.status}</span></td>
+                <td>${(l.validation?.notes||[]).join('; ')}</td>
+                <td><button class="btn btn-light" onclick="/* future: open details */void 0">Details</button></td>
+            </tr>`).join('');
+        }
+
+        async function runReconciliation() {
+            const start = $('reconStart').value; const end = $('reconEnd').value;
+            const rows = await reconcilePeriod({ start, end });
+            $('reconTbody').innerHTML = rows.map(r => `<tr>
+                <td>${r.distributorName}</td><td>${r.sku}</td><td>${r.quantity}</td><td>${r.encodedValue.toFixed(2)}</td><td>${r.stockQty ?? '-'}</td><td>${(r.financeValue ?? 0).toFixed(2)}</td>
+                <td><span class="status-badge ${r.status==='matched'?'status-verified':'status-mismatch'}">${r.status}</span></td><td>${r.notes||''}</td>
+            </tr>`).join('');
+        }
+
+        async function generateEncodedSalesReport() {
+            const start = $('reportStart').value; const end = $('reportEnd').value; const branch = $('reportBranch').value || 'all';
+            const report = await buildEncodedSalesReport({ start, end, branch });
+            $('reportContainer').innerHTML = report.html;
+        }
+
+        async function exportReportCsv() {
+            const start = $('reportStart').value; const end = $('reportEnd').value; const branch = $('reportBranch').value || 'all';
+            const report = await buildEncodedSalesReport({ start, end, branch });
+            exportCsv('encoded-sales-report.csv', report.csvHeaders, report.csvRows);
+        }
+
+        function printReportPdf() {
+            window.print();
+        }
+
+        async function submitToManagement() {
+            const start = $('reportStart').value; const end = $('reportEnd').value; const branch = $('reportBranch').value || 'all';
+            const payload = await buildEncodedSalesReport({ start, end, branch });
+            await submitReport(payload.meta, ['GM', 'Director']);
+            alert('Report submitted to GM and Director');
+        }
+
+        async function loadAuditLogs() {
+            const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
+            const logs = await getAuditLogs({ start, end, branch });
+            $('auditTbody').innerHTML = logs.map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${l.user?.fullName||l.user?.username||''}</td><td>${l.action}</td><td>${l.recordId||''}</td><td>${l.diff||''}</td><td>${l.version||''}</td></tr>`).join('');
+        }
+
+        // Daily Receipts Functions
+        window.loadDailyReceipts = async function() {
+            const date = $('dailyReceiptDate').value || new Date().toISOString().slice(0, 10);
+            $('dailyReceiptDate').value = date;
+            currentDailyReceipts = await getDailyReceipts(date);
+            renderDailyReceipts();
+        };
+
+        window.refreshDailyReceipts = loadDailyReceipts;
+
+        function renderDailyReceipts() {
+            const tbody = $('dailyReceiptsTbody');
+            if (currentDailyReceipts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #999;">No receipts found for this date</td></tr>';
+                $('dailyReceiptTotal').textContent = 'Total Receipts: 0';
+                $('dailyReceiptAmount').textContent = 'Total Amount: N$ 0.00';
+                $('dailyReceiptBranches').textContent = 'Branches: 0';
+                return;
+            }
+
+            tbody.innerHTML = currentDailyReceipts.map(r => `<tr>
+                <td>${r.receiptNumber || r.id}</td>
+                <td><span class="pill">${r.type === 'prescription' ? 'Prescription' : 'Walk-in'}</span></td>
+                <td>${r.branch}</td>
+                <td>${r.clientName}</td>
+                <td>${r.date}</td>
+                <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
+                <td class="right">N$ ${r.totalAmount.toFixed(2)}</td>
+                <td>${(r.products || []).length}</td>
+            </tr>`).join('');
+
+            const totalAmount = currentDailyReceipts.reduce((sum, r) => sum + r.totalAmount, 0);
+            const uniqueBranches = new Set(currentDailyReceipts.map(r => r.branch));
+            $('dailyReceiptTotal').textContent = `Total Receipts: ${currentDailyReceipts.length}`;
+            $('dailyReceiptAmount').textContent = `Total Amount: N$ ${totalAmount.toFixed(2)}`;
+            $('dailyReceiptBranches').textContent = `Branches: ${uniqueBranches.size}`;
+        }
+
+        window.exportDailyReceiptsExcel = function() {
+            if (currentDailyReceipts.length === 0) {
+                alert('No receipts to export. Please load receipts first.');
+                return;
+            }
+            const date = $('dailyReceiptDate').value || new Date().toISOString().slice(0, 10);
+            exportDailyReceiptsToExcel(currentDailyReceipts, `daily-receipts-${date}.xlsx`);
+        };
+
+        // Stock Sold Functions
+        window.loadStockSold = async function() {
+            const start = $('stockSoldStartDate').value || new Date().toISOString().slice(0, 10);
+            const end = $('stockSoldEndDate').value || new Date().toISOString().slice(0, 10);
+            const branch = $('stockSoldBranchFilter').value || 'all';
+            
+            $('stockSoldStartDate').value = start;
+            $('stockSoldEndDate').value = end;
+            
+            currentStockSold = await getStockSoldPerBranch(start, end, branch);
+            renderStockSold();
+        };
+
+        function renderStockSold() {
+            const tbody = $('stockSoldTbody');
+            if (currentStockSold.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #999;">No stock sold data found for this period</td></tr>';
+                $('stockSoldTotalItems').textContent = 'Total Products: 0';
+                $('stockSoldTotalQty').textContent = 'Total Quantity: 0';
+                $('stockSoldTotalValue').textContent = 'Total Value: N$ 0.00';
+                return;
+            }
+
+            tbody.innerHTML = currentStockSold.map(item => `<tr>
+                <td>${item.branch}</td>
+                <td>${item.productName}</td>
+                <td class="right">${item.quantity}</td>
+                <td class="right">N$ ${item.amount.toFixed(2)}</td>
+            </tr>`).join('');
+
+            const totalQty = currentStockSold.reduce((sum, item) => sum + item.quantity, 0);
+            const totalValue = currentStockSold.reduce((sum, item) => sum + item.amount, 0);
+            const uniqueProducts = new Set(currentStockSold.map(item => item.productName));
+            
+            $('stockSoldTotalItems').textContent = `Total Products: ${uniqueProducts.size}`;
+            $('stockSoldTotalQty').textContent = `Total Quantity: ${totalQty}`;
+            $('stockSoldTotalValue').textContent = `Total Value: N$ ${totalValue.toFixed(2)}`;
+        }
+
+        window.exportStockSoldExcel = function() {
+            if (currentStockSold.length === 0) {
+                alert('No stock sold data to export. Please load data first.');
+                return;
+            }
+            const start = $('stockSoldStartDate').value || new Date().toISOString().slice(0, 10);
+            const end = $('stockSoldEndDate').value || new Date().toISOString().slice(0, 10);
+            exportStockSoldToExcel(currentStockSold, `stock-sold-${start}-to-${end}.xlsx`);
+        };
+
+        window.exportStockSoldByBranchExcel = async function() {
+            const start = $('stockSoldStartDate').value || new Date().toISOString().slice(0, 10);
+            const end = $('stockSoldEndDate').value || new Date().toISOString().slice(0, 10);
+            const branches = getBranches();
+            
+            for (const branch of branches) {
+                const branchData = await getStockSoldPerBranch(start, end, branch.id);
+                if (branchData.length > 0) {
+                    exportStockSoldToExcel(branchData, `stock-sold-${branch.id}-${start}-to-${end}.xlsx`);
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between downloads
+                }
+            }
+            alert(`Exported ${branches.length} branch files`);
+        };
+
+        // Monthly Reports Functions
+        window.loadMonthlyReport = async function() {
+            const year = parseInt($('monthlyYear').value) || new Date().getFullYear();
+            const month = parseInt($('monthlyMonth').value) || new Date().getMonth() + 1;
+            const branch = $('monthlyBranchFilter').value || 'all';
+            
+            const monthlyData = await getMonthlyStockSoldReport(year, month, branch);
+            renderMonthlyReport(monthlyData, year, month);
+        };
+
+        function renderMonthlyReport(data, year, month) {
+            // Summary by branch
+            const byBranch = new Map();
+            data.forEach(item => {
+                if (!byBranch.has(item.branch)) {
+                    byBranch.set(item.branch, { qty: 0, amount: 0 });
+                }
+                const b = byBranch.get(item.branch);
+                b.qty += item.quantity;
+                b.amount += item.amount;
+            });
+
+            $('monthlySummaryTbody').innerHTML = Array.from(byBranch.entries())
+                .map(([branch, stats]) => `<tr>
+                    <td>${branch}</td>
+                    <td class="right">${stats.qty}</td>
+                    <td class="right">N$ ${stats.amount.toFixed(2)}</td>
+                </tr>`).join('');
+
+            // Top products
+            const byProduct = new Map();
+            data.forEach(item => {
+                if (!byProduct.has(item.productName)) {
+                    byProduct.set(item.productName, { qty: 0, amount: 0 });
+                }
+                const p = byProduct.get(item.productName);
+                p.qty += item.quantity;
+                p.amount += item.amount;
+            });
+
+            const topProducts = Array.from(byProduct.entries())
+                .map(([product, stats]) => ({ product, ...stats }))
+                .sort((a, b) => b.amount - a.amount)
+                .slice(0, 10);
+
+            $('monthlyTopProductsTbody').innerHTML = topProducts
+                .map(p => `<tr>
+                    <td>${p.product}</td>
+                    <td class="right">${p.qty}</td>
+                    <td class="right">N$ ${p.amount.toFixed(2)}</td>
+                </tr>`).join('');
+
+            // Detailed view
+            $('monthlyDetailsTbody').innerHTML = data
+                .sort((a, b) => b.amount - a.amount)
+                .map(item => `<tr>
+                    <td>${item.branch}</td>
+                    <td>${item.productName}</td>
+                    <td class="right">${item.quantity}</td>
+                    <td class="right">N$ ${item.amount.toFixed(2)}</td>
+                </tr>`).join('');
+        }
+
+        window.exportMonthlyExcel = async function() {
+            const year = parseInt($('monthlyYear').value) || new Date().getFullYear();
+            const month = parseInt($('monthlyMonth').value) || new Date().getMonth() + 1;
+            const branch = $('monthlyBranchFilter').value || 'all';
+            
+            const monthlyData = await getMonthlyStockSoldReport(year, month, branch);
+            const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
+            const filename = branch === 'all' 
+                ? `monthly-stock-sold-${monthName}-${year}.xlsx`
+                : `monthly-stock-sold-${branch}-${monthName}-${year}.xlsx`;
+            exportStockSoldToExcel(monthlyData, filename);
+        };
+
+        // Init
+        (async function init() {
+            catalogs = await loadCatalogs();
+            setBranches('branchSelect');
+            setBranches('filterVerificationBranch');
+            setBranches('reportBranch');
+            setBranches('auditBranch');
+            setBranches('stockSoldBranchFilter');
+            setBranches('monthlyBranchFilter');
+            $('txnDate').value = new Date().toISOString().slice(0,16);
+            draft.id = 'DRAFT-' + Date.now();
+            renderEncodeTable();
+
+            // Set default dates
+            const today = new Date();
+            $('dailyReceiptDate').value = today.toISOString().slice(0, 10);
+            $('stockSoldStartDate').value = today.toISOString().slice(0, 10);
+            $('stockSoldEndDate').value = today.toISOString().slice(0, 10);
+            
+            // Set year dropdown
+            const yearSelect = $('monthlyYear');
+            const currentYear = today.getFullYear();
+            for (let y = currentYear - 2; y <= currentYear + 1; y++) {
+                const option = document.createElement('option');
+                option.value = y;
+                option.textContent = y;
+                if (y === currentYear) option.selected = true;
+                yearSelect.appendChild(option);
+            }
+            
+            // Set month dropdown
+            $('monthlyMonth').value = today.getMonth() + 1;
+            
+            // Load default daily receipts
+            await loadDailyReceipts();
+        })();
+    </script>
+</body>
+</html>
+
+

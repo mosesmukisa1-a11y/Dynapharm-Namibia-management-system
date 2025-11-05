@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+	<title>Bonus Payment Statement</title>
+	<style>
+		* { box-sizing: border-box; }
+		body { font-family: Arial, sans-serif; background:#f6f8fb; margin:0; padding:20px; }
+		.container { max-width: 1400px; margin: 0 auto; background:#fff; border-radius:12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); overflow:hidden; }
+		.header { background: linear-gradient(135deg,#c41e3a,#8b0000); color:#fff; padding:24px; }
+		.header h1 { margin:0 0 4px 0; font-size: 22px; }
+		.header p { margin:0; opacity:0.9; }
+		.content { padding:24px; }
+		.section { background:#fafbfc; border-left:4px solid #c41e3a; padding:16px; border-radius:8px; margin-bottom:16px; }
+		.controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+		select, button, input[type="month"] { padding:10px 12px; border:2px solid #e3e7ee; border-radius:8px; background:#fff; }
+		button { cursor:pointer; font-weight:600; }
+		.btn-primary { background:#c41e3a; color:#fff; border-color:#c41e3a; }
+		.btn-secondary { background:#34495e; color:#fff; border-color:#34495e; }
+		.stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin:16px 0; }
+		.stat-card { background:#fff; padding:16px; border-radius:8px; border:2px solid #e3e7ee; }
+		.stat-card h3 { margin:0 0 8px 0; font-size:12px; color:#6b7c93; text-transform:uppercase; }
+		.stat-card .value { font-size:24px; font-weight:bold; color:#334e68; }
+		.stat-card.paid { border-color:#27ae60; }
+		.stat-card.unpaid { border-color:#e74c3c; }
+		.stat-card.cash { border-color:#3498db; }
+		.stat-card.bank { border-color:#9b59b6; }
+		.table-wrap { overflow:auto; border:1px solid #e3e7ee; border-radius:8px; margin-top:16px; }
+		table { width:100%; border-collapse:collapse; min-width:1000px; }
+		th, td { padding:10px 12px; border-bottom:1px solid #eef2f7; text-align:left; }
+		th { background:#f2f5f9; position:sticky; top:0; z-index:1; }
+		.status-badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
+		.status-paid { background:#d4edda; color:#155724; }
+		.status-unpaid { background:#f8d7da; color:#721c24; }
+		.method-cash { background:#d1ecf1; color:#0c5460; }
+		.method-bank { background:#e2d9f3; color:#6f42c1; }
+		.hidden { display:none; }
+		.loading { text-align:center; padding:40px; color:#6b7c93; }
+		
+		/* Mobile Responsive Styles */
+		@media (max-width: 768px) {
+			body { padding: 12px !important; }
+			.container { max-width: 100% !important; }
+			.header { padding: 16px !important; }
+			.header h1 { font-size: 1.3rem !important; }
+			.header p { font-size: 0.85rem !important; }
+			.content { padding: 16px !important; }
+			.section { padding: 12px !important; margin-bottom: 12px !important; }
+			.controls { flex-direction: column !important; gap: 10px !important; }
+			select, button, input[type="month"] { 
+				width: 100% !important;
+				min-height: 44px;
+				font-size: 16px;
+			}
+			.stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+			.stat-card { padding: 12px !important; }
+			.stat-card .value { font-size: 1.5rem !important; }
+			.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+			table { min-width: 900px; }
+			th, td { padding: 8px 6px !important; font-size: 0.85rem !important; }
+			.loading { padding: 20px !important; }
+		}
+		
+		@media (max-width: 480px) {
+			.header h1 { font-size: 1.1rem !important; }
+			.stats-grid { grid-template-columns: 1fr !important; }
+			.stat-card .value { font-size: 1.3rem !important; }
+			.table-wrap { font-size: 0.8rem; }
+			th, td { padding: 6px 4px !important; font-size: 0.75rem !important; }
+			table { min-width: 800px; }
+		}
+		
+		/* Touch-friendly */
+		@media (hover: none) and (pointer: coarse) {
+			button { min-height: 44px; }
+			* { -webkit-tap-highlight-color: rgba(196, 30, 58, 0.2); }
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Bonus Payment Statement & Reconciliation</h1>
+			<p>Monthly bonus payment tracking – Cash payments (branches) and Bank payments (finance)</p>
+		</div>
+		<div class="content">
+			<div class="section">
+				<div class="controls">
+					<label style="font-size:13px; color:#334e68; font-weight:600;">Select Month:</label>
+					<input id="monthSelect" type="month" />
+					<button id="btnLoad" class="btn-primary">Load Statement</button>
+					<button id="btnExport" class="btn-secondary" disabled>Export CSV</button>
+				</div>
+			</div>
+
+			<div id="statementArea" class="hidden">
+				<div class="stats-grid" id="statsGrid"></div>
+				<div class="table-wrap">
+					<table id="statementTable">
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>DRN</th>
+								<th>Name</th>
+								<th>Stockist</th>
+								<th>Area</th>
+								<th>Amount (NAD)</th>
+								<th>Payment Method</th>
+								<th>Payment Status</th>
+								<th>Paid By</th>
+								<th>Payment Date</th>
+							</tr>
+						</thead>
+						<tbody id="statementBody"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<div id="loadingArea" class="loading hidden">
+				Loading statement...
+			</div>
+
+			<div id="noDataArea" class="loading">
+				Select a month and click "Load Statement" to view bonus payment reconciliation
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const els = {
+			month: document.getElementById('monthSelect'),
+			load: document.getElementById('btnLoad'),
+			export: document.getElementById('btnExport'),
+			statementArea: document.getElementById('statementArea'),
+			loadingArea: document.getElementById('loadingArea'),
+			noDataArea: document.getElementById('noDataArea'),
+			statsGrid: document.getElementById('statsGrid'),
+			body: document.getElementById('statementBody')
+		};
+
+		// Set default to current month
+		const today = new Date();
+		els.month.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+		let currentStatement = null;
+
+		function getApiBase() {
+			if (location.hostname.includes('railway.app')) {
+				return `${location.protocol}//${location.hostname}/api`;
+			} else if (location.hostname.includes('vercel.app')) {
+				return '/api';
+			} else {
+				return 'http://localhost:8001/api';
+			}
+		}
+
+		async function loadStatement() {
+			const month = els.month.value;
+			if (!month) {
+				alert('Please select a month');
+				return;
+			}
+
+			els.statementArea.classList.add('hidden');
+			els.loadingArea.classList.remove('hidden');
+			els.noDataArea.classList.add('hidden');
+
+			try {
+				const res = await fetch(`${getApiBase()}/bonus?action=statement&month=${month}`);
+				
+				if (!res.ok) {
+					throw new Error('Failed to load statement');
+				}
+
+				currentStatement = await res.json();
+				
+				if (!currentStatement || !currentStatement.items) {
+					els.loadingArea.classList.add('hidden');
+					els.noDataArea.classList.remove('hidden');
+					els.noDataArea.textContent = `No bonus upload found for ${month}. Please upload bonus CSV first.`;
+					return;
+				}
+
+				renderStatement(currentStatement);
+				els.loadingArea.classList.add('hidden');
+				els.statementArea.classList.remove('hidden');
+				els.export.disabled = false;
+
+			} catch (error) {
+				els.loadingArea.classList.add('hidden');
+				els.noDataArea.classList.remove('hidden');
+				els.noDataArea.textContent = `Error: ${error.message}. Please check API connection.`;
+				console.error('Error loading statement:', error);
+			}
+		}
+
+		function renderStatement(statement) {
+			// Render statistics
+			els.statsGrid.innerHTML = `
+				<div class="stat-card">
+					<h3>Total Records</h3>
+					<div class="value">${statement.totalRecords}</div>
+				</div>
+				<div class="stat-card unpaid">
+					<h3>Unpaid</h3>
+					<div class="value">${statement.unpaidRecords}</div>
+					<div style="font-size:12px; color:#6b7c93; margin-top:4px;">N$${statement.unpaidAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="stat-card paid">
+					<h3>Paid</h3>
+					<div class="value">${statement.paidRecords}</div>
+					<div style="font-size:12px; color:#6b7c93; margin-top:4px;">N$${statement.paidAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="stat-card cash">
+					<h3>Cash Payments</h3>
+					<div class="value">${statement.paymentBreakdown.cash}</div>
+					<div style="font-size:12px; color:#6b7c93; margin-top:4px;">N$${statement.paymentBreakdown.cashAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="stat-card bank">
+					<h3>Bank Payments</h3>
+					<div class="value">${statement.paymentBreakdown.bank}</div>
+					<div style="font-size:12px; color:#6b7c93; margin-top:4px;">N$${statement.paymentBreakdown.bankAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+				<div class="stat-card">
+					<h3>Total Amount</h3>
+					<div class="value">N$${statement.totalAmount.toLocaleString('en-NA', {minimumFractionDigits:2})}</div>
+				</div>
+			`;
+
+			// Render table
+			els.body.innerHTML = '';
+			statement.items.forEach((item, index) => {
+				const tr = document.createElement('tr');
+				const statusClass = item.paymentStatus === 'paid' ? 'status-paid' : 'status-unpaid';
+				const methodClass = item.paymentMethod === 'cash' ? 'method-cash' : (item.paymentMethod === 'bank' ? 'method-bank' : '');
+				
+				tr.innerHTML = `
+					<td>${index + 1}</td>
+					<td>${item.drn}</td>
+					<td>${item.name}</td>
+					<td>${item.stockist || ''}</td>
+					<td>${item.area || ''}</td>
+					<td>N$${item.amount.toLocaleString('en-NA', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+					<td>${item.paymentMethod ? `<span class="status-badge ${methodClass}">${item.paymentMethod.toUpperCase()}</span>` : '-'}</td>
+					<td><span class="status-badge ${statusClass}">${item.paymentStatus || 'UNPAID'}</span></td>
+					<td>${item.paidBy || '-'}</td>
+					<td>${item.paidAt ? new Date(item.paidAt).toLocaleDateString('en-NA') : '-'}</td>
+				`;
+				els.body.appendChild(tr);
+			});
+		}
+
+		function exportCSV() {
+			if (!currentStatement) return;
+
+			let csv = 'DRN,NAME,STOCKIST,AREA,AMOUNT (NAD),PAYMENT METHOD,PAYMENT STATUS,PAID BY,PAID DATE\n';
+			currentStatement.items.forEach(item => {
+				csv += `"${item.drn}","${item.name}","${item.stockist || ''}","${item.area || ''}",${item.amount},"${item.paymentMethod || ''}","${item.paymentStatus || 'unpaid'}","${item.paidBy || ''}","${item.paidAt ? new Date(item.paidAt).toLocaleDateString('en-NA') : ''}"\n`;
+			});
+
+			const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `bonus_statement_${els.month.value}.csv`;
+			a.click();
+			URL.revokeObjectURL(url);
+		}
+
+		els.load.addEventListener('click', loadStatement);
+		els.export.addEventListener('click', exportCSV);
+
+		// Auto-load on month change if statement was already loaded
+		els.month.addEventListener('change', () => {
+			if (!els.statementArea.classList.contains('hidden')) {
+				loadStatement();
+			}
+		});
+	</script>
+</body>
+</html>
+

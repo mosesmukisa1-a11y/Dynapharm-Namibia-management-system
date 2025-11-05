@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Portal</title>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; background: #f6f7f9; color: #222; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+        .header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 16px; }
+        .title { font-size: 20px; font-weight: 800; }
+        .muted { color: #667085; }
+        .row { display: flex; align-items: center; gap: 8px; }
+        .right { margin-left: auto; }
+        .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+        .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .tab { padding: 8px 12px; border: 1px solid #e5e7eb; border-bottom: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; }
+        .tab.active { border-color: #2563eb; color: #2563eb; }
+        .btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
+        .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .btn.success { background: #10b981; border-color: #10b981; color: #fff; }
+        .btn.warning { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+        .btn.danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+        .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+        .col-4 { grid-column: span 4; }
+        .col-8 { grid-column: span 8; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 12px; color: #475569; }
+        input, select, textarea { border: 1px solid #e5e7eb; padding: 10px; border-radius: 8px; background: #fff; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; border-bottom: 1px solid #eef2f7; text-align: left; }
+        th { background: #f8fafc; font-weight: 700; font-size: 12px; color: #475569; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; border: 1px solid #e5e7eb; font-size: 12px; }
+        .section { margin-top: 14px; }
+        .empty { padding: 12px; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fff; color: #64748b; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: #fff; margin: 5% auto; padding: 20px; border-radius: 10px; max-width: 600px; max-height: 90vh; overflow-y: auto; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: #000; }
+        .communication-list { max-height: 400px; overflow-y: auto; margin-bottom: 16px; }
+        .communication-message { padding: 12px; margin-bottom: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #2563eb; }
+        .communication-message.outgoing { background: #eff6ff; border-left-color: #10b981; }
+        .communication-meta { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+        .communication-body { color: #222; }
+        @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .col-4, .col-8 { grid-column: span 12; } }
+    </style>
+    <script defer src="./cloud-sync.js"></script>
+    <script defer src="./auto-cloud-sync.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">HR Portal</div>
+            <div class="row right muted" id="userInfo"></div>
+        </div>
+
+        <div class="tabs" id="tabs">
+            <div class="tab" data-tab="employees" onclick="switchTab('employees')">👤 Employee Management</div>
+            <div class="tab" data-tab="leave" onclick="switchTab('leave')">📅 Leave Management</div>
+            <div class="tab" data-tab="warnings" onclick="switchTab('warnings')">⚠️ Warnings & Disciplinary</div>
+            <div class="tab" data-tab="terminations" onclick="switchTab('terminations')">🚪 Terminations</div>
+            <div class="tab active" data-tab="attendance" onclick="switchTab('attendance')">🕐 Attendance</div>
+            <div class="tab" data-tab="performance" onclick="switchTab('performance')">📊 Performance Review</div>
+            <div class="tab" data-tab="communication" onclick="switchTab('communication')">💬 Staff Communication</div>
+            <div class="tab" data-tab="data-collection" onclick="switchTab('data-collection')">📋 Data Collection</div>
+        </div>
+
+        <div class="section" id="content"></div>
+    </div>
+
+    <script>
+        const HR_ALLOWED_ROLES = ['hr_manager','hr_admin','admin'];
+
+        function getCurrentUser() {
+            try {
+                const raw = localStorage.getItem('currentUser');
+                return raw ? JSON.parse(raw) : null;
+            } catch { return null; }
+        }
+
+        function ensureHR() {
+            const user = getCurrentUser();
+            if (!user || !HR_ALLOWED_ROLES.includes(user.role)) {
+                document.body.innerHTML = '<div class="container"><div class="card"><div class="row" style="justify-content:space-between"><div class="title">Access denied</div><a class="btn" href="./index.html">Go to main system</a></div><p class="muted">You must be logged in as HR/Admin to view this page.</p></div></div>';
+                return false;
+            }
+            document.getElementById('userInfo').textContent = `${user.fullName||user.username} • ${user.role}`;
+            return true;
+        }
+
+        async function api(path, options={}){
+            const url = path.startsWith('/api/') ? path : `/api${path.startsWith('/')?'':'/'}${path}`;
+            const user = getCurrentUser();
+            const headers = { 'Content-Type':'application/json', 'X-Role': (user?.role||'') };
+            const res = await fetch(url, { headers, ...options });
+            if(!res.ok) throw new Error(`API ${res.status}`);
+            return res.json();
+        }
+
+        function switchTab(tab){
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+            if(tab==='attendance') renderAttendance();
+            if(tab==='leave') renderLeave();
+            if(tab==='employees') renderEmployees();
+            if(tab==='warnings') renderWarnings();
+            if(tab==='terminations') renderTerminations();
+            if(tab==='performance') renderPerformance();
+            if(tab==='communication') renderCommunication();
+            if(tab==='data-collection') renderDataCollection();
+        }
+
+        function formatDate(d){ return new Date(d).toISOString().split('T')[0]; }
+
+        async function renderAttendance(){
+            const container = document.getElementById('content');
+            const today = formatDate(new Date());
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>Branch</label><select id="attBranch"><option value="">All</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                            <div class="field"><label>Date</label><input type="date" id="attDate" value="${today}"></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn" onclick="renderAttendance()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section grid">
+                    <div class="col-4">
+                        <div class="card">
+                            <div class="title" style="font-size:16px;">Quick Check-in/Out</div>
+                            <div class="section">
+                                <div class="field"><label>Full Name</label><input id="attName" placeholder="Employee name"></div>
+                                <div class="field"><label>User ID</label><input id="attUserId" placeholder="STAFF-ID"></div>
+                                <div class="field"><label>Branch</label><select id="attCIBranch"><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                <div class="field"><label>Date</label><input type="date" id="attCIDate" value="${today}"></div>
+                            </div>
+                            <div class="row" style="gap:6px; margin-top:8px;">
+                                <button class="btn primary" onclick="checkIn()">Check-in</button>
+                                <button class="btn success" onclick="checkOut()">Check-out</button>
+                            </div>
+                        </div>
+                        <div class="card section">
+                            <div class="title" style="font-size:16px;">Request Correction</div>
+                            <div class="section">
+                                <div class="field"><label>Attendance ID</label><input id="corrId" placeholder="ATT-..."></div>
+                                <div class="field"><label>New Check-in (HH:MM)</label><input id="corrIn" placeholder="08:00"></div>
+                                <div class="field"><label>New Check-out (HH:MM)</label><input id="corrOut" placeholder="17:00"></div>
+                                <div class="field"><label>Reason</label><textarea id="corrReason" rows="3" placeholder="Explain the correction"></textarea></div>
+                            </div>
+                            <div class="row" style="gap:6px; margin-top:8px;">
+                                <button class="btn warning" onclick="requestCorrection()">Submit Correction</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card" id="attTable"><div class="muted">Loading...</div></div>
+                    </div>
+                </div>
+            `;
+            const branch = document.getElementById('attBranch').value;
+            const date = document.getElementById('attDate').value;
+            const qs = new URLSearchParams({ ...(branch?{branch}:{}) , ...(date?{date}:{}) });
+            const data = await api(`/attendance?${qs.toString()}`);
+            const rows = data.map(a => `
+                <tr>
+                    <td>${a.fullName||a.userId}</td>
+                    <td>${a.branch}</td>
+                    <td>${a.date}</td>
+                    <td><span class="pill">${a.status||'present'}</span></td>
+                    <td>${a.checkIn||''}</td>
+                    <td>${a.checkOut||''}</td>
+                    <td class="row" style="gap:6px;">
+                        <button class="btn" onclick="approveCorrection('${a.id}')">Approve Correction</button>
+                        <button class="btn danger" onclick="deleteAttendance('${a.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('attTable').innerHTML = data.length ? `
+                <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+                    <div class="muted">${data.length} record(s)</div>
+                    <div class="row" style="gap:6px;">
+                        <button class="btn" onclick="downloadCSV('attendance', ${JSON.stringify(today)} )">Export CSV</button>
+                    </div>
+                </div>
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Staff</th><th>Branch</th><th>Date</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Actions</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No attendance records found.</div>`;
+        }
+
+        async function checkIn(){
+            const payload = {
+                id: undefined,
+                userId: document.getElementById('attUserId').value.trim(),
+                fullName: document.getElementById('attName').value.trim(),
+                branch: document.getElementById('attCIBranch').value,
+                date: document.getElementById('attCIDate').value,
+                checkIn: new Date().toTimeString().slice(0,8),
+                status: 'present'
+            };
+            if(!payload.userId || !payload.fullName){ alert('Enter employee name and user ID'); return; }
+            await api('/attendance', { method:'POST', body: JSON.stringify(payload) });
+            renderAttendance();
+        }
+        async function checkOut(){
+            const branch = document.getElementById('attCIBranch').value;
+            const date = document.getElementById('attCIDate').value;
+            const userId = document.getElementById('attUserId').value.trim();
+            if(!userId){ alert('Enter user ID'); return; }
+            const qs = new URLSearchParams({ branch, date, userId });
+            const list = await api(`/attendance?${qs.toString()}`);
+            const latest = list.sort((a,b)=> (a.createdAt||'').localeCompare(b.createdAt||'' )).pop();
+            if(!latest){ alert('No check-in found for that user/date/branch'); return; }
+            await api('/attendance', { method:'PUT', body: JSON.stringify({ id: latest.id, checkOut: new Date().toTimeString().slice(0,8) }) });
+            renderAttendance();
+        }
+        async function requestCorrection(){
+            const id = document.getElementById('corrId').value.trim();
+            const corrIn = document.getElementById('corrIn').value.trim();
+            const corrOut = document.getElementById('corrOut').value.trim();
+            const reason = document.getElementById('corrReason').value.trim();
+            if(!id || (!corrIn && !corrOut) || !reason){ alert('Fill ID, a time, and reason'); return; }
+            await api('/attendance', { method:'PUT', body: JSON.stringify({ id, correctionRequested: true, correctionReason: reason, proposedCheckIn: corrIn||undefined, proposedCheckOut: corrOut||undefined }) });
+            renderAttendance();
+        }
+        async function approveCorrection(id){
+            // Fetch record to see proposed fields
+            const rec = (await api(`/attendance`)).find(x=>x.id===id);
+            if(!rec){ alert('Record not found'); return; }
+            const update = { id, correctionRequested: false, correctionApprovedBy: (getCurrentUser()?.fullName||'HR') };
+            if(rec.proposedCheckIn) update.checkIn = rec.proposedCheckIn;
+            if(rec.proposedCheckOut) update.checkOut = rec.proposedCheckOut;
+            await api('/attendance', { method:'PUT', body: JSON.stringify(update) });
+            renderAttendance();
+        }
+        async function deleteAttendance(id){
+            if(!confirm('Delete this attendance record?')) return;
+            await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+            renderAttendance();
+        }
+
+        async function renderLeave(){
+            const container = document.getElementById('content');
+            const today = formatDate(new Date());
+            container.innerHTML = `
+                <div class="grid">
+                    <div class="col-4">
+                        <div class="card">
+                            <div class="title" style="font-size:16px;">New Leave Request</div>
+                            <div class="section">
+                                <div class="field"><label>Full Name</label><input id="lvName" placeholder="Employee name"></div>
+                                <div class="field"><label>User ID</label><input id="lvUserId" placeholder="STAFF-ID"></div>
+                                <div class="field"><label>Branch</label><select id="lvBranch"><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                <div class="field"><label>Type</label><select id="lvType"><option>Annual</option><option>Sick</option><option>Maternity</option><option>Paternity</option><option>Unpaid</option></select></div>
+                                <div class="field"><label>Start Date</label><input type="date" id="lvStart" value="${today}"></div>
+                                <div class="field"><label>End Date</label><input type="date" id="lvEnd" value="${today}"></div>
+                                <div class="field"><label>Reason</label><textarea id="lvReason" rows="3" placeholder="Reason"></textarea></div>
+                            </div>
+                            <div class="row" style="margin-top:10px;">
+                                <button class="btn primary" onclick="submitLeave()">Submit</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card">
+                            <div class="row" style="justify-content:space-between; gap:8px;">
+                                <div class="row" style="gap:8px; flex-wrap:wrap;">
+                                    <div class="field"><label>Status</label><select id="lvFilterStatus"><option value="">All</option><option>pending</option><option>approved</option><option>rejected</option><option>active</option></select></div>
+                                    <div class="field"><label>Branch</label><select id="lvFilterBranch"><option value="">All</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                </div>
+                                <div class="row" style="gap:6px;">
+                                    <button class="btn" onclick="renderLeave()">Refresh</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="section card" id="lvTable"><div class="muted">Loading...</div></div>
+                    </div>
+                </div>
+            `;
+            const qs = new URLSearchParams({
+                ...(document.getElementById('lvFilterStatus').value ? { status: document.getElementById('lvFilterStatus').value } : {}),
+                ...(document.getElementById('lvFilterBranch').value ? { branch: document.getElementById('lvFilterBranch').value } : {}),
+            });
+            const data = await api(`/leave?${qs.toString()}`);
+            const rows = data.map(l => `
+                <tr>
+                    <td>${l.fullName||l.userId}</td>
+                    <td>${l.branch}</td>
+                    <td>${l.type}</td>
+                    <td>${l.startDate} → ${l.endDate}</td>
+                    <td><span class="pill">${l.status}</span></td>
+                    <td class="row" style="gap:6px;">
+                        <button class="btn success" onclick="approveLeave('${l.id}')">Approve</button>
+                        <button class="btn warning" onclick="rejectLeave('${l.id}')">Reject</button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('lvTable').innerHTML = data.length ? `
+                <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+                    <div class="muted">${data.length} request(s)</div>
+                    <div class="row" style="gap:6px;">
+                        <button class="btn" onclick="downloadCSV('leave')">Export CSV</button>
+                    </div>
+                </div>
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Employee</th><th>Branch</th><th>Type</th><th>Period</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No leave requests found.</div>`;
+        }
+
+        async function submitLeave(){
+            const payload = {
+                userId: document.getElementById('lvUserId').value.trim(),
+                fullName: document.getElementById('lvName').value.trim(),
+                branch: document.getElementById('lvBranch').value,
+                type: document.getElementById('lvType').value,
+                startDate: document.getElementById('lvStart').value,
+                endDate: document.getElementById('lvEnd').value,
+                days: Math.max(1, Math.ceil((new Date(document.getElementById('lvEnd').value) - new Date(document.getElementById('lvStart').value)) / (1000*60*60*24) + 1)),
+                status: 'pending',
+                reason: document.getElementById('lvReason').value.trim(),
+                submittedAt: new Date().toISOString()
+            };
+            if(!payload.userId || !payload.fullName){ alert('Please enter employee name and user ID'); return; }
+            await api('/leave', { method:'POST', body: JSON.stringify(payload) });
+            renderLeave();
+        }
+
+        async function approveLeave(id){
+            await api('/leave', { method: 'PUT', body: JSON.stringify({ id, status:'approved', approvedBy: (getCurrentUser()?.fullName||'HR') }) });
+            renderLeave();
+        }
+        async function rejectLeave(id){
+            await api('/leave', { method: 'PUT', body: JSON.stringify({ id, status:'rejected', approvedBy: (getCurrentUser()?.fullName||'HR') }) });
+            renderLeave();
+        }
+
+        function toCSV(rows){
+            if(!rows || !rows.length) return '';
+            const keys = Object.keys(rows[0]);
+            const esc = v => (v==null?'':String(v).replace(/"/g,'""'));
+            const head = keys.join(',');
+            const body = rows.map(r => keys.map(k => `"${esc(r[k])}"`).join(',')).join('\n');
+            return `${head}\n${body}`;
+        }
+        async function downloadCSV(kind){
+            try{
+                let rows = [];
+                if(kind==='attendance'){
+                    const branch = document.getElementById('attBranch').value; const date = document.getElementById('attDate').value;
+                    const qs = new URLSearchParams({ ...(branch?{branch}:{}) , ...(date?{date}:{}) });
+                    rows = await api(`/attendance?${qs.toString()}`);
+                } else {
+                    const status = document.getElementById('lvFilterStatus').value; const branch = document.getElementById('lvFilterBranch').value;
+                    const qs = new URLSearchParams({ ...(status?{status}:{}) , ...(branch?{branch}:{}) });
+                    rows = await api(`/leave?${qs.toString()}`);
+                }
+                const csv = toCSV(rows);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${kind}-export-${Date.now()}.csv`; a.click();
+            } catch(e){ alert('Export failed'); }
+        }
+
+        async function renderEmployees(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="grid">
+                    <div class="col-4">
+                        <div class="card">
+                            <div class="title" style="font-size:16px;">Add Employee</div>
+                            <div class="section">
+                                <div class="field"><label>Full Name</label><input id="empName" placeholder="Full Name"></div>
+                                <div class="field"><label>User ID</label><input id="empUserId" placeholder="STAFF-ID"></div>
+                                <div class="field"><label>Role</label><select id="empRole"><option>consultant</option><option>dispenser</option><option>manager</option><option>admin</option><option>hr_manager</option><option>hr_admin</option></select></div>
+                                <div class="field"><label>Branch</label><select id="empBranch"><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                <div class="field"><label>Hire Date</label><input type="date" id="empHire"></div>
+                                <div class="field"><label>Email</label><input id="empEmail" type="email"></div>
+                                <div class="field"><label>Phone</label><input id="empPhone" type="tel"></div>
+                            </div>
+                            <div class="row" style="margin-top:10px;">
+                                <button class="btn primary" onclick="addEmployee()">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card">
+                            <div class="row" style="justify-content:space-between; gap:8px;">
+                                <div class="row" style="gap:8px; flex-wrap:wrap;">
+                                    <div class="field"><label>Branch</label><select id="empFilterBranch"><option value="">All</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                    <div class="field"><label>Role</label><select id="empFilterRole"><option value="">All</option><option>consultant</option><option>dispenser</option><option>manager</option><option>admin</option><option>hr_manager</option><option>hr_admin</option></select></div>
+                                    <div class="field"><label>Search</label><input id="empFilterQ" placeholder="Name/Email/UserID"></div>
+                                </div>
+                                <div class="row" style="gap:6px;">
+                                    <button class="btn" onclick="renderEmployees()">Refresh</button>
+                                    <button class="btn" onclick="downloadEmployees()">Export CSV</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="section card" id="empTable"><div class="muted">Loading...</div></div>
+                    </div>
+                </div>
+            `;
+            const qs = new URLSearchParams({
+                ...(document.getElementById('empFilterBranch').value ? { branch: document.getElementById('empFilterBranch').value } : {}),
+                ...(document.getElementById('empFilterRole').value ? { role: document.getElementById('empFilterRole').value } : {}),
+                ...(document.getElementById('empFilterQ').value ? { q: document.getElementById('empFilterQ').value } : {}),
+            });
+            const data = await api(`/employees?${qs.toString()}`);
+            const rows = data.map(e => `
+                <tr>
+                    <td>${e.fullName}</td>
+                    <td>${e.userId}</td>
+                    <td>${e.role}</td>
+                    <td>${e.branch}</td>
+                    <td>${e.hireDate||''}</td>
+                    <td class="row" style="gap:6px;">
+                        <button class="btn" onclick="editEmployee('${e.id}')">Edit</button>
+                        <button class="btn danger" onclick="deleteEmployee('${e.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('empTable').innerHTML = data.length ? `
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Name</th><th>User ID</th><th>Role</th><th>Branch</th><th>Hire Date</th><th>Actions</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No employees found.</div>`;
+        }
+        async function addEmployee(){
+            const payload = {
+                fullName: document.getElementById('empName').value.trim(),
+                userId: document.getElementById('empUserId').value.trim(),
+                role: document.getElementById('empRole').value,
+                branch: document.getElementById('empBranch').value,
+                hireDate: document.getElementById('empHire').value,
+                email: document.getElementById('empEmail').value,
+                phone: document.getElementById('empPhone').value
+            };
+            if(!payload.fullName || !payload.userId){ alert('Full name and User ID are required'); return; }
+            await api('/employees', { method:'POST', body: JSON.stringify(payload) });
+            renderEmployees();
+        }
+        async function editEmployee(id){
+            const list = await api('/employees');
+            const emp = list.find(e=>e.id===id);
+            if(!emp) return;
+            const name = prompt('Full Name', emp.fullName);
+            if(name===null) return;
+            await api('/employees', { method:'PUT', body: JSON.stringify({ id, fullName: name }) });
+            renderEmployees();
+        }
+        async function deleteEmployee(id){
+            if(!confirm('Delete this employee?')) return;
+            await fetch(`/api/employees?id=${encodeURIComponent(id)}`, { method:'DELETE' });
+            renderEmployees();
+        }
+
+        async function downloadEmployees(){
+            const rows = await api('/employees');
+            const csv = toCSV(rows);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `employees-export-${Date.now()}.csv`; a.click();
+        }
+
+        async function renderShifts(){
+            const container = document.getElementById('content');
+            const today = new Date().toISOString().split('T')[0];
+            container.innerHTML = `
+                <div class="grid">
+                    <div class="col-4">
+                        <div class="card">
+                            <div class="title" style="font-size:16px;">Create Shift</div>
+                            <div class="section">
+                                <div class="field"><label>User ID</label><input id="shUserId" placeholder="STAFF-ID"></div>
+                                <div class="field"><label>Full Name</label><input id="shName" placeholder="Full Name"></div>
+                                <div class="field"><label>Branch</label><select id="shBranch"><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                <div class="field"><label>Date</label><input type="date" id="shDate" value="${today}"></div>
+                                <div class="field"><label>Start</label><input id="shStart" placeholder="08:00"></div>
+                                <div class="field"><label>End</label><input id="shEnd" placeholder="17:00"></div>
+                            </div>
+                            <div class="row" style="margin-top:10px;">
+                                <button class="btn primary" onclick="createShift()">Save</button>
+                            </div>
+                        </div>
+                        <div class="card section">
+                            <div class="title" style="font-size:16px;">Request Swap</div>
+                            <div class="section">
+                                <div class="field"><label>Shift ID</label><input id="swapShiftId" placeholder="SHF-..."></div>
+                                <div class="field"><label>Target User ID</label><input id="swapTarget" placeholder="STAFF-..."></div>
+                            </div>
+                            <div class="row" style="gap:6px; margin-top:8px;">
+                                <button class="btn warning" onclick="requestSwap()">Request Swap</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card">
+                            <div class="row" style="justify-content:space-between; gap:8px;">
+                                <div class="row" style="gap:8px; flex-wrap:wrap;">
+                                    <div class="field"><label>Branch</label><select id="shFilterBranch"><option value="">All</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                    <div class="field"><label>Status</label><select id="shFilterStatus"><option value="">All</option><option>scheduled</option><option>completed</option><option>swap_requested</option><option>swap_approved</option></select></div>
+                                </div>
+                                <div class="row" style="gap:6px;">
+                                    <button class="btn" onclick="renderShifts()">Refresh</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="section card" id="shTable"><div class="muted">Loading...</div></div>
+                    </div>
+                </div>
+            `;
+            const qs = new URLSearchParams({
+                ...(document.getElementById('shFilterBranch').value ? { branch: document.getElementById('shFilterBranch').value } : {}),
+                ...(document.getElementById('shFilterStatus').value ? { status: document.getElementById('shFilterStatus').value } : {}),
+            });
+            const data = await api(`/shifts?${qs.toString()}`);
+            const rows = data.map(s => `
+                <tr>
+                    <td>${s.fullName||s.userId}</td>
+                    <td>${s.branch}</td>
+                    <td>${s.date}</td>
+                    <td>${s.startTime} - ${s.endTime}</td>
+                    <td><span class="pill">${s.status}</span></td>
+                    <td class="row" style="gap:6px;">
+                        <button class="btn" onclick="approveSwap('${s.id}')">Approve Swap</button>
+                        <button class="btn danger" onclick="deleteShift('${s.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('shTable').innerHTML = data.length ? `
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Employee</th><th>Branch</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No shifts found.</div>`;
+        }
+        async function createShift(){
+            const payload = {
+                userId: document.getElementById('shUserId').value.trim(),
+                fullName: document.getElementById('shName').value.trim(),
+                branch: document.getElementById('shBranch').value,
+                date: document.getElementById('shDate').value,
+                startTime: document.getElementById('shStart').value,
+                endTime: document.getElementById('shEnd').value
+            };
+            if(!payload.userId || !payload.fullName){ alert('User ID and name required'); return; }
+            await api('/shifts', { method:'POST', body: JSON.stringify(payload) });
+            renderShifts();
+        }
+        async function requestSwap(){
+            const id = document.getElementById('swapShiftId').value.trim();
+            const target = document.getElementById('swapTarget').value.trim();
+            if(!id || !target){ alert('Shift ID and target user required'); return; }
+            await api('/shifts', { method:'PUT', body: JSON.stringify({ id, status:'swap_requested', swap: { requestedBy: (getCurrentUser()?.userId||'HR'), requestedAt: new Date().toISOString(), targetUserId: target } }) });
+            renderShifts();
+        }
+        async function approveSwap(id){
+            const list = await api('/shifts');
+            const sh = list.find(s=>s.id===id);
+            if(!sh || !sh.swap || !sh.swap.targetUserId){ alert('No swap requested'); return; }
+            await api('/shifts', { method:'PUT', body: JSON.stringify({ id, status:'swap_approved', swap:{ ...sh.swap, approvedBy:(getCurrentUser()?.fullName||'HR'), approvedAt:new Date().toISOString() } }) });
+            renderShifts();
+        }
+        async function deleteShift(id){
+            if(!confirm('Delete this shift?')) return;
+            await fetch(`/api/shifts?id=${encodeURIComponent(id)}`, { method:'DELETE' });
+            renderShifts();
+        }
+
+        async function renderApprovals(){
+            const container = document.getElementById('content');
+            container.innerHTML = `<div class="card"><div class="muted">Unified approvals: pending leave (status=pending), attendance corrections (correctionRequested=true), shift swaps (status=swap_requested)</div></div><div class="section grid"><div class="col-12" id="apBody"><div class="muted">Loading...</div></div></div>`;
+            const [leaves, attendance, shifts] = await Promise.all([
+                api('/leave?status=pending'),
+                api('/attendance'),
+                api('/shifts?status=swap_requested')
+            ]);
+            const corr = attendance.filter(a => a.correctionRequested);
+            const rows = [
+                ...leaves.map(l=>({ type:'Leave', id:l.id, who:(l.fullName||l.userId), detail:`${l.type} ${l.startDate} → ${l.endDate}`, action:`<button class=\"btn success\" onclick=\"approveLeave('${l.id}')\">Approve</button> <button class=\"btn warning\" onclick=\"rejectLeave('${l.id}')\">Reject</button>` })),
+                ...corr.map(a=>({ type:'Attendance Correction', id:a.id, who:(a.fullName||a.userId), detail:`Proposed ${a.proposedCheckIn||''} - ${a.proposedCheckOut||''}`, action:`<button class=\"btn\" onclick=\"approveCorrection('${a.id}')\">Approve</button>` })),
+                ...shifts.map(s=>({ type:'Shift Swap', id:s.id, who:(s.fullName||s.userId), detail:`Swap target ${s.swap?.targetUserId||''}`, action:`<button class=\"btn\" onclick=\"approveSwap('${s.id}')\">Approve</button>` }))
+            ];
+            document.getElementById('apBody').innerHTML = rows.length ? `
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Type</th><th>ID</th><th>Employee</th><th>Detail</th><th>Action</th></tr></thead>
+                        <tbody>${rows.map(r=>`<tr><td>${r.type}</td><td>${r.id}</td><td>${r.who}</td><td>${r.detail}</td><td>${r.action}</td></tr>`).join('')}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No pending approvals.</div>`;
+        }
+
+        async function renderReports(){
+            const container = document.getElementById('content');
+            container.innerHTML = `<div class="grid"><div class="col-12 card"><div class="title" style="font-size:16px;">HR Reports</div><div class="section"><div class="row" style="gap:6px; flex-wrap:wrap;"><button class="btn" onclick="reportAbsenteeism()">Absenteeism</button><button class="btn" onclick="reportLeaveUtilization()">Leave Utilization</button><button class="btn" onclick="reportHeadcount()">Headcount</button></div></div><div class="section" id="repOut"><div class="muted">Select a report.</div></div></div></div>`;
+        }
+        async function reportAbsenteeism(){
+            const att = await api('/attendance');
+            const byBranch = {};
+            att.forEach(a => { const k = a.branch; byBranch[k] = byBranch[k]||{ total:0, absent:0, late:0 }; byBranch[k].total++; if(a.status==='absent') byBranch[k].absent++; if(a.status==='late') byBranch[k].late++; });
+            const rows = Object.entries(byBranch).map(([b,v])=>({ branch:b, total:v.total, absent:v.absent, late:v.late, absentRate: ((v.absent/v.total)*100).toFixed(1)+'%' }));
+            document.getElementById('repOut').innerHTML = rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>Branch</th><th>Total Days</th><th>Absent</th><th>Late</th><th>Absent %</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.branch}</td><td>${r.total}</td><td>${r.absent}</td><td>${r.late}</td><td>${r.absentRate}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No data.</div>`;
+        }
+        async function reportLeaveUtilization(){
+            const leaves = await api('/leave');
+            const usedByUser = {};
+            leaves.filter(l=>l.status==='approved' || l.status==='active').forEach(l => { const k = l.userId; usedByUser[k] = (usedByUser[k] || 0) + (l.days||0); });
+            const employees = await api('/employees');
+            const rows = employees.map(e => ({ name:e.fullName, userId:e.userId, annualAllowed:(e.leaveEntitlements?.annual||24), annualUsed:(usedByUser[e.userId]||0) }));
+            document.getElementById('repOut').innerHTML = rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>Employee</th><th>User ID</th><th>Annual Allowed</th><th>Annual Used</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.name}</td><td>${r.userId}</td><td>${r.annualAllowed}</td><td>${r.annualUsed}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No data.</div>`;
+        }
+        async function reportHeadcount(){
+            const employees = await api('/employees');
+            const byBranch = {};
+            employees.forEach(e => { byBranch[e.branch] = (byBranch[e.branch]||0)+1; });
+            const rows = Object.entries(byBranch).map(([b,c])=>({ branch:b, count:c }));
+            document.getElementById('repOut').innerHTML = rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>Branch</th><th>Headcount</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.branch}</td><td>${r.count}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No data.</div>`;
+        }
+
+        // Notification bell
+        (function setupBell(){
+            const header = document.querySelector('.header');
+            if(!header) return;
+            const bell = document.createElement('button');
+            bell.className = 'btn';
+            bell.id = 'notifBell';
+            bell.style.position = 'relative';
+            bell.textContent = 'Notifications';
+            const dot = document.createElement('span');
+            dot.id = 'notifDot';
+            dot.style.position = 'absolute'; dot.style.top = '-4px'; dot.style.right = '-4px'; dot.style.background = '#ef4444'; dot.style.borderRadius = '999px'; dot.style.width = '10px'; dot.style.height = '10px';
+            bell.appendChild(dot);
+            header.appendChild(bell);
+            async function refresh(){
+                try { const list = await api('/notifications?unread=1'); dot.style.display = list.length? 'inline-block':'none'; bell.setAttribute('data-count', String(list.length)); }
+                catch { dot.style.display = 'none'; }
+            }
+            bell.addEventListener('click', async () => {
+                try {
+                    const list = await api('/notifications?unread=1');
+                    alert(list.map(n => `${n.title}: ${n.message}`).join('\n') || 'No unread notifications');
+                    for (const n of list) { await api('/notifications', { method:'PUT', body: JSON.stringify({ id:n.id, read:true }) }); }
+                    refresh();
+                } catch {}
+            });
+            refresh(); setInterval(refresh, 15000);
+        })();
+
+        // Print styles for reports and timesheets
+        (function(){
+            const style = document.createElement('style');
+            style.textContent = '@media print { .tabs, .header .btn, .row button { display:none !important; } table { font-size:12px; } }';
+            document.head.appendChild(style);
+        })();
+
+        async function renderTimesheets(){
+            const container = document.getElementById('content');
+            const today = new Date();
+            const end = new Date(today); const start = new Date(today); start.setDate(start.getDate()-6);
+            const ymd = d => new Date(d).toISOString().split('T')[0];
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>User ID (optional)</label><input id="tsUserId" placeholder="STAFF-ID"></div>
+                            <div class="field"><label>Branch</label><select id="tsBranch"><option value="">All</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                            <div class="field"><label>Start</label><input type="date" id="tsStart" value="${ymd(start)}"></div>
+                            <div class="field"><label>End</label><input type="date" id="tsEnd" value="${ymd(end)}"></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn" onclick="setTsRange('week')">This Week</button>
+                            <button class="btn" onclick="setTsRange('month')">This Month</button>
+                            <button class="btn" onclick="renderTimesheets()">Generate</button>
+                            <button class="btn" onclick="downloadTimesheet()">Export CSV</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section card" id="tsTable"><div class="muted">Loading...</div></div>
+            `;
+            const branch = document.getElementById('tsBranch').value; const userId = document.getElementById('tsUserId').value.trim();
+            const startDate = document.getElementById('tsStart').value; const endDate = document.getElementById('tsEnd').value;
+            const qs = new URLSearchParams({ ...(branch?{branch}:{}) , ...(userId?{userId}:{}) , startDate, endDate });
+            const att = await api(`/attendance?${qs.toString()}`);
+            const grouped = {};
+            att.forEach(a => {
+                const key = `${a.userId}|${a.fullName||''}|${a.branch}`;
+                grouped[key] = grouped[key] || [];
+                grouped[key].push(a);
+            });
+            const rows = Object.entries(grouped).map(([k, list]) => {
+                const [uid, name, branch] = k.split('|');
+                let totalHours = 0; let days = 0; let late = 0; let absent = 0;
+                list.forEach(r => {
+                    if (r.status === 'absent') { absent++; return; }
+                    if (r.status === 'late') { late++; }
+                    const start = r.checkIn? Date.parse(`1970-01-01T${r.checkIn}Z`): null;
+                    const end = r.checkOut? Date.parse(`1970-01-01T${r.checkOut}Z`): null;
+                    const hours = (start && end) ? Math.max(0, (end-start)/(1000*60*60)) : 0;
+                    totalHours += hours; days++;
+                });
+                const overtime = Math.max(0, totalHours - (days*8));
+                return { name, userId: uid, branch, days, totalHours: totalHours.toFixed(2), overtime: overtime.toFixed(2), late, absent };
+            });
+            document.getElementById('tsTable').innerHTML = rows.length ? `
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>Employee</th><th>User ID</th><th>Branch</th><th>Days</th><th>Total Hours</th><th>Overtime</th><th>Late</th><th>Absent</th></tr></thead>
+                        <tbody>${rows.map(r=>`<tr><td>${r.name}</td><td>${r.userId}</td><td>${r.branch}</td><td>${r.days}</td><td>${r.totalHours}</td><td>${r.overtime}</td><td>${r.late}</td><td>${r.absent}</td></tr>`).join('')}</tbody>
+                    </table>
+                </div>
+            ` : `<div class="empty">No attendance in date range.</div>`;
+            window.__tsRows = rows;
+        }
+        function setTsRange(kind){
+            const now = new Date();
+            let s, e;
+            if(kind==='week'){
+                const day = now.getDay() || 7; // Mon=1..Sun=7
+                const start = new Date(now); start.setDate(now.getDate() - (day-1));
+                const end = new Date(start); end.setDate(start.getDate()+6);
+                s = start; e = end;
+            } else {
+                const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                const end = new Date(now.getFullYear(), now.getMonth()+1, 0);
+                s = start; e = end;
+            }
+            const ymd = d => new Date(d).toISOString().split('T')[0];
+            document.getElementById('tsStart').value = ymd(s);
+            document.getElementById('tsEnd').value = ymd(e);
+            renderTimesheets();
+        }
+        async function downloadTimesheet(){
+            const rows = window.__tsRows||[]; const csv = toCSV(rows);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `timesheet-${Date.now()}.csv`; a.click();
+        }
+
+        async function renderDocuments(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>Title</label><input id="docTitle" placeholder="Document title"></div>
+                            <div class="field"><label>Employee User ID (optional)</label><input id="docUserId" placeholder="STAFF-ID"></div>
+                            <div class="field"><label>Category</label><select id="docCat"><option>policy</option><option>contract</option><option>attachment</option></select></div>
+                            <div class="field"><label>URL</label><input id="docUrl" placeholder="https://..."></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn primary" onclick="saveDocument()">Save</button>
+                            <button class="btn" onclick="renderDocuments()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section card" id="docTable"><div class="muted">Loading...</div></div>
+            `;
+            const docs = await api('/documents');
+            const rows = docs.map(d=>`<tr><td>${d.title}</td><td>${d.userId||''}</td><td>${d.category||''}</td><td>${d.url?`<a href=\"${d.url}\" target=\"_blank\">Open</a>`:''}</td><td class=\"row\" style=\"gap:6px;\"><button class=\"btn danger\" onclick=\"deleteDocument('${d.id}')\">Delete</button></td></tr>`).join('');
+            document.getElementById('docTable').innerHTML = docs.length ? `<div style=\"overflow:auto;\"><table><thead><tr><th>Title</th><th>User ID</th><th>Category</th><th>Link</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class=\"empty\">No documents.</div>`;
+        }
+        async function saveDocument(){
+            const payload = { title: document.getElementById('docTitle').value.trim(), userId: document.getElementById('docUserId').value.trim()||undefined, category: document.getElementById('docCat').value, url: document.getElementById('docUrl').value.trim() };
+            if(!payload.title){ alert('Title required'); return; }
+            await api('/documents', { method:'POST', body: JSON.stringify(payload) });
+            renderDocuments();
+        }
+        async function deleteDocument(id){
+            if(!confirm('Delete this document?')) return;
+            await fetch(`/api/documents?id=${encodeURIComponent(id)}`, { method:'DELETE' });
+            renderDocuments();
+        }
+
+        async function renderDataCollection(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="title" style="font-size:18px; margin-bottom:16px;">Staff Data Collection Form</div>
+                    <form id="dataCollectionForm" onsubmit="submitDataCollection(event)">
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Personal Information</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Full Name</label><input id="dcFullName" required></div>
+                                <div class="col-4 field"><label>ID / Passport No.</label><input id="dcIdNumber" required></div>
+                                <div class="col-4 field"><label>Date of Birth</label><input type="date" id="dcDob" required></div>
+                                <div class="col-4 field"><label>Nationality</label><input id="dcNationality" required></div>
+                                <div class="col-4 field"><label>Gender</label><select id="dcGender" required><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select></div>
+                                <div class="col-4 field"><label>Marital Status</label><select id="dcMaritalStatus" required><option value="">Select</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option></select></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Contact & Address Details</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Mobile Number</label><input id="dcMobile" type="tel" required></div>
+                                <div class="col-4 field"><label>Email Address</label><input id="dcEmail" type="email" required></div>
+                                <div class="col-6 field"><label>Residential Address</label><textarea id="dcResAddress" rows="3" required></textarea></div>
+                                <div class="col-6 field"><label>Postal Address</label><textarea id="dcPostAddress" rows="3" required></textarea></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Educational Background</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Highest Level of Education</label><input id="dcEducation" required></div>
+                                <div class="col-4 field"><label>Institution Attended</label><input id="dcInstitution" required></div>
+                                <div class="col-4 field"><label>Year Completed</label><input id="dcYearCompleted" type="number" min="1950" max="2050" required></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Employment Information</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Branch / DPC Name</label><select id="dcBranch" required><option value="">Select</option><option>townshop</option><option>khomasdal</option><option>swakopmund</option><option>walvisbay</option><option>katima</option></select></div>
+                                <div class="col-4 field"><label>Employment Start Date</label><input type="date" id="dcStartDate" required></div>
+                                <div class="col-4 field"><label>Social Security No.</label><input id="dcSocialSecurity" required></div>
+                                <div class="col-4 field"><label>Position Appointed</label><input id="dcPosition" required></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Banking Information</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Bank Name</label><input id="dcBankName" required></div>
+                                <div class="col-4 field"><label>Account Number</label><input id="dcAccountNumber" required></div>
+                                <div class="col-4 field"><label>Branch Code</label><input id="dcBranchCode" required></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Emergency Contact Information</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Next of Kin Name</label><input id="dcNextOfKin" required></div>
+                                <div class="col-4 field"><label>Relationship</label><input id="dcRelationship" required></div>
+                                <div class="col-4 field"><label>Contact Number</label><input id="dcKinContact" type="tel" required></div>
+                                <div class="col-12 field"><label>Address</label><textarea id="dcKinAddress" rows="3" required></textarea></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Medical & Background Information</div>
+                            <div class="grid">
+                                <div class="col-4 field"><label>Height (cm)</label><input id="dcHeight" type="number" min="0" required></div>
+                                <div class="col-4 field"><label>Weight (kg)</label><input id="dcWeight" type="number" min="0" required></div>
+                                <div class="col-4 field"><label>Chronic Illnesses / Conditions</label><input id="dcChronicIllness"></div>
+                                <div class="col-4 field"><label>Disabilities (if any)</label><input id="dcDisabilities"></div>
+                                <div class="col-4 field"><label>Criminal Record</label><div style="display:flex; gap:16px; margin-top:8px;"><label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="dcCriminal" value="yes" id="dcCriminalYes"> Yes</label><label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="dcCriminal" value="no" id="dcCriminalNo" checked> No</label></div></div>
+                                <div class="col-4 field"><label>If yes, please specify</label><input id="dcCriminalSpecify"></div>
+                                <div class="col-12 field"><label>Allergies / Other Medical Notes</label><textarea id="dcAllergies" rows="3"></textarea></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div style="font-weight:700; color:#dc2626; font-size:14px; margin-bottom:12px; text-transform:uppercase;">Declaration & Signature</div>
+                            <div style="margin-bottom:16px; padding:12px; background:#f8fafc; border-radius:8px;">
+                                <p style="margin:0; line-height:1.6;">I confirm that the information provided above is true, complete, and accurate to the best of my knowledge. I authorize Dynapharm Namibia to verify all submitted information where necessary.</p>
+                            </div>
+                            <div class="grid">
+                                <div class="col-6 field"><label>Employee Signature</label><input id="dcEmpSignature" required></div>
+                                <div class="col-6 field"><label>HR Officer / Manager</label><input id="dcHROfficer" required></div>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <div class="row" style="gap:8px;">
+                                <button type="submit" class="btn primary">Submit Data Collection</button>
+                                <button type="button" class="btn" onclick="clearDataCollectionForm()">Clear Form</button>
+                            </div>
+                        </div>
+                        <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e5e7eb; color:#64748b; font-size:12px; text-align:center;">
+                            All information is confidential and handled in accordance with the Social Security Act (Act 34 of 1994).
+                        </div>
+                    </form>
+                </div>
+                <div class="section card">
+                    <div class="title" style="font-size:16px;">Submitted Forms</div>
+                    <div id="dcTable"><div class="muted">Loading...</div></div>
+                </div>
+            `;
+            const currentUser = getCurrentUser();
+            if(currentUser) {
+                const hrField = document.getElementById('dcHROfficer');
+                if(hrField) hrField.value = currentUser.fullName || currentUser.username || '';
+            }
+            await loadDataCollectionList();
+        }
+
+        async function submitDataCollection(event){
+            event.preventDefault();
+            const criminalRecord = document.getElementById('dcCriminalYes').checked ? 'yes' : 'no';
+            const payload = {
+                id: `DC-${Date.now()}`,
+                personalInfo: {
+                    fullName: document.getElementById('dcFullName').value.trim(),
+                    idNumber: document.getElementById('dcIdNumber').value.trim(),
+                    dateOfBirth: document.getElementById('dcDob').value,
+                    nationality: document.getElementById('dcNationality').value.trim(),
+                    gender: document.getElementById('dcGender').value,
+                    maritalStatus: document.getElementById('dcMaritalStatus').value
+                },
+                contactInfo: {
+                    mobile: document.getElementById('dcMobile').value.trim(),
+                    email: document.getElementById('dcEmail').value.trim(),
+                    residentialAddress: document.getElementById('dcResAddress').value.trim(),
+                    postalAddress: document.getElementById('dcPostAddress').value.trim()
+                },
+                education: {
+                    highestLevel: document.getElementById('dcEducation').value.trim(),
+                    institution: document.getElementById('dcInstitution').value.trim(),
+                    yearCompleted: document.getElementById('dcYearCompleted').value
+                },
+                employment: {
+                    branch: document.getElementById('dcBranch').value,
+                    startDate: document.getElementById('dcStartDate').value,
+                    socialSecurity: document.getElementById('dcSocialSecurity').value.trim(),
+                    position: document.getElementById('dcPosition').value.trim()
+                },
+                banking: {
+                    bankName: document.getElementById('dcBankName').value.trim(),
+                    accountNumber: document.getElementById('dcAccountNumber').value.trim(),
+                    branchCode: document.getElementById('dcBranchCode').value.trim()
+                },
+                emergencyContact: {
+                    nextOfKin: document.getElementById('dcNextOfKin').value.trim(),
+                    relationship: document.getElementById('dcRelationship').value.trim(),
+                    contactNumber: document.getElementById('dcKinContact').value.trim(),
+                    address: document.getElementById('dcKinAddress').value.trim()
+                },
+                medical: {
+                    height: document.getElementById('dcHeight').value,
+                    weight: document.getElementById('dcWeight').value,
+                    chronicIllness: document.getElementById('dcChronicIllness').value.trim(),
+                    disabilities: document.getElementById('dcDisabilities').value.trim(),
+                    criminalRecord: criminalRecord,
+                    criminalSpecify: document.getElementById('dcCriminalSpecify').value.trim(),
+                    allergies: document.getElementById('dcAllergies').value.trim()
+                },
+                signatures: {
+                    employeeSignature: document.getElementById('dcEmpSignature').value.trim(),
+                    hrOfficer: document.getElementById('dcHROfficer').value.trim()
+                },
+                submittedAt: new Date().toISOString(),
+                submittedBy: getCurrentUser()?.fullName || getCurrentUser()?.username || 'HR'
+            };
+            try {
+                const employees = await api('/employees');
+                const existing = employees.find(e => e.dataCollection?.personalInfo?.idNumber === payload.personalInfo.idNumber);
+                if(existing) {
+                    await api('/employees', { method:'PUT', body: JSON.stringify({
+                        id: existing.id,
+                        dataCollection: payload,
+                        fullName: payload.personalInfo.fullName,
+                        email: payload.contactInfo.email,
+                        phone: payload.contactInfo.mobile
+                    })});
+                    alert('Data collection form updated successfully!');
+                } else {
+                    await api('/employees', { method:'POST', body: JSON.stringify({
+                        fullName: payload.personalInfo.fullName,
+                        userId: `STAFF-${payload.personalInfo.idNumber.slice(-6)}`,
+                        role: 'consultant',
+                        branch: payload.employment.branch,
+                        hireDate: payload.employment.startDate,
+                        email: payload.contactInfo.email,
+                        phone: payload.contactInfo.mobile,
+                        dataCollection: payload
+                    })});
+                    alert('Data collection form submitted successfully!');
+                }
+                clearDataCollectionForm();
+                await loadDataCollectionList();
+            } catch(e) {
+                alert('Error submitting form: ' + e.message);
+            }
+        }
+
+        function clearDataCollectionForm(){
+            document.getElementById('dataCollectionForm').reset();
+        }
+
+        async function loadDataCollectionList(){
+            try {
+                const employees = await api('/employees');
+                const withData = employees.filter(e => e.dataCollection);
+                const rows = withData.map(e => {
+                    const dc = e.dataCollection;
+                    return `<tr>
+                        <td>${dc.personalInfo.fullName}</td>
+                        <td>${dc.personalInfo.idNumber}</td>
+                        <td>${dc.employment.branch}</td>
+                        <td>${dc.employment.position}</td>
+                        <td>${new Date(dc.submittedAt).toLocaleDateString()}</td>
+                        <td class="row" style="gap:6px;">
+                            <button class="btn" onclick="viewDataCollection('${e.id}')">View</button>
+                            <button class="btn" onclick="exportDataCollection('${e.id}')">Export</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+                document.getElementById('dcTable').innerHTML = withData.length ? `
+                    <div style="overflow:auto;">
+                        <table>
+                            <thead><tr><th>Name</th><th>ID Number</th><th>Branch</th><th>Position</th><th>Submitted</th><th>Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                ` : `<div class="empty">No data collection forms submitted yet.</div>`;
+            } catch(e) {
+                document.getElementById('dcTable').innerHTML = `<div class="empty">Error loading data: ${e.message}</div>`;
+            }
+        }
+
+        async function viewDataCollection(empId){
+            const employees = await api('/employees');
+            const emp = employees.find(e => e.id === empId);
+            if(!emp || !emp.dataCollection) { alert('Data not found'); return; }
+            const dc = emp.dataCollection;
+            const details = `
+Personal Information:
+- Full Name: ${dc.personalInfo.fullName}
+- ID/Passport: ${dc.personalInfo.idNumber}
+- Date of Birth: ${dc.personalInfo.dateOfBirth}
+- Nationality: ${dc.personalInfo.nationality}
+- Gender: ${dc.personalInfo.gender}
+- Marital Status: ${dc.personalInfo.maritalStatus}
+
+Contact Information:
+- Mobile: ${dc.contactInfo.mobile}
+- Email: ${dc.contactInfo.email}
+- Residential Address: ${dc.contactInfo.residentialAddress}
+- Postal Address: ${dc.contactInfo.postalAddress}
+
+Education:
+- Level: ${dc.education.highestLevel}
+- Institution: ${dc.education.institution}
+- Year Completed: ${dc.education.yearCompleted}
+
+Employment:
+- Branch: ${dc.employment.branch}
+- Start Date: ${dc.employment.startDate}
+- Social Security: ${dc.employment.socialSecurity}
+- Position: ${dc.employment.position}
+
+Banking:
+- Bank: ${dc.banking.bankName}
+- Account: ${dc.banking.accountNumber}
+- Branch Code: ${dc.banking.branchCode}
+
+Emergency Contact:
+- Next of Kin: ${dc.emergencyContact.nextOfKin}
+- Relationship: ${dc.emergencyContact.relationship}
+- Contact: ${dc.emergencyContact.contactNumber}
+- Address: ${dc.emergencyContact.address}
+
+Medical:
+- Height: ${dc.medical.height} cm
+- Weight: ${dc.medical.weight} kg
+- Chronic Illness: ${dc.medical.chronicIllness || 'None'}
+- Disabilities: ${dc.medical.disabilities || 'None'}
+- Criminal Record: ${dc.medical.criminalRecord}
+${dc.medical.criminalRecord === 'yes' ? `- Details: ${dc.medical.criminalSpecify}` : ''}
+- Allergies: ${dc.medical.allergies || 'None'}
+
+Signatures:
+- Employee: ${dc.signatures.employeeSignature}
+- HR Officer: ${dc.signatures.hrOfficer}
+            `;
+            alert(details);
+        }
+
+        async function exportDataCollection(empId){
+            const employees = await api('/employees');
+            const emp = employees.find(e => e.id === empId);
+            if(!emp || !emp.dataCollection) { alert('Data not found'); return; }
+            const dc = emp.dataCollection;
+            const csv = `Name,ID Number,Date of Birth,Nationality,Gender,Marital Status,Mobile,Email,Residential Address,Postal Address,Education Level,Institution,Year Completed,Branch,Start Date,Social Security,Position,Bank Name,Account Number,Branch Code,Next of Kin,Relationship,Contact,Address,Height,Weight,Chronic Illness,Disabilities,Criminal Record,Criminal Details,Allergies,Employee Signature,HR Officer
+${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOfBirth},${dc.personalInfo.nationality},${dc.personalInfo.gender},${dc.personalInfo.maritalStatus},${dc.contactInfo.mobile},${dc.contactInfo.email},"${dc.contactInfo.residentialAddress}","${dc.contactInfo.postalAddress}",${dc.education.highestLevel},${dc.education.institution},${dc.education.yearCompleted},${dc.employment.branch},${dc.employment.startDate},${dc.employment.socialSecurity},${dc.employment.position},${dc.banking.bankName},${dc.banking.accountNumber},${dc.banking.branchCode},${dc.emergencyContact.nextOfKin},${dc.emergencyContact.relationship},${dc.emergencyContact.contactNumber},"${dc.emergencyContact.address}",${dc.medical.height},${dc.medical.weight},${dc.medical.chronicIllness || ''},${dc.medical.disabilities || ''},${dc.medical.criminalRecord},${dc.medical.criminalSpecify || ''},${dc.medical.allergies || ''},${dc.signatures.employeeSignature},${dc.signatures.hrOfficer}`;
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `data-collection-${emp.dataCollection.personalInfo.fullName.replace(/\s+/g,'-')}-${Date.now()}.csv`;
+            a.click();
+        }
+
+        // Warnings & Disciplinary Workflow
+        async function renderWarnings(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>Search</label><input id="warnSearch" placeholder="Search warnings..." oninput="loadWarnings()"></div>
+                            <div class="field"><label>Type</label><select id="warnTypeFilter" onchange="loadWarnings()"><option value="">All</option><option>Verbal</option><option>Written</option><option>Final</option></select></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn warning" onclick="showIssueWarning()">⚠️ Issue Warning</button>
+                            <button class="btn" onclick="renderWarnings()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section card" id="warnTable"><div class="muted">Loading...</div></div>
+            `;
+            await loadWarnings();
+        }
+
+        async function loadWarnings(){
+            try {
+                const warnings = JSON.parse(localStorage.getItem('hr_warnings') || '[]');
+                const search = (document.getElementById('warnSearch')?.value || '').toLowerCase();
+                const typeFilter = document.getElementById('warnTypeFilter')?.value || '';
+                let filtered = warnings;
+                if(search) filtered = filtered.filter(w => (w.employee||'').toLowerCase().includes(search) || (w.reason||'').toLowerCase().includes(search));
+                if(typeFilter) filtered = filtered.filter(w => w.type === typeFilter);
+                filtered.sort((a,b) => new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt));
+                const rows = filtered.map(w => `
+                    <tr>
+                        <td>${w.employee||'Unknown'}</td>
+                        <td><span class="pill" style="background:${w.type==='Final'?'#ef4444':w.type==='Written'?'#f59e0b':'#10b981'};color:#fff;">${w.type}</span></td>
+                        <td>${w.date ? new Date(w.date).toLocaleDateString() : ''}</td>
+                        <td>${w.issuedBy||''}</td>
+                        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">${w.reason||''}</td>
+                        <td class="row" style="gap:6px;">
+                            <button class="btn" onclick="viewWarning('${w.id}')">View</button>
+                            <button class="btn danger" onclick="deleteWarning('${w.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+                document.getElementById('warnTable').innerHTML = filtered.length ? `
+                    <div style="overflow:auto;">
+                        <table>
+                            <thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Issued By</th><th>Reason</th><th>Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                ` : `<div class="empty">No warnings found.</div>`;
+            } catch(e) {
+                document.getElementById('warnTable').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function showIssueWarning(){
+            const employees = await api('/employees');
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'issueWarningModal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('issueWarningModal')">&times;</span>
+                    <h2>⚠️ Issue Warning</h2>
+                    <form id="issueWarningForm" onsubmit="submitWarning(event)">
+                        <div class="field"><label>Employee</label><select id="warnEmployee" required><option value="">Select Employee</option>${employees.map(e=>`<option value="${e.userId}">${e.fullName} (${e.userId})</option>`).join('')}</select></div>
+                        <div class="field"><label>Warning Type</label><select id="warnType" required><option value="">Select Type</option><option>Verbal</option><option>Written</option><option>Final</option></select></div>
+                        <div class="field"><label>Date</label><input type="date" id="warnDate" value="${formatDate(new Date())}" required></div>
+                        <div class="field"><label>Issued By</label><input id="warnIssuedBy" value="${getCurrentUser()?.fullName||''}" required></div>
+                        <div class="field"><label>Reason</label><textarea id="warnReason" rows="5" required></textarea></div>
+                        <div class="field"><label>Notes</label><textarea id="warnNotes" rows="3"></textarea></div>
+                        <div class="row" style="margin-top:12px;">
+                            <button type="submit" class="btn warning">⚠️ Issue Warning</button>
+                            <button type="button" class="btn" onclick="closeModal('issueWarningModal')">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.style.display = 'block';
+        }
+
+        async function submitWarning(event){
+            event.preventDefault();
+            const employees = await api('/employees');
+            const empId = document.getElementById('warnEmployee').value;
+            const emp = employees.find(e => e.userId === empId);
+            const warning = {
+                id: `WARN-${Date.now()}`,
+                employee: emp ? emp.fullName : empId,
+                userId: empId,
+                type: document.getElementById('warnType').value,
+                date: document.getElementById('warnDate').value,
+                issuedBy: document.getElementById('warnIssuedBy').value,
+                reason: document.getElementById('warnReason').value,
+                notes: document.getElementById('warnNotes').value,
+                createdAt: new Date().toISOString()
+            };
+            const warnings = JSON.parse(localStorage.getItem('hr_warnings') || '[]');
+            warnings.push(warning);
+            localStorage.setItem('hr_warnings', JSON.stringify(warnings));
+            closeModal('issueWarningModal');
+            renderWarnings();
+            alert('Warning issued successfully!');
+        }
+
+        function viewWarning(id){
+            const warnings = JSON.parse(localStorage.getItem('hr_warnings') || '[]');
+            const w = warnings.find(x => x.id === id);
+            if(!w) { alert('Warning not found'); return; }
+            alert(`Warning Details:\n\nEmployee: ${w.employee}\nType: ${w.type}\nDate: ${new Date(w.date).toLocaleDateString()}\nIssued By: ${w.issuedBy}\n\nReason:\n${w.reason}\n\nNotes:\n${w.notes||'None'}`);
+        }
+
+        function deleteWarning(id){
+            if(!confirm('Delete this warning?')) return;
+            const warnings = JSON.parse(localStorage.getItem('hr_warnings') || '[]');
+            const filtered = warnings.filter(w => w.id !== id);
+            localStorage.setItem('hr_warnings', JSON.stringify(filtered));
+            renderWarnings();
+        }
+
+        // Terminations Workflow
+        async function renderTerminations(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>Search</label><input id="termSearch" placeholder="Search terminations..." oninput="loadTerminations()"></div>
+                            <div class="field"><label>Type</label><select id="termTypeFilter" onchange="loadTerminations()"><option value="">All</option><option>Resignation</option><option>Dismissal</option><option>Retirement</option><option>Contract End</option><option>Mutual Agreement</option></select></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn danger" onclick="showTerminateEmployee()">🚪 Record Termination</button>
+                            <button class="btn" onclick="renderTerminations()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section card" id="termTable"><div class="muted">Loading...</div></div>
+            `;
+            await loadTerminations();
+        }
+
+        async function loadTerminations(){
+            try {
+                const terminations = JSON.parse(localStorage.getItem('hr_terminations') || '[]');
+                const search = (document.getElementById('termSearch')?.value || '').toLowerCase();
+                const typeFilter = document.getElementById('termTypeFilter')?.value || '';
+                let filtered = terminations;
+                if(search) filtered = filtered.filter(t => (t.employee||'').toLowerCase().includes(search) || (t.reason||'').toLowerCase().includes(search));
+                if(typeFilter) filtered = filtered.filter(t => t.type === typeFilter);
+                filtered.sort((a,b) => new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt));
+                const rows = filtered.map(t => `
+                    <tr>
+                        <td>${t.employee||'Unknown'}</td>
+                        <td><span class="pill">${t.type}</span></td>
+                        <td>${t.date ? new Date(t.date).toLocaleDateString() : ''}</td>
+                        <td>${t.noticePeriod ? t.noticePeriod + ' days' : '-'}</td>
+                        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">${t.reason||''}</td>
+                        <td class="row" style="gap:6px;">
+                            <button class="btn" onclick="viewTermination('${t.id}')">View</button>
+                            <button class="btn danger" onclick="deleteTermination('${t.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+                document.getElementById('termTable').innerHTML = filtered.length ? `
+                    <div style="overflow:auto;">
+                        <table>
+                            <thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Notice Period</th><th>Reason</th><th>Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                ` : `<div class="empty">No terminations found.</div>`;
+            } catch(e) {
+                document.getElementById('termTable').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function showTerminateEmployee(){
+            const employees = await api('/employees');
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'terminateEmployeeModal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('terminateEmployeeModal')">&times;</span>
+                    <h2>🚪 Record Termination</h2>
+                    <form id="terminateEmployeeForm" onsubmit="submitTermination(event)">
+                        <div class="field"><label>Employee</label><select id="termEmployee" required><option value="">Select Employee</option>${employees.map(e=>`<option value="${e.userId}">${e.fullName} (${e.userId})</option>`).join('')}</select></div>
+                        <div class="field"><label>Termination Date</label><input type="date" id="termDate" value="${formatDate(new Date())}" required></div>
+                        <div class="field"><label>Termination Type</label><select id="termType" required><option value="">Select Type</option><option>Resignation</option><option>Dismissal</option><option>Retirement</option><option>Contract End</option><option>Mutual Agreement</option></select></div>
+                        <div class="field"><label>Reason</label><textarea id="termReason" rows="5" required></textarea></div>
+                        <div class="field"><label>Notice Period (Days)</label><input type="number" id="termNoticePeriod" min="0"></div>
+                        <div class="field"><label>Notes</label><textarea id="termNotes" rows="3"></textarea></div>
+                        <div class="row" style="margin-top:12px;">
+                            <button type="submit" class="btn danger">🚪 Record Termination</button>
+                            <button type="button" class="btn" onclick="closeModal('terminateEmployeeModal')">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.style.display = 'block';
+        }
+
+        async function submitTermination(event){
+            event.preventDefault();
+            const employees = await api('/employees');
+            const empId = document.getElementById('termEmployee').value;
+            const emp = employees.find(e => e.userId === empId);
+            const termination = {
+                id: `TERM-${Date.now()}`,
+                employee: emp ? emp.fullName : empId,
+                userId: empId,
+                type: document.getElementById('termType').value,
+                date: document.getElementById('termDate').value,
+                reason: document.getElementById('termReason').value,
+                noticePeriod: document.getElementById('termNoticePeriod').value || null,
+                notes: document.getElementById('termNotes').value,
+                createdAt: new Date().toISOString()
+            };
+            const terminations = JSON.parse(localStorage.getItem('hr_terminations') || '[]');
+            terminations.push(termination);
+            localStorage.setItem('hr_terminations', JSON.stringify(terminations));
+            // Update employee status
+            if(emp) {
+                await api('/employees', { method:'PUT', body: JSON.stringify({ id: emp.id, employmentStatus: 'terminated' }) });
+            }
+            closeModal('terminateEmployeeModal');
+            renderTerminations();
+            alert('Termination recorded successfully!');
+        }
+
+        function viewTermination(id){
+            const terminations = JSON.parse(localStorage.getItem('hr_terminations') || '[]');
+            const t = terminations.find(x => x.id === id);
+            if(!t) { alert('Termination not found'); return; }
+            alert(`Termination Details:\n\nEmployee: ${t.employee}\nType: ${t.type}\nDate: ${new Date(t.date).toLocaleDateString()}\nNotice Period: ${t.noticePeriod || 'N/A'} days\n\nReason:\n${t.reason}\n\nNotes:\n${t.notes||'None'}`);
+        }
+
+        function deleteTermination(id){
+            if(!confirm('Delete this termination record?')) return;
+            const terminations = JSON.parse(localStorage.getItem('hr_terminations') || '[]');
+            const filtered = terminations.filter(t => t.id !== id);
+            localStorage.setItem('hr_terminations', JSON.stringify(filtered));
+            renderTerminations();
+        }
+
+        // Performance Review Workflow
+        async function renderPerformance(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="row" style="justify-content:space-between; gap:8px;">
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <div class="field"><label>Search</label><input id="perfSearch" placeholder="Search performance reviews..." oninput="loadPerformanceReviews()"></div>
+                        </div>
+                        <div class="row" style="gap:6px;">
+                            <button class="btn success" onclick="showAddPerformanceReview()">➕ Add Performance Review</button>
+                            <button class="btn" onclick="renderPerformance()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section card" id="perfTable"><div class="muted">Loading...</div></div>
+            `;
+            await loadPerformanceReviews();
+        }
+
+        async function loadPerformanceReviews(){
+            try {
+                const reviews = JSON.parse(localStorage.getItem('hr_performance') || '[]');
+                const search = (document.getElementById('perfSearch')?.value || '').toLowerCase();
+                let filtered = reviews;
+                if(search) filtered = filtered.filter(r => (r.employee||'').toLowerCase().includes(search) || (r.rating||'').toLowerCase().includes(search));
+                filtered.sort((a,b) => new Date(b.endDate||b.createdAt) - new Date(a.endDate||a.createdAt));
+                const rows = filtered.map(r => `
+                    <tr>
+                        <td>${r.employee||'Unknown'}</td>
+                        <td>${r.startDate ? new Date(r.startDate).toLocaleDateString() : ''} - ${r.endDate ? new Date(r.endDate).toLocaleDateString() : ''}</td>
+                        <td><span class="pill" style="background:${r.rating==='Excellent'?'#10b981':r.rating==='Good'?'#2563eb':r.rating==='Average'?'#f59e0b':r.rating==='Below Average'?'#f97316':'#ef4444'};color:#fff;">${r.rating}</span></td>
+                        <td>${r.reviewedBy||''}</td>
+                        <td class="row" style="gap:6px;">
+                            <button class="btn" onclick="viewPerformanceReview('${r.id}')">View</button>
+                            <button class="btn danger" onclick="deletePerformanceReview('${r.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+                document.getElementById('perfTable').innerHTML = filtered.length ? `
+                    <div style="overflow:auto;">
+                        <table>
+                            <thead><tr><th>Employee</th><th>Review Period</th><th>Rating</th><th>Reviewed By</th><th>Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                ` : `<div class="empty">No performance reviews found.</div>`;
+            } catch(e) {
+                document.getElementById('perfTable').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function showAddPerformanceReview(){
+            const employees = await api('/employees');
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'addPerformanceReviewModal';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width:700px;">
+                    <span class="close" onclick="closeModal('addPerformanceReviewModal')">&times;</span>
+                    <h2>📊 Add Performance Review</h2>
+                    <form id="addPerformanceReviewForm" onsubmit="submitPerformanceReview(event)">
+                        <div class="field"><label>Employee</label><select id="perfEmployee" required><option value="">Select Employee</option>${employees.map(e=>`<option value="${e.userId}">${e.fullName} (${e.userId})</option>`).join('')}</select></div>
+                        <div class="grid">
+                            <div class="col-6 field"><label>Review Period Start</label><input type="date" id="perfStartDate" required></div>
+                            <div class="col-6 field"><label>Review Period End</label><input type="date" id="perfEndDate" required></div>
+                        </div>
+                        <div class="field"><label>Reviewed By</label><input id="perfReviewedBy" value="${getCurrentUser()?.fullName||''}" required></div>
+                        <div class="field"><label>Overall Rating</label><select id="perfRating" required><option value="">Select Rating</option><option>Excellent</option><option>Good</option><option>Average</option><option>Below Average</option><option>Unsatisfactory</option></select></div>
+                        <div class="field"><label>Strengths</label><textarea id="perfStrengths" rows="4"></textarea></div>
+                        <div class="field"><label>Areas for Improvement</label><textarea id="perfImprovements" rows="4"></textarea></div>
+                        <div class="field"><label>Goals for Next Period</label><textarea id="perfGoals" rows="4"></textarea></div>
+                        <div class="field"><label>Comments</label><textarea id="perfComments" rows="4"></textarea></div>
+                        <div class="row" style="margin-top:12px;">
+                            <button type="submit" class="btn success">💾 Save Review</button>
+                            <button type="button" class="btn" onclick="closeModal('addPerformanceReviewModal')">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.style.display = 'block';
+        }
+
+        async function submitPerformanceReview(event){
+            event.preventDefault();
+            const employees = await api('/employees');
+            const empId = document.getElementById('perfEmployee').value;
+            const emp = employees.find(e => e.userId === empId);
+            const review = {
+                id: `PERF-${Date.now()}`,
+                employee: emp ? emp.fullName : empId,
+                userId: empId,
+                startDate: document.getElementById('perfStartDate').value,
+                endDate: document.getElementById('perfEndDate').value,
+                reviewedBy: document.getElementById('perfReviewedBy').value,
+                rating: document.getElementById('perfRating').value,
+                strengths: document.getElementById('perfStrengths').value,
+                improvements: document.getElementById('perfImprovements').value,
+                goals: document.getElementById('perfGoals').value,
+                comments: document.getElementById('perfComments').value,
+                createdAt: new Date().toISOString()
+            };
+            const reviews = JSON.parse(localStorage.getItem('hr_performance') || '[]');
+            reviews.push(review);
+            localStorage.setItem('hr_performance', JSON.stringify(reviews));
+            closeModal('addPerformanceReviewModal');
+            renderPerformance();
+            alert('Performance review saved successfully!');
+        }
+
+        function viewPerformanceReview(id){
+            const reviews = JSON.parse(localStorage.getItem('hr_performance') || '[]');
+            const r = reviews.find(x => x.id === id);
+            if(!r) { alert('Review not found'); return; }
+            alert(`Performance Review:\n\nEmployee: ${r.employee}\nPeriod: ${new Date(r.startDate).toLocaleDateString()} - ${new Date(r.endDate).toLocaleDateString()}\nRating: ${r.rating}\nReviewed By: ${r.reviewedBy}\n\nStrengths:\n${r.strengths||'None'}\n\nAreas for Improvement:\n${r.improvements||'None'}\n\nGoals:\n${r.goals||'None'}\n\nComments:\n${r.comments||'None'}`);
+        }
+
+        function deletePerformanceReview(id){
+            if(!confirm('Delete this performance review?')) return;
+            const reviews = JSON.parse(localStorage.getItem('hr_performance') || '[]');
+            const filtered = reviews.filter(r => r.id !== id);
+            localStorage.setItem('hr_performance', JSON.stringify(filtered));
+            renderPerformance();
+        }
+
+        // Staff Communication Workflow
+        async function renderCommunication(){
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <div class="title" style="font-size:18px; margin-bottom:16px;">💬 Staff Communication</div>
+                    <p class="muted" style="margin-bottom:16px;">Send HR updates to branch staff and review their replies.</p>
+                    <div id="communicationList" class="communication-list"><div class="muted">Loading...</div></div>
+                    <form id="communicationForm" onsubmit="submitCommunication(event)">
+                        <div class="field">
+                            <label>Message</label>
+                            <textarea id="communicationMessage" rows="4" placeholder="Share policy changes, approvals or notices..." required></textarea>
+                        </div>
+                        <div class="row" style="gap:8px; margin-top:12px;">
+                            <button type="submit" class="btn success">Send to Staff</button>
+                            <button type="button" class="btn" onclick="clearCommunication()">Clear</button>
+                            <button type="button" class="btn" onclick="renderCommunication()">Refresh</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            await loadCommunications();
+        }
+
+        async function loadCommunications(){
+            try {
+                const communications = JSON.parse(localStorage.getItem('hr_communications') || '[]');
+                communications.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+                const html = communications.map(c => `
+                    <div class="communication-message ${c.from === 'hr' ? 'outgoing' : ''}">
+                        <div class="communication-meta">
+                            <span>${c.from === 'hr' ? '👤 HR' : '👤 Staff'}</span>
+                            <span style="margin-left:8px;">${new Date(c.createdAt).toLocaleString()}</span>
+                        </div>
+                        <div class="communication-body">${escapeHTML(c.message)}</div>
+                    </div>
+                `).join('');
+                document.getElementById('communicationList').innerHTML = html || '<div class="empty">No communications yet.</div>';
+            } catch(e) {
+                document.getElementById('communicationList').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function submitCommunication(event){
+            event.preventDefault();
+            const message = document.getElementById('communicationMessage').value.trim();
+            if(!message) { alert('Enter a message'); return; }
+            const communication = {
+                id: `COMM-${Date.now()}`,
+                from: 'hr',
+                fromName: getCurrentUser()?.fullName || 'HR',
+                message: message,
+                createdAt: new Date().toISOString()
+            };
+            const communications = JSON.parse(localStorage.getItem('hr_communications') || '[]');
+            communications.push(communication);
+            localStorage.setItem('hr_communications', JSON.stringify(communications));
+            document.getElementById('communicationMessage').value = '';
+            renderCommunication();
+            alert('Message sent to staff!');
+        }
+
+        function clearCommunication(){
+            document.getElementById('communicationMessage').value = '';
+        }
+
+        function escapeHTML(str){
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function closeModal(modalId){
+            const modal = document.getElementById(modalId);
+            if(modal) {
+                modal.style.display = 'none';
+                if(modal.parentNode) modal.parentNode.removeChild(modal);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if(!ensureHR()) return;
+            switchTab('attendance');
+        });
+    </script>
+</body>
+</html>
+
+

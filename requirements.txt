@@ -1,0 +1,3 @@
+# Dynapharm Backend Dependencies
+# No external dependencies required - uses Python standard library only
+# This file exists for Railway deployment compatibility

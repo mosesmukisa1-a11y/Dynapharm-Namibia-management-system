@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+	<title>Finance • Bonus CSV Upload</title>
+	<link rel="icon" href="./favicon.ico">
+	<style>
+		* { box-sizing: border-box; }
+		body { font-family: Arial, sans-serif; background:#f6f8fb; margin:0; padding:20px; }
+		.container { max-width: 1100px; margin: 0 auto; background:#fff; border-radius:12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); overflow:hidden; }
+		.header { background: linear-gradient(135deg,#c41e3a,#8b0000); color:#fff; padding:24px; }
+		.header h1 { margin:0 0 4px 0; font-size: 22px; }
+		.header p { margin:0; opacity:0.9; }
+		.logo img { display:block; height:32px; width:auto; margin-bottom:8px; }
+		.content { padding:24px; }
+		.section { background:#fafbfc; border-left:4px solid #c41e3a; padding:16px; border-radius:8px; margin-bottom:16px; }
+		.controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+		input[type="file"], select, button { padding:10px 12px; border:2px solid #e3e7ee; border-radius:8px; background:#fff; }
+		button { cursor:pointer; font-weight:600; }
+		.btn-primary { background:#c41e3a; color:#fff; border-color:#c41e3a; }
+		.btn-secondary { background:#34495e; color:#fff; border-color:#34495e; }
+		.btn-ghost { background:#fff; color:#c41e3a; border-color:#c41e3a; }
+		.table-wrap { overflow:auto; border:1px solid #e3e7ee; border-radius:8px; }
+		table { width:100%; border-collapse:collapse; min-width:920px; }
+		th, td { padding:10px 12px; border-bottom:1px solid #eef2f7; text-align:left; }
+		th { background:#f2f5f9; position:sticky; top:0; z-index:1; }
+		.totals { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; }
+		.badge { background:#eef2f7; padding:6px 10px; border-radius:999px; font-size:12px; color:#334e68; }
+		footer { padding:16px 24px; color:#6b7c93; font-size:13px; }
+		.hidden { display:none; }
+		
+		/* Mobile Responsive Styles */
+		@media (max-width: 768px) {
+			body { padding: 12px !important; }
+			.container { max-width: 100% !important; }
+			.header { padding: 16px !important; }
+			.header h1 { font-size: 1.3rem !important; }
+			.header p { font-size: 0.85rem !important; }
+			.content { padding: 16px !important; }
+			.section { padding: 12px !important; margin-bottom: 12px !important; }
+			.controls { flex-direction: column !important; gap: 10px !important; }
+			input[type="file"], select, button { 
+				width: 100% !important;
+				min-height: 44px;
+				font-size: 16px;
+			}
+			.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+			table { min-width: 700px; }
+			th, td { padding: 8px 6px !important; font-size: 0.85rem !important; }
+			.totals { flex-direction: column !important; gap: 10px !important; }
+			footer { padding: 12px !important; font-size: 12px !important; }
+		}
+		
+		@media (max-width: 480px) {
+			.header h1 { font-size: 1.1rem !important; }
+			.table-wrap { font-size: 0.8rem; }
+			th, td { padding: 6px 4px !important; font-size: 0.75rem !important; }
+			table { min-width: 600px; }
+		}
+		
+		/* Touch-friendly */
+		@media (hover: none) and (pointer: coarse) {
+			button { min-height: 44px; }
+			* { -webkit-tap-highlight-color: rgba(196, 30, 58, 0.2); }
+		}
+	</style>
+	<script defer src="./cloud-sync.js"></script>
+	<script defer src="./auto-cloud-sync.js"></script>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
+			<h1>Finance: Bonus CSV Upload</h1>
+			<p>Moment of Truth – Upload the monthly branches bonus list and verify totals.</p>
+		</div>
+		<div class="content">
+			<div class="section">
+				<div class="controls">
+					<label style="font-size:13px; color:#334e68; font-weight:600;">Month:</label>
+					<input id="monthSelect" type="month" style="padding:10px 12px; border:2px solid #e3e7ee; border-radius:8px; background:#fff;" />
+					<input id="csvInput" type="file" accept=".csv" />
+					<select id="branchFilter">
+						<option value="">All Branches</option>
+						<option>NB1</option>
+						<option>NB2</option>
+						<option>NB3</option>
+						<option>NB4</option>
+					</select>
+					<button id="btnSave" class="btn-primary" disabled>Upload Monthly Bonus</button>
+					<button id="btnClear" class="btn-ghost">Clear</button>
+					<button id="btnTemplate" class="btn-secondary">Download Template</button>
+				</div>
+				<div class="totals" id="totalsRow" style="margin-top:10px;"></div>
+			</div>
+
+			<div class="table-wrap hidden" id="tableWrap">
+				<table id="bonusTable">
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>DRN</th>
+							<th>Name</th>
+							<th>Stockist</th>
+							<th>Area</th>
+							<th>NAD</th>
+							<th>Signature</th>
+						</tr>
+					</thead>
+					<tbody id="bonusBody"></tbody>
+				</table>
+			</div>
+		</div>
+		<footer>
+			Monthly bonus upload saved to <span class="badge">/api/bonus</span>. This is the source of truth for bonus payments. Distributors not in this CSV for the selected month cannot be paid.
+		</footer>
+	</div>
+
+	<script>
+		// Lightweight CSV parsing (handles commas, semicolons; trims; supports quoted fields)
+		function parseCsv(text) {
+			const rows = [];
+			let current = '';
+			let insideQuotes = false;
+			let row = [];
+			for (let i = 0; i < text.length; i++) {
+				const c = text[i];
+				if (c === '"') {
+					if (insideQuotes && text[i+1] === '"') { current += '"'; i++; }
+					else { insideQuotes = !insideQuotes; }
+				} else if ((c === ',' || c === ';') && !insideQuotes) {
+					row.push(current.trim()); current = '';
+				} else if ((c === '\n' || c === '\r') && !insideQuotes) {
+					if (current.length || row.length) { row.push(current.trim()); rows.push(row); }
+					current = ''; row = [];
+				} else { current += c; }
+			}
+			if (current.length || row.length) { row.push(current.trim()); rows.push(row); }
+			return rows.filter(r => r.length && r.join('').length);
+		}
+
+		function normaliseAmount(val) {
+			if (val == null) return 0;
+			let s = String(val).trim();
+			// Handle formats like "2 708,03" or "1,602" or "196,25"
+			s = s.replace(/\s/g, '');
+			// If comma used as decimal separator and dot/space as thousands
+			if (/\d,\d{2}$/.test(s) && !/\./.test(s)) { s = s.replace(/\./g,'').replace(',', '.'); }
+			// Remove thousands separators (commas) if decimal is dot
+			s = s.replace(/,(?=\d{3}(\D|$))/g, '');
+			const n = Number(s);
+			return isNaN(n) ? 0 : n;
+		}
+
+		const els = {
+			month: document.getElementById('monthSelect'),
+			file: document.getElementById('csvInput'),
+			filter: document.getElementById('branchFilter'),
+			save: document.getElementById('btnSave'),
+			clear: document.getElementById('btnClear'),
+			template: document.getElementById('btnTemplate'),
+			wrap: document.getElementById('tableWrap'),
+			body: document.getElementById('bonusBody'),
+			totals: document.getElementById('totalsRow')
+		};
+
+		// Set default month to current month
+		const today = new Date();
+		els.month.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+		let parsed = [];
+		let headers = [];
+
+		function mapRow(row) {
+			const idx = (name) => headers.findIndex(h => h.toLowerCase() === name);
+			const h = (name) => row[idx(name)] ?? '';
+			return {
+				drn: h('drn'),
+				name: h('name'),
+				stockist: h('stockist'),
+				area: h('area'),
+				amount: normaliseAmount(h('nad')),
+				amountRaw: h('nad'),
+				signature: h('signature') || ''
+			};
+		}
+
+		function renderTable() {
+			const branch = els.filter.value;
+			const data = parsed.filter(r => !branch || r.area === branch);
+			els.body.innerHTML = '';
+			data.forEach((r, i) => {
+				const tr = document.createElement('tr');
+				tr.innerHTML = `<td>${i+1}</td><td>${r.drn}</td><td>${r.name}</td><td>${r.stockist}</td><td>${r.area}</td><td>${r.amount.toLocaleString('en-NA',{minimumFractionDigits:2, maximumFractionDigits:2})}</td><td>${r.signature}</td>`;
+				els.body.appendChild(tr);
+			});
+			const total = data.reduce((s, r) => s + r.amount, 0);
+			els.totals.innerHTML = `
+				<span class="badge">Records: ${data.length}</span>
+				<span class="badge">Total NAD: ${total.toLocaleString('en-NA',{minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+			`;
+			els.wrap.classList.toggle('hidden', data.length === 0);
+			els.save.disabled = parsed.length === 0;
+		}
+
+		els.file.addEventListener('change', async (e) => {
+			const file = e.target.files && e.target.files[0];
+			if (!file) return;
+			const text = await file.text();
+			const rows = parseCsv(text);
+			if (!rows.length) { alert('CSV appears empty.'); return; }
+			headers = rows[0].map(h => String(h).trim().toLowerCase());
+			const required = ['drn','name','stockist','area','nad'];
+			const missing = required.filter(r => !headers.includes(r));
+			if (missing.length) { alert('Missing columns: ' + missing.join(', ')); return; }
+			parsed = rows.slice(1).map(mapRow).filter(r => r.drn || r.name);
+			renderTable();
+		});
+
+		els.filter.addEventListener('change', renderTable);
+
+		els.save.addEventListener('click', async () => {
+			if (!els.month.value) {
+				alert('Please select a month for this bonus upload.');
+				return;
+			}
+			if (parsed.length === 0) {
+				alert('No data to upload. Please select a CSV file first.');
+				return;
+			}
+			
+			const month = els.month.value; // Format: YYYY-MM
+			const payload = {
+				action: 'upload',
+				month: month,
+				items: parsed,
+				uploadedBy: 'finance' // Could get from user session
+			};
+			
+			// Save locally as backup
+			localStorage.setItem('finance_bonus_list', JSON.stringify({ month, items: parsed, createdAt: new Date().toISOString() }));
+			
+			let posted = false;
+			let message = '';
+			try {
+				const base = (location.hostname.includes('railway.app') ? `${location.protocol}//${location.hostname}/api` : (location.hostname.includes('vercel.app') ? '/api' : 'http://localhost:8001/api'));
+				const res = await fetch(`${base}/bonus`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				});
+				
+				if (res.ok) {
+					const result = await res.json();
+					posted = true;
+					message = `✅ Monthly bonus uploaded successfully for ${month}.\n\nRecords: ${result.totalRecords}\nTotal Amount: N$${result.totalAmount.toLocaleString('en-NA', {minimumFractionDigits:2, maximumFractionDigits:2})}\n\n⚠️ IMPORTANT: Only distributors in this CSV can be paid for ${month}.`;
+				} else {
+					const error = await res.json();
+					message = `❌ Error: ${error.error || 'Failed to upload bonus data'}`;
+				}
+			} catch(e) {
+				message = `⚠️ API not reachable. Data saved locally. Please try again when online.\n\nMonth: ${month}\nRecords: ${parsed.length}`;
+			}
+			alert(message);
+		});
+
+		els.clear.addEventListener('click', () => {
+			parsed = []; headers = []; els.body.innerHTML = ''; els.totals.innerHTML = ''; els.wrap.classList.add('hidden'); els.save.disabled = true; els.file.value = '';
+		});
+
+		els.template.addEventListener('click', () => {
+			const csv = 'DRN,NAME,STOCKIST,AREA,NAD,SIGNATURE\nDZ011269,NALUMINO MOYOWANYAMBE,NBA,NB1,2708.03,PAID';
+			const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url; a.download = 'bonus-template.csv'; a.click();
+			URL.revokeObjectURL(url);
+		});
+	</script>
+</body>
+</html>
+
+
