@@ -2239,8 +2239,7 @@
         function exportReportToPDF() {
             alert('PDF export functionality will be implemented.');
         }
-            window.location.href = href;
-        }
+        
         function gatherPortalSummary(portal){
             try{
                 if (portal==='gm'){
@@ -3915,10 +3914,93 @@
                 
                 <!-- Branch Stock Section (Hidden by default) -->
                 <div id="dispenserStockSection" style="display: none;">
-                    <div style="width: 100%; height: 80vh; border: none;">
-                        <iframe id="branchStockInventoryFrame" src="./branch-stock-inventory.html" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px;" frameborder="0"></iframe>
+                    <div style="width: 100%; height: 80vh; border: none; position: relative;">
+                        <iframe id="branchStockInventoryFrame" src="./branch-stock-inventory.html" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px;" frameborder="0" onerror="handleStockIframeError()"></iframe>
+                        <div id="stockIframeError" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; padding: 40px; text-align: center; border-radius: 8px;">
+                            <h3 style="color: #c41e3a; margin-bottom: 15px;">⚠️ Stock Portal Loading Error</h3>
+                            <p style="color: #666; margin-bottom: 20px;">The stock inventory page could not be loaded. Please try one of the options below.</p>
+                            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                                <a href="./branch-stock-inventory.html" target="_blank" class="btn btn-primary" style="text-decoration: none;">Open in New Tab ↗</a>
+                                <button onclick="openStockPortalFromBranch()" class="btn btn-success">Open Full Stock Portal</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                
+                <script>
+                    function handleStockIframeError() {
+                        const errorDiv = document.getElementById('stockIframeError');
+                        const iframe = document.getElementById('branchStockInventoryFrame');
+                        if (errorDiv && iframe) {
+                            iframe.style.display = 'none';
+                            errorDiv.style.display = 'block';
+                        }
+                    }
+                    
+                    function openStockPortalFromBranch() {
+                        // Switch to stock tab in main system
+                        if (typeof openTab === 'function') {
+                            openTab('stock', null);
+                        } else {
+                            window.location.href = './dynapharm-complete-system.html#stock';
+                        }
+                    }
+                    
+                    // Check if iframe loads successfully
+                    window.addEventListener('load', function() {
+                        const iframe = document.getElementById('branchStockInventoryFrame');
+                        if (iframe) {
+                            // Set timeout to check if iframe loaded
+                            setTimeout(function() {
+                                try {
+                                    // Try to access iframe content (will fail if CORS blocked or not loaded)
+                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                                    if (!iframeDoc || !iframeDoc.body) {
+                                        // Check if URL is blocked
+                                        try {
+                                            const iframeUrl = iframe.contentWindow?.location?.href;
+                                            if (iframeUrl && (iframeUrl.includes('refused') || iframeUrl === 'about:blank')) {
+                                                handleStockIframeError();
+                                            }
+                                        } catch (e) {
+                                            // CORS error - this is expected, but iframe might still be loading
+                                            // Wait a bit more and check again
+                                            setTimeout(function() {
+                                                try {
+                                                    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+                                                    if (!doc || !doc.body) {
+                                                        handleStockIframeError();
+                                                    }
+                                                } catch (e2) {
+                                                    // Still CORS, but iframe might be loading - don't show error yet
+                                                }
+                                            }, 2000);
+                                        }
+                                    }
+                                } catch (e) {
+                                    // CORS error - this is normal for cross-origin iframes
+                                    // Iframe might still be loading, so don't show error immediately
+                                }
+                            }, 2000);
+                            
+                            // Also listen for iframe load event
+                            iframe.addEventListener('load', function() {
+                                try {
+                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                                    if (iframeDoc && iframeDoc.body) {
+                                        // Iframe loaded successfully
+                                        const errorDiv = document.getElementById('stockIframeError');
+                                        if (errorDiv) errorDiv.style.display = 'none';
+                                    }
+                                } catch (e) {
+                                    // CORS error - this is expected, but iframe is likely loaded
+                                }
+                            });
+                            
+                            iframe.addEventListener('error', handleStockIframeError);
+                        }
+                    });
+                </script>
 
                 <!-- Online Orders Section (Hidden by default) -->
                 <div id="dispenserOnlineOrdersSection" style="display: none;">

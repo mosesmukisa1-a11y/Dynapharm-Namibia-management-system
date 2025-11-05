@@ -43,7 +43,69 @@
     <script defer src="./cloud-sync.js"></script>
     <script defer src="./auto-cloud-sync.js"></script>
     <script type="module">
-        import { getTransactions } from './web-modules/transactions.js';
+        // Try to import transactions, but handle gracefully if missing
+        let getTransactions;
+        
+        // Initialize getTransactions with fallback
+        (async function() {
+            try {
+                const transactionsModule = await import('./web-modules/transactions.js');
+                getTransactions = transactionsModule.getTransactions;
+            } catch (error) {
+                console.warn('transactions.js module not found, using fallback');
+                // Fallback function
+                getTransactions = async function({ dateRange = 'month', branch = 'all' } = {}) {
+                try {
+                    // Try to get from localStorage
+                    const sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+                    const onlineOrders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+                    const transactions = [...sales, ...onlineOrders].map(t => ({
+                        id: t.id || t.receiptNo || `TXN-${Date.now()}`,
+                        clientName: t.clientName || t.customerName || 'Unknown',
+                        branch: t.branch || 'Unknown',
+                        amount: t.total || t.amount || 0,
+                        date: t.date || new Date().toISOString().split('T')[0],
+                        status: t.status || 'completed'
+                    }));
+                    
+                    // Filter by date range
+                    const now = new Date();
+                    let startDate = new Date(now);
+                    switch(dateRange) {
+                        case 'today':
+                            startDate.setHours(0,0,0,0);
+                            break;
+                        case 'week':
+                            startDate.setDate(now.getDate() - 7);
+                            break;
+                        case 'month':
+                            startDate.setMonth(now.getMonth() - 1);
+                            break;
+                        case 'year':
+                            startDate.setFullYear(now.getFullYear() - 1);
+                            break;
+                        default:
+                            startDate = new Date(0);
+                    }
+                    
+                    let filtered = transactions.filter(t => {
+                        const tDate = new Date(t.date);
+                        return tDate >= startDate;
+                    });
+                    
+                    // Filter by branch
+                    if (branch && branch !== 'all') {
+                        filtered = filtered.filter(t => t.branch === branch);
+                    }
+                    
+                    return { transactions: filtered };
+                } catch (err) {
+                    console.error('Error loading transactions:', err);
+                    return { transactions: [] };
+                }
+            };
+            }
+        })();
 
         let branches = [];
 
@@ -95,29 +157,138 @@
         }
 
         function setIframe(){
-            // Keep simple: open stock management portal in iframe
             const iframe = document.getElementById('invFrame');
             if (!iframe) return;
             
-            // Try to load stock-management-portal.html, fallback to main system stock tab
+            // Try to load stock-management-portal.html, with better error handling
             iframe.src = './stock-management-portal.html';
             
             // Handle iframe load errors
             iframe.onerror = function() {
-                console.warn('stock-management-portal.html not found, using fallback');
-                // Fallback: embed the stock portal section from main system
-                iframe.style.display = 'none';
-                const container = iframe.parentElement;
-                if (container) {
-                    container.innerHTML = '<div style="padding: 20px; text-align: center;"><p>Stock management portal is accessible from the main system.</p><a href="./dynapharm-complete-system.html#stock" class="btn primary">Open Stock Portal</a></div>';
+                console.warn('stock-management-portal.html failed to load');
+                showIframeFallback();
+            };
+            
+            // Also check if iframe loads but content is blocked
+            iframe.onload = function() {
+                try {
+                    // Check if iframe loaded successfully by trying to access its content
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                    if (!iframeDoc) {
+                        // Iframe might be blocked by CORS, show fallback
+                        setTimeout(() => {
+                            if (iframe.contentWindow?.location?.href === 'about:blank' || 
+                                iframe.contentWindow?.location?.href?.includes('refused')) {
+                                showIframeFallback();
+                            }
+                        }, 1000);
+                    }
+                } catch (e) {
+                    // CORS error - this is expected for cross-origin iframes
+                    // Iframe is likely loading, just wait
+                    console.log('Iframe CORS check (expected):', e.message);
                 }
             };
+            
+            // Timeout fallback - if iframe doesn't load in 3 seconds, show fallback
+            setTimeout(() => {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                    if (!iframeDoc || !iframeDoc.body) {
+                        showIframeFallback();
+                    }
+                } catch (e) {
+                    // This might be CORS, which is OK - don't show fallback yet
+                    // Check if URL is blocked
+                    if (iframe.contentWindow?.location?.href?.includes('refused') || 
+                        iframe.contentWindow?.location?.href === 'about:blank') {
+                        showIframeFallback();
+                    }
+                }
+            }, 3000);
+        }
+        
+        function showIframeFallback() {
+            const iframe = document.getElementById('invFrame');
+            if (!iframe) return;
+            
+            const container = iframe.parentElement;
+            if (container) {
+                iframe.style.display = 'none';
+                container.innerHTML = `
+                    <div style="padding: 40px; text-align: center; background: #0e162b; border-radius: 12px; border: 1px solid #1e2a44;">
+                        <h3 style="color: var(--text); margin-bottom: 15px;">📦 Stock Management Portal</h3>
+                        <p style="color: var(--muted); margin-bottom: 20px;">The stock management portal can be accessed directly from the main system.</p>
+                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <a href="./dynapharm-complete-system.html#stock" class="btn primary" style="text-decoration: none; display: inline-block;">Open Stock Portal</a>
+                            <a href="./stock-management-portal.html" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open in New Tab ↗</a>
+                        </div>
+                        <div style="margin-top: 30px; padding: 20px; background: #0b1020; border-radius: 8px; border: 1px solid #1e2a44;">
+                            <h4 style="color: var(--text); margin-bottom: 10px;">Quick Inventory Summary</h4>
+                            <div id="quickInventorySummary" style="color: var(--muted);">
+                                <p>Loading inventory data...</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                loadQuickInventorySummary();
+            }
+        }
+        
+        function loadQuickInventorySummary() {
+            const summaryDiv = document.getElementById('quickInventorySummary');
+            if (!summaryDiv) return;
+            
+            try {
+                const inventory = JSON.parse(localStorage.getItem('dynapharm_inventory') || '[]');
+                const branchStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
+                
+                if (inventory.length === 0 && branchStock.length === 0) {
+                    summaryDiv.innerHTML = '<p>No inventory data available. Please add stock items.</p>';
+                    return;
+                }
+                
+                const totalItems = inventory.length + branchStock.length;
+                const totalQuantity = [...inventory, ...branchStock].reduce((sum, item) => {
+                    return sum + (parseInt(item.quantity) || 0);
+                }, 0);
+                
+                summaryDiv.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; text-align: left;">
+                        <div>
+                            <strong style="color: var(--accent);">Total Products:</strong>
+                            <div style="font-size: 1.5rem; color: var(--text);">${totalItems}</div>
+                        </div>
+                        <div>
+                            <strong style="color: var(--accent);">Total Quantity:</strong>
+                            <div style="font-size: 1.5rem; color: var(--text);">${totalQuantity}</div>
+                        </div>
+                    </div>
+                    <p style="margin-top: 15px; color: var(--muted); font-size: 0.9rem;">
+                        Click "Open Stock Portal" above to access full inventory management features.
+                    </p>
+                `;
+            } catch (error) {
+                console.error('Error loading inventory summary:', error);
+                summaryDiv.innerHTML = '<p>Error loading inventory data. Please try opening the stock portal.</p>';
+            }
         }
 
         async function renderSales(){
             const tbody = document.getElementById('salesBody');
+            if (!tbody) return;
             tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
             const { branch, range, q } = applyFilters();
+            
+            // Ensure getTransactions is available
+            if (!getTransactions) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                if (!getTransactions) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="muted">Error: Transactions module not available</td></tr>';
+                    return;
+                }
+            }
+            
             const res = await getTransactions({ dateRange: range, branch: branch });
             let rows = res.transactions;
             if (q) {
@@ -142,8 +313,20 @@
         async function renderInvoices(){
             // For now, invoices mirror sales transactions list
             const tbody = document.getElementById('invBody');
+            if (!tbody) return;
             tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
             const { branch, range, q } = applyFilters();
+            
+            // Ensure getTransactions is available
+            if (!getTransactions) {
+                // Wait a bit for it to initialize
+                await new Promise(resolve => setTimeout(resolve, 100));
+                if (!getTransactions) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="muted">Error: Transactions module not available</td></tr>';
+                    return;
+                }
+            }
+            
             const res = await getTransactions({ dateRange: range, branch: branch });
             let rows = res.transactions;
             if (q) {
@@ -172,13 +355,60 @@
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
-            await loadBranches();
-            setIframe();
-            switchTab('inventory');
-            document.getElementById('branchFilter').addEventListener('change', onFiltersChanged);
-            document.getElementById('dateRange').addEventListener('change', onFiltersChanged);
-            document.getElementById('searchBox').addEventListener('input', () => { clearTimeout(window.__t); window.__t=setTimeout(onFiltersChanged, 250); });
-            document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+            try {
+                await loadBranches();
+                setIframe();
+                switchTab('inventory');
+                
+                const branchFilter = document.getElementById('branchFilter');
+                const dateRange = document.getElementById('dateRange');
+                const searchBox = document.getElementById('searchBox');
+                
+                if (branchFilter) {
+                    branchFilter.addEventListener('change', onFiltersChanged);
+                }
+                if (dateRange) {
+                    dateRange.addEventListener('change', onFiltersChanged);
+                }
+                if (searchBox) {
+                    searchBox.addEventListener('input', () => { 
+                        clearTimeout(window.__t); 
+                        window.__t = setTimeout(onFiltersChanged, 250); 
+                    });
+                }
+                
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.addEventListener('click', () => switchTab(t.dataset.tab));
+                });
+            } catch (error) {
+                console.error('Error initializing branch stock inventory:', error);
+                // Show error message to user
+                const main = document.querySelector('main');
+                if (main) {
+                    main.innerHTML = `
+                        <div style="padding: 40px; text-align: center; color: var(--danger);">
+                            <h3>Error Loading Stock Inventory</h3>
+                            <p>${error.message}</p>
+                            <a href="./dynapharm-complete-system.html#stock" class="btn primary" style="margin-top: 20px; text-decoration: none; display: inline-block;">
+                                Open Stock Portal
+                            </a>
+                        </div>
+                    `;
+                }
+            }
+        });
+        
+        // Global error handler for uncaught errors
+        window.addEventListener('error', function(event) {
+            console.error('Global error:', event.error);
+            // Don't show alerts for script errors, just log them
+        });
+        
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            // Prevent default browser error handling
+            event.preventDefault();
         });
     </script>
 </head>
