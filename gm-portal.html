@@ -452,50 +452,91 @@
         // Load data from various sources
         async function loadData() {
             try {
-                // Try to load from API first
-                const { getTransactions } = await import('./web-modules/transactions.js');
-                const data = await getTransactions({
-                    dateRange: 'all',
-                    status: 'all',
-                    branch: 'all'
-                });
+                // Try to load from API first - use localStorage and API as fallback
+                let transactions = [];
                 
-                allTransactions = data.transactions || [];
+                // Try API endpoint for reports/transactions
+                try {
+                    const reportsResponse = await fetch('/api/reports');
+                    if (reportsResponse.ok) {
+                        const reportsData = await reportsResponse.json();
+                        if (Array.isArray(reportsData)) {
+                            transactions = transformReportsToTransactions(reportsData);
+                        } else if (reportsData.reports && Array.isArray(reportsData.reports)) {
+                            transactions = transformReportsToTransactions(reportsData.reports);
+                        }
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, trying localStorage:', apiError);
+                }
+                
+                // If no transactions from API, try localStorage
+                if (transactions.length === 0) {
+                    try {
+                        const localReports = JSON.parse(localStorage.getItem('dyna_reports') || '[]');
+                        if (Array.isArray(localReports)) {
+                            transactions = transformReportsToTransactions(localReports);
+                        }
+                    } catch (localError) {
+                        console.warn('localStorage read failed:', localError);
+                    }
+                }
+                
+                // Also try walk-in sales
+                try {
+                    const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+                    if (Array.isArray(walkInSales)) {
+                        const salesTransactions = walkInSales.map(sale => ({
+                            id: sale.id || `TXN-${Date.now()}`,
+                            clientName: sale.customerName || 'Walk-in Customer',
+                            branch: sale.branch || 'Unknown',
+                            amount: sale.total || sale.totalAmount || 0,
+                            date: sale.date || sale.timestamp?.split('T')[0] || new Date().toISOString().split('T')[0],
+                            status: 'completed',
+                            type: 'Walk-in Sale',
+                            timestamp: new Date(sale.timestamp || Date.now())
+                        }));
+                        transactions = [...transactions, ...salesTransactions];
+                    }
+                } catch (salesError) {
+                    console.warn('Walk-in sales load failed:', salesError);
+                }
+                
+                allTransactions = transactions;
                 
                 // Update branches from transactions
-                allBranches = [...new Set(allTransactions.map(t => t.branch))];
+                allBranches = [...new Set(allTransactions.map(t => t.branch).filter(Boolean))];
+                if (allBranches.length === 0) {
+                    allBranches = ['Windhoek', 'Walvis Bay', 'Oshakati', 'Rundu'];
+                }
                 
                 // Load clients for reference (serverless API returns array)
                 try {
-                    const clientsData = await fetch('/api/clients').then(r => r.json());
-                    allClients = Array.isArray(clientsData) ? clientsData : [];
+                    const clientsResponse = await fetch('/api/clients');
+                    if (clientsResponse.ok) {
+                        const clientsData = await clientsResponse.json();
+                        allClients = Array.isArray(clientsData) ? clientsData : [];
+                    }
                 } catch (e) {
-                    allClients = [];
+                    // Try localStorage as fallback
+                    try {
+                        const localClients = JSON.parse(localStorage.getItem('dyna_clients') || '[]');
+                        allClients = Array.isArray(localClients) ? localClients : [];
+                    } catch (localError) {
+                        allClients = [];
+                    }
                 }
                 
                 populateBranchFilter();
                 
             } catch (error) {
-                console.error('Error loading data from API:', error);
+                console.error('Error loading data:', error);
                 
-                // Try direct JSON fetch as fallback
-                try {
-                    const reportsResponse = await fetch('./reports_data.json');
-                    const reportsData = await reportsResponse.json();
-                    
-                    allTransactions = transformReportsToTransactions(reportsData.reports || []);
-                    allBranches = ['Windhoek', 'Walvis Bay', 'Oshakati', 'Rundu'];
-                    
-                    populateBranchFilter();
-                    
-                } catch (e) {
-                    console.error('Error loading fallback data:', e);
-                    // Use sample data as last resort
-                    allTransactions = getSampleTransactions();
-                    allClients = getSampleClients();
-                    allBranches = ['Windhoek', 'Walvis Bay', 'Oshakati', 'Rundu'];
-                    populateBranchFilter();
-                }
+                // Use sample data as last resort
+                allTransactions = getSampleTransactions();
+                allClients = getSampleClients();
+                allBranches = ['Windhoek', 'Walvis Bay', 'Oshakati', 'Rundu'];
+                populateBranchFilter();
             }
         }
         

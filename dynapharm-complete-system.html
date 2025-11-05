@@ -1742,6 +1742,12 @@
                         window.currentUser = user;
                         setCurrentUserRole(role);
                         showAuthorizedPortals(role);
+                        // Load shop products if client portal is available
+                        setTimeout(() => {
+                            if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
+                                loadShopProducts();
+                            }
+                        }, 500);
                         return;
                     }
                 } catch (e) {
@@ -1799,8 +1805,10 @@
                 userDisplay.textContent = `${currentUser.fullName || currentUser.username} (${role})`;
             }
             
-            // Show first authorized portal by default
-            if (authorizedPortals.length > 0) {
+            // Show first authorized portal by default (always show client portal first if available)
+            if (authorizedPortals.includes('client')) {
+                openTab('client', null);
+            } else if (authorizedPortals.length > 0) {
                 openTab(authorizedPortals[0], null);
             }
         }
@@ -1832,8 +1840,13 @@
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
             hideWelcomeOverlay();
             showAuthorizedPortals('guest');
-            // Show only the client/distributor portal (shop)
+            // Show only the client/distributor portal (shop) and load shop products
             openTab('client', null);
+            setTimeout(() => {
+                if (typeof loadShopProducts === 'function') {
+                    loadShopProducts();
+                }
+            }, 500);
         }
         
         function showStaffLogin() {
@@ -1906,6 +1919,13 @@
             // Hide overlay and show authorized portals
             hideWelcomeOverlay();
             showAuthorizedPortals(role);
+            
+            // Load shop products if client portal is available
+            setTimeout(() => {
+                if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
+                    loadShopProducts();
+                }
+            }, 500);
             
             // Show welcome message
             alert(`Welcome, ${user.fullName || user.username}! You have access to ${ROLE_PORTAL_ACCESS[role]?.length || 0} portal(s).`);
@@ -2733,6 +2753,8 @@
             <div class="tabs" style="margin-bottom: 20px;">
                 <button class="tab-button active" onclick="showDistributorTab('shop')">🛒 Shop</button>
                 <button class="tab-button" onclick="showDistributorTab('checkup')">🏥 Full Body Check Up</button>
+                <button class="tab-button" onclick="showDistributorTab('media')">📰 Media & News</button>
+                <button class="tab-button" onclick="showDistributorTab('testimonials')">💬 Testimonials</button>
                 <a href="distributor-portal.html" target="_blank" class="tab-button" style="text-decoration: none; display: inline-block; background: #c41e3a; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                     📊 Distributor Dashboard
                 </a>
@@ -2779,6 +2801,94 @@
                         <button class="btn btn-success" onclick="checkoutShopOrder()" style="margin-top: 10px;">Proceed to Checkout</button>
                         <button class="btn" onclick="clearShopCart()">Clear Cart</button>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Media & News Tab -->
+            <div id="distributor-media-tab" class="distributor-subtab" style="display: none;">
+                <h2>📰 Media & News</h2>
+                <p style="margin-bottom: 20px; color: #666;">Stay updated with the latest news, health tips, and company updates from Dynapharm</p>
+                
+                <div id="mediaNewsContent" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                    <!-- Media items will be loaded here -->
+                </div>
+                
+                <!-- Add News Form (Admin only) -->
+                <div id="addNewsForm" style="display: none; margin-top: 30px; background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                    <h3>Add News/Media</h3>
+                    <form onsubmit="addNewsItem(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="required">Title</label>
+                                <input type="text" id="newsTitle" required placeholder="News title">
+                            </div>
+                            <div class="form-group">
+                                <label>Category</label>
+                                <select id="newsCategory">
+                                    <option value="health">Health Tips</option>
+                                    <option value="product">Product News</option>
+                                    <option value="company">Company Updates</option>
+                                    <option value="event">Events</option>
+                                    <option value="promotion">Promotions</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label class="required">Content</label>
+                                <textarea id="newsContent" rows="5" required placeholder="News content..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Image URL</label>
+                                <input type="url" id="newsImageUrl" placeholder="https://...">
+                            </div>
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="newsDate" value="">
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <button type="submit" class="btn btn-success">Publish News</button>
+                            <button type="button" class="btn" onclick="document.getElementById('addNewsForm').style.display='none'">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div style="margin-top: 20px; text-align: center;">
+                    <button onclick="document.getElementById('addNewsForm').style.display='block'" class="btn btn-info" style="display: none;" id="showAddNewsBtn">+ Add News</button>
+                </div>
+            </div>
+            
+            <!-- Testimonials Tab -->
+            <div id="distributor-testimonials-tab" class="distributor-subtab" style="display: none;">
+                <h2>💬 Testimonials</h2>
+                <p style="margin-bottom: 20px; color: #666;">Read what our customers and members say about Dynapharm products and services</p>
+                
+                <div id="testimonialsContent" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+                    <!-- Testimonials will be loaded here -->
+                </div>
+                
+                <!-- Add Testimonial Form -->
+                <div style="margin-top: 40px; background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); color: white; padding: 30px; border-radius: 12px;">
+                    <h3 style="color: white; margin-bottom: 15px;">Share Your Story</h3>
+                    <p style="margin-bottom: 20px; opacity: 0.9;">Have you experienced positive results with Dynapharm products? Share your testimonial with us!</p>
+                    <form onsubmit="submitTestimonial(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label style="color: white;">Your Name</label>
+                                <input type="text" id="testimonialName" placeholder="Your name" style="padding: 10px; width: 100%; border-radius: 5px; border: none;">
+                            </div>
+                            <div class="form-group">
+                                <label style="color: white;">Location</label>
+                                <input type="text" id="testimonialLocation" placeholder="City, Country" style="padding: 10px; width: 100%; border-radius: 5px; border: none;">
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label style="color: white;">Your Testimonial</label>
+                                <textarea id="testimonialText" rows="4" required placeholder="Share your experience with Dynapharm products..." style="padding: 10px; width: 100%; border-radius: 5px; border: none; font-family: inherit;"></textarea>
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <button type="submit" class="btn" style="background: white; color: #c41e3a; padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Submit Testimonial</button>
+                        </div>
+                    </form>
                 </div>
             </div>
             
@@ -4861,6 +4971,16 @@
                     </div>
                     <div class="form-section">
                         <h3>📥 Receive Country Stock <button class="btn" data-stock-help="country" style="margin-left:8px;">Help</button></h3>
+                        <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                            <h4 style="margin: 0 0 10px 0; color: #2e7d32;">📋 Import Workflow</h4>
+                            <p style="margin: 0; color: #424242; font-size: 0.95rem;">
+                                <strong>All imported stock is automatically:</strong><br>
+                                • Allocated with unique barcodes for tracking<br>
+                                • Enforced with FEFO (First Expired First Out) - batches sorted by expiry date<br>
+                                • Stored in Country Stock for distribution to warehouses<br>
+                                • Tracked for full audit trail from import to sale
+                            </p>
+                        </div>
                         <p style="margin-bottom: 20px; color: #666;">Import stock with batch tracking and FIFO/FEFO enforcement</p>
                         
                         <!-- Bulk Import Form -->
@@ -4935,16 +5055,23 @@
                 
                 <!-- Windhoek Warehouse Tab -->
                 <div id="windhoekTab" class="stock-tab-content" style="display: none;">
+                    <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0; color: #1565c0;">📋 Workflow Information</h4>
+                        <p style="margin: 0; color: #424242; font-size: 0.95rem;">
+                            <strong>Stock Flow:</strong> Country Stock → Windhoek Warehouse → Branches<br>
+                            Stock can only be transferred from Country Stock to this warehouse. From here, stock is distributed to branches.
+                        </p>
+                    </div>
                     <div class="form-section">
-                        <h3>🏢 Windhoek Warehouse - Transfer Stock</h3>
+                        <h3>🏢 Windhoek Warehouse - Transfer Stock from Country Stock</h3>
                         <form id="transferToWindhoekForm">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">Source</label>
                                     <select id="windhoekSource" required onchange="loadWindhoekProducts()">
                                         <option value="country">Country Stock</option>
-                                        <option value="ondangwa">Ondangwa Warehouse</option>
                                     </select>
+                                    <small style="color: #666; font-size: 0.85rem;">Stock must come from Country Stock</small>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Product</label>
@@ -4984,16 +5111,23 @@
                 
                 <!-- Ondangwa Warehouse Tab -->
                 <div id="ondangwaTab" class="stock-tab-content" style="display: none;">
+                    <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2e7d32;">📋 Workflow Information</h4>
+                        <p style="margin: 0; color: #424242; font-size: 0.95rem;">
+                            <strong>Stock Flow:</strong> Country Stock → Ondangwa Warehouse → Branches<br>
+                            Stock can only be transferred from Country Stock to this warehouse. From here, stock is distributed to branches.
+                        </p>
+                    </div>
                     <div class="form-section">
-                        <h3>🏢 Ondangwa Warehouse - Transfer Stock</h3>
+                        <h3>🏢 Ondangwa Warehouse - Transfer Stock from Country Stock</h3>
                         <form id="transferToOndangwaForm">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">Source</label>
                                     <select id="ondangwaSource" required onchange="loadOndangwaProducts()">
                                         <option value="country">Country Stock</option>
-                                        <option value="windhoek">Windhoek Warehouse</option>
                                     </select>
+                                    <small style="color: #666; font-size: 0.85rem;">Stock must come from Country Stock</small>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Product</label>
@@ -5033,17 +5167,25 @@
                 
                 <!-- Distribution Tab -->
                 <div id="distributionTab" class="stock-tab-content" style="display: none;">
+                    <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0; color: #e65100;">📋 Distribution Workflow</h4>
+                        <p style="margin: 0; color: #424242; font-size: 0.95rem;">
+                            <strong>Stock Flow:</strong> Country Stock → Warehouses (Windhoek/Ondangwa) → Branches<br>
+                            Branches can only receive stock from warehouses, not directly from Country Stock.
+                        </p>
+                    </div>
                     <div class="form-section">
-                        <h3>🚚 Distribute Stock to Branches</h3>
+                        <h3>🚚 Distribute Stock to Branches from Warehouses</h3>
                         <form id="distributeStockForm">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">From Warehouse</label>
-                                    <select id="distributionWarehouse" required>
+                                    <select id="distributionWarehouse" required onchange="loadDistributionProducts()">
                                         <option value="">Select Warehouse</option>
                                         <option value="windhoek">Windhoek Warehouse</option>
                                         <option value="ondangwa">Ondangwa Warehouse</option>
                                     </select>
+                                    <small style="color: #666; font-size: 0.85rem;">Only warehouses can distribute to branches</small>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">To Branch</label>
@@ -5960,17 +6102,36 @@
                     </div>
                 </div>
                 
-                <!-- Pending Approvals -->
+                <!-- Comprehensive Approval System -->
                 <div class="form-section" style="margin-top: 30px;">
-                    <h3>⏳ Pending Approvals</h3>
-                    <div id="pendingApprovalsList"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3>⏳ Approval Center</h3>
+                        <button class="btn btn-primary" onclick="refreshAllApprovals()">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Approval Tabs -->
+                    <div class="tabs" style="margin-bottom: 20px;">
+                        <button class="tab-button active" onclick="switchApprovalTab('all')" id="approvalTabAll">All Requests</button>
+                        <button class="tab-button" onclick="switchApprovalTab('cash')" id="approvalTabCash">💵 Cash Requests</button>
+                        <button class="tab-button" onclick="switchApprovalTab('leave')" id="approvalTabLeave">📅 Leave Requests</button>
+                        <button class="tab-button" onclick="switchApprovalTab('stock')" id="approvalTabStock">📦 Stock Movements</button>
+                        <button class="tab-button" onclick="switchApprovalTab('other')" id="approvalTabOther">Other Requests</button>
+                    </div>
+                    
+                    <!-- Approval Content -->
+                    <div id="approvalContent" style="min-height: 400px;">
+                        <div id="allApprovalsList" class="approval-tab-content active"></div>
+                        <div id="cashApprovalsList" class="approval-tab-content" style="display: none;"></div>
+                        <div id="leaveApprovalsList" class="approval-tab-content" style="display: none;"></div>
+                        <div id="stockApprovalsList" class="approval-tab-content" style="display: none;"></div>
+                        <div id="otherApprovalsList" class="approval-tab-content" style="display: none;"></div>
+                    </div>
+                    
                     <script>
                         // update global alert banner with count, if available after GM load
                         (function(){
                             try {
-                                const list = document.getElementById('pendingApprovalsList');
-                                const count = (list && list.children) ? list.children.length : 0;
-                                window.gmPendingApprovalsCount = count;
+                                const count = window.gmPendingApprovalsCount || 0;
                                 if (typeof window.updateGlobalAlerts === 'function') {
                                     window.updateGlobalAlerts({ pendingApprovalsCount: count });
                                 }
@@ -5979,9 +6140,35 @@
                     </script>
                 </div>
                 
-                <!-- Special Sales Management -->
+                <!-- Campaigns Management -->
                 <div class="form-section" style="margin-top: 30px;">
-                    <h3>🎯 Special Sales Campaigns</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3>🎯 Campaigns Management</h3>
+                        <button class="btn btn-success" onclick="showCreateCampaignModal()">➕ Create Campaign</button>
+                    </div>
+                    
+                    <!-- Campaign Tabs -->
+                    <div class="tabs" style="margin-bottom: 20px;">
+                        <button class="tab-button active" onclick="switchCampaignTab('all')" id="campaignTabAll">All Campaigns</button>
+                        <button class="tab-button" onclick="switchCampaignTab('sales')" id="campaignTabSales">💰 Sales Discounts</button>
+                        <button class="tab-button" onclick="switchCampaignTab('recruiting')" id="campaignTabRecruiting">👥 Recruiting</button>
+                        <button class="tab-button" onclick="switchCampaignTab('sponsoring')" id="campaignTabSponsoring">🤝 Sponsoring</button>
+                        <button class="tab-button" onclick="switchCampaignTab('gift')" id="campaignTabGift">🎁 Gift Campaigns</button>
+                    </div>
+                    
+                    <!-- Campaign Content -->
+                    <div id="campaignContent" style="min-height: 400px;">
+                        <div id="allCampaignsList" class="campaign-tab-content active"></div>
+                        <div id="salesCampaignsList" class="campaign-tab-content" style="display: none;"></div>
+                        <div id="recruitingCampaignsList" class="campaign-tab-content" style="display: none;"></div>
+                        <div id="sponsoringCampaignsList" class="campaign-tab-content" style="display: none;"></div>
+                        <div id="giftCampaignsList" class="campaign-tab-content" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Special Sales Management (Legacy) -->
+                <div class="form-section" style="margin-top: 30px;">
+                    <h3>🎯 Special Sales Campaigns (Legacy)</h3>
                     <button class="btn btn-success" onclick="showSpecialSalesModal()">➕ Create Campaign</button>
                     <div id="specialSalesList" style="margin-top: 20px;"></div>
                 </div>
@@ -8373,48 +8560,121 @@
 
         async function rebuildBranchStockFromMovements(){
             try {
-                // fetch cloud movements
+                // Comprehensive stock calculation from ALL sources
+                
+                // 1. Fetch cloud movements
                 let cloud = [];
                 try {
                     const r = await fetch('/api/stock-movements');
                     if (r.ok) cloud = await r.json();
                 } catch(_){ cloud = []; }
-                // local queued movements also included
+                
+                // 2. Local queued movements
                 const localPending = getPendingMovements();
-                // local IDB movements
+                
+                // 3. Local IDB movements
                 let localDb = [];
                 try { localDb = await dbGetAll(DYN_MOVEMENTS_STORE) || []; } catch(_){ localDb = []; }
-                const all = ([]).concat(Array.isArray(cloud)?cloud:[], Array.isArray(localDb)?localDb:[], Array.isArray(localPending)?localPending:[]);
-                // derive branch -> product -> qty
+                
+                // 4. Barcode stock batches (by location)
+                const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
+                
+                // 5. Distribution history (warehouse → branch)
+                const distributionHistory = JSON.parse(localStorage.getItem('dyna_distribution_history') || '[]');
+                
+                // 6. Stock transfers (country → warehouse → branch)
+                const stockTransfers = JSON.parse(localStorage.getItem('dyna_stock_transfers') || '[]');
+                
+                // Combine all movement records
+                const all = ([]).concat(
+                    Array.isArray(cloud)?cloud:[],
+                    Array.isArray(localDb)?localDb:[],
+                    Array.isArray(localPending)?localPending:[]
+                );
+                
+                // Initialize branch stock object
                 const branchStock = {};
+                
+                // Process movement records
                 for (const m of all){
                     const type = (m && m.type) || '';
-                    const product = (m && m.product) || '';
+                    const product = (m && m.product) || m.description || '';
                     const qty = Number(m && m.quantity || 0);
                     if (!product || !qty) continue;
-                    if (type === 'receive'){
-                        const dest = m.destination || m.branchId || 'unknown';
+                    
+                    if (type === 'receive' || type === 'distribution'){
+                        const dest = m.destination || m.branchId || m.toBranch || 'unknown';
                         branchStock[dest] = branchStock[dest] || {};
                         branchStock[dest][product] = (branchStock[dest][product] || 0) + qty;
                     } else if (type === 'transfer'){
-                        const from = m.source || m.branchId || 'unknown';
-                        const to = m.destination || 'unknown';
+                        const from = m.source || m.branchId || m.fromWarehouse || 'unknown';
+                        const to = m.destination || m.toBranch || 'unknown';
                         branchStock[from] = branchStock[from] || {};
                         branchStock[to] = branchStock[to] || {};
                         branchStock[from][product] = (branchStock[from][product] || 0) - qty;
                         branchStock[to][product] = (branchStock[to][product] || 0) + qty;
                     } else if (type === 'adjust'){
-                        const b = m.branchId || 'unknown';
+                        const b = m.branchId || m.location || 'unknown';
                         branchStock[b] = branchStock[b] || {};
                         branchStock[b][product] = (branchStock[b][product] || 0) + qty; // qty can be negative
-                    } else if (type === 'dispense'){
-                        const b = m.branchId || 'unknown';
+                    } else if (type === 'dispense' || type === 'sale'){
+                        const b = m.branchId || m.branch || 'unknown';
                         branchStock[b] = branchStock[b] || {};
                         branchStock[b][product] = (branchStock[b][product] || 0) - qty;
                     }
                 }
+                
+                // Process barcode stock batches by location (for branches)
+                const branchNames = ['windhoek', 'ondangwa', 'oshakati', 'rundu', 'walvis bay', 'swakopmund'];
+                barcodeStock.forEach(batch => {
+                    if (!batch.location || !batch.description) return;
+                    const location = batch.location.toLowerCase();
+                    
+                    // Check if location is a branch
+                    const isBranch = branchNames.some(branch => location.includes(branch));
+                    if (isBranch) {
+                        const branchId = branchNames.find(b => location.includes(b)) || location;
+                        branchStock[branchId] = branchStock[branchId] || {};
+                        branchStock[branchId][batch.description] = (branchStock[branchId][batch.description] || 0) + (batch.remainingQuantity || 0);
+                    }
+                });
+                
+                // Process distribution history (warehouse → branch)
+                distributionHistory.forEach(dist => {
+                    if (!dist.branch || !dist.product || !dist.quantity) return;
+                    const branchId = dist.branch.toLowerCase();
+                    branchStock[branchId] = branchStock[branchId] || {};
+                    branchStock[branchId][dist.product] = (branchStock[branchId][dist.product] || 0) + Number(dist.quantity || 0);
+                });
+                
+                // Process stock transfers (warehouse → branch)
+                stockTransfers.forEach(transfer => {
+                    if (!transfer.toBranch || !transfer.items) return;
+                    const branchId = transfer.toBranch.toLowerCase();
+                    branchStock[branchId] = branchStock[branchId] || {};
+                    
+                    if (Array.isArray(transfer.items)) {
+                        transfer.items.forEach(item => {
+                            const product = item.product || item.name || item.description || '';
+                            const qty = Number(item.quantity || 0);
+                            if (product && qty > 0) {
+                                branchStock[branchId][product] = (branchStock[branchId][product] || 0) + qty;
+                            }
+                        });
+                    }
+                });
+                
+                // Save calculated branch stock
                 localStorage.setItem('dyna_branch_stock', JSON.stringify(branchStock));
-            } catch(_){ }
+                
+                // Trigger event for real-time updates
+                window.dispatchEvent(new CustomEvent('branch_stock:updated', { 
+                    detail: { branchStock, timestamp: new Date().toISOString() } 
+                }));
+                
+            } catch(error){ 
+                console.error('Error rebuilding branch stock from movements:', error);
+            }
         }
 
         // background timers
@@ -9411,7 +9671,7 @@
         function refreshGMData() {
             loadData();
             calculateGMMetrics();
-            loadPendingApprovals();
+            refreshAllApprovals();
             loadSpecialSales();
             displayGMInventoryBreakdown();
         }
@@ -9488,12 +9748,423 @@
             document.getElementById('directorRemittance').textContent = `N$ ${remittance.toFixed(2)}`;
         }
         
-        // Load pending approvals
-        function loadPendingApprovals() {
-            const container = document.getElementById('pendingApprovalsList');
+        // Approval tab switching
+        function switchApprovalTab(tabType) {
+            // Hide all tabs
+            document.querySelectorAll('.approval-tab-content').forEach(tab => {
+                tab.style.display = 'none';
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('#gm .tabs .tab-button').forEach(btn => {
+                if (btn.id && btn.id.startsWith('approvalTab')) {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Show selected tab
+            const activeTab = document.getElementById(`${tabType}ApprovalsList`);
+            const activeButton = document.getElementById(`approvalTab${tabType.charAt(0).toUpperCase() + tabType.slice(1)}`);
+            
+            if (activeTab) {
+                activeTab.style.display = 'block';
+                activeTab.classList.add('active');
+            }
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+            
+            // Load data for the selected tab
+            refreshAllApprovals(tabType);
+        }
+        
+        // Refresh all approvals or specific type
+        function refreshAllApprovals(type = null) {
+            if (!type || type === 'all') {
+                loadAllApprovals();
+            }
+            if (!type || type === 'cash') {
+                loadCashApprovals();
+            }
+            if (!type || type === 'leave') {
+                loadLeaveApprovals();
+            }
+            if (!type || type === 'stock') {
+                loadStockApprovals();
+            }
+            if (!type || type === 'other') {
+                loadOtherApprovals();
+            }
+            
+            // Update global count
+            updateApprovalCount();
+        }
+        
+        // Load all approvals (combined view)
+        function loadAllApprovals() {
+            const container = document.getElementById('allApprovalsList');
             if (!container) return;
             
-            container.innerHTML = '<p style="text-align: center; color: #666;">No pending approvals at this time.</p>';
+            const cashRequests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
+            const leaveRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
+            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(r => r.status === 'pending_gm' || r.status === 'pending');
+            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(r => r.status === 'pending');
+            
+            const allRequests = [
+                ...cashRequests.map(r => ({ ...r, requestType: 'cash', type: 'cash', typeLabel: 'Cash Request', icon: '💵' })),
+                ...leaveRequests.map(r => ({ ...r, requestType: 'leave', type: 'leave', typeLabel: 'Leave Request', icon: '📅', leaveType: r.type })),
+                ...stockRequests.map(r => ({ ...r, requestType: 'stock', type: 'stock', typeLabel: 'Stock Movement', icon: '📦' })),
+                ...otherRequests.map(r => ({ ...r, requestType: 'other', type: 'other', typeLabel: r.category || 'Other Request', icon: '📋' }))
+            ];
+            
+            if (allRequests.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending approvals at this time.</p>';
+                return;
+            }
+            
+            // Sort by date (newest first)
+            allRequests.sort((a, b) => new Date(b.createdAt || b.submittedAt) - new Date(a.createdAt || a.submittedAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            allRequests.forEach(request => {
+                const date = new Date(request.createdAt || request.submittedAt || Date.now());
+                html += renderApprovalCard(request, date);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // Load cash approvals
+        function loadCashApprovals() {
+            const container = document.getElementById('cashApprovalsList');
+            if (!container) return;
+            
+            const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending cash requests.</p>';
+                return;
+            }
+            
+            requests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            requests.forEach(request => {
+                const date = new Date(request.createdAt);
+                html += renderApprovalCard({ ...request, requestType: 'cash', type: 'cash', typeLabel: 'Cash Request', icon: '💵' }, date);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // Load leave approvals
+        function loadLeaveApprovals() {
+            const container = document.getElementById('leaveApprovalsList');
+            if (!container) return;
+            
+            const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending leave requests.</p>';
+                return;
+            }
+            
+            requests.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            requests.forEach(request => {
+                const date = new Date(request.submittedAt);
+                html += renderApprovalCard({ ...request, type: 'leave', typeLabel: 'Leave Request', icon: '📅', leaveType: request.type }, date);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // Load stock approvals
+        function loadStockApprovals() {
+            const container = document.getElementById('stockApprovalsList');
+            if (!container) return;
+            
+            const requests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(r => 
+                r.status === 'pending_gm' || (r.status === 'pending' && r.priority === 'urgent')
+            );
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending stock movement approvals.</p>';
+                return;
+            }
+            
+            requests.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            requests.forEach(request => {
+                const date = new Date(request.createdAt || request.date || Date.now());
+                html += renderApprovalCard({ ...request, requestType: 'stock', type: 'stock', typeLabel: 'Stock Movement', icon: '📦' }, date);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // Load other approvals
+        function loadOtherApprovals() {
+            const container = document.getElementById('otherApprovalsList');
+            if (!container) return;
+            
+            const requests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(r => r.status === 'pending');
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No other pending requests.</p>';
+                return;
+            }
+            
+            requests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            requests.forEach(request => {
+                const date = new Date(request.createdAt);
+                html += renderApprovalCard({ ...request, requestType: 'other', type: 'other', typeLabel: request.category || 'Other Request', icon: '📋' }, date);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // Render approval card
+        function renderApprovalCard(request, date) {
+            const urgent = request.urgent || request.priority === 'urgent';
+            const borderColor = urgent ? '#e74c3c' : '#3498db';
+            
+            let details = '';
+            if (request.type === 'cash') {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Amount:</strong> N$ ${request.amount?.toFixed(2) || '0.00'}<br>
+                        <strong>Purpose:</strong> ${request.purpose || 'N/A'}<br>
+                        <strong>Branch:</strong> ${request.branch || 'N/A'}
+                    </div>
+                `;
+            } else if (request.type === 'leave') {
+                const startDate = new Date(request.startDate).toLocaleDateString();
+                const endDate = new Date(request.endDate).toLocaleDateString();
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Employee:</strong> ${request.staff || 'Unknown'}<br>
+                        <strong>Leave Type:</strong> ${request.leaveType || 'N/A'}<br>
+                        <strong>Period:</strong> ${startDate} to ${endDate}<br>
+                        <strong>Reason:</strong> ${request.reason || 'N/A'}
+                    </div>
+                `;
+            } else if (request.type === 'stock') {
+                const itemsCount = request.items?.length || 0;
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Request Number:</strong> ${request.requestNumber || request.id || 'N/A'}<br>
+                        <strong>From Branch:</strong> ${request.requestingBranch || 'N/A'}<br>
+                        <strong>Items:</strong> ${itemsCount} item(s)<br>
+                        <strong>Priority:</strong> ${request.priority || 'Normal'}
+                    </div>
+                `;
+            } else {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Description:</strong> ${request.description || request.purpose || 'N/A'}<br>
+                        <strong>Category:</strong> ${request.category || 'General'}
+                    </div>
+                `;
+            }
+            
+            return `
+                <div style="background: white; border-left: 4px solid ${borderColor}; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5rem;">${request.icon || '📋'}</span>
+                                <div>
+                                    <h4 style="margin: 0; color: #2c3e50;">${request.typeLabel || 'Request'}</h4>
+                                    <div style="color: #7f8c8d; font-size: 0.9rem;">${date.toLocaleString()}</div>
+                                </div>
+                            </div>
+                            ${urgent ? '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 10px;">URGENT</span>' : ''}
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-success" onclick="approveRequest('${request.id}', '${request.type}')" style="padding: 8px 16px; font-size: 0.9rem;">✅ Approve</button>
+                            <button class="btn btn-danger" onclick="rejectRequest('${request.id}', '${request.type}')" style="padding: 8px 16px; font-size: 0.9rem;">❌ Reject</button>
+                        </div>
+                    </div>
+                    ${details}
+                </div>
+            `;
+        }
+        
+        // Approve a request
+        async function approveRequest(requestId, requestType) {
+            const reason = prompt('Enter approval notes (optional):');
+            if (reason === null) return; // User cancelled
+            
+            try {
+                if (requestType === 'cash') {
+                    const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'approved';
+                        request.approvedBy = window.currentUser?.fullName || 'GM';
+                        request.approvedAt = new Date().toISOString();
+                        request.approvalNotes = reason || '';
+                        localStorage.setItem('finance_cash_requests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('cash_request', 'approved', request);
+                        }
+                    }
+                } else if (requestType === 'leave') {
+                    const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'Approved';
+                        request.approvedBy = window.currentUser?.fullName || 'GM';
+                        request.approvedAt = new Date().toISOString();
+                        request.approvalNotes = reason || '';
+                        localStorage.setItem('leaveRequests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('leave_request', 'approved', request);
+                        }
+                    }
+                } else if (requestType === 'stock') {
+                    const requests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'approved';
+                        request.approvals = request.approvals || [];
+                        request.approvals.push({
+                            level: 'gm',
+                            approvedBy: window.currentUser?.fullName || 'GM',
+                            approvedAt: new Date().toISOString(),
+                            notes: reason || ''
+                        });
+                        localStorage.setItem('dyna_stock_requests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('stock_request', 'approved', request);
+                        }
+                    }
+                } else {
+                    const requests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'approved';
+                        request.approvedBy = window.currentUser?.fullName || 'GM';
+                        request.approvedAt = new Date().toISOString();
+                        request.approvalNotes = reason || '';
+                        localStorage.setItem('gm_pending_requests', JSON.stringify(requests));
+                    }
+                }
+                
+                alert('✅ Request approved successfully!');
+                refreshAllApprovals();
+                updateApprovalCount();
+            } catch (error) {
+                console.error('Error approving request:', error);
+                alert('❌ Error approving request. Please try again.');
+            }
+        }
+        
+        // Reject a request
+        async function rejectRequest(requestId, requestType) {
+            const reason = prompt('Enter rejection reason (required):');
+            if (!reason || reason.trim() === '') {
+                alert('Rejection reason is required.');
+                return;
+            }
+            
+            try {
+                if (requestType === 'cash') {
+                    const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'rejected';
+                        request.rejectedBy = window.currentUser?.fullName || 'GM';
+                        request.rejectedAt = new Date().toISOString();
+                        request.rejectionReason = reason;
+                        localStorage.setItem('finance_cash_requests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('cash_request', 'rejected', request);
+                        }
+                    }
+                } else if (requestType === 'leave') {
+                    const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'Rejected';
+                        request.rejectedBy = window.currentUser?.fullName || 'GM';
+                        request.rejectedAt = new Date().toISOString();
+                        request.rejectionReason = reason;
+                        localStorage.setItem('leaveRequests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('leave_request', 'rejected', request);
+                        }
+                    }
+                } else if (requestType === 'stock') {
+                    const requests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'rejected';
+                        request.rejectedBy = window.currentUser?.fullName || 'GM';
+                        request.rejectedAt = new Date().toISOString();
+                        request.rejectionReason = reason;
+                        localStorage.setItem('dyna_stock_requests', JSON.stringify(requests));
+                        
+                        // Broadcast event
+                        if (typeof publishRealtimeEvent === 'function') {
+                            publishRealtimeEvent('stock_request', 'rejected', request);
+                        }
+                    }
+                } else {
+                    const requests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]');
+                    const request = requests.find(r => r.id === requestId);
+                    if (request) {
+                        request.status = 'rejected';
+                        request.rejectedBy = window.currentUser?.fullName || 'GM';
+                        request.rejectedAt = new Date().toISOString();
+                        request.rejectionReason = reason;
+                        localStorage.setItem('gm_pending_requests', JSON.stringify(requests));
+                    }
+                }
+                
+                alert('❌ Request rejected.');
+                refreshAllApprovals();
+                updateApprovalCount();
+            } catch (error) {
+                console.error('Error rejecting request:', error);
+                alert('❌ Error rejecting request. Please try again.');
+            }
+        }
+        
+        // Update approval count
+        function updateApprovalCount() {
+            const cashRequests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
+            const leaveRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
+            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(r => r.status === 'pending_gm' || (r.status === 'pending' && r.priority === 'urgent'));
+            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(r => r.status === 'pending');
+            
+            const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length + otherRequests.length;
+            window.gmPendingApprovalsCount = totalCount;
+            
+            if (typeof window.updateGlobalAlerts === 'function') {
+                window.updateGlobalAlerts({ pendingApprovalsCount: totalCount });
+            }
+        }
+        
+        // Load pending approvals (legacy function for backward compatibility)
+        function loadPendingApprovals() {
+            refreshAllApprovals('all');
         }
         
         // Load special sales
@@ -9535,6 +10206,554 @@
         // Show special sales modal
         function showSpecialSalesModal() {
             alert('Special Sales creation will be available soon!');
+        }
+        
+        // Campaign Management Functions
+        function switchCampaignTab(tabType) {
+            // Hide all tabs
+            document.querySelectorAll('.campaign-tab-content').forEach(tab => {
+                tab.style.display = 'none';
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('#gm .tabs .tab-button').forEach(btn => {
+                if (btn.id && btn.id.startsWith('campaignTab')) {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Show selected tab
+            const activeTab = document.getElementById(`${tabType}CampaignsList`);
+            const activeButton = document.getElementById(`campaignTab${tabType.charAt(0).toUpperCase() + tabType.slice(1)}`);
+            
+            if (activeTab) {
+                activeTab.style.display = 'block';
+                activeTab.classList.add('active');
+            }
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+            
+            // Load data for the selected tab
+            refreshCampaigns(tabType);
+        }
+        
+        function refreshCampaigns(type = null) {
+            if (!type || type === 'all') {
+                loadAllCampaigns();
+            }
+            if (!type || type === 'sales') {
+                loadSalesCampaigns();
+            }
+            if (!type || type === 'recruiting') {
+                loadRecruitingCampaigns();
+            }
+            if (!type || type === 'sponsoring') {
+                loadSponsoringCampaigns();
+            }
+            if (!type || type === 'gift') {
+                loadGiftCampaigns();
+            }
+        }
+        
+        function loadAllCampaigns() {
+            const container = document.getElementById('allCampaignsList');
+            if (!container) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+            
+            if (campaigns.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No campaigns created yet.</p>';
+                return;
+            }
+            
+            campaigns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            campaigns.forEach(campaign => {
+                html += renderCampaignCard(campaign);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function loadSalesCampaigns() {
+            const container = document.getElementById('salesCampaignsList');
+            if (!container) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]')
+                .filter(c => c.type === 'sales');
+            
+            if (campaigns.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No sales discount campaigns.</p>';
+                return;
+            }
+            
+            campaigns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            campaigns.forEach(campaign => {
+                html += renderCampaignCard(campaign);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function loadRecruitingCampaigns() {
+            const container = document.getElementById('recruitingCampaignsList');
+            if (!container) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]')
+                .filter(c => c.type === 'recruiting');
+            
+            if (campaigns.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No recruiting campaigns.</p>';
+                return;
+            }
+            
+            campaigns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            campaigns.forEach(campaign => {
+                html += renderCampaignCard(campaign);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function loadSponsoringCampaigns() {
+            const container = document.getElementById('sponsoringCampaignsList');
+            if (!container) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]')
+                .filter(c => c.type === 'sponsoring');
+            
+            if (campaigns.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No sponsoring campaigns.</p>';
+                return;
+            }
+            
+            campaigns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            campaigns.forEach(campaign => {
+                html += renderCampaignCard(campaign);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function loadGiftCampaigns() {
+            const container = document.getElementById('giftCampaignsList');
+            if (!container) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]')
+                .filter(c => c.type === 'gift');
+            
+            if (campaigns.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No gift campaigns.</p>';
+                return;
+            }
+            
+            campaigns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            let html = '<div style="display: grid; gap: 15px;">';
+            campaigns.forEach(campaign => {
+                html += renderCampaignCard(campaign);
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function renderCampaignCard(campaign) {
+            const isActive = campaign.status === 'active';
+            const isExpired = new Date(campaign.endDate) < new Date();
+            const borderColor = isExpired ? '#95a5a6' : isActive ? '#27ae60' : '#e74c3c';
+            
+            const typeIcons = {
+                'sales': '💰',
+                'recruiting': '👥',
+                'sponsoring': '🤝',
+                'gift': '🎁'
+            };
+            
+            const typeLabels = {
+                'sales': 'Sales Discount',
+                'recruiting': 'Recruiting',
+                'sponsoring': 'Sponsoring',
+                'gift': 'Gift Campaign'
+            };
+            
+            let details = '';
+            if (campaign.type === 'sales') {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Discount:</strong> ${campaign.discount || 0}%<br>
+                        <strong>Applicable Branches:</strong> ${campaign.branches?.length > 0 ? campaign.branches.join(', ') : 'All Branches'}<br>
+                        ${campaign.products?.length > 0 ? `<strong>Products:</strong> ${campaign.products.length} product(s)<br>` : ''}
+                        ${campaign.minPurchaseAmount ? `<strong>Min Purchase:</strong> N$ ${campaign.minPurchaseAmount}<br>` : ''}
+                    </div>
+                `;
+            } else if (campaign.type === 'recruiting') {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Reward:</strong> ${campaign.reward || 'N/A'}<br>
+                        <strong>Target:</strong> ${campaign.target || 'N/A'}<br>
+                        <strong>Applicable Branches:</strong> ${campaign.branches?.length > 0 ? campaign.branches.join(', ') : 'All Branches'}<br>
+                    </div>
+                `;
+            } else if (campaign.type === 'sponsoring') {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Incentive:</strong> ${campaign.incentive || 'N/A'}<br>
+                        <strong>Target:</strong> ${campaign.target || 'N/A'}<br>
+                        <strong>Applicable Branches:</strong> ${campaign.branches?.length > 0 ? campaign.branches.join(', ') : 'All Branches'}<br>
+                    </div>
+                `;
+            } else if (campaign.type === 'gift') {
+                details = `
+                    <div style="margin-top: 10px;">
+                        <strong>Gift:</strong> ${campaign.giftDescription || 'N/A'}<br>
+                        <strong>Condition:</strong> ${campaign.condition || 'N/A'}<br>
+                        <strong>Applicable Branches:</strong> ${campaign.branches?.length > 0 ? campaign.branches.join(', ') : 'All Branches'}<br>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div style="background: white; border-left: 4px solid ${borderColor}; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5rem;">${typeIcons[campaign.type] || '📋'}</span>
+                                <div>
+                                    <h4 style="margin: 0; color: #2c3e50;">${campaign.name || 'Unnamed Campaign'}</h4>
+                                    <div style="color: #7f8c8d; font-size: 0.9rem;">${typeLabels[campaign.type] || campaign.type} • ${new Date(campaign.startDate).toLocaleDateString()} - ${new Date(campaign.endDate).toLocaleDateString()}</div>
+                                </div>
+                            </div>
+                            <span style="background: ${borderColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 10px;">
+                                ${campaign.status?.toUpperCase() || 'INACTIVE'}${isExpired ? ' (EXPIRED)' : ''}
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-info" onclick="editCampaign('${campaign.id}')" style="padding: 8px 16px; font-size: 0.9rem;">✏️ Edit</button>
+                            <button class="btn btn-danger" onclick="deleteCampaign('${campaign.id}')" style="padding: 8px 16px; font-size: 0.9rem;">🗑️ Delete</button>
+                            ${!isActive && !isExpired ? `<button class="btn btn-success" onclick="activateCampaign('${campaign.id}')" style="padding: 8px 16px; font-size: 0.9rem;">✅ Activate</button>` : ''}
+                            ${isActive ? `<button class="btn btn-warning" onclick="deactivateCampaign('${campaign.id}')" style="padding: 8px 16px; font-size: 0.9rem;">⏸️ Deactivate</button>` : ''}
+                        </div>
+                    </div>
+                    ${campaign.description ? `<p style="color: #555; margin-top: 10px;">${campaign.description}</p>` : ''}
+                    ${details}
+                </div>
+            `;
+        }
+        
+        function showCreateCampaignModal() {
+            const modal = document.createElement('div');
+            modal.id = 'createCampaignModal';
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                    <span class="close" onclick="closeModal('createCampaignModal')">&times;</span>
+                    <h2>🎯 Create Campaign</h2>
+                    <form id="createCampaignForm" onsubmit="submitCampaign(event)">
+                        <div class="form-group">
+                            <label class="required">Campaign Name</label>
+                            <input type="text" id="campaignName" required placeholder="e.g., Summer Sales 2025">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="required">Campaign Type</label>
+                            <select id="campaignType" required onchange="updateCampaignForm()">
+                                <option value="">Select Type</option>
+                                <option value="sales">💰 Sales Discount</option>
+                                <option value="recruiting">👥 Recruiting</option>
+                                <option value="sponsoring">🤝 Sponsoring</option>
+                                <option value="gift">🎁 Gift Campaign</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="campaignDescription" rows="3" placeholder="Campaign description..."></textarea>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="required">Start Date</label>
+                                <input type="date" id="campaignStartDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="required">End Date</label>
+                                <input type="date" id="campaignEndDate" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="required">Apply To</label>
+                            <select id="campaignApplyTo" required onchange="updateBranchSelection()">
+                                <option value="all">All Branches</option>
+                                <option value="selected">Selected Branches</option>
+                            </select>
+                        </div>
+                        
+                        <div id="branchSelectionDiv" class="form-group" style="display: none;">
+                            <label>Select Branches</label>
+                            <div id="branchCheckboxes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                <!-- Branches will be populated here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Sales Discount Specific Fields -->
+                        <div id="salesFields" style="display: none;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="required">Discount Percentage</label>
+                                    <input type="number" id="campaignDiscount" min="0" max="100" step="0.01" placeholder="e.g., 15">
+                                </div>
+                                <div class="form-group">
+                                    <label>Minimum Purchase Amount (N$)</label>
+                                    <input type="number" id="campaignMinPurchase" min="0" step="0.01" placeholder="Optional">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Apply to Specific Products (Optional)</label>
+                                <input type="text" id="campaignProducts" placeholder="Comma-separated product names or leave empty for all products">
+                            </div>
+                        </div>
+                        
+                        <!-- Recruiting Specific Fields -->
+                        <div id="recruitingFields" style="display: none;">
+                            <div class="form-group">
+                                <label class="required">Reward Description</label>
+                                <textarea id="campaignReward" rows="2" placeholder="e.g., N$ 500 bonus for each new distributor"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Target</label>
+                                <input type="text" id="campaignTarget" placeholder="e.g., 10 new distributors">
+                            </div>
+                        </div>
+                        
+                        <!-- Sponsoring Specific Fields -->
+                        <div id="sponsoringFields" style="display: none;">
+                            <div class="form-group">
+                                <label class="required">Incentive Description</label>
+                                <textarea id="campaignIncentive" rows="2" placeholder="e.g., Extra 5% commission for sponsors"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Target</label>
+                                <input type="text" id="campaignSponsorTarget" placeholder="e.g., 5 sponsored members">
+                            </div>
+                        </div>
+                        
+                        <!-- Gift Specific Fields -->
+                        <div id="giftFields" style="display: none;">
+                            <div class="form-group">
+                                <label class="required">Gift Description</label>
+                                <textarea id="campaignGift" rows="2" placeholder="e.g., Free product sample kit"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="required">Condition</label>
+                                <textarea id="campaignGiftCondition" rows="2" placeholder="e.g., For purchases above N$ 500" required></textarea>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" class="btn btn-success">✅ Create Campaign</button>
+                            <button type="button" class="btn" onclick="closeModal('createCampaignModal')">❌ Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Load branches
+            loadBranchesForCampaign();
+            
+            // Set default dates
+            const today = new Date();
+            document.getElementById('campaignStartDate').value = today.toISOString().split('T')[0];
+            const nextMonth = new Date(today);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            document.getElementById('campaignEndDate').value = nextMonth.toISOString().split('T')[0];
+        }
+        
+        function loadBranchesForCampaign() {
+            const branches = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+            const container = document.getElementById('branchCheckboxes');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            branches.forEach(branch => {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" name="campaignBranches" value="${branch.id || branch.name}" style="width: auto;">
+                        <span>${branch.name || branch.id}</span>
+                    </label>
+                `;
+                container.appendChild(div);
+            });
+        }
+        
+        function updateCampaignForm() {
+            const type = document.getElementById('campaignType')?.value;
+            
+            // Hide all type-specific fields
+            document.getElementById('salesFields').style.display = 'none';
+            document.getElementById('recruitingFields').style.display = 'none';
+            document.getElementById('sponsoringFields').style.display = 'none';
+            document.getElementById('giftFields').style.display = 'none';
+            
+            // Show relevant fields
+            if (type === 'sales') {
+                document.getElementById('salesFields').style.display = 'block';
+            } else if (type === 'recruiting') {
+                document.getElementById('recruitingFields').style.display = 'block';
+            } else if (type === 'sponsoring') {
+                document.getElementById('sponsoringFields').style.display = 'block';
+            } else if (type === 'gift') {
+                document.getElementById('giftFields').style.display = 'block';
+            }
+        }
+        
+        function updateBranchSelection() {
+            const applyTo = document.getElementById('campaignApplyTo')?.value;
+            const branchDiv = document.getElementById('branchSelectionDiv');
+            if (branchDiv) {
+                branchDiv.style.display = applyTo === 'selected' ? 'block' : 'none';
+            }
+        }
+        
+        function submitCampaign(event) {
+            event.preventDefault();
+            
+            try {
+                const type = document.getElementById('campaignType').value;
+                const applyTo = document.getElementById('campaignApplyTo').value;
+                
+                let branches = [];
+                if (applyTo === 'selected') {
+                    const checkboxes = document.querySelectorAll('input[name="campaignBranches"]:checked');
+                    branches = Array.from(checkboxes).map(cb => cb.value);
+                }
+                
+                const campaign = {
+                    id: 'CAMP-' + Date.now(),
+                    name: document.getElementById('campaignName').value,
+                    type: type,
+                    description: document.getElementById('campaignDescription').value || '',
+                    startDate: document.getElementById('campaignStartDate').value,
+                    endDate: document.getElementById('campaignEndDate').value,
+                    branches: branches,
+                    status: 'inactive',
+                    createdAt: new Date().toISOString(),
+                    createdBy: window.currentUser?.fullName || 'GM'
+                };
+                
+                // Add type-specific fields
+                if (type === 'sales') {
+                    campaign.discount = parseFloat(document.getElementById('campaignDiscount').value) || 0;
+                    campaign.minPurchaseAmount = parseFloat(document.getElementById('campaignMinPurchase').value) || null;
+                    const productsStr = document.getElementById('campaignProducts').value;
+                    campaign.products = productsStr ? productsStr.split(',').map(p => p.trim()).filter(p => p) : [];
+                } else if (type === 'recruiting') {
+                    campaign.reward = document.getElementById('campaignReward').value;
+                    campaign.target = document.getElementById('campaignTarget').value || '';
+                } else if (type === 'sponsoring') {
+                    campaign.incentive = document.getElementById('campaignIncentive').value;
+                    campaign.target = document.getElementById('campaignSponsorTarget').value || '';
+                } else if (type === 'gift') {
+                    campaign.giftDescription = document.getElementById('campaignGift').value;
+                    campaign.condition = document.getElementById('campaignGiftCondition').value;
+                }
+                
+                // Save campaign
+                const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+                campaigns.push(campaign);
+                localStorage.setItem('gm_campaigns', JSON.stringify(campaigns));
+                
+                // Broadcast event
+                if (typeof publishRealtimeEvent === 'function') {
+                    publishRealtimeEvent('campaign', 'created', campaign);
+                }
+                
+                alert('✅ Campaign created successfully!');
+                closeModal('createCampaignModal');
+                refreshCampaigns();
+                
+            } catch (error) {
+                console.error('Error creating campaign:', error);
+                alert('❌ Error creating campaign: ' + error.message);
+            }
+        }
+        
+        function editCampaign(campaignId) {
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+            const campaign = campaigns.find(c => c.id === campaignId);
+            if (!campaign) {
+                alert('Campaign not found');
+                return;
+            }
+            
+            // Similar to create modal but pre-filled
+            showCreateCampaignModal();
+            // TODO: Pre-fill form with campaign data
+            alert('Edit functionality coming soon. For now, delete and recreate the campaign.');
+        }
+        
+        function deleteCampaign(campaignId) {
+            if (!confirm('Are you sure you want to delete this campaign?')) return;
+            
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+            const filtered = campaigns.filter(c => c.id !== campaignId);
+            localStorage.setItem('gm_campaigns', JSON.stringify(filtered));
+            
+            // Broadcast event
+            if (typeof publishRealtimeEvent === 'function') {
+                publishRealtimeEvent('campaign', 'deleted', { id: campaignId });
+            }
+            
+            alert('✅ Campaign deleted');
+            refreshCampaigns();
+        }
+        
+        function activateCampaign(campaignId) {
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+            const campaign = campaigns.find(c => c.id === campaignId);
+            if (campaign) {
+                campaign.status = 'active';
+                campaign.activatedAt = new Date().toISOString();
+                localStorage.setItem('gm_campaigns', JSON.stringify(campaigns));
+                
+                // Broadcast event
+                if (typeof publishRealtimeEvent === 'function') {
+                    publishRealtimeEvent('campaign', 'activated', campaign);
+                }
+                
+                alert('✅ Campaign activated');
+                refreshCampaigns();
+            }
+        }
+        
+        function deactivateCampaign(campaignId) {
+            const campaigns = JSON.parse(localStorage.getItem('gm_campaigns') || '[]');
+            const campaign = campaigns.find(c => c.id === campaignId);
+            if (campaign) {
+                campaign.status = 'inactive';
+                campaign.deactivatedAt = new Date().toISOString();
+                localStorage.setItem('gm_campaigns', JSON.stringify(campaigns));
+                
+                // Broadcast event
+                if (typeof publishRealtimeEvent === 'function') {
+                    publishRealtimeEvent('campaign', 'deactivated', campaign);
+                }
+                
+                alert('⏸️ Campaign deactivated');
+                refreshCampaigns();
+            }
         }
         
         // Display GM Inventory Breakdown
@@ -15894,23 +17113,38 @@ async function reverseLastPrescriptionPayment(reportId){
                         email: formData.email,
                         commission_rate: 0,
                         status: 'active',
-                        branch: window.currentUser?.branch || null,
-                        // Store additional data in a JSONB field if available, or as metadata
-                        _agreement_data: {
-                            ...formData,
-                            materials_received: materials,
-                            registered_at: new Date().toISOString(),
-                            registered_by: window.currentUser?.fullName || 'System'
-                        }
+                        branch: window.currentUser?.branch || null
                     })
                 });
                 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to register distributor');
+                    // Check if response is JSON before parsing
+                    const contentType = response.headers.get('content-type');
+                    let errorMessage = 'Failed to register distributor';
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        try {
+                            const error = await response.json();
+                            errorMessage = error.error || error.message || errorMessage;
+                        } catch (e) {
+                            // If JSON parsing fails, use status text
+                            errorMessage = response.statusText || errorMessage;
+                        }
+                    } else {
+                        // Non-JSON response (likely HTML error page)
+                        const text = await response.text();
+                        errorMessage = `Server error (${response.status}): ${text.substring(0, 100)}`;
+                    }
+                    
+                    throw new Error(errorMessage);
                 }
                 
-                const newDistributor = await response.json();
+                let newDistributor;
+                try {
+                    newDistributor = await response.json();
+                } catch (e) {
+                    throw new Error('Invalid response from server. Please try again.');
+                }
                 
                 // Also save to local storage for immediate access
                 if (typeof loadDistributors === 'function') {
@@ -21485,7 +22719,7 @@ async function reverseLastPrescriptionPayment(reportId){
                             ${productPhotos.length > 1 ? `
                                 <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
                                     ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer;"></div>`).join('')}
-                                </div>
+                            </div>
                             ` : ''}
                         </div>
                         ` : `
@@ -21588,13 +22822,13 @@ async function reverseLastPrescriptionPayment(reportId){
                             ${productPhotos.length > 1 ? `
                                 <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
                                     ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer;"></div>`).join('')}
-                                </div>
-                            ` : ''}
                         </div>
+                            ` : ''}
+                    </div>
                         ` : `
                         <div style="width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem;">
                             📦
-                        </div>
+                </div>
                         `}
                         <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem; min-height: 40px;">${displayName}</h4>
                         <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
@@ -22746,9 +23980,9 @@ async function reverseLastPrescriptionPayment(reportId){
                         } else {
                             // Try to extract NB number
                             const nbMatch = code.match(/NB\d+/i);
-                            if (nbMatch) {
+                                if (nbMatch) {
                                 distributorRecord.distributorCode = nbMatch[0].toUpperCase();
-                            } else {
+                                } else {
                                 console.log(`⚠️ Row ${i + 1}: Invalid NB number format "${code}", skipping`);
                                 continue;
                             }
@@ -24469,7 +25703,7 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Distribute to branches
-        document.getElementById('distributeStockForm')?.addEventListener('submit', function(e) {
+        document.getElementById('distributeStockForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             const warehouse = document.getElementById('distributionWarehouse').value;
             const branch = document.getElementById('distributionBranch').value;
@@ -24515,8 +25749,103 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
             
-            // Deduct from warehouse
+            // Deduct from warehouse stock (FEFO enforcement via barcode batches)
+            let remainingQty = quantity;
+            
+            // Try to deduct from barcode stock first (FEFO enforced)
+            try {
+                const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
+                const warehouseLocation = warehouse === 'windhoek' ? 'windhoek_warehouse' : 'ondangwa_warehouse';
+                
+                // Find matching batches in warehouse, sorted by FEFO (expiry date ascending)
+                let matchingBatches = barcodeStock.filter(b => 
+                    b.description === productName && 
+                    b.location === warehouseLocation && 
+                    b.status === 'available' &&
+                    (b.remainingQuantity || 0) > 0
+                );
+                
+                // FEFO: Sort by expiry date (earliest first), filter out expired
+                const now = Date.now();
+                matchingBatches = matchingBatches
+                    .filter(b => {
+                        const exp = b.expiryTimestamp || (b.expiryDate ? new Date(b.expiryDate + '-01').getTime() : 0);
+                        return exp >= now; // Only non-expired batches
+                    })
+                    .sort((a, b) => {
+                        const aExp = a.expiryTimestamp || (a.expiryDate ? new Date(a.expiryDate + '-01').getTime() : 0);
+                        const bExp = b.expiryTimestamp || (b.expiryDate ? new Date(b.expiryDate + '-01').getTime() : 0);
+                        return aExp - bExp; // Ascending (earliest expiry first)
+                    });
+                
+                // Deduct from batches using FEFO
+                for (const batch of matchingBatches) {
+                    if (remainingQty <= 0) break;
+                    const take = Math.min(remainingQty, batch.remainingQuantity || 0);
+                    batch.remainingQuantity -= take;
+                    remainingQty -= take;
+                    
+                    // If batch is fully dispatched, update location to branch
+                    if (batch.remainingQuantity === 0) {
+                        batch.status = 'dispatched';
+                    } else {
+                        // Create a new batch record for the branch with the transferred quantity
+                        const branchBatch = {
+                            ...batch,
+                            id: `BATCH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            barcode: `BC${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
+                            location: branch.toLowerCase().replace(/\s+/g, '_'),
+                            quantity: take,
+                            remainingQuantity: take,
+                            dispatchedQuantity: 0,
+                            status: 'available',
+                            distributionDate: date,
+                            dispatchNumber: dispatchNumber
+                        };
+                        barcodeStock.push(branchBatch);
+                    }
+                    
+                    // Record stock movement for FEFO tracking
+                    try {
+                        await recordStockMovement({
+                            type: 'distribution',
+                            product: productName,
+                            quantity: take,
+                            batchNo: batch.batchNo,
+                            barcode: batch.barcode,
+                            fromWarehouse: warehouse,
+                            toBranch: branch,
+                            expiryDate: batch.expiryDate,
+                            reference: dispatchNumber,
+                            createdBy: window.currentUser?.fullName || 'system'
+                        });
+                    } catch (movementError) {
+                        console.warn('Failed to record distribution movement:', movementError);
+                    }
+                }
+                
+                // Save updated barcode stock
+                localStorage.setItem('dyna_barcode_stock', JSON.stringify(barcodeStock));
+                
+                // If still remaining quantity, deduct from regular warehouse stock
+                if (remainingQty > 0) {
+                    item.quantity -= remainingQty;
+                } else {
+                    // All deducted from barcode stock, but we still need to update warehouse item quantity
+                    // Recalculate from barcode stock
+                    const warehouseBatches = barcodeStock.filter(b => 
+                        b.description === productName && 
+                        b.location === warehouseLocation && 
+                        b.status === 'available'
+                    );
+                    const totalWarehouseQty = warehouseBatches.reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
+                    item.quantity = totalWarehouseQty;
+                }
+            } catch (barcodeError) {
+                console.warn('Barcode stock deduction failed, using regular stock:', barcodeError);
+                // Fallback to regular stock deduction
             item.quantity -= quantity;
+            }
             
             // Record distribution
             const distribution = {
@@ -24557,6 +25886,13 @@ async function reverseLastPrescriptionPayment(reportId){
                     body: JSON.stringify({ channel: 'stock', event: { branch: branch, products: [{ name: productName, quantity }], action: 'distributed', warehouse, dispatchNumber, ts: Date.now() } }) 
                 }).catch(_ => {});
             } catch (_) {}
+            
+            // Rebuild branch stock from all movements
+            try {
+                await rebuildBranchStockFromMovements();
+            } catch (rebuildError) {
+                console.warn('Failed to rebuild branch stock:', rebuildError);
+            }
             
             displayWindhoekStock();
             displayOndangwaStock();
@@ -25255,6 +26591,129 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
         
+        // CSV Import Function
+        function importFromCSV() {
+            try {
+                // Create file input element
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.csv';
+                fileInput.style.display = 'none';
+                
+                fileInput.addEventListener('change', async function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    try {
+                        const text = await file.text();
+                        const lines = text.split('\n').filter(line => line.trim());
+                        
+                        if (lines.length < 2) {
+                            alert('CSV file must have at least a header row and one data row');
+                            return;
+                        }
+                        
+                        // Detect delimiter
+                        const firstLine = lines[0];
+                        let delimiter = ',';
+                        if (firstLine.includes('\t')) delimiter = '\t';
+                        else if (firstLine.includes(';')) delimiter = ';';
+                        
+                        // Parse headers (case-insensitive)
+                        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, '').toLowerCase());
+                        
+                        // Find column indices
+                        const cartonIdx = headers.findIndex(h => h.includes('carton') || h.includes('ctn'));
+                        const descIdx = headers.findIndex(h => h.includes('description') || h.includes('product') || h.includes('name'));
+                        const batchIdx = headers.findIndex(h => h.includes('batch'));
+                        const expiryIdx = headers.findIndex(h => h.includes('expiry') || h.includes('exp'));
+                        const qtyIdx = headers.findIndex(h => h.includes('quantity') || h.includes('qty') || h.includes('qnt'));
+                        const totalCtnsIdx = headers.findIndex(h => h.includes('total') && (h.includes('carton') || h.includes('ctn'))) || 
+                                           headers.findIndex(h => h.includes('total') && !h.includes('value') && !h.includes('amount'));
+                        
+                        if (descIdx === -1 || qtyIdx === -1) {
+                            alert('CSV must contain at least Description and Quantity columns');
+                            return;
+                        }
+                        
+                        // Clear existing rows (keep first empty row)
+                        const tbody = document.getElementById('stockImportTableBody');
+                        const firstRow = tbody.querySelector('tr');
+                        tbody.innerHTML = '';
+                        if (firstRow) tbody.appendChild(firstRow);
+                        
+                        // Parse and add rows
+                        let successCount = 0;
+                        let errorCount = 0;
+                        
+                        for (let i = 1; i < lines.length; i++) {
+                            const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
+                            if (values.length < Math.max(descIdx, qtyIdx) + 1) continue;
+                            
+                            const description = values[descIdx] || '';
+                            const quantity = values[qtyIdx] || '';
+                            
+                            if (!description || !quantity) {
+                                errorCount++;
+                                continue;
+                            }
+                            
+                            // Add row to table
+                            const newRow = document.createElement('tr');
+                            newRow.innerHTML = `
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" value="${cartonIdx >= 0 ? (values[cartonIdx] || '') : ''}" placeholder="A1-98">
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="text" class="stock-description" style="width: 100%; padding: 8px;" value="${description}" required>
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="text" class="stock-batch-no" style="width: 100%; padding: 8px;" value="${batchIdx >= 0 ? (values[batchIdx] || '') : ''}" placeholder="DP24265">
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="month" class="stock-expiry-date" style="width: 100%; padding: 8px;" value="${expiryIdx >= 0 ? (values[expiryIdx] || '').substring(0, 7) : ''}" placeholder="YYYY-MM">
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" value="${quantity}" min="1" required>
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" value="${totalCtnsIdx >= 0 ? (values[totalCtnsIdx] || quantity) : quantity}" min="1" required>
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                    <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
+                                </td>
+                            `;
+                            tbody.appendChild(newRow);
+                            successCount++;
+                        }
+                        
+                        // Clean up
+                        document.body.removeChild(fileInput);
+                        
+                        // Show result
+                        if (successCount > 0) {
+                            alert(`✅ CSV imported successfully!\n${successCount} row(s) added${errorCount > 0 ? `\n${errorCount} row(s) skipped (missing data)` : ''}`);
+                        } else {
+                            alert('❌ No valid rows found in CSV file');
+                        }
+                        
+                    } catch (error) {
+                        console.error('CSV import error:', error);
+                        alert('❌ Error importing CSV: ' + error.message);
+                        document.body.removeChild(fileInput);
+                    }
+                });
+                
+                // Trigger file picker
+                document.body.appendChild(fileInput);
+                fileInput.click();
+                
+            } catch (error) {
+                console.error('Error setting up CSV import:', error);
+                alert('❌ Error: ' + error.message);
+            }
+        }
+        
         function clearStockImportForm() {
             const tbody = document.getElementById('stockImportTableBody');
             tbody.innerHTML = `
@@ -25333,27 +26792,76 @@ async function reverseLastPrescriptionPayment(reportId){
                             console.error(`Failed to import: ${item.description}`, result.error);
                         }
                     } else {
-                        // Fallback: save to localStorage
+                        // Fallback: save to localStorage with barcode and FEFO enforcement
                         const stockBatches = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
-                        const barcode = 'BC' + Date.now() + Math.random().toString(36).substr(2, 9);
+                        
+                        // Generate unique barcode for each batch
+                        const timestamp = Date.now();
+                        const random = Math.random().toString(36).substr(2, 9);
+                        const barcode = `BC${timestamp}${random}`;
+                        
+                        // Calculate expiry timestamp for FEFO sorting (First Expired First Out)
+                        const expiryDateObj = new Date(item.expiryDate + '-01');
+                        const expiryTimestamp = expiryDateObj.getTime();
+                        
+                        // Validate expiry date is not in the past
+                        if (expiryTimestamp < Date.now()) {
+                            alert(`⚠️ Warning: ${item.description} has an expired date (${item.expiryDate}). Please verify.`);
+                            if (!confirm('Continue importing this expired batch?')) {
+                                failCount++;
+                                continue;
+                            }
+                        }
+                        
                         const batch = {
-                            id: 'BATCH' + Date.now(),
+                            id: `BATCH-${timestamp}-${random}`,
                             barcode: barcode,
                             cartonNo: item.cartonNo,
                             description: item.description,
                             batchNo: item.batchNo,
                             expiryDate: item.expiryDate,
-                            expiryTimestamp: new Date(item.expiryDate + '-01').getTime(),
+                            expiryTimestamp: expiryTimestamp, // Critical for FEFO sorting
                             quantity: parseInt(item.quantity),
                             totalCtns: parseInt(item.totalCtns),
                             importDate: new Date().toISOString(),
-                            location: 'country_stock',
+                            location: 'country_stock', // Always start in country stock
                             status: 'available',
                             dispatchedQuantity: 0,
-                            remainingQuantity: parseInt(item.quantity)
+                            remainingQuantity: parseInt(item.quantity),
+                            // FEFO metadata
+                            fefoPriority: expiryTimestamp, // Lower = expires sooner = higher priority for dispensing
+                            isExpired: expiryTimestamp < Date.now(),
+                            daysUntilExpiry: Math.ceil((expiryTimestamp - Date.now()) / (1000 * 60 * 60 * 24))
                         };
+                        
                         stockBatches.push(batch);
+                        
+                        // Sort by FEFO (expiry date ascending) to ensure first expired batches are first
+                        stockBatches.sort((a, b) => {
+                            const aExp = a.expiryTimestamp || 0;
+                            const bExp = b.expiryTimestamp || 0;
+                            return aExp - bExp; // Ascending order (earliest expiry first)
+                        });
+                        
                         localStorage.setItem('dyna_barcode_stock', JSON.stringify(stockBatches));
+                        
+                        // Record stock movement for import
+                        try {
+                            await recordStockMovement({
+                                type: 'import',
+                                product: item.description,
+                                quantity: parseInt(item.quantity),
+                                batchNo: item.batchNo,
+                                barcode: barcode,
+                                location: 'country_stock',
+                                expiryDate: item.expiryDate,
+                                reference: 'IMPORT-' + timestamp,
+                                createdBy: window.currentUser?.fullName || 'system'
+                            });
+                        } catch (movementError) {
+                            console.warn('Failed to record stock movement:', movementError);
+                        }
+                        
                         successCount++;
                     }
                 } catch (error) {
@@ -28884,11 +30392,311 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             }
             
             // Add active class to button
+            if (event && event.target) {
             event.target.classList.add('active');
+            }
             
-            // Load shop products if shop tab is selected
+            // Load content based on tab
             if (tabName === 'shop') {
                 loadShopProducts();
+            } else if (tabName === 'media') {
+                loadMediaNews();
+            } else if (tabName === 'testimonials') {
+                loadTestimonials();
+            }
+            
+            // Show add news button for admins
+            const showAddNewsBtn = document.getElementById('showAddNewsBtn');
+            if (showAddNewsBtn) {
+                const currentUser = window.currentUser || JSON.parse(localStorage.getItem('currentUser') || 'null');
+                showAddNewsBtn.style.display = (currentUser && currentUser.role === 'admin') ? 'inline-block' : 'none';
+            }
+        }
+        
+        // Load Media & News
+        function loadMediaNews() {
+            const contentDiv = document.getElementById('mediaNewsContent');
+            if (!contentDiv) return;
+            
+            try {
+                const newsItems = JSON.parse(localStorage.getItem('dyna_media_news') || '[]');
+                
+                // If empty, load default news items
+                if (newsItems.length === 0) {
+                    const defaultNews = [
+                        {
+                            id: 'NEWS001',
+                            title: 'Welcome to Dynapharm Namibia',
+                            category: 'company',
+                            content: 'Dynapharm International brings world-class health and wellness products to Namibia. Our mission is to promote natural health solutions for better living.',
+                            imageUrl: '',
+                            date: new Date().toISOString().split('T')[0],
+                            createdAt: new Date().toISOString()
+                        },
+                        {
+                            id: 'NEWS002',
+                            title: 'Health Benefits of Natural Supplements',
+                            category: 'health',
+                            content: 'Natural supplements can help support your immune system, improve energy levels, and promote overall wellness. Consult with our health consultants for personalized recommendations.',
+                            imageUrl: '',
+                            date: new Date().toISOString().split('T')[0],
+                            createdAt: new Date().toISOString()
+                        },
+                        {
+                            id: 'NEWS003',
+                            title: 'New Product Launch - Power Coffee',
+                            category: 'product',
+                            content: 'Experience the benefits of our new Power Coffee - not just coffee, it\'s Power Coffee! Packed with natural ingredients to boost your energy and wellness.',
+                            imageUrl: '',
+                            date: new Date().toISOString().split('T')[0],
+                            createdAt: new Date().toISOString()
+                        }
+                    ];
+                    localStorage.setItem('dyna_media_news', JSON.stringify(defaultNews));
+                    displayMediaNews(defaultNews);
+                } else {
+                    displayMediaNews(newsItems);
+                }
+            } catch (error) {
+                console.error('Error loading media news:', error);
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">Error loading news. Please try again later.</p>';
+            }
+        }
+        
+        function displayMediaNews(newsItems) {
+            const contentDiv = document.getElementById('mediaNewsContent');
+            if (!contentDiv) return;
+            
+            if (newsItems.length === 0) {
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px; grid-column: 1/-1;">No news items available. Check back soon for updates!</p>';
+                return;
+            }
+            
+            const categoryIcons = {
+                health: '🏥',
+                product: '📦',
+                company: '🏢',
+                event: '🎉',
+                promotion: '🎁'
+            };
+            
+            const categoryColors = {
+                health: '#3498db',
+                product: '#2ecc71',
+                company: '#c41e3a',
+                event: '#f39c12',
+                promotion: '#e74c3c'
+            };
+            
+            contentDiv.innerHTML = newsItems.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)).map(item => {
+                const categoryIcon = categoryIcons[item.category] || '📰';
+                const categoryColor = categoryColors[item.category] || '#666';
+                const date = new Date(item.date || item.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                
+                return `
+                    <div style="background: white; border: 1px solid #ddd; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: transform 0.2s;">
+                        ${item.imageUrl ? `
+                            <img src="${item.imageUrl}" alt="${item.title}" style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px; margin-bottom: 15px;">
+                        ` : ''}
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <span style="font-size: 1.5rem;">${categoryIcon}</span>
+                            <span style="background: ${categoryColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">
+                                ${item.category || 'news'}
+                            </span>
+                            <span style="color: #666; font-size: 0.85rem; margin-left: auto;">${date}</span>
+                        </div>
+                        <h3 style="color: #2c3e50; margin-bottom: 10px; font-size: 1.2rem;">${item.title}</h3>
+                        <p style="color: #666; line-height: 1.6; margin-bottom: 15px;">${item.content}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function addNewsItem(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('newsTitle').value;
+            const category = document.getElementById('newsCategory').value;
+            const content = document.getElementById('newsContent').value;
+            const imageUrl = document.getElementById('newsImageUrl').value;
+            const date = document.getElementById('newsDate').value || new Date().toISOString().split('T')[0];
+            
+            const newsItem = {
+                id: 'NEWS' + Date.now(),
+                title,
+                category,
+                content,
+                imageUrl,
+                date,
+                createdAt: new Date().toISOString()
+            };
+            
+            try {
+                const existingNews = JSON.parse(localStorage.getItem('dyna_media_news') || '[]');
+                existingNews.push(newsItem);
+                localStorage.setItem('dyna_media_news', JSON.stringify(existingNews));
+                
+                // Clear form
+                document.getElementById('newsTitle').value = '';
+                document.getElementById('newsContent').value = '';
+                document.getElementById('newsImageUrl').value = '';
+                document.getElementById('newsDate').value = '';
+                
+                // Hide form
+                document.getElementById('addNewsForm').style.display = 'none';
+                
+                // Reload news
+                loadMediaNews();
+                
+                alert('News item published successfully!');
+            } catch (error) {
+                console.error('Error adding news item:', error);
+                alert('Error publishing news item. Please try again.');
+            }
+        }
+        
+        // Load Testimonials
+        function loadTestimonials() {
+            const contentDiv = document.getElementById('testimonialsContent');
+            if (!contentDiv) return;
+            
+            try {
+                let testimonials = JSON.parse(localStorage.getItem('dyna_testimonials') || '[]');
+                
+                // If empty, load default testimonials (similar to dynapharm.net/ph/)
+                if (testimonials.length === 0) {
+                    const defaultTestimonials = [
+                        {
+                            id: 'TEST001',
+                            name: 'Sarah M.',
+                            location: 'Windhoek, Namibia',
+                            text: 'Two years ago, I was dying… today, I am healthy and 6 months pregnant! Dynapharm products have truly transformed my life. I am so grateful for the natural solutions they provide.',
+                            date: new Date().toISOString(),
+                            approved: true
+                        },
+                        {
+                            id: 'TEST002',
+                            name: 'Maria K.',
+                            location: 'Ondangwa, Namibia',
+                            text: 'I had cancer of the ovaries stage 3… I have an option to treat it by taking Dynapharm products… The natural approach combined with my medical treatment has been life-changing. I feel stronger and more hopeful every day.',
+                            date: new Date().toISOString(),
+                            approved: true
+                        },
+                        {
+                            id: 'TEST003',
+                            name: 'John D.',
+                            location: 'Swakopmund, Namibia',
+                            text: 'My arthritic pain was unbearable… After using Dynapharm\'s natural relief products for just a few weeks, I noticed a significant improvement. I can now move freely without constant pain.',
+                            date: new Date().toISOString(),
+                            approved: true
+                        },
+                        {
+                            id: 'TEST004',
+                            name: 'Anna T.',
+                            location: 'Rundu, Namibia',
+                            text: 'I WAS A WALKING MEDICINE BOX, UNTIL DYNAPHARM. Now I take natural supplements and feel better than I have in years. The products are effective and I trust them completely.',
+                            date: new Date().toISOString(),
+                            approved: true
+                        },
+                        {
+                            id: 'TEST005',
+                            name: 'Grace L.',
+                            location: 'Katima Mulilo, Namibia',
+                            text: 'I HAD BREAST CANCER …NOW I AM HEALED! Dynapharm products have been an essential part of my healing journey. The support and quality products have given me hope and strength.',
+                            date: new Date().toISOString(),
+                            approved: true
+                        }
+                    ];
+                    localStorage.setItem('dyna_testimonials', JSON.stringify(defaultTestimonials));
+                    displayTestimonials(defaultTestimonials);
+                } else {
+                    // Filter to show only approved testimonials
+                    const approved = testimonials.filter(t => t.approved !== false);
+                    displayTestimonials(approved);
+                }
+            } catch (error) {
+                console.error('Error loading testimonials:', error);
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px; grid-column: 1/-1;">Error loading testimonials. Please try again later.</p>';
+            }
+        }
+        
+        function displayTestimonials(testimonials) {
+            const contentDiv = document.getElementById('testimonialsContent');
+            if (!contentDiv) return;
+            
+            if (testimonials.length === 0) {
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px; grid-column: 1/-1;">No testimonials yet. Be the first to share your story!</p>';
+                return;
+            }
+            
+            contentDiv.innerHTML = testimonials.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)).map(testimonial => {
+                const date = new Date(testimonial.date || testimonial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+                
+                return `
+                    <div style="background: white; border: 2px solid #c41e3a; border-radius: 12px; padding: 25px; box-shadow: 0 4px 12px rgba(196, 30, 58, 0.15); position: relative;">
+                        <div style="position: absolute; top: 15px; right: 15px; font-size: 2rem; opacity: 0.2;">💬</div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #c41e3a, #8b0000); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
+                                    ${testimonial.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h4 style="margin: 0; color: #2c3e50; font-size: 1.1rem;">${testimonial.name}</h4>
+                                    <p style="margin: 0; color: #666; font-size: 0.85rem;">${testimonial.location || 'Namibia'}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color: #333; line-height: 1.8; font-style: italic; margin-bottom: 15px; position: relative; z-index: 1;">
+                            "${testimonial.text}"
+                        </p>
+                        <div style="display: flex; align-items: center; gap: 5px; color: #c41e3a; font-size: 0.9rem;">
+                            ⭐⭐⭐⭐⭐
+                            <span style="margin-left: auto; color: #666; font-size: 0.8rem;">${date}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function submitTestimonial(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('testimonialName').value.trim();
+            const location = document.getElementById('testimonialLocation').value.trim();
+            const text = document.getElementById('testimonialText').value.trim();
+            
+            if (!text) {
+                alert('Please enter your testimonial.');
+                return;
+            }
+            
+            const testimonial = {
+                id: 'TEST' + Date.now(),
+                name: name || 'Anonymous',
+                location: location || 'Namibia',
+                text,
+                date: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                approved: false // Requires admin approval
+            };
+            
+            try {
+                const existingTestimonials = JSON.parse(localStorage.getItem('dyna_testimonials') || '[]');
+                existingTestimonials.push(testimonial);
+                localStorage.setItem('dyna_testimonials', JSON.stringify(existingTestimonials));
+                
+                // Clear form
+                document.getElementById('testimonialName').value = '';
+                document.getElementById('testimonialLocation').value = '';
+                document.getElementById('testimonialText').value = '';
+                
+                alert('Thank you for sharing your story! Your testimonial has been submitted and will be reviewed before publishing.');
+                
+                // Reload testimonials
+                loadTestimonials();
+            } catch (error) {
+                console.error('Error submitting testimonial:', error);
+                alert('Error submitting testimonial. Please try again.');
             }
         }
         
@@ -29465,7 +31273,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     // Use website image URLs from dynapharm.net/ph
                     // Use only the most likely URL to avoid excessive 404s
                     if (imageUrls && imageUrls.length > 0) {
-                        productPhotos = [imageUrls[0]]; // Try only the first URL, browser will handle 404
+                    productPhotos = [imageUrls[0]]; // Try only the first URL, browser will handle 404
                     }
                 }
                 
@@ -29493,7 +31301,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     const slug = productNameToSlug(product.description);
                     const { imageUrls } = getProductImageUrl(product.description);
                     if (imageUrls && imageUrls.length > 0) {
-                        productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
+                    productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
                     }
                 }
                 // Limit to max 4 photos
@@ -29607,35 +31415,35 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         }
         
         async function generateProductHTML(product, effectiveType, photoMap) {
-            const displayPrice = effectiveType === 'distributor' ? product.dp : product.cp;
-            const priceLabel = effectiveType === 'distributor' ? 'DP' : 'CP';
-            
-            // Get display name from mapping (website format)
-            const displayName = getProductDisplayName(product.description);
-            
+                const displayPrice = effectiveType === 'distributor' ? product.dp : product.cp;
+                const priceLabel = effectiveType === 'distributor' ? 'DP' : 'CP';
+                
+                // Get display name from mapping (website format)
+                const displayName = getProductDisplayName(product.description);
+                
             // Get product images - try stored first, then database, then website
             let productPhotos = await getProductImage(product.description, photoMap);
-            
-            // If no stored photos or only placeholders, try to get from website
-            if (!productPhotos || productPhotos.length === 0 || 
+                
+                // If no stored photos or only placeholders, try to get from website
+                if (!productPhotos || productPhotos.length === 0 || 
                 (productPhotos.length === 1 && productPhotos[0] && typeof productPhotos[0] === 'string' && productPhotos[0].includes('placehold.co'))) {
-                const slug = productNameToSlug(product.description);
-                const { imageUrls } = getProductImageUrl(product.description);
-                // Use only the first URL to reduce failed requests
+                    const slug = productNameToSlug(product.description);
+                    const { imageUrls } = getProductImageUrl(product.description);
+                    // Use only the first URL to reduce failed requests
                 if (imageUrls && imageUrls.length > 0) {
                     productPhotos = [imageUrls[0]];
                 }
-            }
-            
-            // Ensure it's an array
+                }
+                
+                // Ensure it's an array
             if (!productPhotos) productPhotos = [];
-            if (!Array.isArray(productPhotos)) {
-                productPhotos = [productPhotos];
-            }
-            
-            // Filter out invalid entries
-            productPhotos = productPhotos.filter(photo => {
-                if (!photo) return false;
+                if (!Array.isArray(productPhotos)) {
+                    productPhotos = [productPhotos];
+                }
+                
+                // Filter out invalid entries
+                productPhotos = productPhotos.filter(photo => {
+                    if (!photo) return false;
                 if (typeof photo === 'string') {
                     const url = photo.trim();
                     return url.length > 0 && !url.includes('placehold.co') && (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/'));
@@ -29643,56 +31451,56 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 if (typeof photo === 'object') {
                     return !!(photo.full || photo.src || photo.w600 || photo.w300 || photo.url);
                 }
-                return false;
-            });
-            
-            // If still no valid photos, try direct website image paths
-            if (productPhotos.length === 0) {
-                const slug = productNameToSlug(product.description);
-                const { imageUrls } = getProductImageUrl(product.description);
+                    return false;
+                });
+                
+                // If still no valid photos, try direct website image paths
+                if (productPhotos.length === 0) {
+                    const slug = productNameToSlug(product.description);
+                    const { imageUrls } = getProductImageUrl(product.description);
                 if (imageUrls && imageUrls.length > 0) {
                     productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
                 }
-            }
-            
-            // Limit to max 4 photos
-            if (productPhotos.length > 4) {
-                productPhotos = productPhotos.slice(0, 4);
-            }
-            
-            const uniqueId = `product-carousel-filter-${product.description.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random()}`;
-            
-            return `
-                <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); content-visibility: auto; contain-intrinsic-size: 300px 260px;">
-                    <div class="product-carousel-container" id="${uniqueId}" data-photo-count="${productPhotos.length}" style="position: relative; width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; cursor: pointer; background: #f0f0f0;">
-                        ${productPhotos.map((photo, idx) => {
-                            const isObj = typeof photo === 'object' && photo !== null;
-                            const src = isObj ? (photo.full || photo.src || photo.w600 || photo.w300) : photo;
-                            const srcset = isObj ? `${photo.w300 || src} 300w, ${photo.w600 || src} 600w, ${photo.full || src} 1200w` : '';
-                            return `
+                }
+                
+                // Limit to max 4 photos
+                if (productPhotos.length > 4) {
+                    productPhotos = productPhotos.slice(0, 4);
+                }
+                
+                const uniqueId = `product-carousel-filter-${product.description.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random()}`;
+                
+                return `
+                    <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); content-visibility: auto; contain-intrinsic-size: 300px 260px;">
+                        <div class="product-carousel-container" id="${uniqueId}" data-photo-count="${productPhotos.length}" style="position: relative; width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; cursor: pointer; background: #f0f0f0;">
+                            ${productPhotos.map((photo, idx) => {
+                                const isObj = typeof photo === 'object' && photo !== null;
+                                const src = isObj ? (photo.full || photo.src || photo.w600 || photo.w300) : photo;
+                                const srcset = isObj ? `${photo.w300 || src} 300w, ${photo.w600 || src} 600w, ${photo.full || src} 1200w` : '';
+                                return `
                             <img ${srcset ? `srcset="${srcset}"` : ''} src="${src}" alt="${displayName} - Image ${idx + 1}" 
-                                 data-index="${idx}" ${idx === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy" fetchpriority="low"'} decoding="async" width="200" height="200" sizes="(max-width: 640px) 100vw, 600px"
-                                 onerror="if(!this.hasAttribute('data-failed')) { this.setAttribute('data-failed', '1'); const placeholder = 'https://placehold.co/200x200?text=' + encodeURIComponent('${displayName.replace(/'/g, "\\'")}'); if(!this.src.includes('placehold.co')) { this.src = placeholder; } }"
-                                 onload="this.removeAttribute('data-failed');"
-                                 style="width: 100%; height: 200px; object-fit: cover; position: ${idx === 0 ? 'relative' : 'absolute'}; top: 0; left: 0; opacity: ${idx === 0 ? '1' : '0'}; transition: opacity 0.5s ease-in-out;">
-                            `;
-                        }).join('')}
-                        ${productPhotos.length > 1 ? `
-                            <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
-                                ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer; transition: background 0.3s;"></div>`).join('')}
-                            </div>
-                        ` : ''}
+                                     data-index="${idx}" ${idx === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy" fetchpriority="low"'} decoding="async" width="200" height="200" sizes="(max-width: 640px) 100vw, 600px"
+                                     onerror="if(!this.hasAttribute('data-failed')) { this.setAttribute('data-failed', '1'); const placeholder = 'https://placehold.co/200x200?text=' + encodeURIComponent('${displayName.replace(/'/g, "\\'")}'); if(!this.src.includes('placehold.co')) { this.src = placeholder; } }"
+                                     onload="this.removeAttribute('data-failed');"
+                                     style="width: 100%; height: 200px; object-fit: cover; position: ${idx === 0 ? 'relative' : 'absolute'}; top: 0; left: 0; opacity: ${idx === 0 ? '1' : '0'}; transition: opacity 0.5s ease-in-out;">
+                                `;
+                            }).join('')}
+                            ${productPhotos.length > 1 ? `
+                                <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
+                                    ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer; transition: background 0.3s;"></div>`).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem;">${displayName}</h4>
+                        <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
+                            N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
+                        </p>
+                        ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
+                        <button class="btn btn-success" onclick="addToShopCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px;">
+                            Add to Cart
+                        </button>
                     </div>
-                    <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem;">${displayName}</h4>
-                    <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
-                        N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
-                    </p>
-                    ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
-                    <button class="btn btn-success" onclick="addToShopCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px;">
-                        Add to Cart
-                    </button>
-                </div>
-            `;
+                `;
         }
         
         // Store pending product info for cart addition

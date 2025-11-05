@@ -1,6 +1,20 @@
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(200).end();
+  }
+
+  // Set CORS headers for all responses
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
+
   const method = req.method;
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
@@ -73,17 +87,29 @@ export default async function handler(req, res) {
         
         return res.json({ success: true, count: results.length, distributors: results });
       } else {
-        // Create single distributor
-        const distributor = await insert('distributors', {
-          id: body.id || `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          distributor_code: body.distributor_code || body.code,
-          distributor_name: body.distributor_name || body.name,
-          mobile_no: body.mobile_no || body.mobile || null,
-          email: body.email || null,
-          commission_rate: body.commission_rate || 0,
-          status: body.status || 'active',
-          branch: body.branch || null
+        // Create single distributor - only use valid table columns
+        // Extract additional data (like _agreement_data) for potential future use
+        const { _agreement_data, ...validFields } = body;
+        
+        const distributorData = {
+          id: validFields.id || `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          distributor_code: validFields.distributor_code || validFields.code,
+          distributor_name: validFields.distributor_name || validFields.name,
+          mobile_no: validFields.mobile_no || validFields.mobile || null,
+          email: validFields.email || null,
+          commission_rate: validFields.commission_rate || 0,
+          status: validFields.status || 'active',
+          branch: validFields.branch || null
+        };
+        
+        // Remove any undefined values to avoid SQL errors
+        Object.keys(distributorData).forEach(key => {
+          if (distributorData[key] === undefined) {
+            delete distributorData[key];
+          }
         });
+        
+        const distributor = await insert('distributors', distributorData);
         
         await publishRealtimeEvent('distributors', 'create', distributor);
         return res.json(distributor);
@@ -106,7 +132,32 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Distributors API error:', error);
-    return res.status(500).json({ error: error.message });
+    // Return proper JSON error response
+    const errorMessage = error.message || 'Internal server error';
+    const errorCode = error.code || 'INTERNAL_ERROR';
+    
+    // Handle specific database errors
+    if (error.code === '23505') {
+      return res.status(409).json({ 
+        error: 'Distributor code already exists',
+        code: 'DUPLICATE_CODE',
+        details: error.message 
+      });
+    }
+    
+    if (error.code === '23503') {
+      return res.status(400).json({ 
+        error: 'Invalid branch reference',
+        code: 'FOREIGN_KEY_VIOLATION',
+        details: error.message 
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: errorMessage,
+      code: errorCode,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
 
