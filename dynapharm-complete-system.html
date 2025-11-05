@@ -4020,6 +4020,9 @@
                     <button class="dispenserTab" id="distributorRegistrationTab" onclick="showDispenserTab('distributorRegistration')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
                         📝 Distributor Registration
                     </button>
+                    <button class="dispenserTab" id="fieldProgramTab" onclick="showDispenserTab('fieldProgram')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                        🚐 Field Program
+                    </button>
                 </div>
                 
                 <!-- Branch Stock Section (Hidden by default) -->
@@ -16774,14 +16777,14 @@ async function reverseLastPrescriptionPayment(reportId){
 
         function showDispenserTab(tab) {
             // Hide all sections
-            const sections = ['dispenserWalkInSection', 'dispenserPrescriptionSection', 'dispenserStockSection', 'dispenserBankingSection', 'dispenserPaymentsSection', 'dispenserOnlineOrdersSection', 'dispenserBonusSection', 'dispenserCommunicationSection', 'dispenserStaffSection', 'dispenserDistributorRegistrationSection'];
+            const sections = ['dispenserWalkInSection', 'dispenserPrescriptionSection', 'dispenserStockSection', 'dispenserBankingSection', 'dispenserPaymentsSection', 'dispenserOnlineOrdersSection', 'dispenserBonusSection', 'dispenserCommunicationSection', 'dispenserStaffSection', 'dispenserDistributorRegistrationSection', 'dispenserFieldProgramSection'];
             sections.forEach(sec => {
                 const el = document.getElementById(sec);
                 if (el) el.style.display = 'none';
             });
             
             // Reset all tab buttons
-            const tabs = ['walkInTab', 'prescriptionTab', 'stockTab', 'bankingTab', 'paymentsTab', 'onlineOrdersTab', 'bonusTab', 'communicationTab', 'staffTab', 'distributorRegistrationTab'];
+            const tabs = ['walkInTab', 'prescriptionTab', 'stockTab', 'bankingTab', 'paymentsTab', 'onlineOrdersTab', 'bonusTab', 'communicationTab', 'staffTab', 'distributorRegistrationTab', 'fieldProgramTab'];
             tabs.forEach(tabBtn => {
                 const el = document.getElementById(tabBtn);
                 if (el) {
@@ -16847,6 +16850,12 @@ async function reverseLastPrescriptionPayment(reportId){
                     activeTab = 'communicationTab';
                     gradient = 'linear-gradient(135deg, #16a34a, #0d9488)';
                     try { renderStaffCommunications(); } catch(_) {}
+                    break;
+                case 'fieldProgram':
+                    activeSection = 'dispenserFieldProgramSection';
+                    activeTab = 'fieldProgramTab';
+                    gradient = 'linear-gradient(135deg, #e17055, #d63031)';
+                    try { displayFieldProgramRequests(); } catch(_) {}
                     break;
                 case 'staff':
                     activeSection = 'dispenserStaffSection';
