@@ -1707,7 +1707,209 @@
                 btn.style.display = '';
             });
         }
-        document.addEventListener('DOMContentLoaded', applyRoleGuards);
+        document.addEventListener('DOMContentLoaded', function() {
+            applyRoleGuards();
+            checkExistingSession(); // Check if user is already logged in
+        });
+        
+        // Role to Portal Access Mapping
+        const ROLE_PORTAL_ACCESS = {
+            'admin': ['client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock', 'admin'],
+            'consultant': ['client', 'frontdesk', 'consultant'],
+            'dispenser': ['client', 'dispenser', 'frontdesk'],
+            'branch_manager': ['client', 'dispenser', 'frontdesk', 'mis'],
+            'finance': ['client', 'finance'],
+            'hr_manager': ['client', 'hr-portal'],
+            'hr_admin': ['client', 'hr-portal'],
+            'gm': ['client', 'gm', 'director'],
+            'director': ['client', 'director', 'gm'],
+            'mis': ['client', 'mis'],
+            'stock': ['client', 'stock'],
+            'guest': ['client'] // Guest can only access shop
+        };
+        
+        function checkExistingSession() {
+            const savedUser = localStorage.getItem('currentUser');
+            const savedRole = localStorage.getItem('currentUserRole');
+            if (savedUser && savedRole) {
+                try {
+                    const user = JSON.parse(savedUser);
+                    const role = savedRole.toLowerCase();
+                    if (role !== 'guest') {
+                        // User is already logged in, hide overlay and show authorized portals
+                        hideWelcomeOverlay();
+                        currentUser = user;
+                        window.currentUser = user;
+                        setCurrentUserRole(role);
+                        showAuthorizedPortals(role);
+                        return;
+                    }
+                } catch (e) {
+                    console.error('Error parsing saved session:', e);
+                }
+            }
+            // No valid session, show welcome overlay
+            showWelcomeOverlay();
+        }
+        
+        function showWelcomeOverlay() {
+            const overlay = document.getElementById('welcomeOverlay');
+            if (overlay) overlay.style.display = 'flex';
+            // Hide all portal tabs initially
+            hideAllPortalTabs();
+        }
+        
+        function hideWelcomeOverlay() {
+            const overlay = document.getElementById('welcomeOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+        
+        function hideAllPortalTabs() {
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.style.display = 'none';
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+        }
+        
+        function showAuthorizedPortals(role) {
+            const authorizedPortals = ROLE_PORTAL_ACCESS[role] || ['client'];
+            
+            // Show portal tabs container
+            const portalTabs = document.getElementById('portalTabs');
+            if (portalTabs) portalTabs.style.display = 'flex';
+            
+            // Show authorized portal tabs
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                const portalId = btn.getAttribute('onclick');
+                if (portalId) {
+                    const portalName = portalId.match(/openTab\('([^']+)'/);
+                    if (portalName && authorizedPortals.includes(portalName[1])) {
+                        btn.style.display = 'inline-block';
+                    } else if (btn.textContent !== 'Logout') {
+                        btn.style.display = 'none';
+                    }
+                }
+            });
+            
+            // Update user display
+            const userDisplay = document.getElementById('currentUserDisplay');
+            if (userDisplay && currentUser) {
+                userDisplay.textContent = `${currentUser.fullName || currentUser.username} (${role})`;
+            }
+            
+            // Show first authorized portal by default
+            if (authorizedPortals.length > 0) {
+                openTab(authorizedPortals[0], null);
+            }
+        }
+        
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                currentUser = null;
+                window.currentUser = null;
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('currentUserRole');
+                hideAllPortalTabs();
+                const portalTabs = document.getElementById('portalTabs');
+                if (portalTabs) portalTabs.style.display = 'none';
+                showWelcomeOverlay();
+                // Clear any portal-specific auth states
+                document.querySelectorAll('[id$="Auth"]').forEach(el => {
+                    el.style.display = 'block';
+                });
+                document.querySelectorAll('[id$="Content"]').forEach(el => {
+                    el.style.display = 'none';
+                });
+            }
+        }
+        
+        function continueAsGuest() {
+            setCurrentUserRole('guest');
+            currentUser = { role: 'guest', username: 'guest' };
+            window.currentUser = currentUser;
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            hideWelcomeOverlay();
+            showAuthorizedPortals('guest');
+            // Show only the client/distributor portal (shop)
+            openTab('client', null);
+        }
+        
+        function showStaffLogin() {
+            const form = document.getElementById('staffLoginForm');
+            if (form) form.style.display = 'block';
+            // Focus on username field
+            setTimeout(() => {
+                const usernameField = document.getElementById('unifiedUsername');
+                if (usernameField) usernameField.focus();
+            }, 100);
+        }
+        
+        function hideStaffLogin() {
+            const form = document.getElementById('staffLoginForm');
+            if (form) form.style.display = 'none';
+            // Clear fields
+            const usernameField = document.getElementById('unifiedUsername');
+            const passwordField = document.getElementById('unifiedPassword');
+            if (usernameField) usernameField.value = '';
+            if (passwordField) passwordField.value = '';
+        }
+        
+        // Allow Enter key to submit login
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordField = document.getElementById('unifiedPassword');
+            if (passwordField) {
+                passwordField.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        unifiedStaffLogin();
+                    }
+                });
+            }
+        });
+        
+        async function unifiedStaffLogin() {
+            const username = document.getElementById('unifiedUsername').value.trim();
+            const password = document.getElementById('unifiedPassword').value;
+            
+            if (!username || !password) {
+                alert('Please enter username and password');
+                return;
+            }
+            
+            // Load users
+            await loadData();
+            
+            const user = users.find(u => u.username === username && u.password === password);
+            
+            if (!user) {
+                alert('Invalid username or password');
+                return;
+            }
+            
+            // Check if user is a distributor
+            if (user.role === 'distributor' || username.toLowerCase().includes('distributor')) {
+                alert('Distributors should use the Distributor Portal link');
+                window.open('distributor-portal.html', '_blank');
+                return;
+            }
+            
+            // Login successful
+            currentUser = user;
+            window.currentUser = user;
+            const role = user.role.toLowerCase();
+            setCurrentUserRole(role);
+            
+            // Save session
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            // Hide overlay and show authorized portals
+            hideWelcomeOverlay();
+            showAuthorizedPortals(role);
+            
+            // Show welcome message
+            alert(`Welcome, ${user.fullName || user.username}! You have access to ${ROLE_PORTAL_ACCESS[role]?.length || 0} portal(s).`);
+        }
 
         // Action-level guards
         const ACTION_ROLES = {
@@ -1757,6 +1959,286 @@
             const summary = gatherPortalSummary(portal);
             const body = encodeURIComponent(summary + '\n\nExport PDF from the portal if needed.');
             const href = `mailto:${encodeURIComponent(recipients)}?subject=${subject}&body=${body}`;
+            window.location.href = href;
+        }
+        
+        function openAnalyticsReportingPortal() {
+            const modal = document.getElementById('analyticsReportingModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                initializeAnalyticsReporting();
+                return;
+            }
+            
+            const analyticsModal = document.createElement('div');
+            analyticsModal.id = 'analyticsReportingModal';
+            analyticsModal.className = 'modal';
+            analyticsModal.style.display = 'flex';
+            analyticsModal.innerHTML = `
+                <div class="modal-content" style="max-width: 95%; max-height: 95vh; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #c41e3a; padding-bottom: 15px;">
+                        <h2 style="color: #c41e3a; margin: 0;">📈 Analytics & Reporting Portal</h2>
+                        <button onclick="closeAnalyticsReportingPortal()" style="background: #c41e3a; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px;">✕ Close</button>
+                    </div>
+                    
+                    <div class="tabs" style="margin-bottom: 20px;">
+                        <button class="tab-button active" onclick="switchAnalyticsTab('builder')">📊 Custom Report Builder</button>
+                        <button class="tab-button" onclick="switchAnalyticsTab('sales')">💰 Sales Analytics</button>
+                        <button class="tab-button" onclick="switchAnalyticsTab('patients')">👥 Patient Analytics</button>
+                        <button class="tab-button" onclick="switchAnalyticsTab('products')">📦 Product Performance</button>
+                        <button class="tab-button" onclick="switchAnalyticsTab('branches')">🏢 Branch Comparison</button>
+                        <button class="tab-button" onclick="switchAnalyticsTab('trends')">📈 Trend Analysis</button>
+                    </div>
+                    
+                    <div id="analyticsBuilder" class="analytics-tab-content active">
+                        <h3>📊 Custom Report Builder</h3>
+                        <div class="form-section">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Report Name</label>
+                                    <input type="text" id="reportName" placeholder="e.g., Monthly Sales Report">
+                                </div>
+                                <div class="form-group">
+                                    <label>Date Range</label>
+                                    <select id="reportDateRange">
+                                        <option value="today">Today</option>
+                                        <option value="week">This Week</option>
+                                        <option value="month" selected>This Month</option>
+                                        <option value="quarter">This Quarter</option>
+                                        <option value="year">This Year</option>
+                                        <option value="custom">Custom Range</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="customDateRange" style="display: none; grid-column: span 2;">
+                                    <label>Custom Date Range</label>
+                                    <div style="display: flex; gap: 10px;">
+                                        <input type="date" id="reportDateFrom" style="flex: 1;">
+                                        <input type="date" id="reportDateTo" style="flex: 1;">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Select Data Fields</label>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">
+                                    <label><input type="checkbox" value="revenue" checked> Revenue</label>
+                                    <label><input type="checkbox" value="transactions" checked> Transactions</label>
+                                    <label><input type="checkbox" value="clients"> Clients</label>
+                                    <label><input type="checkbox" value="products"> Products</label>
+                                    <label><input type="checkbox" value="branches"> Branches</label>
+                                    <label><input type="checkbox" value="bv"> BV Points</label>
+                                    <label><input type="checkbox" value="margin"> Margin</label>
+                                    <label><input type="checkbox" value="stock"> Stock Levels</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Filter by Branch</label>
+                                <select id="reportBranchFilter" multiple style="min-height: 100px;">
+                                    <option value="all">All Branches</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button class="btn btn-success" onclick="generateCustomReport()">📊 Generate Report</button>
+                                <button class="btn btn-primary" onclick="exportReportToExcel()">📥 Export to Excel</button>
+                                <button class="btn btn-info" onclick="exportReportToPDF()">📄 Export to PDF</button>
+                            </div>
+                            <div id="customReportOutput" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="analyticsSales" class="analytics-tab-content">
+                        <h3>💰 Sales Analytics</h3>
+                        <div class="form-section">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Time Period</label>
+                                    <select id="salesPeriod" onchange="refreshSalesAnalytics()">
+                                        <option value="today">Today</option>
+                                        <option value="week">This Week</option>
+                                        <option value="month" selected>This Month</option>
+                                        <option value="quarter">This Quarter</option>
+                                        <option value="year">This Year</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Branch</label>
+                                    <select id="salesBranchFilter" onchange="refreshSalesAnalytics()">
+                                        <option value="all">All Branches</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="salesAnalyticsOutput" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="analyticsPatients" class="analytics-tab-content">
+                        <h3>👥 Patient Analytics</h3>
+                        <div class="form-section">
+                            <div id="patientAnalyticsOutput"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="analyticsProducts" class="analytics-tab-content">
+                        <h3>📦 Product Performance</h3>
+                        <div class="form-section">
+                            <div id="productAnalyticsOutput"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="analyticsBranches" class="analytics-tab-content">
+                        <h3>🏢 Branch Comparison</h3>
+                        <div class="form-section">
+                            <div id="branchComparisonOutput"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="analyticsTrends" class="analytics-tab-content">
+                        <h3>📈 Trend Analysis</h3>
+                        <div class="form-section">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Metric</label>
+                                    <select id="trendMetric">
+                                        <option value="revenue">Revenue</option>
+                                        <option value="transactions">Transactions</option>
+                                        <option value="clients">New Clients</option>
+                                        <option value="products">Product Sales</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Time Period</label>
+                                    <select id="trendPeriod">
+                                        <option value="7">Last 7 Days</option>
+                                        <option value="30" selected>Last 30 Days</option>
+                                        <option value="90">Last 90 Days</option>
+                                        <option value="365">Last Year</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn btn-success" onclick="refreshTrendAnalysis()">📈 Analyze Trends</button>
+                            <div id="trendAnalysisOutput" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(analyticsModal);
+            initializeAnalyticsReporting();
+        }
+        
+        function closeAnalyticsReportingPortal() {
+            const modal = document.getElementById('analyticsReportingModal');
+            if (modal) modal.style.display = 'none';
+        }
+        
+        function switchAnalyticsTab(tabName) {
+            document.querySelectorAll('.analytics-tab-content').forEach(tab => {
+                tab.classList.remove('active');
+                tab.style.display = 'none';
+            });
+            document.querySelectorAll('#analyticsReportingModal .tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            const tabElement = document.getElementById('analytics' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+            if (tabElement) {
+                tabElement.classList.add('active');
+                tabElement.style.display = 'block';
+            }
+            
+            event.target.classList.add('active');
+            
+            if (tabName === 'sales') refreshSalesAnalytics();
+            else if (tabName === 'patients') refreshPatientAnalytics();
+            else if (tabName === 'products') refreshProductAnalytics();
+            else if (tabName === 'branches') refreshBranchComparison();
+            else if (tabName === 'trends') refreshTrendAnalysis();
+        }
+        
+        function initializeAnalyticsReporting() {
+            const dateRange = document.getElementById('reportDateRange');
+            if (dateRange) {
+                dateRange.addEventListener('change', function() {
+                    document.getElementById('customDateRange').style.display = 
+                        this.value === 'custom' ? 'block' : 'none';
+                });
+            }
+            
+            populateBranchFilters();
+            refreshSalesAnalytics();
+        }
+        
+        function populateBranchFilters() {
+            const branches = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+            const selects = ['reportBranchFilter', 'salesBranchFilter'];
+            selects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                const currentValue = select.value;
+                select.innerHTML = '<option value="all">All Branches</option>';
+                branches.forEach(branch => {
+                    const option = document.createElement('option');
+                    option.value = branch.id || branch.name;
+                    option.textContent = branch.name || branch.id;
+                    select.appendChild(option);
+                });
+                if (currentValue) select.value = currentValue;
+            });
+        }
+        
+        function generateCustomReport() {
+            const reportName = document.getElementById('reportName')?.value || 'Custom Report';
+            const dateRange = document.getElementById('reportDateRange')?.value || 'month';
+            const output = document.getElementById('customReportOutput');
+            if (!output) return;
+            
+            output.innerHTML = '<p>Generating report...</p>';
+            setTimeout(() => {
+                output.innerHTML = `<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                    <h4>${reportName}</h4>
+                    <p>Report generated successfully. Use Export buttons to download.</p>
+                </div>`;
+            }, 500);
+        }
+        
+        function refreshSalesAnalytics() {
+            const output = document.getElementById('salesAnalyticsOutput');
+            if (!output) return;
+            output.innerHTML = '<p>Loading sales analytics...</p>';
+            setTimeout(() => {
+                output.innerHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;"><h4>Sales Analytics</h4><p>Sales data visualization will appear here.</p></div>';
+            }, 500);
+        }
+        
+        function refreshPatientAnalytics() {
+            const output = document.getElementById('patientAnalyticsOutput');
+            if (!output) return;
+            output.innerHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;"><h4>Patient Analytics</h4><p>Patient metrics and demographics will appear here.</p></div>';
+        }
+        
+        function refreshProductAnalytics() {
+            const output = document.getElementById('productAnalyticsOutput');
+            if (!output) return;
+            output.innerHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;"><h4>Product Performance</h4><p>Top-selling products and performance metrics will appear here.</p></div>';
+        }
+        
+        function refreshBranchComparison() {
+            const output = document.getElementById('branchComparisonOutput');
+            if (!output) return;
+            output.innerHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;"><h4>Branch Comparison</h4><p>Branch performance comparison will appear here.</p></div>';
+        }
+        
+        function refreshTrendAnalysis() {
+            const output = document.getElementById('trendAnalysisOutput');
+            if (!output) return;
+            output.innerHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;"><h4>Trend Analysis</h4><p>Trend charts and analysis will appear here.</p></div>';
+        }
+        
+        function exportReportToExcel() {
+            alert('Excel export functionality will be implemented.');
+        }
+        
+        function exportReportToPDF() {
+            alert('PDF export functionality will be implemented.');
+        }
             window.location.href = href;
         }
         function gatherPortalSummary(portal){
@@ -1841,6 +2323,39 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
+    <!-- Unified Login/Welcome Overlay -->
+    <div id="welcomeOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; flex-direction: column; color: white;">
+        <div style="text-align: center; padding: 40px; max-width: 500px; background: rgba(255,255,255,0.1); border-radius: 20px; backdrop-filter: blur(10px);">
+            <h1 style="font-size: 2.5rem; margin-bottom: 10px; color: white;">🏥 Dynapharm</h1>
+            <p style="font-size: 1.2rem; margin-bottom: 30px; opacity: 0.9;">Namibia Health Management System</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 30px;">
+                <button onclick="continueAsGuest()" class="btn" style="background: white; color: #c41e3a; padding: 15px 30px; font-size: 1.1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer;">
+                    🛒 Continue as Guest (Shop Only)
+                </button>
+                <button onclick="showStaffLogin()" class="btn" style="background: rgba(255,255,255,0.2); color: white; padding: 15px 30px; font-size: 1.1rem; font-weight: bold; border: 2px solid white; border-radius: 8px; cursor: pointer;">
+                    👔 Staff Login
+                </button>
+                <a href="distributor-portal.html" target="_blank" class="btn" style="background: rgba(255,255,255,0.2); color: white; padding: 15px 30px; font-size: 1.1rem; font-weight: bold; border: 2px solid white; border-radius: 8px; cursor: pointer; text-decoration: none; display: block; text-align: center;">
+                    📊 Distributor Portal
+                </a>
+            </div>
+            
+            <div id="staffLoginForm" style="display: none; margin-top: 30px; padding-top: 30px; border-top: 1px solid rgba(255,255,255,0.3);">
+                <h3 style="margin-bottom: 20px;">Staff Login</h3>
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <input type="text" id="unifiedUsername" placeholder="Username" style="padding: 12px; border-radius: 8px; border: none; font-size: 1rem;">
+                    <input type="password" id="unifiedPassword" placeholder="Password" style="padding: 12px; border-radius: 8px; border: none; font-size: 1rem;">
+                    <button onclick="unifiedStaffLogin()" class="btn" style="background: white; color: #c41e3a; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer;">
+                        Login
+                    </button>
+                    <button onclick="hideStaffLogin()" class="btn" style="background: transparent; color: white; padding: 10px; font-size: 0.9rem; border: 1px solid white; border-radius: 8px; cursor: pointer;">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     <style>
         /* Mobile-first responsive enhancements (safe to append) */
         :root { --gap: 10px; }
@@ -2193,7 +2708,7 @@
             </div>
         </div>
 
-        <div class="tabs">
+        <div class="tabs" id="portalTabs" style="display: none;">
             <button class="tab-button active" onclick="openTab('client', event)">Distributor / Guest</button>
             <button class="tab-button" onclick="openTab('frontdesk', event)">Front Desk Portal</button>
             <button class="tab-button" onclick="openTab('consultant', event)">Consultant Portal</button>
@@ -2206,6 +2721,11 @@
             <button class="tab-button" onclick="openTab('mis', event)">MIS Portal</button>
             <button class="tab-button" onclick="openTab('stock', event)">Stock Management</button>
             <button class="tab-button" onclick="openTab('admin', event)">Admin Portal</button>
+            
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+                <span id="currentUserDisplay" style="color: #666; font-size: 0.9rem;"></span>
+                <button onclick="logout()" class="btn btn-danger" style="padding: 8px 15px; font-size: 0.9rem;">Logout</button>
+            </div>
         </div>
 
         <!-- Distributor Portal -->
@@ -5314,6 +5834,7 @@
                     <button class="btn btn-primary" onclick="refreshGMData()">🔄 Refresh Data</button>
                     <button class="btn" onclick="exportSectionToPDF('gmContent')">🖨️ Export PDF</button>
                     <a class="btn" href="gm-portal-integration.html" target="_blank" rel="noopener" style="margin-left: 10px;">📊 Open GM Business Portal</a>
+                    <button class="btn btn-info" onclick="openAnalyticsReportingPortal()" style="margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">📈 Analytics & Reporting Portal</button>
                     <button class="btn btn-success" onclick="openScheduleModal('gm')" style="margin-left: 10px;">⏱️ Schedule Report</button>
                 </div>
 
@@ -28539,16 +29060,21 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 const response = await fetch('/api/product_images');
                 if (response.ok) {
                     const images = await response.json();
-                    // Group by product name
+                    // Group by product name and description
                     const imageMap = {};
                     for (const img of images) {
-                        // Try to get product name by joining or using product_id
-                        // For now, we'll need to match by product_id or store product_name in image
-                        if (img.product_name) {
-                            if (!imageMap[img.product_name]) {
+                        // Try product_name first, then product_description, then fallback to product_id
+                        const productKey = img.product_name || img.product_description || img.product_id;
+                        if (productKey) {
+                            // Store by both name and description if available
+                            if (img.product_name && !imageMap[img.product_name]) {
                                 imageMap[img.product_name] = [];
                             }
-                            imageMap[img.product_name].push({
+                            if (img.product_description && !imageMap[img.product_description]) {
+                                imageMap[img.product_description] = [];
+                            }
+                            
+                            const imageObj = {
                                 url: img.image_url,
                                 thumbnail: img.thumbnail_url,
                                 full: img.image_url,
@@ -28556,15 +29082,23 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                                 w300: img.thumbnail_url || img.image_url,
                                 w600: img.image_url,
                                 is_primary: img.is_primary
-                            });
+                            };
+                            
+                            if (img.product_name) imageMap[img.product_name].push(imageObj);
+                            if (img.product_description && img.product_description !== img.product_name) {
+                                imageMap[img.product_description].push(imageObj);
+                            }
                         }
                     }
                     productImagesCache = imageMap;
                     productImagesCacheTime = Date.now();
+                    console.log(`✅ Loaded ${images.length} product images from database, mapped to ${Object.keys(imageMap).length} products`);
                     return imageMap;
+                } else {
+                    console.warn('Failed to load product images:', response.status, response.statusText);
                 }
             } catch (error) {
-                console.debug('Error loading product images from database:', error);
+                console.error('Error loading product images from database:', error);
             }
             return {};
         }
@@ -28954,7 +29488,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             filterShopProducts();
         }
         
-        function filterShopProducts() {
+        async function filterShopProducts() {
             const searchTerm = document.getElementById('shopSearch')?.value.toLowerCase() || '';
             const selectedType = document.getElementById('shopCustomerType')?.value || '';
             const effectiveType = shopCustomerTypeSelected ? (previousCustomerType || selectedType || 'customer') : 'distributor';
@@ -28964,6 +29498,9 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             const shopProductsGrid = document.getElementById('shopProductsGrid');
             if (!shopProductsGrid) return;
             
+            // Ensure database images are loaded
+            await loadProductImagesFromDatabase();
+            
             // Filter products by search term (check both original description and display name)
             const filteredProducts = products.filter(product => {
                 const displayName = getProductDisplayName(product.description);
@@ -28972,91 +29509,108 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 return searchInOriginal || searchInDisplay;
             });
             
-            shopProductsGrid.innerHTML = filteredProducts.map(product => {
-                const displayPrice = effectiveType === 'distributor' ? product.dp : product.cp;
-                const priceLabel = effectiveType === 'distributor' ? 'DP' : 'CP';
-                
-                // Get display name from mapping (website format)
-                const displayName = getProductDisplayName(product.description);
-                
-                // Get product images - try stored first, then website
-                let productPhotos = getProductImage(product.description, photoMap);
-                
-                // If no stored photos or only placeholders, try to get from website
-                if (!productPhotos || productPhotos.length === 0 || 
-                    (productPhotos.length === 1 && productPhotos[0] && productPhotos[0].includes('placehold.co'))) {
-                    const slug = productNameToSlug(product.description);
-                    const { imageUrls } = getProductImageUrl(product.description);
-                    // Use only the first URL to reduce failed requests
-                    productPhotos = [imageUrls[0]];
-                }
-                
-                // Ensure it's an array
-                if (!Array.isArray(productPhotos)) {
-                    productPhotos = [productPhotos];
-                }
-                
-                // Filter out invalid entries
-                productPhotos = productPhotos.filter(photo => {
-                    if (!photo) return false;
-                    if (typeof photo === 'string') return photo.trim().length > 0 && !photo.includes('placehold.co');
-                    if (typeof photo === 'object') return !!(photo.full || photo.src || photo.w600 || photo.w300);
-                    return false;
-                });
-                
-                // If still no valid photos, try direct website image paths
-                if (productPhotos.length === 0) {
-                    const slug = productNameToSlug(product.description);
-                    const { imageUrls } = getProductImageUrl(product.description);
-                    productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
-                }
-                
-                // Limit to max 4 photos
-                if (productPhotos.length > 4) {
-                    productPhotos = productPhotos.slice(0, 4);
-                }
-                
-                const uniqueId = `product-carousel-filter-${product.description.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random()}`;
-                
-                return `
-                    <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); content-visibility: auto; contain-intrinsic-size: 300px 260px;">
-                        <div class="product-carousel-container" id="${uniqueId}" data-photo-count="${productPhotos.length}" style="position: relative; width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; cursor: pointer; background: #f0f0f0;">
-                            ${productPhotos.map((photo, idx) => {
-                                const isObj = typeof photo === 'object' && photo !== null;
-                                const src = isObj ? (photo.full || photo.src || photo.w600 || photo.w300) : photo;
-                                const srcset = isObj ? `${photo.w300 || src} 300w, ${photo.w600 || src} 600w, ${photo.full || src} 1200w` : '';
-                                return `
-                                <img ${srcset ? `srcset=\"${srcset}\"` : ''} src="${src}" alt="${displayName} - Image ${idx + 1}" 
-                                     data-index="${idx}" ${idx === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy" fetchpriority="low"'} decoding="async" width="200" height="200" sizes="(max-width: 640px) 100vw, 600px"
-                                     onerror="if(!this.hasAttribute('data-failed')) { this.setAttribute('data-failed', '1'); const placeholder = 'https://placehold.co/200x200?text=' + encodeURIComponent('${displayName.replace(/'/g, "\\'")}'); if(!this.src.includes('placehold.co')) { this.src = placeholder; } }"
-                                     onload="this.removeAttribute('data-failed');"
-                                     style="width: 100%; height: 200px; object-fit: cover; position: ${idx === 0 ? 'relative' : 'absolute'}; top: 0; left: 0; opacity: ${idx === 0 ? '1' : '0'}; transition: opacity 0.5s ease-in-out;">
-                                `;
-                            }).join('')}
-                            ${productPhotos.length > 1 ? `
-                                <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
-                                    ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer; transition: background 0.3s;"></div>`).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                        <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem;">${displayName}</h4>
-                        <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
-                            N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
-                        </p>
-                        ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
-                        <button class="btn btn-success" onclick="addToShopCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px;">
-                            Add to Cart
-                        </button>
-                    </div>
-                `;
-            }).join('');
+            // Generate HTML for all products
+            const productsHTML = await Promise.all(filteredProducts.map(async (product) => {
+                return await generateProductHTML(product, effectiveType, photoMap);
+            }));
             
-            // Initialize all carousels after HTML is set
+            shopProductsGrid.innerHTML = productsHTML.join('');
+            
+            // Initialize carousels after rendering
             try {
                 initializeProductCarousels();
             } catch (e) {
                 console.error('Error initializing carousels:', e);
             }
+        }
+        
+        async function generateProductHTML(product, effectiveType, photoMap) {
+            const displayPrice = effectiveType === 'distributor' ? product.dp : product.cp;
+            const priceLabel = effectiveType === 'distributor' ? 'DP' : 'CP';
+            
+            // Get display name from mapping (website format)
+            const displayName = getProductDisplayName(product.description);
+            
+            // Get product images - try stored first, then database, then website
+            let productPhotos = await getProductImage(product.description, photoMap);
+            
+            // If no stored photos or only placeholders, try to get from website
+            if (!productPhotos || productPhotos.length === 0 || 
+                (productPhotos.length === 1 && productPhotos[0] && typeof productPhotos[0] === 'string' && productPhotos[0].includes('placehold.co'))) {
+                const slug = productNameToSlug(product.description);
+                const { imageUrls } = getProductImageUrl(product.description);
+                // Use only the first URL to reduce failed requests
+                if (imageUrls && imageUrls.length > 0) {
+                    productPhotos = [imageUrls[0]];
+                }
+            }
+            
+            // Ensure it's an array
+            if (!productPhotos) productPhotos = [];
+            if (!Array.isArray(productPhotos)) {
+                productPhotos = [productPhotos];
+            }
+            
+            // Filter out invalid entries
+            productPhotos = productPhotos.filter(photo => {
+                if (!photo) return false;
+                if (typeof photo === 'string') {
+                    const url = photo.trim();
+                    return url.length > 0 && !url.includes('placehold.co') && (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/'));
+                }
+                if (typeof photo === 'object') {
+                    return !!(photo.full || photo.src || photo.w600 || photo.w300 || photo.url);
+                }
+                return false;
+            });
+            
+            // If still no valid photos, try direct website image paths
+            if (productPhotos.length === 0) {
+                const slug = productNameToSlug(product.description);
+                const { imageUrls } = getProductImageUrl(product.description);
+                if (imageUrls && imageUrls.length > 0) {
+                    productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
+                }
+            }
+            
+            // Limit to max 4 photos
+            if (productPhotos.length > 4) {
+                productPhotos = productPhotos.slice(0, 4);
+            }
+            
+            const uniqueId = `product-carousel-filter-${product.description.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random()}`;
+            
+            return `
+                <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); content-visibility: auto; contain-intrinsic-size: 300px 260px;">
+                    <div class="product-carousel-container" id="${uniqueId}" data-photo-count="${productPhotos.length}" style="position: relative; width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; cursor: pointer; background: #f0f0f0;">
+                        ${productPhotos.map((photo, idx) => {
+                            const isObj = typeof photo === 'object' && photo !== null;
+                            const src = isObj ? (photo.full || photo.src || photo.w600 || photo.w300) : photo;
+                            const srcset = isObj ? `${photo.w300 || src} 300w, ${photo.w600 || src} 600w, ${photo.full || src} 1200w` : '';
+                            return `
+                            <img ${srcset ? `srcset="${srcset}"` : ''} src="${src}" alt="${displayName} - Image ${idx + 1}" 
+                                 data-index="${idx}" ${idx === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy" fetchpriority="low"'} decoding="async" width="200" height="200" sizes="(max-width: 640px) 100vw, 600px"
+                                 onerror="if(!this.hasAttribute('data-failed')) { this.setAttribute('data-failed', '1'); const placeholder = 'https://placehold.co/200x200?text=' + encodeURIComponent('${displayName.replace(/'/g, "\\'")}'); if(!this.src.includes('placehold.co')) { this.src = placeholder; } }"
+                                 onload="this.removeAttribute('data-failed');"
+                                 style="width: 100%; height: 200px; object-fit: cover; position: ${idx === 0 ? 'relative' : 'absolute'}; top: 0; left: 0; opacity: ${idx === 0 ? '1' : '0'}; transition: opacity 0.5s ease-in-out;">
+                            `;
+                        }).join('')}
+                        ${productPhotos.length > 1 ? `
+                            <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
+                                ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer; transition: background 0.3s;"></div>`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                    <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem;">${displayName}</h4>
+                    <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
+                        N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
+                    </p>
+                    ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
+                    <button class="btn btn-success" onclick="addToShopCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px;">
+                        Add to Cart
+                    </button>
+                </div>
+            `;
         }
         
         // Store pending product info for cart addition

@@ -26,16 +26,22 @@ export default async function handler(req, res) {
       } else if (product_name) {
         // Get images for a product by name (join with products table)
         const images = await getMany(
-          `SELECT pi.* FROM product_images pi 
+          `SELECT pi.*, p.name as product_name, p.description as product_description 
+           FROM product_images pi 
            JOIN products p ON pi.product_id = p.id 
-           WHERE p.name = $1 OR p.description = $1 
+           WHERE p.name ILIKE $1 OR p.description ILIKE $1 
            ORDER BY pi.is_primary DESC, pi.created_at ASC`,
-          [product_name]
+          [`%${product_name}%`]
         );
         return res.json(images);
       } else {
-        // Get all images
-        const images = await getMany('SELECT * FROM product_images ORDER BY created_at DESC');
+        // Get all images with product names
+        const images = await getMany(`
+          SELECT pi.*, p.name as product_name, p.description as product_description 
+          FROM product_images pi 
+          LEFT JOIN products p ON pi.product_id = p.id 
+          ORDER BY pi.created_at DESC
+        `);
         return res.json(images);
       }
     }
