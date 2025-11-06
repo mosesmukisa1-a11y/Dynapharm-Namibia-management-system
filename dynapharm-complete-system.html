@@ -2827,7 +2827,7 @@
                 </div>
                 
                 <!-- Media Preview Widget -->
-                <div id="mediaPreviewWidget" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onclick="const mediaBtn = document.querySelector('.tabs button[onclick*=\"showDistributorTab(\\'media\\')\"]'); if(mediaBtn) { mediaBtn.click(); }" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(102, 126, 234, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';">
+                <div id="mediaPreviewWidget" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onclick="openMediaTab()" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(102, 126, 234, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                         <div style="flex: 1; min-width: 250px;">
                             <h3 style="margin: 0 0 10px; font-size: 22px; color: white; display: flex; align-items: center; gap: 8px;">
@@ -10318,6 +10318,11 @@
             {description: "YEEYANGYEN TABLET 30's", dp: 195, cp: 254, bv: 32},
             {description: "YEEYANGYEN TABLET 90's", dp: 370, cp: 455, bv: 90}
         ];
+        
+        // Make PRICE_LIST globally accessible
+        if (typeof window !== 'undefined') {
+            window.PRICE_LIST = PRICE_LIST;
+        }
 
         // Price lookup function with package support
         function findProductPrice(productName) {
@@ -33872,30 +33877,19 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     const hasVideo = item.videoUrl || (item.type === 'video');
                     const hasSlideshow = item.slideshow || (item.type === 'slideshow');
                     const mediaType = hasVideo ? 'video' : (hasSlideshow ? 'slideshow' : 'image');
-                    const thumbnail = item.imageUrl || item.thumbnail || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"%3E%3Crect width="120" height="120" fill="%23ddd"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="14"%3E${mediaType === 'video' ? '▶' : mediaType === 'slideshow' ? '📷' : '🖼'}%3C/text%3E%3C/svg%3E';
+                    const icon = mediaType === 'video' ? '▶' : mediaType === 'slideshow' ? '📷' : '🖼';
+                    const thumbnail = item.imageUrl || item.thumbnail || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22120%22%3E%3Crect width=%22120%22 height=%22120%22 fill=%22%23ddd%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22%3E' + encodeURIComponent(icon) + '%3C/text%3E%3C/svg%3E';
+                    const title = (item.title || 'Media').replace(/"/g, '&quot;');
+                    const shortTitle = title.length > 20 ? title.substring(0, 20) + '...' : title;
                     
-                    return `
-                        <div style="position: relative; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                            <div style="position: relative; width: 100%; padding-top: 75%; background: rgba(0,0,0,0.3);">
-                                <img src="${thumbnail}" alt="${item.title || 'Media'}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'120\\' height=\\'120\\'%3E%3Crect width=\\'120\\' height=\\'120\\' fill=\\'%23ddd\\'/%3E%3C/svg%3E'">
-                                ${hasVideo ? `
-                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.9); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px;">
-                                        ▶
-                                    </div>
-                                ` : ''}
-                                ${hasSlideshow ? `
-                                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
-                                        📷
-                                    </div>
-                                ` : ''}
-                            </div>
-                            ${item.title ? `
-                                <div style="padding: 8px; background: rgba(0,0,0,0.5); color: white; font-size: 11px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${item.title}">
-                                    ${item.title.length > 20 ? item.title.substring(0, 20) + '...' : item.title}
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
+                    return '<div style="position: relative; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">' +
+                        '<div style="position: relative; width: 100%; padding-top: 75%; background: rgba(0,0,0,0.3);">' +
+                        '<img src="' + thumbnail + '" alt="' + title + '" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22120%22%3E%3Crect width=%22120%22 height=%22120%22 fill=%22%23ddd%22/%3E%3C/svg%3E\'">' +
+                        (hasVideo ? '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.9); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px;">▶</div>' : '') +
+                        (hasSlideshow ? '<div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">📷</div>' : '') +
+                        '</div>' +
+                        (item.title ? '<div style="padding: 8px; background: rgba(0,0,0,0.5); color: white; font-size: 11px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="' + title + '">' + shortTitle + '</div>' : '') +
+                        '</div>';
                 }).join('');
             } catch (error) {
                 console.error('Error loading media preview:', error);
@@ -33907,9 +33901,27 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             }
         }
         
-        // Make function globally accessible
+        // Function to open media tab from widget click
+        function openMediaTab() {
+            // Find the media button in the distributor sub-tabs
+            const buttons = document.querySelectorAll('.tabs button');
+            for (let btn of buttons) {
+                const onclick = btn.getAttribute('onclick') || '';
+                if (onclick.includes("showDistributorTab('media')") || onclick.includes('showDistributorTab("media")')) {
+                    btn.click();
+                    return;
+                }
+            }
+            // Fallback: try to call showDistributorTab directly
+            if (typeof showDistributorTab === 'function') {
+                showDistributorTab('media');
+            }
+        }
+        
+        // Make functions globally accessible
         if (typeof window !== 'undefined') {
             window.loadMediaPreviewWidget = loadMediaPreviewWidget;
+            window.openMediaTab = openMediaTab;
         }
         
         function addNewsItem(event) {
