@@ -11825,17 +11825,8 @@
                 window.currentPortal = tabName; // Set global for permission checks
             }
             
-            // Enforce branch selection for key portals
-            try {
-                if ((tabName === 'client' || tabName === 'consultant' || tabName === 'dispenser')) {
-                    if (!currentBranch || currentBranch === '') {
-                        alert('Please select a branch first using the selector at the top.');
-                        const sel = document.getElementById('branchSelect');
-                        if (sel) { sel.focus(); }
-                        return; // Do not switch tabs until branch is chosen
-                    }
-                }
-            } catch (e) { /* no-op */ }
+            // Branch selection is now optional - portals can open without it
+            // Branch selection will be requested only when needed for specific operations inside portals
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
@@ -13113,24 +13104,26 @@
             console.log('=== LOGIN SUCCESS ===');
             console.log('Displaying content for portal:', currentPortal);
 
-            // Enforce/initialize branch selection for consultant/dispenser
+            // Initialize branch selection for consultant/dispenser (optional - not required for login)
             try {
                 if (currentPortal === 'consultant' || currentPortal === 'dispenser') {
-                    const hasMultipleBranches = Array.isArray(user.branches) && user.branches.length > 1;
                     if (!currentBranch || currentBranch === '') {
-                        if (hasMultipleBranches) {
-                            alert('Please select a branch first using the selector at the top.');
-                            const sel = document.getElementById('branchSelect');
-                            if (sel) sel.focus();
-                            return; // Stop login flow until branch is chosen
-                        } else if (user.branch) {
+                        if (user.branch) {
                             // Auto-assign single branch users
                             currentBranch = user.branch;
                             const sel = document.getElementById('branchSelect');
                             if (sel) sel.value = currentBranch;
                             const checkSel = document.getElementById('checkupBranchSelect');
                             if (checkSel) checkSel.value = currentBranch;
+                        } else if (Array.isArray(user.branches) && user.branches.length > 0) {
+                            // Auto-select first branch if user has multiple branches assigned
+                            currentBranch = user.branches[0];
+                            const sel = document.getElementById('branchSelect');
+                            if (sel) sel.value = currentBranch;
+                            const checkSel = document.getElementById('checkupBranchSelect');
+                            if (checkSel) checkSel.value = currentBranch;
                         }
+                        // If no branch is available, user can proceed and select branch when needed for specific operations
                     }
                 }
             } catch (e) { /* no-op */ }
