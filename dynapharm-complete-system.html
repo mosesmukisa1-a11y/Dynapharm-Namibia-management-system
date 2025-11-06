@@ -5230,18 +5230,17 @@
                     </div>
                 </div>
                 
-                <!-- Stock Management Tabs -->
-                <div class="tabs" style="margin-top: 20px;">
-                    <button class="tab-button active" onclick="showStockTab('dashboard')">🧠 Plan & Procure</button>
-                    <button class="tab-button" onclick="showStockTab('countryStock')">⚙️ Inbound & QA</button>
-                    <button class="tab-button" onclick="showStockTab('windhoek')">🏢 Storage & Put-away</button>
-                    <button class="tab-button" onclick="showStockTab('ondangwa')">🔁 Replenishment</button>
-                    <button class="tab-button" onclick="showStockTab('distribution')">🚚 Outbound & Distribution</button>
-                    <button class="tab-button" onclick="showStockTab('inventory')">📡 Analytics & Control</button>
-                    <button class="tab-button" onclick="showStockTab('barcode')">🏬 Branch Ops & Scanning</button>
-                    <button class="tab-button" onclick="showStockTab('reorder')">🤖 Reorder Automation</button>
-                    <button class="tab-button" onclick="showStockTab('batch')">♻️ Reverse Logistics</button>
-                    <button class="tab-button" onclick="showStockTab('valuation')">💰 Stock Valuation</button>
+                <!-- Stock Management Tabs - Modern Comprehensive Structure -->
+                <div class="tabs" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 3px solid #c41e3a; padding-bottom: 10px;">
+                    <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
+                    <button class="tab-button" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
+                    <button class="tab-button" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse Distribution</button>
+                    <button class="tab-button" onclick="showStockTab('branchDistribution')" id="stockTabBranchDistribution">🏬 Branch Distribution</button>
+                    <button class="tab-button" onclick="showStockTab('transfers')" id="stockTabTransfers">🔄 Transfers</button>
+                    <button class="tab-button" onclick="showStockTab('sharing')" id="stockTabSharing">🤝 Shop & Warehouse Sharing</button>
+                    <button class="tab-button" onclick="showStockTab('orders')" id="stockTabOrders">📋 Orders (Auto & Manual)</button>
+                    <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
+                    <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
                 </div>
                 
                 <!-- Plan & Procure Tab -->
@@ -11848,6 +11847,34 @@
             // MIS Portal now requires login - initialize if already logged in
             if (tabName === 'mis' && currentUser && currentUser.role === 'mis') {
                 initializeMISPortal();
+            }
+            
+            // Finance Portal - ensure data is loaded when tab is opened
+            if (tabName === 'finance') {
+                setTimeout(async () => {
+                    try {
+                        if (typeof loadEnhancedFinanceData === 'function') {
+                            await loadEnhancedFinanceData();
+                        }
+                        if (typeof populateBranchSelects === 'function') {
+                            populateBranchSelects();
+                        }
+                        if (typeof refreshFinancialDashboard === 'function') {
+                            refreshFinancialDashboard();
+                        }
+                        if (typeof refreshFinancialOverview === 'function') {
+                            refreshFinancialOverview();
+                        }
+                        if (typeof refreshRevenue === 'function') {
+                            refreshRevenue();
+                        }
+                        if (typeof refreshExpenses === 'function') {
+                            refreshExpenses();
+                        }
+                    } catch (e) {
+                        console.debug('Finance portal initialization error:', e);
+                    }
+                }, 100);
             }
             
             // HR Portal - ensure data is loaded when tab is opened
@@ -29257,10 +29284,49 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // ==================== FINANCE PORTAL FUNCTIONS ====================
         
-        // Load expenses and budgets from localStorage
-        function loadFinancialData() {
-            expenses = JSON.parse(localStorage.getItem('dynapharm_expenses') || '[]');
-            budgets = JSON.parse(localStorage.getItem('dynapharm_budgets') || '[]');
+        // Load expenses and budgets with API integration
+        async function loadFinancialData() {
+            try {
+                const apiBase = getApiBase();
+                
+                // Try API first for expenses
+                try {
+                    const expensesResponse = await fetch(`${apiBase}/expenses`);
+                    if (expensesResponse.ok) {
+                        const apiExpenses = await expensesResponse.json();
+                        if (Array.isArray(apiExpenses) && apiExpenses.length > 0) {
+                            expenses = apiExpenses;
+                            localStorage.setItem('dynapharm_expenses', JSON.stringify(expenses));
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Expenses API not available, using localStorage');
+                }
+                
+                // Try API for budgets
+                try {
+                    const budgetsResponse = await fetch(`${apiBase}/budgets`);
+                    if (budgetsResponse.ok) {
+                        const apiBudgets = await budgetsResponse.json();
+                        if (Array.isArray(apiBudgets) && apiBudgets.length > 0) {
+                            budgets = apiBudgets;
+                            localStorage.setItem('dynapharm_budgets', JSON.stringify(budgets));
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Budgets API not available, using localStorage');
+                }
+            } catch (e) {
+                console.debug('API loading failed, using localStorage only');
+            }
+            
+            // Fallback to localStorage
+            if (!expenses || expenses.length === 0) {
+                expenses = JSON.parse(localStorage.getItem('dynapharm_expenses') || '[]');
+            }
+            if (!budgets || budgets.length === 0) {
+                budgets = JSON.parse(localStorage.getItem('dynapharm_budgets') || '[]');
+            }
         }
         
         // Save expenses and budgets to localStorage
@@ -29945,13 +30011,91 @@ async function reverseLastPrescriptionPayment(reportId){
         // ENHANCED FINANCE PORTAL FUNCTIONS
         // ============================================
         
-        // Load enhanced finance data
-        function loadEnhancedFinanceData() {
-            bankDeposits = JSON.parse(localStorage.getItem('finance_deposits') || '[]');
-            cashBonuses = JSON.parse(localStorage.getItem('finance_bonuses') || '[]');
-            bankBonuses = JSON.parse(localStorage.getItem('finance_bank_bonuses') || '[]');
+        // Get API base URL
+        function getApiBase() {
+            const metaTag = document.querySelector('meta[name="api-base"]');
+            if (metaTag && metaTag.content) {
+                return metaTag.content;
+            }
+            // Default to relative path
+            return '/api';
+        }
+        
+        // Load enhanced finance data with API integration
+        async function loadEnhancedFinanceData() {
+            try {
+                // Try API first for deposits, bonuses, and expenses
+                const apiBase = getApiBase();
+                
+                // Load deposits from API
+                try {
+                    const depositsResponse = await fetch(`${apiBase}/deposits`);
+                    if (depositsResponse.ok) {
+                        bankDeposits = await depositsResponse.json();
+                        if (!Array.isArray(bankDeposits)) bankDeposits = [];
+                        // Cache to localStorage
+                        localStorage.setItem('finance_deposits', JSON.stringify(bankDeposits));
+                    }
+                } catch (e) {
+                    console.debug('Deposits API not available, using localStorage');
+                }
+                
+                // Load bonuses from API
+                try {
+                    const bonusesResponse = await fetch(`${apiBase}/bonus?action=payments`);
+                    if (bonusesResponse.ok) {
+                        const bonusData = await bonusesResponse.json();
+                        if (Array.isArray(bonusData)) {
+                            cashBonuses = bonusData.filter(b => b.method === 'cash');
+                            bankBonuses = bonusData.filter(b => b.method === 'bank');
+                        }
+                        // Cache to localStorage
+                        localStorage.setItem('finance_bonuses', JSON.stringify(cashBonuses));
+                        localStorage.setItem('finance_bank_bonuses', JSON.stringify(bankBonuses));
+                    }
+                } catch (e) {
+                    console.debug('Bonuses API not available, using localStorage');
+                }
+                
+                // Load expenses from API
+                try {
+                    const expensesResponse = await fetch(`${apiBase}/expenses`);
+                    if (expensesResponse.ok) {
+                        const apiExpenses = await expensesResponse.json();
+                        if (Array.isArray(apiExpenses) && apiExpenses.length > 0) {
+                            expenses = apiExpenses;
+                            localStorage.setItem('dynapharm_expenses', JSON.stringify(expenses));
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Expenses API not available, using localStorage');
+                }
+            } catch (e) {
+                console.debug('API loading failed, using localStorage only');
+            }
+            
+            // Fallback to localStorage
+            if (!bankDeposits || bankDeposits.length === 0) {
+                bankDeposits = JSON.parse(localStorage.getItem('finance_deposits') || '[]');
+            }
+            if (!cashBonuses || cashBonuses.length === 0) {
+                cashBonuses = JSON.parse(localStorage.getItem('finance_bonuses') || '[]');
+            }
+            if (!bankBonuses || bankBonuses.length === 0) {
+                bankBonuses = JSON.parse(localStorage.getItem('finance_bank_bonuses') || '[]');
+            }
+            if (!expenses || expenses.length === 0) {
+                expenses = JSON.parse(localStorage.getItem('dynapharm_expenses') || '[]');
+            }
+            
             cashShifts = JSON.parse(localStorage.getItem('finance_shifts') || '[]');
             currentShift = JSON.parse(localStorage.getItem('finance_current_shift') || 'null');
+            
+            // Also load from legacy keys for compatibility
+            const legacyBonuses = JSON.parse(localStorage.getItem('dynapharm_cash_bonuses') || '[]');
+            if (legacyBonuses.length > 0 && cashBonuses.length === 0) {
+                cashBonuses = legacyBonuses;
+            }
         }
         
         // Save enhanced finance data
@@ -30073,7 +30217,12 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Refresh financial dashboard with live data
-        function refreshFinancialDashboard() {
+        async function refreshFinancialDashboard() {
+            // Ensure data is loaded first
+            if (typeof loadEnhancedFinanceData === 'function') {
+                await loadEnhancedFinanceData();
+            }
+            
             const branch = document.getElementById('financeBranchSelect')?.value || 'all';
             const today = new Date().toISOString().split('T')[0];
             
@@ -35920,15 +36069,40 @@ This sale appears in the Dispenser Portal sales reports.
             });
             // Finance portal: refresh on reports, sales, and stock updates
             window.addEventListener('reports:updated', () => {
-                try { if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); } catch(_) {}
-                try { if (typeof refreshExpenses === 'function') refreshExpenses(); } catch(_) {}
+                try { 
+                    if (typeof loadEnhancedFinanceData === 'function') loadEnhancedFinanceData();
+                    if (typeof refreshFinancialDashboard === 'function') refreshFinancialDashboard(); 
+                    if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); 
+                    if (typeof refreshRevenue === 'function') refreshRevenue(); 
+                    if (typeof refreshExpenses === 'function') refreshExpenses(); 
+                } catch(_) {}
             });
             window.addEventListener('sale:updated', () => {
-                try { if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); } catch(_) {}
-                try { if (typeof refreshExpenses === 'function') refreshExpenses(); } catch(_) {}
+                try { 
+                    if (typeof loadEnhancedFinanceData === 'function') loadEnhancedFinanceData();
+                    if (typeof refreshFinancialDashboard === 'function') refreshFinancialDashboard(); 
+                    if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); 
+                    if (typeof refreshRevenue === 'function') refreshRevenue(); 
+                    if (typeof refreshExpenses === 'function') refreshExpenses(); 
+                } catch(_) {}
             });
             window.addEventListener('stock:updated', () => {
-                try { if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); } catch(_) {}
+                try { 
+                    if (typeof refreshFinancialDashboard === 'function') refreshFinancialDashboard(); 
+                    if (typeof refreshFinancialOverview === 'function') refreshFinancialOverview(); 
+                } catch(_) {}
+            });
+            window.addEventListener('deposit:updated', () => {
+                try { 
+                    if (typeof loadEnhancedFinanceData === 'function') loadEnhancedFinanceData();
+                    if (typeof refreshFinancialDashboard === 'function') refreshFinancialDashboard(); 
+                } catch(_) {}
+            });
+            window.addEventListener('bonus:updated', () => {
+                try { 
+                    if (typeof loadEnhancedFinanceData === 'function') loadEnhancedFinanceData();
+                    if (typeof refreshFinancialDashboard === 'function') refreshFinancialDashboard(); 
+                } catch(_) {}
             });
             // MIS portal: refresh on reports and sales updates
             window.addEventListener('reports:updated', () => {
