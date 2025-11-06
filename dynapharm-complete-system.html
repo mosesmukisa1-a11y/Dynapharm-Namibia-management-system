@@ -3562,6 +3562,45 @@
                 </div>
             </div>
 
+            <!-- Full Body Check Up Tab -->
+            <div id="frontdeskFullBodyCheckup" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>🏥 Full Body Check Up - Book Appointment</h3>
+                    <p style="margin-bottom: 20px; color: #666;">Book Full Body Checkup appointments for clients. This form allows front desk staff to assist clients in booking appointments.</p>
+                    
+                    <div style="margin: 10px 0 16px; display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn btn-success" onclick="openClientReg('appointment')">📅 Book Appointment</button>
+                        <button class="btn" onclick="openClientReg('walkin')">🚶 Walk-in</button>
+                    </div>
+                    
+                    <div class="reference-number" id="frontdeskClientRefNumber" style="display: none;"></div>
+                    
+                    <div class="form-section" style="background:#f8f9fa; padding:12px; border-radius:6px; margin-bottom:12px;">
+                        <label style="font-weight:700; margin-right:10px;">Select Branch for Service:</label>
+                        <select id="frontdeskCheckupBranchSelect" style="padding:10px; border:2px solid #ddd; border-radius:6px;">
+                            <option value="">Select Branch</option>
+                        </select>
+                        <span style="margin-left:10px; color:#666; font-size:0.9rem;">This will notify the selected branch Front Desk and Consultant.</span>
+                    </div>
+                    
+                    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin-top: 20px;">
+                        <h4 style="margin: 0 0 10px 0; color: #856404;">📋 Instructions for Front Desk Staff:</h4>
+                        <ol style="margin: 0; padding-left: 20px; color: #856404;">
+                            <li>Click "Book Appointment" to open the client registration form</li>
+                            <li>Fill in all required client information</li>
+                            <li>Select preferred branch, date, and time for the appointment</li>
+                            <li>Submit the form to create the appointment</li>
+                            <li>The client will receive a reference number for tracking</li>
+                        </ol>
+                    </div>
+                    
+                    <div id="frontdeskCheckupAppointmentsList" style="margin-top: 30px;">
+                        <h4>Recent Appointments Booked</h4>
+                        <p style="color: #666; font-size: 0.9rem;">Appointments will appear here after booking.</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Client Registration Tab -->
             <div id="frontdeskClientRegistration" class="order-tab-content" style="display: none;">
                 <div class="form-section">
@@ -5332,28 +5371,28 @@
                                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
                                         <strong>📥 Country Import</strong>
                                         <div id="overviewCountryStock" style="font-size: 1.5rem; font-weight: bold; color: #1976d2; margin-top: 5px;">0</div>
-                                    </div>
-                                </div>
+                            </div>
+                            </div>
                                 <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
                                 <div style="text-align: center; flex: 1; min-width: 150px;">
                                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
                                         <strong>🏢 Warehouses</strong>
                                         <div id="overviewWarehouseStock" style="font-size: 1.5rem; font-weight: bold; color: #f57c00; margin-top: 5px;">0</div>
-                                    </div>
-                                </div>
+                            </div>
+                            </div>
                                 <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
                                 <div style="text-align: center; flex: 1; min-width: 150px;">
                                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
                                         <strong>🏬 Branches</strong>
                                         <div id="overviewBranchStock" style="font-size: 1.5rem; font-weight: bold; color: #388e3c; margin-top: 5px;">0</div>
-                                    </div>
-                                </div>
+                            </div>
+                            </div>
                                 <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
                                 <div style="text-align: center; flex: 1; min-width: 150px;">
                                     <div style="background: #fce4ec; padding: 15px; border-radius: 8px;">
                                         <strong>🛒 Shop/Sales</strong>
                                         <div id="overviewShopStock" style="font-size: 1.5rem; font-weight: bold; color: #c2185b; margin-top: 5px;">0</div>
-                                    </div>
+                            </div>
                                 </div>
                             </div>
                         </div>
@@ -28971,9 +29010,9 @@ async function reverseLastPrescriptionPayment(reportId){
         function refreshStockOverview() {
             try {
                 // Calculate KPIs - Aggregate from all stock sources
-                const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
-                const countryStock = JSON.parse(localStorage.getItem('dyna_country_stock') || '[]');
-                const warehouseStock = JSON.parse(localStorage.getItem('dyna_warehouse_stock') || '[]');
+            const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
+            const countryStock = JSON.parse(localStorage.getItem('dyna_country_stock') || '[]');
+            const warehouseStock = JSON.parse(localStorage.getItem('dyna_warehouse_stock') || '[]');
                 const branchStockData = JSON.parse(localStorage.getItem('branch_stock') || '[]');
                 
                 // Get all branches to aggregate branch stock
@@ -28988,10 +29027,10 @@ async function reverseLastPrescriptionPayment(reportId){
                 allBranchStock = allBranchStock.concat(branchStockData);
                 
                 // Calculate total stock value - Include ALL sources
-                let totalValue = 0;
+            let totalValue = 0;
                 
                 // From barcode stock (primary source)
-                barcodeStock.forEach(item => {
+            barcodeStock.forEach(item => {
                     if (item.status !== 'exhausted' && item.status !== 'sold') {
                         const price = (typeof PRICE_LIST !== 'undefined' && PRICE_LIST.find(p => p.description === item.description))?.cp || 
                                      (typeof PRICE_LIST !== 'undefined' && PRICE_LIST.find(p => p.description === item.description))?.dp || 0;
@@ -29020,18 +29059,18 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (overviewTotalValue) {
                     overviewTotalValue.textContent = `N$${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 }
-                
-                // Count pending orders
-                const orders = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]');
-                const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'approved').length;
+            
+            // Count pending orders
+            const orders = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]');
+            const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'approved').length;
                 const overviewPendingOrders = document.getElementById('overviewPendingOrders');
                 if (overviewPendingOrders) {
                     overviewPendingOrders.textContent = pendingOrders;
                 }
-                
+            
                 // Count low stock items - Check all sources
-                let lowStockCount = 0;
-                barcodeStock.forEach(item => {
+            let lowStockCount = 0;
+            barcodeStock.forEach(item => {
                     if (item.status !== 'exhausted' && item.status !== 'sold' && (item.remainingQuantity || item.quantity || 0) < 10) {
                         lowStockCount++;
                     }
@@ -29044,10 +29083,10 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (overviewLowStock) {
                     overviewLowStock.textContent = lowStockCount;
                 }
-                
-                // Count active transfers
-                const transfers = JSON.parse(localStorage.getItem('dyna_stock_transfers') || '[]');
-                const activeTransfers = transfers.filter(t => t.status === 'pending' || t.status === 'in_transit').length;
+            
+            // Count active transfers
+            const transfers = JSON.parse(localStorage.getItem('dyna_stock_transfers') || '[]');
+            const activeTransfers = transfers.filter(t => t.status === 'pending' || t.status === 'in_transit').length;
                 const overviewActiveTransfers = document.getElementById('overviewActiveTransfers');
                 if (overviewActiveTransfers) {
                     overviewActiveTransfers.textContent = activeTransfers;
@@ -29073,9 +29112,9 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (overviewWarehouseStock) overviewWarehouseStock.textContent = warehouseQty.toLocaleString();
                 if (overviewBranchStock) overviewBranchStock.textContent = branchQty.toLocaleString();
                 if (overviewShopStock) overviewShopStock.textContent = '0'; // Can be calculated from sales later
-                
-                // Recent movements
-                loadRecentMovements();
+            
+            // Recent movements
+            loadRecentMovements();
             } catch (error) {
                 console.error('Error refreshing stock overview:', error);
             }
@@ -33724,7 +33763,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             // Load content based on tab
             if (tabName === 'shop') {
                 if (typeof loadShopProducts === 'function') {
-                    loadShopProducts();
+                loadShopProducts();
                 }
                 // Load media preview widget on shop tab
                 setTimeout(() => {
@@ -33903,18 +33942,19 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         
         // Function to open media tab from widget click
         function openMediaTab() {
-            // Find the media button in the distributor sub-tabs
-            const buttons = document.querySelectorAll('.tabs button');
-            for (let btn of buttons) {
-                const onclick = btn.getAttribute('onclick') || '';
-                if (onclick.includes("showDistributorTab('media')") || onclick.includes('showDistributorTab("media")')) {
-                    btn.click();
-                    return;
+            const mediaBtn = document.querySelector('.tabs button[onclick*="showDistributorTab"]');
+            if (mediaBtn && mediaBtn.textContent.includes('Media')) {
+                mediaBtn.click();
+            } else {
+                // Fallback: find button by onclick attribute
+                const buttons = document.querySelectorAll('.tabs button');
+                for (let btn of buttons) {
+                    const onclick = btn.getAttribute('onclick') || '';
+                    if (onclick.includes('media')) {
+                        btn.click();
+                        break;
+                    }
                 }
-            }
-            // Fallback: try to call showDistributorTab directly
-            if (typeof showDistributorTab === 'function') {
-                showDistributorTab('media');
             }
         }
         
@@ -35456,6 +35496,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             const tabMap = {
                 'pending': 'pendingOrders',
                 'appointments': 'frontdeskAppointments',
+                'fullBodyCheckup': 'frontdeskFullBodyCheckup',
                 'clientRegistration': 'frontdeskClientRegistration',
                 'payments': 'frontdeskPayments',
                 'clientLookup': 'frontdeskClientLookup',
@@ -35480,6 +35521,18 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 refreshPendingOrders();
             } else if (tabName === 'appointments') {
                 refreshFrontdeskAppointments();
+            } else if (tabName === 'fullBodyCheckup') {
+                // Initialize Full Body Checkup tab - populate branch select
+                const branchSelect = document.getElementById('frontdeskCheckupBranchSelect');
+                if (branchSelect && branches && branches.length > 0) {
+                    branchSelect.innerHTML = '<option value="">Select Branch</option>';
+                    branches.forEach(branch => {
+                        const option = document.createElement('option');
+                        option.value = branch.id || branch.name;
+                        option.textContent = branch.name || branch.id;
+                        branchSelect.appendChild(option);
+                    });
+                }
             } else if (tabName === 'clientRegistration') {
                 // Initialize client registration tab
             } else if (tabName === 'payments') {
