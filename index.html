@@ -486,6 +486,78 @@
             </div>
         </section>
 
+        <!-- Online Shop Section -->
+        <section class="shop-section" style="margin-top: 40px;">
+            <div class="section-header">
+                <h2>🛍️ Online Shop</h2>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 20px;">
+                <div style="background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); padding: 30px; border-radius: 12px; color: white;">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                        <span>🛒</span>
+                        <span>Shop Health Products</span>
+                    </h3>
+                    <p style="margin-bottom: 20px; opacity: 0.95; line-height: 1.6;">
+                        Browse our extensive catalog of premium health and wellness products. From vitamins and supplements to personal care items, find everything you need for a healthier lifestyle.
+                    </p>
+                    <button onclick="showSection('shop'); document.getElementById('productSearch')?.focus();" 
+                            style="background: white; color: var(--brand-color); padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: transform 0.3s;"
+                            onmouseover="this.style.transform='scale(1.05)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                        Browse Products →
+                    </button>
+                </div>
+                <div style="background: var(--white); border: 2px solid var(--border); padding: 30px; border-radius: 12px;">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; color: var(--brand-color); display: flex; align-items: center; gap: 10px;">
+                        <span>💊</span>
+                        <span>Featured Categories</span>
+                    </h3>
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                            <span>🌿</span>
+                            <span>Vitamins & Supplements</span>
+                        </li>
+                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                            <span>💪</span>
+                            <span>Health & Wellness</span>
+                        </li>
+                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                            <span>🧴</span>
+                            <span>Personal Care</span>
+                        </li>
+                        <li style="padding: 10px 0; display: flex; align-items: center; gap: 10px;">
+                            <span>🏥</span>
+                            <span>Medical Supplies</span>
+                        </li>
+                    </ul>
+                </div>
+                <div style="background: var(--bg-light); padding: 30px; border-radius: 12px; border-left: 4px solid var(--brand-color);">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; color: var(--brand-color); display: flex; align-items: center; gap: 10px;">
+                        <span>⭐</span>
+                        <span>Why Shop With Us?</span>
+                    </h3>
+                    <ul style="list-style: none; padding: 0; margin: 0; line-height: 2;">
+                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
+                            <span style="color: var(--brand-color);">✓</span>
+                            <span>Premium Quality Products</span>
+                        </li>
+                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
+                            <span style="color: var(--brand-color);">✓</span>
+                            <span>Competitive Prices</span>
+                        </li>
+                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
+                            <span style="color: var(--brand-color);">✓</span>
+                            <span>Expert Health Advice</span>
+                        </li>
+                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
+                            <span style="color: var(--brand-color);">✓</span>
+                            <span>Fast & Reliable Service</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
         <!-- About Us Section -->
         <section id="about-section" class="about-section">
             <h2 style="color: var(--brand-color); margin-bottom: 20px;">About Dynapharm Namibia</h2>
