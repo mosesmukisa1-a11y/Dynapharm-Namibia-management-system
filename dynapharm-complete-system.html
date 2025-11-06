@@ -25521,7 +25521,7 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // IndexedDB setup for distributors
         const dbName = 'DynapharmDB';
-        const dbVersion = 3; // Updated to match existing database version
+        const dbVersion = 4; // Updated to match main database version (v4 adds distributors store)
         const storeName = 'distributors';
         let db = null;
         
@@ -25533,6 +25533,41 @@ async function reverseLastPrescriptionPayment(reportId){
                 request.onerror = () => reject(request.error);
                 request.onsuccess = () => {
                     db = request.result;
+                    // Verify the store exists, if not, force upgrade by reopening with higher version
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        console.warn('Distributors store not found, forcing upgrade...');
+                        db.close();
+                        // Force upgrade by opening with a higher version
+                        const forceUpgradeVersion = dbVersion + 1;
+                        const upgradeRequest = indexedDB.open(dbName, forceUpgradeVersion);
+                        upgradeRequest.onerror = () => reject(upgradeRequest.error);
+                        upgradeRequest.onsuccess = () => {
+                            db = upgradeRequest.result;
+                            resolve(db);
+                        };
+                        upgradeRequest.onupgradeneeded = (event) => {
+                            const upgradeDb = event.target.result;
+                            // Preserve existing stores and add distributors store
+                            if (!upgradeDb.objectStoreNames.contains('clients')) {
+                                const clientsStore = upgradeDb.createObjectStore('clients', { keyPath: 'referenceNumber' });
+                                try { clientsStore.createIndex('fullName', 'fullName', { unique: false }); } catch(_){}
+                                try { clientsStore.createIndex('phone', 'phone', { unique: false }); } catch(_){}
+                                try { clientsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
+                            }
+                            if (!upgradeDb.objectStoreNames.contains('stockMovements')) {
+                                const movementsStore = upgradeDb.createObjectStore('stockMovements', { keyPath: 'id' });
+                                try { movementsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
+                                try { movementsStore.createIndex('branchId', 'branchId', { unique: false }); } catch(_){}
+                                try { movementsStore.createIndex('type', 'type', { unique: false }); } catch(_){}
+                            }
+                            if (!upgradeDb.objectStoreNames.contains(storeName)) {
+                                const objectStore = upgradeDb.createObjectStore(storeName, { keyPath: 'id' });
+                                objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
+                                objectStore.createIndex('distributorName', 'distributorName', { unique: false });
+                            }
+                        };
+                        return;
+                    }
                     resolve(db);
                 };
                 
@@ -32472,16 +32507,22 @@ async function reverseLastPrescriptionPayment(reportId){
                 monthInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
             }
             
-            // Set up file input listener
+            // Set up file input listener (remove old listener first to prevent duplicates)
             const fileInput = document.getElementById('bonusUploadFile');
             if (fileInput) {
-                fileInput.addEventListener('change', handleBonusFileUpload);
+                // Clone and replace to remove all event listeners
+                const newFileInput = fileInput.cloneNode(true);
+                fileInput.parentNode.replaceChild(newFileInput, fileInput);
+                newFileInput.addEventListener('change', handleBonusFileUpload);
             }
             
-            // Set up branch filter listener
+            // Set up branch filter listener (remove old listener first to prevent duplicates)
             const branchFilter = document.getElementById('bonusUploadBranchFilter');
             if (branchFilter) {
-                branchFilter.addEventListener('change', renderBonusUploadTable);
+                // Remove existing listener by cloning
+                const newBranchFilter = branchFilter.cloneNode(true);
+                branchFilter.parentNode.replaceChild(newBranchFilter, branchFilter);
+                newBranchFilter.addEventListener('change', renderBonusUploadTable);
             }
         }
         
@@ -32678,35 +32719,57 @@ async function reverseLastPrescriptionPayment(reportId){
 
         // Approve/Reject monthly upload
         async function approveBonusUpload() {
-            const month = document.getElementById('bonusUploadMonth')?.value;
-            if (!month) { alert('Select month first'); return; }
             try {
-                const base = getApiBase();
+                const month = document.getElementById('bonusUploadMonth')?.value;
+                if (!month) { 
+                    alert('⚠️ Please select a month first. Click the month selector and choose a month.'); 
+                    return; 
+                }
+                const base = typeof getApiBase === 'function' ? getApiBase() : (location.hostname.includes('railway.app') ? `${location.protocol}//${location.hostname}/api` : (location.hostname.includes('vercel.app') ? '/api' : 'http://localhost:8001/api'));
+                const headers = { 'Content-Type': 'application/json' };
+                if (typeof currentUser !== 'undefined' && currentUser) {
+                    headers['x-user-role'] = currentUser.role || '';
+                    headers['x-user-name'] = currentUser.username || '';
+                }
                 const res = await fetch(`${base}/bonus`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-user-role': (currentUser?.role || ''), 'x-user-name': (currentUser?.username || '') },
+                    headers: headers,
                     body: JSON.stringify({ action: 'approve-upload', month })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to approve');
-                alert('✅ Upload approved');
-            } catch (e) { alert(`❌ ${e.message}`); }
+                alert('✅ Upload approved successfully');
+            } catch (e) { 
+                alert(`❌ Approval failed: ${e.message}`); 
+                console.error('Approve error:', e);
+            }
         }
         async function rejectBonusUpload() {
-            const month = document.getElementById('bonusUploadMonth')?.value;
-            if (!month) { alert('Select month first'); return; }
-            const reason = prompt('Reason for rejection?') || '';
             try {
-                const base = getApiBase();
+                const month = document.getElementById('bonusUploadMonth')?.value;
+                if (!month) { 
+                    alert('⚠️ Please select a month first. Click the month selector and choose a month.'); 
+                    return; 
+                }
+                const reason = prompt('Reason for rejection?') || '';
+                const base = typeof getApiBase === 'function' ? getApiBase() : (location.hostname.includes('railway.app') ? `${location.protocol}//${location.hostname}/api` : (location.hostname.includes('vercel.app') ? '/api' : 'http://localhost:8001/api'));
+                const headers = { 'Content-Type': 'application/json' };
+                if (typeof currentUser !== 'undefined' && currentUser) {
+                    headers['x-user-role'] = currentUser.role || '';
+                    headers['x-user-name'] = currentUser.username || '';
+                }
                 const res = await fetch(`${base}/bonus`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-user-role': (currentUser?.role || ''), 'x-user-name': (currentUser?.username || '') },
+                    headers: headers,
                     body: JSON.stringify({ action: 'reject-upload', month, reason })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to reject');
                 alert('⛔ Upload rejected');
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) { 
+                alert(`❌ Rejection failed: ${e.message}`); 
+                console.error('Reject error:', e);
+            }
         }
 
         // Batch exports
