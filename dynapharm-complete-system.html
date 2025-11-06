@@ -19084,32 +19084,49 @@ async function reverseLastPrescriptionPayment(reportId){
                 document.body.removeChild(link);
                 
                 // Send email via API or mailto link
-                try {
-                    // Try to send via API if available
-                    const emailResponse = await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            to: formData.email,
-                            subject: `Distributor Registration Confirmation - ${nbNumber}`,
-                            body: `Dear ${formData.distributor_name},\n\nYour distributor registration has been successfully processed.\n\nDistributor ID: ${nbNumber}\n\nPlease find attached your Distributor Agreement Form.\n\nThank you for joining Dynapharm International Namibia.\n\nBest regards,\nDynapharm Team`,
-                            attachment: pdfBlob
-                        })
-                    });
-                    
-                    if (emailResponse.ok) {
-                        alert(`✅ PDF generated and email sent to ${formData.email}`);
-                    } else {
-                        // Fallback to mailto link
-                        throw new Error('Email API not available');
-                    }
-                } catch (emailError) {
-                    // Fallback: Open email client with mailto link
+                const openEmailClient = (formData, nbNumber) => {
                     const subject = encodeURIComponent(`Distributor Registration Confirmation - ${nbNumber}`);
                     const body = encodeURIComponent(`Dear ${formData.distributor_name},\n\nYour distributor registration has been successfully processed.\n\nDistributor ID: ${nbNumber}\n\nPlease find attached your Distributor Agreement Form (downloaded automatically).\n\nThank you for joining Dynapharm International Namibia.\n\nBest regards,\nDynapharm Team`);
                     const mailtoLink = `mailto:${formData.email}?subject=${subject}&body=${body}`;
                     window.open(mailtoLink);
                     alert(`✅ PDF generated and downloaded. Email client opened. Please attach the PDF file to the email.`);
+                };
+                
+                try {
+                    // Convert PDF blob to base64 for API
+                    const reader = new FileReader();
+                    reader.onloadend = async function() {
+                        const base64Pdf = reader.result.split(',')[1];
+                        
+                        try {
+                            // Try to send via API if available
+                            const emailResponse = await fetch('/api/send-email', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    to: formData.email,
+                                    subject: `Distributor Registration Confirmation - ${nbNumber}`,
+                                    body: `Dear ${formData.distributor_name},\n\nYour distributor registration has been successfully processed.\n\nDistributor ID: ${nbNumber}\n\nPlease find attached your Distributor Agreement Form.\n\nThank you for joining Dynapharm International Namibia.\n\nBest regards,\nDynapharm Team`,
+                                    attachment: base64Pdf,
+                                    attachmentName: `Distributor_Agreement_${nbNumber}.pdf`
+                                })
+                            });
+                            
+                            if (emailResponse.ok) {
+                                alert(`✅ PDF generated and email sent to ${formData.email}`);
+                            } else {
+                                // Fallback to mailto link
+                                openEmailClient(formData, nbNumber);
+                            }
+                        } catch (apiError) {
+                            // Fallback to mailto link
+                            openEmailClient(formData, nbNumber);
+                        }
+                    };
+                    reader.readAsDataURL(pdfBlob);
+                } catch (emailError) {
+                    // Fallback: Open email client with mailto link
+                    openEmailClient(formData, nbNumber);
                 }
                 
                 // Clean up
