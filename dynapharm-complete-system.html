@@ -19204,6 +19204,645 @@ async function reverseLastPrescriptionPayment(reportId){
             displayBranchInventory();
         }
 
+        // ==========================
+        // Branch Inventory Management with Restrictions
+        // ==========================
+        let branchInventoryData = [];
+        let branchStockMovements = [];
+
+        // Check if user has access to sensitive inventory data
+        function hasInventoryFullAccess() {
+            const user = window.currentUser || {};
+            const role = user.role || '';
+            return ['gm', 'director', 'admin', 'stock'].includes(role.toLowerCase());
+        }
+
+        async function refreshBranchInventory() {
+            await loadBranchInventory();
+            await loadBranchStockMovements();
+            updateBranchInventoryKPIs();
+        }
+
+        async function loadBranchInventory() {
+            try {
+                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+                const tbody = document.getElementById('branchInventoryTableBody');
+                if (!tbody) return;
+
+                // Try to load from API first
+                let inventory = [];
+                try {
+                    const response = await fetch(`/api/branch_stock?branch=${encodeURIComponent(branchId)}`);
+                    if (response.ok) {
+                        inventory = await response.json();
+                    }
+                } catch (e) {
+                    console.debug('API not available, using localStorage');
+                }
+
+                // Fallback to localStorage
+                if (inventory.length === 0) {
+                    const stored = localStorage.getItem(`branch_stock_${branchId}`) || localStorage.getItem('branch_stock');
+                    if (stored) {
+                        inventory = JSON.parse(stored);
+                    } else {
+                        // Initialize from PRICE_LIST if available
+                        if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) {
+                            inventory = PRICE_LIST.map(p => ({
+                                product: p.description,
+                                batchNo: '',
+                                quantity: 0,
+                                expiryDate: '',
+                                unitPrice: p.cp || p.dp || 0,
+                                totalValue: 0,
+                                status: 'out_of_stock',
+                                branch: branchId
+                            }));
+                        }
+                    }
+                }
+
+                // Apply restrictions: hide expected stock, losses, and sensitive adjustments
+                if (!hasInventoryFullAccess()) {
+                    inventory = inventory.filter(item => {
+                        // Hide items marked as expected stock (requires GM approval)
+                        if (item.isExpectedStock && !item.gmApproved) return false;
+                        // Hide items marked as stock loss
+                        if (item.isStockLoss) return false;
+                        // Hide sensitive adjustments
+                        if (item.isSensitiveAdjustment) return false;
+                        return true;
+                    });
+                }
+
+                branchInventoryData = inventory;
+                filterBranchInventory();
+                
+                // Show restriction notice if needed
+                const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
+                if (noticeEl && !hasInventoryFullAccess()) {
+                    noticeEl.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading branch inventory:', error);
+                const tbody = document.getElementById('branchInventoryTableBody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 40px; text-align: center; color: #dc3545;">Error loading inventory. Please try again.</td></tr>';
+                }
+            }
+        }
+
+        function filterBranchInventory() {
+            const searchTerm = (document.getElementById('branchInventorySearch')?.value || '').toLowerCase();
+            const category = document.getElementById('branchInventoryCategory')?.value || 'all';
+            const sortBy = document.getElementById('branchInventorySort')?.value || 'name';
+            const tbody = document.getElementById('branchInventoryTableBody');
+            
+            if (!tbody) return;
+
+            let filtered = [...branchInventoryData];
+
+            // Filter by search term
+            if (searchTerm) {
+                filtered = filtered.filter(item => 
+                    (item.product || '').toLowerCase().includes(searchTerm) ||
+                    (item.batchNo || '').toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Filter by category
+            if (category === 'low') {
+                filtered = filtered.filter(item => item.status === 'low_stock');
+            } else if (category === 'out') {
+                filtered = filtered.filter(item => item.status === 'out_of_stock' || (item.quantity || 0) === 0);
+            } else if (category === 'expiring') {
+                const now = new Date();
+                const threeMonths = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+                filtered = filtered.filter(item => {
+                    if (!item.expiryDate) return false;
+                    const expiry = new Date(item.expiryDate + '-01');
+                    return expiry <= threeMonths && expiry > now;
+                });
+            }
+
+            // Sort
+            filtered.sort((a, b) => {
+                switch(sortBy) {
+                    case 'stock':
+                        return (b.quantity || 0) - (a.quantity || 0);
+                    case 'expiry':
+                        if (!a.expiryDate && !b.expiryDate) return 0;
+                        if (!a.expiryDate) return 1;
+                        if (!b.expiryDate) return -1;
+                        return new Date(a.expiryDate + '-01') - new Date(b.expiryDate + '-01');
+                    default:
+                        return (a.product || '').localeCompare(b.product || '');
+                }
+            });
+
+            // Render table
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="padding: 40px; text-align: center; color: #7f8c8d;">No inventory items found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(item => {
+                const statusClass = item.status === 'low_stock' ? 'warn' : item.status === 'out_of_stock' || (item.quantity || 0) === 0 ? 'bad' : 'good';
+                const statusText = item.status === 'low_stock' ? 'Low Stock' : item.status === 'out_of_stock' || (item.quantity || 0) === 0 ? 'Out of Stock' : 'In Stock';
+                const expiryDate = item.expiryDate ? new Date(item.expiryDate + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'N/A';
+                const totalValue = (item.quantity || 0) * (item.unitPrice || 0);
+
+                return `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px;">${item.product || 'N/A'}</td>
+                        <td style="padding: 12px;">${item.batchNo || 'N/A'}</td>
+                        <td style="padding: 12px; text-align: right; font-weight: 600;">${item.quantity || 0}</td>
+                        <td style="padding: 12px; text-align: center;">${expiryDate}</td>
+                        <td style="padding: 12px; text-align: right;">N$${(item.unitPrice || 0).toFixed(2)}</td>
+                        <td style="padding: 12px; text-align: right; font-weight: 600;">N$${totalValue.toFixed(2)}</td>
+                        <td style="padding: 12px; text-align: center;">
+                            <span class="pill ${statusClass}" style="padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">${statusText}</span>
+                        </td>
+                        <td style="padding: 12px; text-align: center;">
+                            ${hasInventoryFullAccess() ? `<button class="btn btn-sm" onclick="editBranchInventoryItem('${item.id || ''}')" style="padding: 4px 8px; font-size: 0.8rem; margin-right: 5px;">Edit</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateBranchInventoryKPIs() {
+            const totalProducts = branchInventoryData.length;
+            const totalValue = branchInventoryData.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0);
+            const lowStock = branchInventoryData.filter(item => item.status === 'low_stock').length;
+            const outOfStock = branchInventoryData.filter(item => item.status === 'out_of_stock' || (item.quantity || 0) === 0).length;
+
+            const totalProductsEl = document.getElementById('branchInventoryTotalProducts');
+            const totalValueEl = document.getElementById('branchInventoryTotalValue');
+            const lowStockEl = document.getElementById('branchInventoryLowStock');
+            const outOfStockEl = document.getElementById('branchInventoryOutOfStock');
+
+            if (totalProductsEl) totalProductsEl.textContent = totalProducts;
+            if (totalValueEl) totalValueEl.textContent = `N$${totalValue.toFixed(2)}`;
+            if (lowStockEl) lowStockEl.textContent = lowStock;
+            if (outOfStockEl) outOfStockEl.textContent = outOfStock;
+        }
+
+        async function loadBranchStockMovements() {
+            try {
+                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+                const movementsEl = document.getElementById('branchInventoryMovements');
+                if (!movementsEl) return;
+
+                // Load from localStorage
+                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
+                let branchMovements = allMovements.filter(m => m.branch === branchId);
+
+                // Apply restrictions: hide sensitive movements
+                if (!hasInventoryFullAccess()) {
+                    branchMovements = branchMovements.filter(m => {
+                        // Hide expected stock movements
+                        if (m.isExpectedStock && !m.gmApproved) return false;
+                        // Hide stock losses
+                        if (m.type === 'loss' || m.isStockLoss) return false;
+                        // Hide sensitive adjustments
+                        if (m.type === 'adjustment' && m.isSensitive) return false;
+                        return true;
+                    });
+                }
+
+                branchMovements.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, 50);
+                branchStockMovements = branchMovements;
+
+                if (branchMovements.length === 0) {
+                    movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
+                    return;
+                }
+
+                movementsEl.innerHTML = branchMovements.map(movement => {
+                    const actionIcon = movement.type === 'receive' ? '📥' : movement.type === 'transfer_out' ? '📤' : movement.type === 'transfer_in' ? '📥' : movement.type === 'adjustment' ? '✏️' : '📊';
+                    const actionColor = movement.type === 'receive' ? '#27ae60' : movement.type === 'transfer_out' ? '#3498db' : movement.type === 'transfer_in' ? '#27ae60' : movement.type === 'adjustment' ? '#f39c12' : '#7f8c8d';
+                    
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: start; padding: 12px; border-bottom: 1px solid #eee; gap: 15px;">
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                                    <span style="font-size: 1.2rem;">${actionIcon}</span>
+                                    <strong>${movement.product || 'N/A'}</strong>
+                                    <span style="color: ${actionColor}; font-weight: 600; font-size: 0.85rem; text-transform: uppercase;">${movement.type || 'movement'}</span>
+                                    ${movement.isSensitive || movement.isStockLoss ? '<span style="color: #dc3545; font-size: 0.75rem;">🔒 RESTRICTED</span>' : ''}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    Batch: ${movement.batchNo || 'N/A'} | Qty: ${movement.quantity || 0} ${movement.unit || 'units'}
+                                    ${movement.expiryDate ? ` | Expiry: ${new Date(movement.expiryDate + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}
+                                </div>
+                                ${movement.notes ? `<div style="font-size: 0.8rem; color: #999; margin-top: 3px;">${movement.notes}</div>` : ''}
+                            </div>
+                            <div style="text-align: right; font-size: 0.85rem; color: #666;">
+                                <div>${new Date(movement.timestamp || Date.now()).toLocaleDateString()}</div>
+                                <div style="font-size: 0.75rem; color: #999;">${new Date(movement.timestamp || Date.now()).toLocaleTimeString()}</div>
+                                <div style="font-size: 0.75rem; color: #999; margin-top: 3px;">${movement.user || 'System'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading stock movements:', error);
+                const movementsEl = document.getElementById('branchInventoryMovements');
+                if (movementsEl) {
+                    movementsEl.innerHTML = '<p style="text-align: center; color: #dc3545; padding: 20px;">Error loading movements</p>';
+                }
+            }
+        }
+
+        function openBranchStockReceiveModal() {
+            const modal = document.getElementById('branchStockReceiveModal');
+            if (!modal) return;
+
+            // Reset form
+            document.getElementById('branchStockReceiveForm').reset();
+
+            // Load products
+            const productSelect = document.getElementById('receiveProductSelect');
+            productSelect.innerHTML = '<option value="">Select Product</option>';
+            if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) {
+                PRICE_LIST.forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product.description;
+                    option.textContent = product.description;
+                    productSelect.appendChild(option);
+                });
+            }
+
+            modal.style.display = 'block';
+        }
+
+        function closeBranchStockReceiveModal() {
+            document.getElementById('branchStockReceiveModal').style.display = 'none';
+        }
+
+        function submitBranchStockReceive(event) {
+            event.preventDefault();
+            
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            const product = document.getElementById('receiveProductSelect').value;
+            const batchNo = document.getElementById('receiveBatchNo').value;
+            const expiryDate = document.getElementById('receiveExpiryDate').value;
+            const quantity = parseInt(document.getElementById('receiveQuantity').value);
+            const unit = document.getElementById('receiveUnit').value || 'units';
+            const source = document.getElementById('receiveSource').value;
+            const notes = document.getElementById('receiveNotes').value;
+
+            if (!product || !batchNo || !expiryDate || !quantity) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            // Check if this is expected stock (requires GM approval)
+            const isExpectedStock = source === 'warehouse' && quantity > 100; // Threshold for GM approval
+            
+            if (isExpectedStock && !hasInventoryFullAccess()) {
+                // Create expected stock request for GM approval
+                const expectedStockRequest = {
+                    id: 'ESR' + Date.now(),
+                    type: 'expected_stock',
+                    branch: branchId,
+                    product: product,
+                    batchNo: batchNo,
+                    expiryDate: expiryDate,
+                    quantity: quantity,
+                    unit: unit,
+                    notes: notes,
+                    status: 'pending',
+                    requestedBy: (window.currentUser && window.currentUser.fullName) || 'System',
+                    requestedAt: new Date().toISOString(),
+                    requiresGMApproval: true
+                };
+
+                const pendingRequests = JSON.parse(localStorage.getItem('gm_inventory_approvals') || '[]');
+                pendingRequests.push(expectedStockRequest);
+                localStorage.setItem('gm_inventory_approvals', JSON.stringify(pendingRequests));
+
+                alert('⚠️ Expected stock request submitted for GM approval. You will be notified once approved.');
+                closeBranchStockReceiveModal();
+                return;
+            }
+
+            // Get product price
+            let unitPrice = 0;
+            if (typeof PRICE_LIST !== 'undefined') {
+                const prod = PRICE_LIST.find(p => p.description === product);
+                if (prod) unitPrice = prod.cp || prod.dp || 0;
+            }
+
+            // Check if item already exists
+            const existingIndex = branchInventoryData.findIndex(item => 
+                item.product === product && item.batchNo === batchNo && item.expiryDate === expiryDate && item.branch === branchId
+            );
+
+            if (existingIndex >= 0) {
+                branchInventoryData[existingIndex].quantity += quantity;
+                branchInventoryData[existingIndex].totalValue = branchInventoryData[existingIndex].quantity * unitPrice;
+                branchInventoryData[existingIndex].status = branchInventoryData[existingIndex].quantity > 0 ? 'in_stock' : 'out_of_stock';
+            } else {
+                const newItem = {
+                    id: 'BSI' + Date.now(),
+                    product: product,
+                    batchNo: batchNo,
+                    quantity: quantity,
+                    expiryDate: expiryDate,
+                    unitPrice: unitPrice,
+                    totalValue: quantity * unitPrice,
+                    unit: unit,
+                    branch: branchId,
+                    status: quantity > 0 ? 'in_stock' : 'out_of_stock',
+                    createdAt: new Date().toISOString(),
+                    isExpectedStock: isExpectedStock,
+                    gmApproved: hasInventoryFullAccess() || !isExpectedStock
+                };
+                branchInventoryData.push(newItem);
+            }
+
+            // Record movement
+            const movement = {
+                id: 'BSM' + Date.now(),
+                type: 'receive',
+                product: product,
+                batchNo: batchNo,
+                quantity: quantity,
+                expiryDate: expiryDate,
+                unit: unit,
+                branch: branchId,
+                source: source,
+                notes: notes,
+                timestamp: new Date().toISOString(),
+                user: (window.currentUser && window.currentUser.fullName) || 'System',
+                isExpectedStock: isExpectedStock,
+                gmApproved: hasInventoryFullAccess() || !isExpectedStock
+            };
+
+            // Save to localStorage
+            try {
+                localStorage.setItem(`branch_stock_${branchId}`, JSON.stringify(branchInventoryData));
+                
+                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
+                allMovements.push(movement);
+                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
+
+                // Try to save to API
+                try {
+                    fetch('/api/branch_stock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ branch: branchId, items: branchInventoryData, movement: movement })
+                    }).catch(e => console.debug('API save failed:', e));
+                } catch (e) {}
+
+                alert('✅ Stock received successfully!');
+                closeBranchStockReceiveModal();
+                refreshBranchInventory();
+            } catch (error) {
+                console.error('Error saving stock:', error);
+                alert('❌ Error saving stock. Please try again.');
+            }
+        }
+
+        function openBranchStockTransferModal() {
+            const modal = document.getElementById('branchStockTransferModal');
+            if (!modal) return;
+
+            // Reset form
+            document.getElementById('branchStockTransferForm').reset();
+
+            // Set from branch
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            const branchName = (typeof branches !== 'undefined' && Array.isArray(branches)) ? branches.find(b => b.id === branchId)?.name || branchId : branchId;
+            document.getElementById('transferFromBranch').value = branchName;
+
+            // Load destination branches
+            const toBranchSelect = document.getElementById('transferToBranch');
+            toBranchSelect.innerHTML = '<option value="">Select Destination Branch</option>';
+            if (typeof branches !== 'undefined' && Array.isArray(branches)) {
+                branches.forEach(branch => {
+                    if (branch.id !== branchId) {
+                        const option = document.createElement('option');
+                        option.value = branch.id || branch.name;
+                        option.textContent = branch.name;
+                        toBranchSelect.appendChild(option);
+                    }
+                });
+            }
+
+            // Load products
+            const productSelect = document.getElementById('transferProductSelect');
+            productSelect.innerHTML = '<option value="">Select Product</option>';
+            if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) {
+                PRICE_LIST.forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product.description;
+                    option.textContent = product.description;
+                    productSelect.appendChild(option);
+                });
+            }
+
+            modal.style.display = 'block';
+        }
+
+        function closeBranchStockTransferModal() {
+            document.getElementById('branchStockTransferModal').style.display = 'none';
+        }
+
+        function submitBranchStockTransfer(event) {
+            event.preventDefault();
+            
+            const fromBranchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            const toBranchId = document.getElementById('transferToBranch').value;
+            const product = document.getElementById('transferProductSelect').value;
+            const batchNo = document.getElementById('transferBatchNo').value;
+            const quantity = parseInt(document.getElementById('transferQuantity').value);
+            const notes = document.getElementById('transferNotes').value;
+
+            if (!toBranchId || !product || !batchNo || !quantity) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            // Find source item
+            const sourceItem = branchInventoryData.find(item => 
+                item.product === product && item.batchNo === batchNo && item.branch === fromBranchId
+            );
+
+            if (!sourceItem || (sourceItem.quantity || 0) < quantity) {
+                alert('Insufficient stock for transfer');
+                return;
+            }
+
+            // Update source branch inventory
+            sourceItem.quantity -= quantity;
+            sourceItem.totalValue = sourceItem.quantity * (sourceItem.unitPrice || 0);
+            sourceItem.status = sourceItem.quantity > 0 ? 'in_stock' : 'out_of_stock';
+
+            // Record movements for both branches
+            const transferOut = {
+                id: 'BSM' + Date.now(),
+                type: 'transfer_out',
+                product: product,
+                batchNo: batchNo,
+                quantity: quantity,
+                expiryDate: sourceItem.expiryDate,
+                unit: sourceItem.unit || 'units',
+                branch: fromBranchId,
+                toBranch: toBranchId,
+                notes: notes,
+                timestamp: new Date().toISOString(),
+                user: (window.currentUser && window.currentUser.fullName) || 'System'
+            };
+
+            const transferIn = {
+                id: 'BSM' + (Date.now() + 1),
+                type: 'transfer_in',
+                product: product,
+                batchNo: batchNo,
+                quantity: quantity,
+                expiryDate: sourceItem.expiryDate,
+                unit: sourceItem.unit || 'units',
+                branch: toBranchId,
+                fromBranch: fromBranchId,
+                notes: notes,
+                timestamp: new Date().toISOString(),
+                user: (window.currentUser && window.currentUser.fullName) || 'System'
+            };
+
+            // Save
+            try {
+                localStorage.setItem(`branch_stock_${fromBranchId}`, JSON.stringify(branchInventoryData));
+                
+                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
+                allMovements.push(transferOut, transferIn);
+                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
+
+                alert('✅ Stock transferred successfully!');
+                closeBranchStockTransferModal();
+                refreshBranchInventory();
+            } catch (error) {
+                console.error('Error transferring stock:', error);
+                alert('❌ Error transferring stock. Please try again.');
+            }
+        }
+
+        function editBranchInventoryItem(itemId) {
+            if (!hasInventoryFullAccess()) {
+                alert('⚠️ Access Denied: Stock adjustments require GM approval. Please contact your General Manager.');
+                return;
+            }
+
+            const item = branchInventoryData.find(i => i.id === itemId);
+            if (!item) {
+                alert('Item not found');
+                return;
+            }
+
+            const newQuantity = prompt(`Current quantity: ${item.quantity}\n\nEnter new quantity:`, item.quantity);
+            if (newQuantity === null) return;
+
+            const qty = parseInt(newQuantity);
+            if (isNaN(qty) || qty < 0) {
+                alert('Invalid quantity');
+                return;
+            }
+
+            const oldQty = item.quantity;
+            const difference = qty - oldQty;
+            const isLoss = difference < 0;
+
+            // If it's a loss, require GM approval for non-GM users
+            if (isLoss && !hasInventoryFullAccess()) {
+                const lossRequest = {
+                    id: 'SLR' + Date.now(),
+                    type: 'stock_loss',
+                    branch: item.branch,
+                    product: item.product,
+                    batchNo: item.batchNo,
+                    quantity: Math.abs(difference),
+                    oldQuantity: oldQty,
+                    newQuantity: qty,
+                    reason: prompt('Please provide reason for stock loss:') || 'Not specified',
+                    status: 'pending',
+                    requestedBy: (window.currentUser && window.currentUser.fullName) || 'System',
+                    requestedAt: new Date().toISOString(),
+                    requiresGMApproval: true
+                };
+
+                const pendingRequests = JSON.parse(localStorage.getItem('gm_inventory_approvals') || '[]');
+                pendingRequests.push(lossRequest);
+                localStorage.setItem('gm_inventory_approvals', JSON.stringify(pendingRequests));
+
+                alert('⚠️ Stock loss adjustment submitted for GM approval. You will be notified once approved.');
+                return;
+            }
+
+            item.quantity = qty;
+            item.totalValue = qty * (item.unitPrice || 0);
+            item.status = qty > 0 ? 'in_stock' : 'out_of_stock';
+
+            // Record adjustment
+            const movement = {
+                id: 'BSM' + Date.now(),
+                type: 'adjustment',
+                product: item.product,
+                batchNo: item.batchNo,
+                quantity: difference,
+                expiryDate: item.expiryDate,
+                unit: item.unit || 'units',
+                branch: item.branch,
+                notes: `Adjustment: ${oldQty} → ${qty}${isLoss ? ' (LOSS)' : ''}`,
+                timestamp: new Date().toISOString(),
+                user: (window.currentUser && window.currentUser.fullName) || 'System',
+                isStockLoss: isLoss,
+                isSensitive: isLoss
+            };
+
+            try {
+                localStorage.setItem(`branch_stock_${item.branch}`, JSON.stringify(branchInventoryData));
+                
+                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
+                allMovements.push(movement);
+                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
+
+                refreshBranchInventory();
+            } catch (error) {
+                console.error('Error updating inventory:', error);
+                alert('Error updating inventory');
+            }
+        }
+
+        function exportBranchInventoryCSV() {
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            const branchName = (typeof branches !== 'undefined' && Array.isArray(branches)) ? branches.find(b => b.id === branchId)?.name || branchId : branchId;
+            
+            const csv = [
+                ['Product', 'Batch No', 'Quantity', 'Unit', 'Expiry Date', 'Unit Price', 'Total Value', 'Status'].join(','),
+                ...branchInventoryData.map(item => [
+                    `"${(item.product || '').replace(/"/g, '""')}"`,
+                    `"${(item.batchNo || '').replace(/"/g, '""')}"`,
+                    item.quantity || 0,
+                    `"${(item.unit || 'units').replace(/"/g, '""')}"`,
+                    item.expiryDate || '',
+                    (item.unitPrice || 0).toFixed(2),
+                    ((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2),
+                    `"${(item.status || '').replace(/"/g, '""')}"`
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `BranchInventory_${branchName}_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
         // Cross-portal workflow shortcuts from Stock tab
         function openStockDashboard() {
             // Open embedded stock dashboard portal in a new window for full-screen view
