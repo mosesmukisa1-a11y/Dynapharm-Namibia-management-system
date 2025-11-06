@@ -1489,10 +1489,16 @@
                 document.getElementById('logoutNavItem').style.display = 'block';
                 document.getElementById('loginNavItem').style.display = 'none';
                 document.getElementById('adminNavName').textContent = user.username || 'admin';
-                document.getElementById('portalTabs').style.display = 'block';
                 
                 // Route to appropriate portal based on role
                 const role = (user.role || '').toLowerCase();
+                
+                // Show landing page editor for admin users
+                if (role === 'admin') {
+                    document.getElementById('landingEditorNavItem').style.display = 'block';
+                }
+                
+                document.getElementById('portalTabs').style.display = 'block';
                 let redirectUrl = 'dynapharm-complete-system.html';
                 
                 // Role-based portal routing
