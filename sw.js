@@ -1,6 +1,7 @@
-const CACHE_NAME = 'dynapharm-v2.7';
+const CACHE_NAME = 'dynapharm-v2.8';
 const urlsToCache = [
   './',
+  './index.html',
   './dynapharm-complete-system.html',
   './manifest.json',
   './web-modules/barcode-stock.js'
@@ -84,7 +85,17 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(req, respClone));
           return networkResp;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('./dynapharm-complete-system.html')))
+        .catch(() => {
+          return caches.match(req)
+            .then((cached) => {
+              if (cached) return cached;
+              return caches.match('./index.html');
+            })
+            .then((index) => {
+              if (index) return index;
+              return caches.match('./dynapharm-complete-system.html');
+            });
+        })
     );
     return;
   }

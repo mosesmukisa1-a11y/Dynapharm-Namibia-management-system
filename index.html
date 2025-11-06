@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Dynapharm Namibia - Health & Wellness Products</title>
     <link rel="icon" href="./favicon.ico">
     <meta name="description" content="Dynapharm Namibia - Your trusted health and wellness partner. Shop premium health products and book appointments.">
@@ -877,6 +880,21 @@
                 loadShopProducts();
             }
         });
+        
+        // Register service worker to ensure latest cache version
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registered:', registration.scope);
+                        // Check for updates
+                        registration.update();
+                    })
+                    .catch(function(error) {
+                        console.log('ServiceWorker registration failed:', error);
+                    });
+            });
+        }
     </script>
   </body>
 </html>
