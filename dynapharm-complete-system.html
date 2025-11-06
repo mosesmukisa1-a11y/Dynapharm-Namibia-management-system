@@ -2684,10 +2684,10 @@
             <p>Comprehensive Health Management System</p>
             <p style="font-size: 0.9rem;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
             
-            <div class="branch-selector">
-                <label style="color: white; margin-right: 10px;">Select Branch:</label>
-                <select id="branchSelect" required>
-                    <option value="">-- Select Branch --</option>
+            <div class="branch-selector" style="display: none;">
+                <label style="color: white; margin-right: 10px;">Select Branch (Optional):</label>
+                <select id="branchSelect">
+                    <option value="">-- All Branches --</option>
             </select>
             </div>
             <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -3459,6 +3459,12 @@
                 <button class="tab-button" onclick="showOrderTab('shipped')">🚚 Shipped</button>
                 <button class="tab-button" onclick="showOrderTab('delivered')">✅ Delivered</button>
                 <button class="tab-button" onclick="showOrderTab('all')">📋 All Orders</button>
+                <button class="tab-button" onclick="showOrderTab('appointments')">🏥 Appointments</button>
+                <button class="tab-button" onclick="showOrderTab('clientRegistration')">👤 Client Registration</button>
+                <button class="tab-button" onclick="showOrderTab('payments')">💳 Payment Collection</button>
+                <button class="tab-button" onclick="showOrderTab('clientLookup')">🔍 Client Lookup</button>
+                <button class="tab-button" onclick="showOrderTab('delivery')">🚚 Delivery Scheduling</button>
+                <button class="tab-button" onclick="showOrderTab('visitors')">🚪 Visitor Management</button>
                 <button class="tab-button" onclick="showOrderTab('crm')">👥 CRM</button>
                 <button class="tab-button" onclick="showOrderTab('notifications')">🔔 Notifications</button>
                 <button class="tab-button" onclick="showOrderTab('staffComm')">💬 Staff Communication</button>
@@ -3494,6 +3500,252 @@
                         <a href="/appointments-admin.html" target="_blank" class="btn btn-primary">📋 Appointments Admin</a>
                     </div>
                     <div id="frontdeskAppointmentsList" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Client Registration Tab -->
+            <div id="frontdeskClientRegistration" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>👤 Client Registration - Walk-in Registration</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Register new clients who visit the branch in person</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="required">Full Name</label>
+                            <input type="text" id="fdClientName" placeholder="Full Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Phone Number</label>
+                            <input type="tel" id="fdClientPhone" placeholder="0812345678" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email Address</label>
+                            <input type="email" id="fdClientEmail" placeholder="email@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Date of Birth</label>
+                            <input type="date" id="fdClientDOB">
+                        </div>
+                        <div class="form-group">
+                            <label>ID Number</label>
+                            <input type="text" id="fdClientID" placeholder="ID Number">
+                        </div>
+                        <div class="form-group">
+                            <label>Address</label>
+                            <textarea id="fdClientAddress" rows="2" placeholder="Physical Address"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Distributor Referral (NB Number)</label>
+                            <input type="text" id="fdClientReferral" placeholder="NB Number (optional)" style="text-transform: uppercase;">
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="registerFrontDeskClient()">➕ Register Client</button>
+                        <button class="btn btn-info" onclick="checkExistingClient()">🔍 Check Existing</button>
+                        <button class="btn" onclick="clearFrontDeskClientForm()">🔄 Clear Form</button>
+                    </div>
+                    <div id="fdClientRegistrationResult" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Payment Collection Tab -->
+            <div id="frontdeskPayments" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>💳 Payment Collection</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Collect payments for orders, prescriptions, and services</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="required">Order/Prescription ID</label>
+                            <input type="text" id="fdPaymentOrderID" placeholder="Enter Order ID or Prescription ID" required>
+                            <button class="btn btn-info" style="margin-top: 5px; width: 100%;" onclick="lookupOrderForPayment()">🔍 Lookup Order</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Customer Name</label>
+                            <input type="text" id="fdPaymentCustomer" placeholder="Customer Name" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>Amount Due</label>
+                            <input type="number" id="fdPaymentAmount" placeholder="0.00" step="0.01" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Payment Method</label>
+                            <select id="fdPaymentMethod" required>
+                                <option value="">Select Payment Method</option>
+                                <option value="cash">Cash</option>
+                                <option value="card">Card</option>
+                                <option value="ewallet">E-Wallet</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                                <option value="mobile_money">Mobile Money</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Amount Paid</label>
+                            <input type="number" id="fdPaymentPaid" placeholder="Enter amount paid" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Reference Number</label>
+                            <input type="text" id="fdPaymentReference" placeholder="Transaction/Reference Number">
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="processFrontDeskPayment()">💳 Process Payment</button>
+                        <button class="btn" onclick="clearPaymentForm()">🔄 Clear</button>
+                    </div>
+                    <div id="fdPaymentResult" style="margin-top: 20px;"></div>
+                </div>
+                <div class="form-section" style="margin-top: 30px;">
+                    <h3>📋 Recent Payments</h3>
+                    <div class="search-box">
+                        <input type="text" id="fdPaymentSearch" placeholder="Search by customer name, order ID..." style="flex: 1;">
+                        <button class="btn btn-info" onclick="refreshFrontDeskPayments()">🔄 Refresh</button>
+                    </div>
+                    <div id="fdPaymentsList" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Client Lookup Tab -->
+            <div id="frontdeskClientLookup" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>🔍 Client Lookup & Information</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Search for client information, order history, and records</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Search By</label>
+                            <select id="fdLookupType" onchange="updateLookupFields()">
+                                <option value="name">Name</option>
+                                <option value="phone">Phone Number</option>
+                                <option value="email">Email</option>
+                                <option value="id">ID Number</option>
+                                <option value="order">Order ID</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Search Term</label>
+                            <input type="text" id="fdLookupTerm" placeholder="Enter search term" required>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="performClientLookup()">🔍 Search</button>
+                        <button class="btn" onclick="clearLookupResults()">🔄 Clear</button>
+                    </div>
+                    <div id="fdLookupResults" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Delivery Scheduling Tab -->
+            <div id="frontdeskDelivery" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>🚚 Delivery Scheduling</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Schedule and manage order deliveries</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="required">Order ID</label>
+                            <input type="text" id="fdDeliveryOrderID" placeholder="Enter Order ID" required>
+                            <button class="btn btn-info" style="margin-top: 5px; width: 100%;" onclick="lookupOrderForDelivery()">🔍 Lookup Order</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Customer Name</label>
+                            <input type="text" id="fdDeliveryCustomer" placeholder="Customer Name" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Address</label>
+                            <textarea id="fdDeliveryAddress" rows="3" placeholder="Delivery Address" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Delivery Date</label>
+                            <input type="date" id="fdDeliveryDate" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Time</label>
+                            <input type="time" id="fdDeliveryTime">
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Method</label>
+                            <select id="fdDeliveryMethod">
+                                <option value="standard">Standard Delivery</option>
+                                <option value="express">Express Delivery</option>
+                                <option value="pickup">Customer Pickup</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Notes</label>
+                            <textarea id="fdDeliveryNotes" rows="2" placeholder="Special instructions, landmark, etc."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Phone</label>
+                            <input type="tel" id="fdDeliveryPhone" placeholder="Contact number for delivery">
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="scheduleDelivery()">📅 Schedule Delivery</button>
+                        <button class="btn" onclick="clearDeliveryForm()">🔄 Clear</button>
+                    </div>
+                    <div id="fdDeliveryResult" style="margin-top: 20px;"></div>
+                </div>
+                <div class="form-section" style="margin-top: 30px;">
+                    <h3>📋 Scheduled Deliveries</h3>
+                    <div class="search-box">
+                        <select id="fdDeliveryStatusFilter" style="padding: 10px; margin-right: 10px;">
+                            <option value="all">All Statuses</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="in_transit">In Transit</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                        <button class="btn btn-info" onclick="refreshDeliveries()">🔄 Refresh</button>
+                    </div>
+                    <div id="fdDeliveriesList" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Visitor Management Tab -->
+            <div id="frontdeskVisitors" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>🚪 Visitor Management</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Register and track visitors to the branch</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="required">Visitor Name</label>
+                            <input type="text" id="fdVisitorName" placeholder="Full Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Phone Number</label>
+                            <input type="tel" id="fdVisitorPhone" placeholder="0812345678">
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Purpose of Visit</label>
+                            <select id="fdVisitorPurpose" required>
+                                <option value="">Select Purpose</option>
+                                <option value="consultation">Consultation</option>
+                                <option value="product_purchase">Product Purchase</option>
+                                <option value="order_collection">Order Collection</option>
+                                <option value="appointment">Appointment</option>
+                                <option value="inquiry">Inquiry</option>
+                                <option value="meeting">Meeting</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Person/Department to Visit</label>
+                            <input type="text" id="fdVisitorContact" placeholder="Staff member or department name">
+                        </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea id="fdVisitorNotes" rows="2" placeholder="Additional information"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="registerVisitor()">✅ Register Visitor</button>
+                        <button class="btn" onclick="clearVisitorForm()">🔄 Clear</button>
+                    </div>
+                    <div id="fdVisitorResult" style="margin-top: 20px;"></div>
+                </div>
+                <div class="form-section" style="margin-top: 30px;">
+                    <h3>📋 Today's Visitors</h3>
+                    <div class="search-box">
+                        <input type="text" id="fdVisitorSearch" placeholder="Search visitors..." style="flex: 1;">
+                        <button class="btn btn-info" onclick="refreshVisitors()">🔄 Refresh</button>
+                    </div>
+                    <div id="fdVisitorsList" style="margin-top: 20px;"></div>
                 </div>
             </div>
 
@@ -4027,93 +4279,216 @@
                 
                 <!-- Branch Stock Section (Hidden by default) -->
                 <div id="dispenserStockSection" style="display: none;">
-                    <div style="width: 100%; height: 80vh; border: none; position: relative;">
-                        <iframe id="branchStockInventoryFrame" src="./branch-stock-inventory.html" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px;" frameborder="0" onerror="handleStockIframeError()"></iframe>
-                        <div id="stockIframeError" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; padding: 40px; text-align: center; border-radius: 8px;">
-                            <h3 style="color: #c41e3a; margin-bottom: 15px;">⚠️ Stock Portal Loading Error</h3>
-                            <p style="color: #666; margin-bottom: 20px;">The stock inventory page could not be loaded. Please try one of the options below.</p>
-                            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                                <a href="./branch-stock-inventory.html" target="_blank" class="btn btn-primary" style="text-decoration: none;">Open in New Tab ↗</a>
-                                <button onclick="openStockPortalFromBranch()" class="btn btn-success">Open Full Stock Portal</button>
+                    <div class="form-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                            <h2 style="color: #2c3e50; margin: 0;">📦 Branch Inventory Management</h2>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="refreshBranchInventory()" style="background: #c41e3a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                    🔄 Refresh
+                                </button>
+                                <button class="btn btn-success" onclick="openBranchStockReceiveModal()" style="background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                                    ➕ Receive Stock
+                                </button>
+                                <button class="btn btn-info" onclick="openBranchStockTransferModal()" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                                    📤 Transfer Stock
+                                </button>
+                                <button class="btn btn-secondary" onclick="exportBranchInventoryCSV()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                                    📥 Export CSV
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Filters and Search -->
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                                <div class="form-group">
+                                    <label>Search Product</label>
+                                    <input type="text" id="branchInventorySearch" placeholder="Search products..." 
+                                           onkeyup="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                                </div>
+                                <div class="form-group">
+                                    <label>Category</label>
+                                    <select id="branchInventoryCategory" onchange="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                                        <option value="all">All Categories</option>
+                                        <option value="low">Low Stock</option>
+                                        <option value="out">Out of Stock</option>
+                                        <option value="expiring">Expiring Soon</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sort By</label>
+                                    <select id="branchInventorySort" onchange="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                                        <option value="name">Product Name</option>
+                                        <option value="stock">Stock Level</option>
+                                        <option value="expiry">Expiry Date</option>
+                                    </select>
+                                </div>
+                    </div>
+                </div>
+                
+                        <!-- KPI Cards -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Products</div>
+                                <div id="branchInventoryTotalProducts" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #27ae60, #229954); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Stock Value</div>
+                                <div id="branchInventoryTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">N$ 0.00</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #f39c12, #e67e22); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Low Stock Items</div>
+                                <div id="branchInventoryLowStock" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Out of Stock</div>
+                                <div id="branchInventoryOutOfStock" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Inventory Table -->
+                        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; overflow-x: auto;">
+                            <table id="branchInventoryTable" class="table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #f8f9fa; border-bottom: 2px solid #c41e3a;">
+                                        <th style="padding: 12px; text-align: left; font-weight: 600;">Product</th>
+                                        <th style="padding: 12px; text-align: left; font-weight: 600;">Batch No</th>
+                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Quantity</th>
+                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Expiry Date</th>
+                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Unit Price</th>
+                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Total Value</th>
+                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Status</th>
+                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="branchInventoryTableBody">
+                                    <tr>
+                                        <td colspan="8" style="padding: 40px; text-align: center; color: #7f8c8d;">
+                                            Loading inventory...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Stock Movements History -->
+                        <div style="margin-top: 30px;">
+                            <h3 style="color: #2c3e50; margin-bottom: 15px;">📊 Recent Stock Movements</h3>
+                            <div id="branchInventoryMovements" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
+                                <p style="text-align: center; color: #7f8c8d;">Loading movements...</p>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <script>
-                    function handleStockIframeError() {
-                        const errorDiv = document.getElementById('stockIframeError');
-                        const iframe = document.getElementById('branchStockInventoryFrame');
-                        if (errorDiv && iframe) {
-                            iframe.style.display = 'none';
-                            errorDiv.style.display = 'block';
-                        }
-                    }
-                    
-                    function openStockPortalFromBranch() {
-                        // Switch to stock tab in main system
-                        if (typeof openTab === 'function') {
-                            openTab('stock', null);
-                        } else {
-                            window.location.href = './dynapharm-complete-system.html#stock';
-                        }
-                    }
-                    
-                    // Check if iframe loads successfully
-                    window.addEventListener('load', function() {
-                        const iframe = document.getElementById('branchStockInventoryFrame');
-                        if (iframe) {
-                            // Set timeout to check if iframe loaded
-                            setTimeout(function() {
-                                try {
-                                    // Try to access iframe content (will fail if CORS blocked or not loaded)
-                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                                    if (!iframeDoc || !iframeDoc.body) {
-                                        // Check if URL is blocked
-                                        try {
-                                            const iframeUrl = iframe.contentWindow?.location?.href;
-                                            if (iframeUrl && (iframeUrl.includes('refused') || iframeUrl === 'about:blank')) {
-                                                handleStockIframeError();
-                                            }
-                                        } catch (e) {
-                                            // CORS error - this is expected, but iframe might still be loading
-                                            // Wait a bit more and check again
-                                            setTimeout(function() {
-                                                try {
-                                                    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-                                                    if (!doc || !doc.body) {
-                                                        handleStockIframeError();
-                                                    }
-                                                } catch (e2) {
-                                                    // Still CORS, but iframe might be loading - don't show error yet
-                                                }
-                                            }, 2000);
-                                        }
-                                    }
-                                } catch (e) {
-                                    // CORS error - this is normal for cross-origin iframes
-                                    // Iframe might still be loading, so don't show error immediately
-                                }
-                            }, 2000);
+                <!-- Branch Stock Receive Modal -->
+                <div id="branchStockReceiveModal" class="modal" style="display: none;">
+                    <div class="modal-content" style="max-width: 800px;">
+                        <span class="close" onclick="closeBranchStockReceiveModal()">&times;</span>
+                        <h2 style="color: #c41e3a;">📦 Receive Stock</h2>
+                        
+                        <form id="branchStockReceiveForm" onsubmit="submitBranchStockReceive(event)">
+                            <div class="form-group">
+                                <label>Product *</label>
+                                <select id="receiveProductSelect" required style="width: 100%; padding: 10px;">
+                                    <option value="">Select Product</option>
+                                </select>
+                            </div>
                             
-                            // Also listen for iframe load event
-                            iframe.addEventListener('load', function() {
-                                try {
-                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                                    if (iframeDoc && iframeDoc.body) {
-                                        // Iframe loaded successfully
-                                        const errorDiv = document.getElementById('stockIframeError');
-                                        if (errorDiv) errorDiv.style.display = 'none';
-                                    }
-                                } catch (e) {
-                                    // CORS error - this is expected, but iframe is likely loaded
-                                }
-                            });
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                                <div class="form-group">
+                                    <label>Batch Number *</label>
+                                    <input type="text" id="receiveBatchNo" required placeholder="Enter or scan batch number">
+                                </div>
+                                <div class="form-group">
+                                    <label>Expiry Date *</label>
+                                    <input type="month" id="receiveExpiryDate" required>
+                                </div>
+                            </div>
                             
-                            iframe.addEventListener('error', handleStockIframeError);
-                        }
-                    });
-                </script>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                                <div class="form-group">
+                                    <label>Quantity *</label>
+                                    <input type="number" id="receiveQuantity" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Unit</label>
+                                    <input type="text" id="receiveUnit" placeholder="boxes, units, etc.">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Source</label>
+                                <select id="receiveSource" style="width: 100%; padding: 10px;">
+                                    <option value="warehouse">Warehouse</option>
+                                    <option value="transfer">Transfer from Branch</option>
+                                    <option value="return">Return</option>
+                                    <option value="adjustment">Adjustment</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Notes</label>
+                                <textarea id="receiveNotes" rows="3" placeholder="Additional notes"></textarea>
+                            </div>
+                            
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button type="submit" class="btn btn-success" style="flex: 1;">✅ Receive Stock</button>
+                                <button type="button" class="btn btn-secondary" onclick="closeBranchStockReceiveModal()">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Branch Stock Transfer Modal -->
+                <div id="branchStockTransferModal" class="modal" style="display: none;">
+                    <div class="modal-content" style="max-width: 800px;">
+                        <span class="close" onclick="closeBranchStockTransferModal()">&times;</span>
+                        <h2 style="color: #c41e3a;">📤 Transfer Stock</h2>
+                        
+                        <form id="branchStockTransferForm" onsubmit="submitBranchStockTransfer(event)">
+                            <div class="form-group">
+                                <label>From Branch *</label>
+                                <input type="text" id="transferFromBranch" readonly style="width: 100%; padding: 10px; background: #f0f0f0;">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>To Branch *</label>
+                                <select id="transferToBranch" required style="width: 100%; padding: 10px;">
+                                    <option value="">Select Destination Branch</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Product *</label>
+                                <select id="transferProductSelect" required style="width: 100%; padding: 10px;">
+                                    <option value="">Select Product</option>
+                                </select>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                                <div class="form-group">
+                                    <label>Batch Number *</label>
+                                    <input type="text" id="transferBatchNo" required placeholder="Enter or scan batch number">
+                                </div>
+                                <div class="form-group">
+                                    <label>Quantity *</label>
+                                    <input type="number" id="transferQuantity" min="1" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Notes</label>
+                                <textarea id="transferNotes" rows="3" placeholder="Transfer reason or notes"></textarea>
+                            </div>
+                            
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button type="submit" class="btn btn-success" style="flex: 1;">📤 Transfer Stock</button>
+                                <button type="button" class="btn btn-secondary" onclick="closeBranchStockTransferModal()">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
 
                 <!-- Online Orders Section (Hidden by default) -->
                 <div id="dispenserOnlineOrdersSection" style="display: none;">
@@ -4687,11 +5062,11 @@
             <!-- Field Program Section -->
             <div id="dispenserFieldProgramSection" style="display: none;">
                 <div class="form-section">
-                    <h2 style="color: #2c3e50; margin-bottom: 20px;">🚐 Field Program - Staff Stock Requests</h2>
-                    <p style="color: #7f8c8d; margin-bottom: 20px;">Manage stock requests from field staff for field program activities.</p>
+                    <h2 style="color: #2c3e50; margin-bottom: 20px;">🚐 Field Program - Stock Requests</h2>
+                    <p style="color: #7f8c8d; margin-bottom: 20px;">Manage stock requests from distributors for field program activities. All requests require distributor verification and FEFO compliance.</p>
                     
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
-                        <button class="btn btn-primary" onclick="showFieldProgramRequestForm()" style="background: #c41e3a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        <button class="btn btn-primary" onclick="openFieldProgramRequestForm()" style="background: #c41e3a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                             ➕ New Stock Request
                         </button>
                         <button class="btn btn-secondary" onclick="refreshFieldProgramRequests()" style="background: #6c757d; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer;">
@@ -4701,6 +5076,122 @@
                     
                     <div id="fieldProgramRequestsList" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
                         <p style="text-align: center; color: #7f8c8d;">Loading field program requests...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Field Program Request Form Modal -->
+            <div id="fieldProgramRequestModal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                    <span class="close" onclick="closeFieldProgramRequestForm()">&times;</span>
+                    <h2 style="color: #c41e3a; margin-bottom: 20px;">🚐 Field Program Stock Request Form</h2>
+                    
+                    <form id="fieldProgramRequestForm" onsubmit="submitFieldProgramRequest(event)">
+                        <!-- Distributor Verification -->
+                        <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                            <h3 style="margin-top: 0; color: #856404;">Distributor Verification *</h3>
+                            <div class="form-group" style="position: relative;">
+                                <label>Search Distributor by NB Number or Name *</label>
+                                <input type="text" id="fieldProgramDistributorSearch" placeholder="Type NB number (e.g., NB001544) or name" 
+                                       onkeyup="searchFieldProgramDistributor()" autocomplete="off" required>
+                                <div id="fieldProgramDistributorDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
+                                <input type="hidden" id="fieldProgramDistributorId" required>
+                                <small id="fieldProgramDistributorStatus" style="color: #666; font-size: 0.85rem;"></small>
+                            </div>
+                            <div id="fieldProgramDistributorInfo" style="display: none; margin-top: 10px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ddd;">
+                                <strong>Selected Distributor:</strong> <span id="fieldProgramDistributorName"></span><br>
+                                <strong>NB Number:</strong> <span id="fieldProgramDistributorCode"></span><br>
+                                <strong>Mobile:</strong> <span id="fieldProgramDistributorMobile"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Request Details -->
+                        <div class="form-group">
+                            <label>Request Date *</label>
+                            <input type="date" id="fieldProgramRequestDate" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Branch *</label>
+                            <select id="fieldProgramBranch" required>
+                                <option value="">Select Branch</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Product Selection -->
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="color: #2c3e50; margin-bottom: 15px;">Requested Products *</h3>
+                            <div id="fieldProgramProducts">
+                                <div class="field-program-product-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; margin-bottom: 10px; align-items: end;">
+                                    <div class="form-group">
+                                        <label>Product *</label>
+                                        <select class="field-program-product-select" required>
+                                            <option value="">Select Product</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Quantity *</label>
+                                        <input type="number" class="field-program-quantity" min="1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Unit</label>
+                                        <input type="text" class="field-program-unit" placeholder="boxes, units, etc.">
+                                    </div>
+                                    <button type="button" class="btn btn-danger" onclick="removeFieldProgramProductRow(this)" style="padding: 8px 12px;">Remove</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="addFieldProgramProductRow()" style="margin-top: 10px;">➕ Add Product</button>
+                        </div>
+                        
+                        <!-- Notes -->
+                        <div class="form-group">
+                            <label>Purpose/Notes</label>
+                            <textarea id="fieldProgramNotes" rows="3" placeholder="Brief description of field program activity or purpose"></textarea>
+                        </div>
+                        
+                        <!-- Terms and Conditions -->
+                        <div style="background: #f8f9fa; border: 2px solid #c41e3a; border-radius: 8px; padding: 15px; margin-bottom: 20px; max-height: 200px; overflow-y: auto;">
+                            <h3 style="margin-top: 0; color: #c41e3a;">Terms and Conditions of Stock Handling Commitment</h3>
+                            <ol style="font-size: 0.9rem; line-height: 1.6;">
+                                <li><strong>Stock Accountability:</strong> The distributor is fully responsible for all stock received and must account for every item.</li>
+                                <li><strong>FEFO Compliance:</strong> Stock will be issued following First Expired First Out (FEFO) principles. All products must be issued by batch/expiry date using barcode scanning.</li>
+                                <li><strong>Storage Requirements:</strong> Stock must be stored in appropriate conditions (temperature, humidity, etc.) as per product specifications.</li>
+                                <li><strong>Damage/Loss Reporting:</strong> Any damaged or lost stock must be reported immediately to the branch manager.</li>
+                                <li><strong>Return Policy:</strong> Unused stock may be returned within 30 days if in original condition and packaging.</li>
+                                <li><strong>Sales Records:</strong> Complete sales records must be maintained and submitted as required.</li>
+                                <li><strong>Payment Terms:</strong> Payment for stock must be made according to agreed terms. Late payments may affect future requests.</li>
+                                <li><strong>Compliance:</strong> All stock must be used/sold in compliance with Dynapharm policies and local regulations.</li>
+                            </ol>
+                            <div style="margin-top: 15px;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="fieldProgramAgreeTerms" required style="margin-right: 8px; width: 18px; height: 18px;">
+                                    <span>I have read and agree to the Terms and Conditions of Stock Handling Commitment *</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Signature -->
+                        <div class="form-group">
+                            <label>Distributor Signature (Type Full Name) *</label>
+                            <input type="text" id="fieldProgramSignature" placeholder="Full name as signature" required>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" class="btn btn-success" style="flex: 1;">Submit Request</button>
+                            <button type="button" class="btn btn-secondary" onclick="closeFieldProgramRequestForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Field Program Stock Issuing Modal (FEFO) -->
+            <div id="fieldProgramIssuingModal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;">
+                    <span class="close" onclick="closeFieldProgramIssuing()">&times;</span>
+                    <h2 style="color: #c41e3a; margin-bottom: 20px;">📦 Issue Stock (FEFO Compliance Required)</h2>
+                    
+                    <div id="fieldProgramIssuingContent">
+                        <!-- Content will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
@@ -7339,19 +7830,25 @@
                     <input type="tel" name="phone" placeholder="Phone Number" required autocomplete="tel">
                 </div>
                 <div class="form-group">
-                    <select name="role" required onchange="toggleAdditionalBranches()">
+                    <select name="role" required onchange="toggleAdditionalBranches(); updatePortalAccessByRole();">
                         <option value="">Select Role</option>
                         <option value="consultant">Consultant</option>
                         <option value="dispenser">Dispenser</option>
                         <option value="stock">Stock Manager</option>
                         <option value="admin">Admin</option>
+                        <option value="finance">Finance</option>
+                        <option value="hr_manager">HR Manager</option>
+                        <option value="gm">General Manager</option>
+                        <option value="director">Director</option>
+                        <option value="mis">MIS</option>
+                        <option value="branch_manager">Branch Manager</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Branch Assignment:</label>
+                    <label>Branch Assignment (Optional):</label>
                     <div id="branchSelection">
-                        <select name="branch" id="userBranchSelect" required>
-                            <option value="">Select Primary Branch</option>
+                        <select name="branch" id="userBranchSelect">
+                            <option value="">-- No Branch Assignment --</option>
                         </select>
                     </div>
                     <div id="additionalBranches" style="display: none; margin-top: 10px;">
@@ -7359,6 +7856,62 @@
                         <div id="branchCheckboxes" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
                         </div>
                     </div>
+                    <div id="allBranchesAccess" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="allBranches" id="allBranchesCheckbox" onchange="toggleAllBranchesAccess()">
+                            <span>Access to All Branches</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Portal Access:</label>
+                    <div id="portalAccessCheckboxes" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="client">
+                            <span>Client Portal (Shop)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="frontdesk">
+                            <span>Front Desk</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="consultant">
+                            <span>Consultant Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="dispenser">
+                            <span>Dispenser Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="hr-portal">
+                            <span>HR Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="finance">
+                            <span>Finance Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="gm">
+                            <span>GM Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="director">
+                            <span>Director Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="mis">
+                            <span>MIS Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="stock">
+                            <span>Stock Portal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="portalAccess" value="admin">
+                            <span>Admin Portal</span>
+                        </label>
+                    </div>
+                    <small style="color: #666; font-size: 0.9rem; display: block; margin-top: 5px;">Select which portals this user can access. Portal access can be customized based on role.</small>
                 </div>
                 <div class="form-group">
                     <label>Profile Photo (Optional)</label>
@@ -16856,7 +17409,10 @@ async function reverseLastPrescriptionPayment(reportId){
                     activeSection = 'dispenserStockSection';
                     activeTab = 'stockTab';
                     gradient = 'linear-gradient(135deg, #34495e, #2c3e50)';
-                    // Branch inventory now loads via iframe
+                    // Load branch inventory
+                    if (typeof refreshBranchInventory === 'function') {
+                        refreshBranchInventory();
+                    }
                     break;
                 case 'banking':
                     activeSection = 'dispenserBankingSection';
@@ -17420,7 +17976,7 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         // Field Program Functions
-        function displayFieldProgramRequests() {
+        async function displayFieldProgramRequests() {
             const listEl = document.getElementById('fieldProgramRequestsList');
             if (!listEl) return;
             
@@ -17431,29 +17987,38 @@ async function reverseLastPrescriptionPayment(reportId){
                     return;
                 }
                 
+                // Sort by date (newest first)
+                requests.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                
                 listEl.innerHTML = requests.map((req, idx) => `
                     <div style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
                             <div>
-                                <h4 style="margin: 0 0 5px 0;">Request #${req.id || idx + 1}</h4>
-                                <p style="margin: 0; color: #666; font-size: 0.9rem;">Staff: ${req.staffName || 'N/A'} | Branch: ${req.branch || 'N/A'}</p>
-                                <p style="margin: 0; color: #666; font-size: 0.9rem;">Date: ${new Date(req.date || Date.now()).toLocaleDateString()}</p>
+                                <h4 style="margin: 0 0 5px 0;">Request #${req.id || req.requestNumber || idx + 1}</h4>
+                                <p style="margin: 0; color: #666; font-size: 0.9rem;"><strong>Distributor:</strong> ${req.distributorName || 'N/A'} (${req.distributorCode || 'N/A'})</p>
+                                <p style="margin: 0; color: #666; font-size: 0.9rem;"><strong>Branch:</strong> ${req.branch || 'N/A'} | <strong>Date:</strong> ${new Date(req.date || Date.now()).toLocaleDateString()}</p>
+                                ${req.signature ? `<p style="margin: 0; color: #666; font-size: 0.85rem;"><strong>Signed:</strong> ${req.signature}</p>` : ''}
                             </div>
-                            <span style="padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: ${req.status === 'approved' ? '#d4edda' : req.status === 'rejected' ? '#f8d7da' : '#fff3cd'}; color: ${req.status === 'approved' ? '#155724' : req.status === 'rejected' ? '#721c24' : '#856404'};">${(req.status || 'pending').toUpperCase()}</span>
+                            <span style="padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: ${req.status === 'approved' ? '#d4edda' : req.status === 'rejected' ? '#f8d7da' : req.status === 'issued' ? '#cfe2ff' : '#fff3cd'}; color: ${req.status === 'approved' ? '#155724' : req.status === 'rejected' ? '#721c24' : req.status === 'issued' ? '#084298' : '#856404'};">${(req.status || 'pending').toUpperCase()}</span>
                         </div>
                         <div style="margin-top: 10px;">
-                            <p><strong>Items:</strong></p>
+                            <p><strong>Requested Items:</strong></p>
                             <ul style="margin: 5px 0; padding-left: 20px;">
                                 ${(req.items || []).map(item => `<li>${item.product || 'N/A'}: ${item.quantity || 0} ${item.unit || 'units'}</li>`).join('')}
                             </ul>
                             ${req.notes ? `<p style="margin-top: 10px;"><strong>Notes:</strong> ${req.notes}</p>` : ''}
+                            ${req.approvedBy ? `<p style="margin-top: 5px; color: #0f5132; font-size: 0.85rem;"><strong>Approved by:</strong> ${req.approvedBy} on ${new Date(req.approvedAt).toLocaleDateString()}</p>` : ''}
+                            ${req.issuedBy ? `<p style="margin-top: 5px; color: #084298; font-size: 0.85rem;"><strong>Issued by:</strong> ${req.issuedBy} on ${new Date(req.issuedAt).toLocaleDateString()}</p>` : ''}
                         </div>
-                        ${req.status === 'pending' ? `
-                            <div style="margin-top: 10px; display: flex; gap: 10px;">
-                                <button class="btn btn-success" onclick="approveFieldProgramRequest(${idx})" style="padding: 6px 12px; font-size: 0.85rem;">Approve</button>
-                                <button class="btn btn-danger" onclick="rejectFieldProgramRequest(${idx})" style="padding: 6px 12px; font-size: 0.85rem;">Reject</button>
-                            </div>
-                        ` : ''}
+                        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-info" onclick="printFieldProgramRequestPDF('${req.id || idx}')" style="padding: 6px 12px; font-size: 0.85rem;">🖨️ Print PDF</button>
+                            ${req.status === 'pending' ? `
+                                <button class="btn btn-success" onclick="approveFieldProgramRequest('${req.id || idx}')" style="padding: 6px 12px; font-size: 0.85rem;">Approve</button>
+                                <button class="btn btn-danger" onclick="rejectFieldProgramRequest('${req.id || idx}')" style="padding: 6px 12px; font-size: 0.85rem;">Reject</button>
+                            ` : req.status === 'approved' ? `
+                                <button class="btn btn-primary" onclick="issueFieldProgramStock('${req.id || idx}')" style="padding: 6px 12px; font-size: 0.85rem;">📦 Issue Stock (FEFO)</button>
+                            ` : ''}
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
@@ -17462,24 +18027,220 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
-        function showFieldProgramRequestForm() {
-            const form = prompt('Enter request details in JSON format:\n{ "staffName": "John Doe", "branch": "Windhoek", "items": [{"product": "Product Name", "quantity": 10, "unit": "boxes"}], "notes": "Optional notes" }');
-            if (!form) return;
+        async function openFieldProgramRequestForm() {
+            const modal = document.getElementById('fieldProgramRequestModal');
+            if (!modal) return;
+            
+            // Reset form
+            document.getElementById('fieldProgramRequestForm').reset();
+            document.getElementById('fieldProgramDistributorInfo').style.display = 'none';
+            document.getElementById('fieldProgramDistributorDropdown').style.display = 'none';
+            
+            // Set default date to today
+            document.getElementById('fieldProgramRequestDate').value = new Date().toISOString().split('T')[0];
+            
+            // Load branches
+            const branchSelect = document.getElementById('fieldProgramBranch');
+            branchSelect.innerHTML = '<option value="">Select Branch</option>';
+            if (typeof branches !== 'undefined' && Array.isArray(branches)) {
+                branches.forEach(branch => {
+                    const option = document.createElement('option');
+                    option.value = branch.id || branch.name;
+                    option.textContent = branch.name;
+                    branchSelect.appendChild(option);
+                });
+            }
+            
+            // Load products
+            const productSelects = document.querySelectorAll('.field-program-product-select');
+            productSelects.forEach(select => {
+                select.innerHTML = '<option value="">Select Product</option>';
+                if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) {
+                    PRICE_LIST.forEach(product => {
+                        const option = document.createElement('option');
+                        option.value = product.description;
+                        option.textContent = product.description;
+                        select.appendChild(option);
+                    });
+                }
+            });
+            
+            modal.style.display = 'block';
+        }
+
+        function closeFieldProgramRequestForm() {
+            document.getElementById('fieldProgramRequestModal').style.display = 'none';
+        }
+
+        function addFieldProgramProductRow() {
+            const container = document.getElementById('fieldProgramProducts');
+            const row = document.createElement('div');
+            row.className = 'field-program-product-row';
+            row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; margin-bottom: 10px; align-items: end;';
+            row.innerHTML = `
+                <div class="form-group">
+                    <label>Product *</label>
+                    <select class="field-program-product-select" required>
+                        <option value="">Select Product</option>
+                        ${typeof PRICE_LIST !== 'undefined' ? PRICE_LIST.map(p => `<option value="${p.description}">${p.description}</option>`).join('') : ''}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Quantity *</label>
+                    <input type="number" class="field-program-quantity" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Unit</label>
+                    <input type="text" class="field-program-unit" placeholder="boxes, units, etc.">
+                </div>
+                <button type="button" class="btn btn-danger" onclick="removeFieldProgramProductRow(this)" style="padding: 8px 12px;">Remove</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeFieldProgramProductRow(button) {
+            const rows = document.querySelectorAll('.field-program-product-row');
+            if (rows.length > 1) {
+                button.closest('.field-program-product-row').remove();
+            } else {
+                alert('At least one product row is required.');
+            }
+        }
+
+        async function searchFieldProgramDistributor() {
+            const searchInput = document.getElementById('fieldProgramDistributorSearch');
+            const dropdown = document.getElementById('fieldProgramDistributorDropdown');
+            const query = searchInput.value.trim().toUpperCase();
+            
+            if (query.length < 2) {
+                dropdown.style.display = 'none';
+                return;
+            }
             
             try {
-                const request = JSON.parse(form);
-                request.id = 'FPR' + Date.now();
-                request.date = new Date().toISOString();
-                request.status = 'pending';
+                // Try to load distributors from API
+                let distributors = [];
+                try {
+                    const response = await fetch('/api/distributors');
+                    if (response.ok) {
+                        distributors = await response.json();
+                    }
+                } catch (e) {
+                    console.debug('API not available, trying localStorage');
+                }
                 
+                // Fallback to localStorage
+                if (distributors.length === 0) {
+                    const stored = localStorage.getItem('dyna_distributors') || localStorage.getItem('dyna_distributors_cache');
+                    if (stored) {
+                        const data = JSON.parse(stored);
+                        distributors = Array.isArray(data) ? data : (data.data || []);
+                    }
+                }
+                
+                // Filter distributors
+                const matches = distributors.filter(d => {
+                    const code = (d.distributorCode || d.code || d.distributor_code || '').toString().toUpperCase();
+                    const name = (d.distributorName || d.name || d.distributor_name || '').toString().toUpperCase();
+                    return code.includes(query) || name.includes(query);
+                }).slice(0, 10);
+                
+                if (matches.length === 0) {
+                    dropdown.innerHTML = '<div style="padding: 10px; color: #666;">No distributors found</div>';
+                } else {
+                    dropdown.innerHTML = matches.map(d => {
+                        const code = d.distributorCode || d.code || d.distributor_code || 'N/A';
+                        const name = d.distributorName || d.name || d.distributor_name || 'N/A';
+                        return `<div onclick="selectFieldProgramDistributor('${code}', '${name.replace(/'/g, "\\'")}', '${d.mobileNo || d.mobile || d.mobile_no || ''}', '${d.id || code}')" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='white'">${code} - ${name}</div>`;
+                    }).join('');
+                }
+                dropdown.style.display = 'block';
+            } catch (error) {
+                console.error('Error searching distributors:', error);
+                dropdown.style.display = 'none';
+            }
+        }
+
+        function selectFieldProgramDistributor(code, name, mobile, id) {
+            document.getElementById('fieldProgramDistributorSearch').value = `${code} - ${name}`;
+            document.getElementById('fieldProgramDistributorId').value = id;
+            document.getElementById('fieldProgramDistributorCode').textContent = code;
+            document.getElementById('fieldProgramDistributorName').textContent = name;
+            document.getElementById('fieldProgramDistributorMobile').textContent = mobile;
+            document.getElementById('fieldProgramDistributorInfo').style.display = 'block';
+            document.getElementById('fieldProgramDistributorDropdown').style.display = 'none';
+        }
+
+        function submitFieldProgramRequest(event) {
+            event.preventDefault();
+            
+            const distributorId = document.getElementById('fieldProgramDistributorId').value;
+            if (!distributorId) {
+                alert('Please select a distributor');
+                return;
+            }
+            
+            // Collect product items
+            const productRows = document.querySelectorAll('.field-program-product-row');
+            const items = [];
+            let hasError = false;
+            
+            productRows.forEach(row => {
+                const product = row.querySelector('.field-program-product-select').value;
+                const quantity = parseInt(row.querySelector('.field-program-quantity').value);
+                const unit = row.querySelector('.field-program-unit').value || 'units';
+                
+                if (!product || !quantity) {
+                    hasError = true;
+                    return;
+                }
+                
+                items.push({ product, quantity, unit });
+            });
+            
+            if (hasError || items.length === 0) {
+                alert('Please add at least one product with quantity');
+                return;
+            }
+            
+            // Create request object
+            const request = {
+                id: 'FPR' + Date.now(),
+                requestNumber: 'FPR-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6),
+                distributorId: distributorId,
+                distributorCode: document.getElementById('fieldProgramDistributorCode').textContent,
+                distributorName: document.getElementById('fieldProgramDistributorName').textContent,
+                distributorMobile: document.getElementById('fieldProgramDistributorMobile').textContent,
+                date: document.getElementById('fieldProgramRequestDate').value,
+                branch: document.getElementById('fieldProgramBranch').value,
+                items: items,
+                notes: document.getElementById('fieldProgramNotes').value,
+                signature: document.getElementById('fieldProgramSignature').value,
+                status: 'pending',
+                createdAt: new Date().toISOString()
+            };
+            
+            // Save to localStorage
+            try {
                 const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
                 requests.push(request);
                 localStorage.setItem('field_program_requests', JSON.stringify(requests));
                 
+                // Also save to API if available
+                try {
+                    fetch('/api/field_program_requests', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(request)
+                    }).catch(e => console.debug('API save failed:', e));
+                } catch (e) {}
+                
+                alert('✅ Stock request submitted successfully!');
+                closeFieldProgramRequestForm();
                 displayFieldProgramRequests();
-                alert('✅ Stock request created successfully!');
             } catch (error) {
-                alert('❌ Invalid format. Please check your JSON.');
+                console.error('Error saving request:', error);
+                alert('❌ Error saving request. Please try again.');
             }
         }
 
@@ -17487,24 +18248,402 @@ async function reverseLastPrescriptionPayment(reportId){
             displayFieldProgramRequests();
         }
 
-        function approveFieldProgramRequest(index) {
+        function approveFieldProgramRequest(requestId) {
             const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
-            if (requests[index]) {
-                requests[index].status = 'approved';
-                requests[index].approvedAt = new Date().toISOString();
+            const request = requests.find(r => r.id === requestId || r.id === String(requestId));
+            
+            if (request && request.status === 'pending') {
+                request.status = 'approved';
+                request.approvedBy = (window.currentUser && window.currentUser.fullName) || 'System';
+                request.approvedAt = new Date().toISOString();
+                localStorage.setItem('field_program_requests', JSON.stringify(requests));
+                displayFieldProgramRequests();
+                alert('✅ Request approved! You can now issue stock using FEFO.');
+            }
+        }
+
+        function rejectFieldProgramRequest(requestId) {
+            if (!confirm('Are you sure you want to reject this request?')) return;
+            
+            const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+            const request = requests.find(r => r.id === requestId || r.id === String(requestId));
+            
+            if (request) {
+                request.status = 'rejected';
+                request.rejectedBy = (window.currentUser && window.currentUser.fullName) || 'System';
+                request.rejectedAt = new Date().toISOString();
                 localStorage.setItem('field_program_requests', JSON.stringify(requests));
                 displayFieldProgramRequests();
             }
         }
 
-        function rejectFieldProgramRequest(index) {
+        function issueFieldProgramStock(requestId) {
             const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
-            if (requests[index]) {
-                requests[index].status = 'rejected';
-                requests[index].rejectedAt = new Date().toISOString();
-                localStorage.setItem('field_program_requests', JSON.stringify(requests));
-                displayFieldProgramRequests();
+            const request = requests.find(r => r.id === requestId || r.id === String(requestId));
+            
+            if (!request || request.status !== 'approved') {
+                alert('Request not found or not approved');
+                return;
             }
+            
+            // Open issuing modal with FEFO interface
+            openFieldProgramIssuingModal(request);
+        }
+
+        function openFieldProgramIssuingModal(request) {
+            const modal = document.getElementById('fieldProgramIssuingModal');
+            const content = document.getElementById('fieldProgramIssuingContent');
+            
+            if (!modal || !content) return;
+            
+            content.innerHTML = `
+                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0; color: #856404;">⚠️ FEFO Compliance Required</h3>
+                    <p style="margin: 0; color: #856404;">Stock must be issued following First Expired First Out (FEFO) principles. Scan barcode for each item to record batch/expiry data.</p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h4>Request Details</h4>
+                    <p><strong>Distributor:</strong> ${request.distributorName} (${request.distributorCode})</p>
+                    <p><strong>Branch:</strong> ${request.branch}</p>
+                    <p><strong>Request Date:</strong> ${new Date(request.date).toLocaleDateString()}</p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h4>Items to Issue (Scan Barcode for Each)</h4>
+                    <div id="fieldProgramIssuingItems">
+                        ${request.items.map((item, idx) => `
+                            <div class="issuing-item" data-product="${item.product}" data-requested-qty="${item.quantity}" style="border: 2px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                                <h5 style="margin-top: 0;">${item.product}</h5>
+                                <p><strong>Requested:</strong> ${item.quantity} ${item.unit || 'units'}</p>
+                                <div style="margin-top: 10px;">
+                                    <label>Scan Barcode or Enter Batch Number:</label>
+                                    <input type="text" class="barcode-input" placeholder="Scan barcode or enter batch" 
+                                           onchange="handleFieldProgramBarcodeScan(this, '${item.product}', ${item.quantity})" 
+                                           style="width: 100%; padding: 8px; margin-top: 5px;">
+                                </div>
+                                <div class="scanned-items" style="margin-top: 10px;">
+                                    <p><strong>Scanned Items:</strong> <span class="scanned-count">0</span> / ${item.quantity}</p>
+                                    <div class="scanned-list" style="max-height: 150px; overflow-y: auto; margin-top: 5px;"></div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button class="btn btn-success" onclick="completeFieldProgramIssuing('${request.id}')" style="flex: 1;">✅ Complete Issuing</button>
+                    <button class="btn btn-secondary" onclick="closeFieldProgramIssuing()">Cancel</button>
+                </div>
+            `;
+            
+            modal.style.display = 'block';
+        }
+
+        function handleFieldProgramBarcodeScan(input, productName, requestedQty) {
+            const barcode = input.value.trim();
+            if (!barcode) return;
+            
+            const itemDiv = input.closest('.issuing-item');
+            const scannedList = itemDiv.querySelector('.scanned-list');
+            const scannedCount = itemDiv.querySelector('.scanned-count');
+            const currentScanned = parseInt(scannedCount.textContent) || 0;
+            
+            if (currentScanned >= requestedQty) {
+                alert('Requested quantity already scanned');
+                input.value = '';
+                return;
+            }
+            
+            // Try to get stock data (this would typically come from stock management system)
+            // For now, create a record with barcode data
+            const scannedItem = {
+                barcode: barcode,
+                product: productName,
+                scannedAt: new Date().toISOString(),
+                scannedBy: (window.currentUser && window.currentUser.fullName) || 'System'
+            };
+            
+            // Add to scanned list
+            const itemElement = document.createElement('div');
+            itemElement.style.cssText = 'padding: 8px; background: #f0f0f0; border-radius: 4px; margin-bottom: 5px; font-size: 0.9rem;';
+            itemElement.innerHTML = `
+                <strong>Barcode:</strong> ${barcode}<br>
+                <small>Scanned: ${new Date().toLocaleString()}</small>
+                <button onclick="removeScannedItem(this)" style="float: right; padding: 2px 8px; font-size: 0.8rem;">Remove</button>
+            `;
+            itemElement.dataset.barcode = barcode;
+            scannedList.appendChild(itemElement);
+            
+            scannedCount.textContent = currentScanned + 1;
+            input.value = '';
+            
+            // Store scanned items in data attribute
+            if (!itemDiv.dataset.scannedItems) {
+                itemDiv.dataset.scannedItems = JSON.stringify([]);
+            }
+            const scannedItems = JSON.parse(itemDiv.dataset.scannedItems);
+            scannedItems.push(scannedItem);
+            itemDiv.dataset.scannedItems = JSON.stringify(scannedItems);
+        }
+
+        function removeScannedItem(button) {
+            const itemElement = button.closest('div');
+            const itemDiv = itemElement.closest('.issuing-item');
+            const scannedCount = itemDiv.querySelector('.scanned-count');
+            const currentCount = parseInt(scannedCount.textContent) || 0;
+            
+            // Remove from data
+            const scannedItems = JSON.parse(itemDiv.dataset.scannedItems || '[]');
+            const barcode = itemElement.dataset.barcode;
+            const filtered = scannedItems.filter(item => item.barcode !== barcode);
+            itemDiv.dataset.scannedItems = JSON.stringify(filtered);
+            
+            itemElement.remove();
+            scannedCount.textContent = Math.max(0, currentCount - 1);
+        }
+
+        function completeFieldProgramIssuing(requestId) {
+            const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+            const request = requests.find(r => r.id === requestId);
+            
+            if (!request) {
+                alert('Request not found');
+                return;
+            }
+            
+            // Collect all scanned items
+            const issuingItems = document.querySelectorAll('.issuing-item');
+            const issuedItems = [];
+            let allComplete = true;
+            
+            issuingItems.forEach(itemDiv => {
+                const product = itemDiv.dataset.product;
+                const requestedQty = parseInt(itemDiv.dataset.requestedQty);
+                const scannedCount = parseInt(itemDiv.querySelector('.scanned-count').textContent) || 0;
+                const scannedItems = JSON.parse(itemDiv.dataset.scannedItems || '[]');
+                
+                if (scannedCount < requestedQty) {
+                    allComplete = false;
+                }
+                
+                issuedItems.push({
+                    product: product,
+                    requestedQty: requestedQty,
+                    issuedQty: scannedCount,
+                    scannedItems: scannedItems
+                });
+            });
+            
+            if (!allComplete) {
+                if (!confirm('Not all items have been fully scanned. Continue anyway?')) {
+                    return;
+                }
+            }
+            
+            // Update request
+            request.status = 'issued';
+            request.issuedBy = (window.currentUser && window.currentUser.fullName) || 'System';
+            request.issuedAt = new Date().toISOString();
+            request.issuedItems = issuedItems;
+            
+            // Save
+            localStorage.setItem('field_program_requests', JSON.stringify(requests));
+            
+            // Record in stock audit
+            try {
+                const audit = JSON.parse(localStorage.getItem('dyna_stock_audit') || '[]');
+                audit.push({
+                    id: 'AUD' + Date.now(),
+                    action: 'field_program_issue',
+                    details: {
+                        requestId: request.id,
+                        requestNumber: request.requestNumber,
+                        distributor: request.distributorCode,
+                        branch: request.branch,
+                        items: issuedItems
+                    },
+                    timestamp: new Date().toISOString(),
+                    user: (window.currentUser && window.currentUser.fullName) || 'System'
+                });
+                localStorage.setItem('dyna_stock_audit', JSON.stringify(JSON.stringify(audit).length > 50000 ? audit.slice(-1000) : audit));
+            } catch (e) {
+                console.error('Error saving audit:', e);
+            }
+            
+            alert('✅ Stock issued successfully with FEFO compliance!');
+            closeFieldProgramIssuing();
+            displayFieldProgramRequests();
+        }
+
+        function closeFieldProgramIssuing() {
+            document.getElementById('fieldProgramIssuingModal').style.display = 'none';
+        }
+
+        function printFieldProgramRequestPDF(requestId) {
+            const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+            const request = requests.find(r => r.id === requestId || r.id === String(requestId));
+            
+            if (!request) {
+                alert('Request not found');
+                return;
+            }
+            
+            // Create PDF content
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Add logo and header
+            doc.setFillColor(196, 30, 58); // Dynapharm red
+            doc.rect(0, 0, 210, 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DYNAPHARM NAMIBIA', 105, 15, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text('Field Program Stock Request', 105, 22, { align: 'center' });
+            
+            // Reset text color
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            
+            let yPos = 40;
+            
+            // Request Details
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.text('Request Details', 10, yPos);
+            yPos += 8;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text(`Request Number: ${request.requestNumber || request.id}`, 10, yPos);
+            yPos += 6;
+            doc.text(`Date: ${new Date(request.date).toLocaleDateString()}`, 10, yPos);
+            yPos += 6;
+            doc.text(`Branch: ${request.branch}`, 10, yPos);
+            yPos += 10;
+            
+            // Distributor Information
+            doc.setFont('helvetica', 'bold');
+            doc.text('Distributor Information', 10, yPos);
+            yPos += 8;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Name: ${request.distributorName}`, 10, yPos);
+            yPos += 6;
+            doc.text(`NB Number: ${request.distributorCode}`, 10, yPos);
+            yPos += 6;
+            doc.text(`Mobile: ${request.distributorMobile}`, 10, yPos);
+            yPos += 10;
+            
+            // Requested Items
+            doc.setFont('helvetica', 'bold');
+            doc.text('Requested Items', 10, yPos);
+            yPos += 8;
+            
+            doc.setFont('helvetica', 'normal');
+            request.items.forEach((item, idx) => {
+                if (yPos > 250) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.text(`${idx + 1}. ${item.product} - ${item.quantity} ${item.unit || 'units'}`, 15, yPos);
+                yPos += 6;
+            });
+            yPos += 5;
+            
+            // Notes
+            if (request.notes) {
+                if (yPos > 250) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.setFont('helvetica', 'bold');
+                doc.text('Notes:', 10, yPos);
+                yPos += 6;
+                doc.setFont('helvetica', 'normal');
+                const notesLines = doc.splitTextToSize(request.notes, 190);
+                doc.text(notesLines, 10, yPos);
+                yPos += notesLines.length * 6 + 5;
+            }
+            
+            // Terms and Conditions
+            if (yPos > 200) {
+                doc.addPage();
+                yPos = 20;
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text('Terms and Conditions of Stock Handling Commitment', 10, yPos);
+            yPos += 8;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const terms = [
+                '1. Stock Accountability: The distributor is fully responsible for all stock received.',
+                '2. FEFO Compliance: Stock will be issued following First Expired First Out principles.',
+                '3. Storage Requirements: Stock must be stored in appropriate conditions.',
+                '4. Damage/Loss Reporting: Any damaged or lost stock must be reported immediately.',
+                '5. Return Policy: Unused stock may be returned within 30 days if in original condition.',
+                '6. Sales Records: Complete sales records must be maintained and submitted.',
+                '7. Payment Terms: Payment for stock must be made according to agreed terms.',
+                '8. Compliance: All stock must be used/sold in compliance with Dynapharm policies.'
+            ];
+            
+            terms.forEach(term => {
+                if (yPos > 270) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                const lines = doc.splitTextToSize(term, 190);
+                doc.text(lines, 10, yPos);
+                yPos += lines.length * 5 + 3;
+            });
+            
+            // Signature
+            if (yPos > 250) {
+                doc.addPage();
+                yPos = 20;
+            }
+            yPos += 10;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Distributor Signature:', 10, yPos);
+            yPos += 8;
+            doc.setFont('helvetica', 'normal');
+            doc.text(request.signature || 'N/A', 10, yPos);
+            yPos += 10;
+            doc.line(10, yPos, 80, yPos);
+            doc.setFontSize(8);
+            doc.text('Signature', 10, yPos + 5);
+            
+            // Status
+            if (request.status) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(196, 30, 58);
+                doc.text(`Status: ${request.status.toUpperCase()}`, 150, yPos - 10);
+                if (request.approvedBy) {
+                    doc.setFontSize(8);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(`Approved by: ${request.approvedBy}`, 150, yPos - 5);
+                    doc.text(`Date: ${new Date(request.approvedAt).toLocaleDateString()}`, 150, yPos);
+                }
+            }
+            
+            // Footer
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(128, 128, 128);
+                doc.text(`Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+                doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 290, { align: 'center' });
+            }
+            
+            // Save PDF
+            doc.save(`FieldProgramRequest_${request.requestNumber || request.id}.pdf`);
         }
 
         function getUploadedBonusList() {
@@ -21439,6 +22578,37 @@ async function reverseLastPrescriptionPayment(reportId){
             });
         }
 
+        function toggleAllBranchesAccess() {
+            const checkbox = document.getElementById('allBranchesCheckbox');
+            const branchSelect = document.getElementById('userBranchSelect');
+            const additionalBranches = document.getElementById('additionalBranches');
+            
+            if (checkbox && checkbox.checked) {
+                if (branchSelect) branchSelect.disabled = true;
+                if (additionalBranches) additionalBranches.style.display = 'none';
+            } else {
+                if (branchSelect) branchSelect.disabled = false;
+                // Check if role is consultant to show additional branches
+                const role = document.querySelector('select[name="role"]')?.value;
+                if (role === 'consultant' && additionalBranches) {
+                    additionalBranches.style.display = 'block';
+                }
+            }
+        }
+        
+        function updatePortalAccessByRole() {
+            const roleSelect = document.querySelector('select[name="role"]');
+            const role = roleSelect?.value;
+            if (!role) return;
+            
+            const defaultPortals = ROLE_PORTAL_ACCESS[role] || ['client'];
+            const portalCheckboxes = document.querySelectorAll('input[name="portalAccess"]');
+            
+            portalCheckboxes.forEach(cb => {
+                cb.checked = defaultPortals.includes(cb.value);
+            });
+        }
+        
         function toggleAdditionalBranches() {
             const roleSelect = document.querySelector('select[name="role"]');
             const additionalBranches = document.getElementById('additionalBranches');
@@ -21462,14 +22632,31 @@ async function reverseLastPrescriptionPayment(reportId){
             const checkboxes = document.querySelectorAll('input[name="additionalBranches"]:checked');
             checkboxes.forEach(cb => additionalBranches.push(cb.value));
             
+            // Get selected portal access
+            const portalAccess = [];
+            const portalCheckboxes = document.querySelectorAll('input[name="portalAccess"]:checked');
+            portalCheckboxes.forEach(cb => portalAccess.push(cb.value));
+            
+            // Determine branch access
+            const allBranchesAccess = document.getElementById('allBranchesCheckbox').checked;
+            const primaryBranch = formData.get('branch') || null;
+            
             // Create branches array - primary branch + additional branches
-            const allBranches = [formData.get('branch')];
+            let allBranches = [];
+            if (allBranchesAccess) {
+                // User has access to all branches
+                allBranches = ['*']; // Special marker for all branches
+            } else {
+                if (primaryBranch) {
+                    allBranches.push(primaryBranch);
+                }
             if (formData.get('role') === 'consultant') {
                 additionalBranches.forEach(branchId => {
-                    if (branchId !== formData.get('branch')) {
+                        if (branchId !== primaryBranch && !allBranches.includes(branchId)) {
                         allBranches.push(branchId);
                     }
                 });
+                }
             }
             
             // Handle photo upload
@@ -21499,8 +22686,10 @@ async function reverseLastPrescriptionPayment(reportId){
                 email: formData.get('email'),
                 phone: formData.get('phone'),
                 role: formData.get('role'),
-                branch: formData.get('branch'),
+                branch: primaryBranch || null,
                 branches: allBranches,
+                allBranchesAccess: allBranchesAccess,
+                portalAccess: portalAccess.length > 0 ? portalAccess : (ROLE_PORTAL_ACCESS[formData.get('role')] || ['client']),
                 photo: photoBase64,
                 createdAt: new Date().toISOString()
             };
@@ -21565,15 +22754,15 @@ async function reverseLastPrescriptionPayment(reportId){
                     <div style="display: flex; gap: 15px; align-items: start;">
                         ${userPhoto ? `<img src="${userPhoto}" alt="${user.fullName}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd;">` : '<div style="width: 80px; height: 80px; background: #e0e0e0; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px;">👤</div>'}
                         <div style="flex: 1;">
-                            <h4>${user.fullName} (${user.username})</h4>
-                            <p>Role: ${user.role} | Primary Branch: ${branchName}</p>
-                            <p>All Branches: ${branchNames}</p>
-                            <p>Email: ${user.email || 'Not provided'} | Phone: ${user.phone || 'Not provided'}</p>
-                            <div style="margin-top: 10px;">
-                                ${user.username !== 'admin' ? `
-                                    <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="margin-right: 10px;">Edit Branches</button>
-                                    <button class="btn btn-danger" onclick="deleteUser('${user.id}')">Delete</button>
-                                ` : '<p style="color: #27ae60;">Protected</p>'}
+                    <h4>${user.fullName} (${user.username})</h4>
+                    <p>Role: ${user.role} | Primary Branch: ${branchName}</p>
+                    <p>All Branches: ${branchNames}</p>
+                    <p>Email: ${user.email || 'Not provided'} | Phone: ${user.phone || 'Not provided'}</p>
+                    <div style="margin-top: 10px;">
+                        ${user.username !== 'admin' ? `
+                            <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="margin-right: 10px;">Edit Branches</button>
+                            <button class="btn btn-danger" onclick="deleteUser('${user.id}')">Delete</button>
+                        ` : '<p style="color: #27ae60;">Protected</p>'}
                             </div>
                         </div>
                     </div>
@@ -31398,8 +32587,8 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             shopProductsGrid.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">Loading products...</p>';
             
             // Get effective customer type
-            const selectedType = document.getElementById('shopCustomerType')?.value || '';
-            const effectiveType = shopCustomerTypeSelected ? (previousCustomerType || selectedType || 'customer') : 'distributor';
+                const selectedType = document.getElementById('shopCustomerType')?.value || '';
+                const effectiveType = shopCustomerTypeSelected ? (previousCustomerType || selectedType || 'customer') : 'distributor';
             
             // Generate HTML for all products using async function
             const productsHTML = await Promise.all(products.map(async (product) => {
@@ -32189,11 +33378,18 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             });
             
             document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
             
             const tabMap = {
                 'pending': 'pendingOrders',
                 'appointments': 'frontdeskAppointments',
+                'clientRegistration': 'frontdeskClientRegistration',
+                'payments': 'frontdeskPayments',
+                'clientLookup': 'frontdeskClientLookup',
+                'delivery': 'frontdeskDelivery',
+                'visitors': 'frontdeskVisitors',
                 'processing': 'processingOrders',
                 'shipped': 'shippedOrders',
                 'delivered': 'deliveredOrders',
@@ -32213,6 +33409,16 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 refreshPendingOrders();
             } else if (tabName === 'appointments') {
                 refreshFrontdeskAppointments();
+            } else if (tabName === 'clientRegistration') {
+                // Initialize client registration tab
+            } else if (tabName === 'payments') {
+                refreshFrontDeskPayments();
+            } else if (tabName === 'clientLookup') {
+                // Initialize client lookup tab
+            } else if (tabName === 'delivery') {
+                refreshDeliveries();
+            } else if (tabName === 'visitors') {
+                refreshVisitors();
             } else if (tabName === 'processing') {
                 refreshProcessingOrders();
             } else if (tabName === 'shipped') {
@@ -32684,6 +33890,514 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 if (actions.includes('send_email')) console.log('[CRM WF] Sending Email for new lead');
                 if (actions.includes('create_task')) console.log('[CRM WF] Creating Follow-up Task for new lead');
             } catch(e) {}
+        };
+        
+        // ==========================
+        // Front Desk New Tab Functions
+        // ==========================
+        
+        // Client Registration Functions
+        function registerFrontDeskClient() {
+            const name = document.getElementById('fdClientName')?.value?.trim();
+            const phone = document.getElementById('fdClientPhone')?.value?.trim();
+            const email = document.getElementById('fdClientEmail')?.value?.trim();
+            const dob = document.getElementById('fdClientDOB')?.value;
+            const idNumber = document.getElementById('fdClientID')?.value?.trim();
+            const address = document.getElementById('fdClientAddress')?.value?.trim();
+            const referral = document.getElementById('fdClientReferral')?.value?.trim().toUpperCase();
+            
+            if (!name || !phone) {
+                alert('Please enter full name and phone number');
+                return;
+            }
+            
+            // Check if client already exists
+            const existingClients = JSON.parse(localStorage.getItem('dyna_clients') || '[]');
+            const existing = existingClients.find(c => 
+                (c.phone === phone) || (c.fullName?.toLowerCase() === name.toLowerCase())
+            );
+            
+            if (existing) {
+                if (confirm('Client already exists. Do you want to update their information?')) {
+                    existing.fullName = name;
+                    existing.email = email || existing.email;
+                    existing.dob = dob || existing.dob;
+                    existing.idNumber = idNumber || existing.idNumber;
+                    existing.address = address || existing.address;
+                    existing.referralNbNumber = referral || existing.referralNbNumber;
+                    existing.updatedAt = new Date().toISOString();
+                    localStorage.setItem('dyna_clients', JSON.stringify(existingClients));
+                    document.getElementById('fdClientRegistrationResult').innerHTML = 
+                        '<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;">✅ Client information updated successfully!</div>';
+                    clearFrontDeskClientForm();
+                    return;
+                } else {
+                    return;
+                }
+            }
+            
+            const newClient = {
+                id: 'CLI-' + Date.now(),
+                fullName: name,
+                phone: phone,
+                email: email || '',
+                dob: dob || '',
+                idNumber: idNumber || '',
+                address: address || '',
+                referralNbNumber: referral || '',
+                createdAt: new Date().toISOString(),
+                branch: (currentUser && currentUser.branch) || currentBranch || ''
+            };
+            
+            existingClients.push(newClient);
+            localStorage.setItem('dyna_clients', JSON.stringify(existingClients));
+            document.getElementById('fdClientRegistrationResult').innerHTML = 
+                '<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;">✅ Client registered successfully! Client ID: ' + newClient.id + '</div>';
+            clearFrontDeskClientForm();
+            try { recordDepartmentEvent && recordDepartmentEvent('client_registered', newClient); } catch (e) {}
+        }
+        
+        function checkExistingClient() {
+            const phone = document.getElementById('fdClientPhone')?.value?.trim();
+            const name = document.getElementById('fdClientName')?.value?.trim();
+            
+            if (!phone && !name) {
+                alert('Please enter phone number or name to search');
+                return;
+            }
+            
+            const clients = JSON.parse(localStorage.getItem('dyna_clients') || '[]');
+            const found = clients.find(c => 
+                (phone && c.phone === phone) || (name && c.fullName?.toLowerCase().includes(name.toLowerCase()))
+            );
+            
+            if (found) {
+                document.getElementById('fdClientRegistrationResult').innerHTML = 
+                    `<div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px;">
+                        <strong>Client Found:</strong><br>
+                        Name: ${found.fullName}<br>
+                        Phone: ${found.phone}<br>
+                        Email: ${found.email || 'N/A'}<br>
+                        Client ID: ${found.id}
+                    </div>`;
+            } else {
+                document.getElementById('fdClientRegistrationResult').innerHTML = 
+                    '<div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px;">❌ Client not found. You can proceed with registration.</div>';
+            }
+        }
+        
+        function clearFrontDeskClientForm() {
+            document.getElementById('fdClientName').value = '';
+            document.getElementById('fdClientPhone').value = '';
+            document.getElementById('fdClientEmail').value = '';
+            document.getElementById('fdClientDOB').value = '';
+            document.getElementById('fdClientID').value = '';
+            document.getElementById('fdClientAddress').value = '';
+            document.getElementById('fdClientReferral').value = '';
+        }
+        
+        // Payment Collection Functions
+        function lookupOrderForPayment() {
+            const orderID = document.getElementById('fdPaymentOrderID')?.value?.trim();
+            if (!orderID) {
+                alert('Please enter an Order ID');
+                return;
+            }
+            
+            const orders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+            const order = orders.find(o => o.id === orderID);
+            
+            if (order) {
+                document.getElementById('fdPaymentCustomer').value = order.customerName || '';
+                document.getElementById('fdPaymentAmount').value = order.total || 0;
+            } else {
+                // Try to find in walk-in sales
+                const sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+                const sale = sales.find(s => s.id === orderID || s.invoiceNumber === orderID);
+                if (sale) {
+                    document.getElementById('fdPaymentCustomer').value = sale.customerName || '';
+                    document.getElementById('fdPaymentAmount').value = sale.total || 0;
+                } else {
+                    alert('Order not found');
+                }
+            }
+        }
+        
+        function processFrontDeskPayment() {
+            const orderID = document.getElementById('fdPaymentOrderID')?.value?.trim();
+            const method = document.getElementById('fdPaymentMethod')?.value;
+            const amountPaid = parseFloat(document.getElementById('fdPaymentPaid')?.value || 0);
+            const reference = document.getElementById('fdPaymentReference')?.value?.trim();
+            
+            if (!orderID || !method || !amountPaid) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            const orders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+            const order = orders.find(o => o.id === orderID);
+            
+            if (order) {
+                order.paymentStatus = 'paid';
+                order.paymentMethod = method;
+                order.paymentAmount = amountPaid;
+                order.paymentReference = reference;
+                order.paymentDate = new Date().toISOString();
+                order.status = 'paid';
+                localStorage.setItem('dyna_online_orders', JSON.stringify(orders));
+                
+                document.getElementById('fdPaymentResult').innerHTML = 
+                    '<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;">✅ Payment processed successfully!</div>';
+                clearPaymentForm();
+                refreshFrontDeskPayments();
+                try { recordDepartmentEvent && recordDepartmentEvent('payment_collected', { orderID, method, amount: amountPaid }); } catch (e) {}
+            } else {
+                alert('Order not found');
+            }
+        }
+        
+        function clearPaymentForm() {
+            document.getElementById('fdPaymentOrderID').value = '';
+            document.getElementById('fdPaymentCustomer').value = '';
+            document.getElementById('fdPaymentAmount').value = '';
+            document.getElementById('fdPaymentMethod').value = '';
+            document.getElementById('fdPaymentPaid').value = '';
+            document.getElementById('fdPaymentReference').value = '';
+        }
+        
+        function refreshFrontDeskPayments() {
+            const container = document.getElementById('fdPaymentsList');
+            if (!container) return;
+            
+            const orders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+            const sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+            const allPayments = [
+                ...orders.filter(o => o.paymentStatus === 'paid').map(o => ({
+                    id: o.id,
+                    customer: o.customerName,
+                    amount: o.paymentAmount || o.total,
+                    method: o.paymentMethod,
+                    date: o.paymentDate || o.date,
+                    type: 'Online Order'
+                })),
+                ...sales.filter(s => s.paymentStatus === 'paid' || s.paid).map(s => ({
+                    id: s.id || s.invoiceNumber,
+                    customer: s.customerName,
+                    amount: s.total || s.amountPaid,
+                    method: s.paymentMethod || 'cash',
+                    date: s.timestamp || s.date,
+                    type: 'Walk-in Sale'
+                }))
+            ].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            if (allPayments.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No payments found</p>';
+                return;
+            }
+            
+            container.innerHTML = allPayments.slice(0, 50).map(p => `
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong>${p.customer}</strong><br>
+                            <small style="color: #666;">${p.id} - ${p.type}</small><br>
+                            <small style="color: #666;">${new Date(p.date).toLocaleDateString()}</small>
+                        </div>
+                        <div style="text-align: right;">
+                            <strong style="color: #27ae60;">N$ ${parseFloat(p.amount).toFixed(2)}</strong><br>
+                            <small style="color: #666;">${p.method}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Client Lookup Functions
+        function updateLookupFields() {
+            const type = document.getElementById('fdLookupType')?.value;
+            const placeholder = {
+                'name': 'Enter client name',
+                'phone': 'Enter phone number',
+                'email': 'Enter email address',
+                'id': 'Enter ID number',
+                'order': 'Enter Order ID'
+            }[type] || 'Enter search term';
+            document.getElementById('fdLookupTerm').placeholder = placeholder;
+        }
+        
+        function performClientLookup() {
+            const type = document.getElementById('fdLookupType')?.value;
+            const term = document.getElementById('fdLookupTerm')?.value?.trim().toLowerCase();
+            
+            if (!term) {
+                alert('Please enter a search term');
+                return;
+            }
+            
+            const clients = JSON.parse(localStorage.getItem('dyna_clients') || '[]');
+            const orders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+            const sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+            
+            let results = [];
+            
+            if (type === 'name') {
+                results = clients.filter(c => (c.fullName || '').toLowerCase().includes(term));
+            } else if (type === 'phone') {
+                results = clients.filter(c => (c.phone || '').includes(term));
+            } else if (type === 'email') {
+                results = clients.filter(c => (c.email || '').toLowerCase().includes(term));
+            } else if (type === 'id') {
+                results = clients.filter(c => (c.idNumber || '').includes(term));
+            } else if (type === 'order') {
+                const order = orders.find(o => o.id === term.toUpperCase()) || sales.find(s => s.id === term.toUpperCase() || s.invoiceNumber === term.toUpperCase());
+                if (order) {
+                    results = [order];
+                }
+            }
+            
+            displayLookupResults(results, type);
+        }
+        
+        function displayLookupResults(results, type) {
+            const container = document.getElementById('fdLookupResults');
+            if (!container) return;
+            
+            if (results.length === 0) {
+                container.innerHTML = '<div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; text-align: center;">No results found</div>';
+                return;
+            }
+            
+            if (type === 'order') {
+                const order = results[0];
+                container.innerHTML = `
+                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f8f9fa;">
+                        <h4>Order Information</h4>
+                        <p><strong>Order ID:</strong> ${order.id}</p>
+                        <p><strong>Customer:</strong> ${order.customerName || 'N/A'}</p>
+                        <p><strong>Total:</strong> N$ ${parseFloat(order.total || 0).toFixed(2)}</p>
+                        <p><strong>Status:</strong> ${order.status || 'N/A'}</p>
+                        <p><strong>Date:</strong> ${new Date(order.date || order.timestamp).toLocaleDateString()}</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = results.map(client => `
+                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px; background: white;">
+                        <h4>${client.fullName}</h4>
+                        <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
+                        <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
+                        <p><strong>ID Number:</strong> ${client.idNumber || 'N/A'}</p>
+                        <p><strong>Address:</strong> ${client.address || 'N/A'}</p>
+                        <p><strong>Client ID:</strong> ${client.id}</p>
+                        ${client.referralNbNumber ? `<p><strong>Referral NB:</strong> ${client.referralNbNumber}</p>` : ''}
+                    </div>
+                `).join('');
+            }
+        }
+        
+        function clearLookupResults() {
+            document.getElementById('fdLookupTerm').value = '';
+            document.getElementById('fdLookupResults').innerHTML = '';
+        }
+        
+        // Delivery Scheduling Functions
+        function lookupOrderForDelivery() {
+            lookupOrderForPayment(); // Reuse payment lookup logic
+            const orderID = document.getElementById('fdPaymentOrderID')?.value?.trim();
+            if (orderID) {
+                document.getElementById('fdDeliveryOrderID').value = orderID;
+                const orders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+                const order = orders.find(o => o.id === orderID);
+                if (order) {
+                    document.getElementById('fdDeliveryCustomer').value = order.customerName || '';
+                    document.getElementById('fdDeliveryAddress').value = order.customerAddress || '';
+                    document.getElementById('fdDeliveryPhone').value = order.customerPhone || '';
+                }
+            }
+        }
+        
+        function scheduleDelivery() {
+            const orderID = document.getElementById('fdDeliveryOrderID')?.value?.trim();
+            const date = document.getElementById('fdDeliveryDate')?.value;
+            const time = document.getElementById('fdDeliveryTime')?.value;
+            const method = document.getElementById('fdDeliveryMethod')?.value;
+            const notes = document.getElementById('fdDeliveryNotes')?.value?.trim();
+            
+            if (!orderID || !date) {
+                alert('Please enter Order ID and Delivery Date');
+                return;
+            }
+            
+            const deliveries = JSON.parse(localStorage.getItem('dyna_deliveries') || '[]');
+            const delivery = {
+                id: 'DEL-' + Date.now(),
+                orderID: orderID,
+                customerName: document.getElementById('fdDeliveryCustomer')?.value || '',
+                address: document.getElementById('fdDeliveryAddress')?.value || '',
+                phone: document.getElementById('fdDeliveryPhone')?.value || '',
+                date: date,
+                time: time || '',
+                method: method || 'standard',
+                notes: notes || '',
+                status: 'scheduled',
+                createdAt: new Date().toISOString(),
+                branch: (currentUser && currentUser.branch) || currentBranch || ''
+            };
+            
+            deliveries.push(delivery);
+            localStorage.setItem('dyna_deliveries', JSON.stringify(deliveries));
+            
+            document.getElementById('fdDeliveryResult').innerHTML = 
+                '<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;">✅ Delivery scheduled successfully! Delivery ID: ' + delivery.id + '</div>';
+            clearDeliveryForm();
+            refreshDeliveries();
+            try { recordDepartmentEvent && recordDepartmentEvent('delivery_scheduled', delivery); } catch (e) {}
+        }
+        
+        function clearDeliveryForm() {
+            document.getElementById('fdDeliveryOrderID').value = '';
+            document.getElementById('fdDeliveryCustomer').value = '';
+            document.getElementById('fdDeliveryAddress').value = '';
+            document.getElementById('fdDeliveryDate').value = '';
+            document.getElementById('fdDeliveryTime').value = '';
+            document.getElementById('fdDeliveryMethod').value = 'standard';
+            document.getElementById('fdDeliveryNotes').value = '';
+            document.getElementById('fdDeliveryPhone').value = '';
+        }
+        
+        function refreshDeliveries() {
+            const container = document.getElementById('fdDeliveriesList');
+            if (!container) return;
+            
+            const statusFilter = document.getElementById('fdDeliveryStatusFilter')?.value || 'all';
+            let deliveries = JSON.parse(localStorage.getItem('dyna_deliveries') || '[]');
+            
+            if (statusFilter !== 'all') {
+                deliveries = deliveries.filter(d => d.status === statusFilter);
+            }
+            
+            deliveries.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            if (deliveries.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No deliveries found</p>';
+                return;
+            }
+            
+            container.innerHTML = deliveries.map(d => `
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong>${d.customerName}</strong><br>
+                            <small style="color: #666;">Order: ${d.orderID}</small><br>
+                            <small style="color: #666;">${d.address}</small><br>
+                            <small style="color: #666;">${new Date(d.date).toLocaleDateString()} ${d.time || ''}</small>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="background: ${d.status === 'delivered' ? '#d4edda' : d.status === 'in_transit' ? '#d1ecf1' : '#fff3cd'}; 
+                                       color: ${d.status === 'delivered' ? '#155724' : d.status === 'in_transit' ? '#0c5460' : '#856404'}; 
+                                       padding: 5px 10px; border-radius: 5px; font-size: 0.85rem;">
+                                ${d.status}
+                            </span><br>
+                            <small style="color: #666;">${d.method}</small>
+                        </div>
+                    </div>
+                    ${d.notes ? `<p style="margin-top: 10px; color: #666; font-size: 0.9rem;"><em>${d.notes}</em></p>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        // Visitor Management Functions
+        function registerVisitor() {
+            const name = document.getElementById('fdVisitorName')?.value?.trim();
+            const phone = document.getElementById('fdVisitorPhone')?.value?.trim();
+            const purpose = document.getElementById('fdVisitorPurpose')?.value;
+            const contact = document.getElementById('fdVisitorContact')?.value?.trim();
+            const notes = document.getElementById('fdVisitorNotes')?.value?.trim();
+            
+            if (!name || !purpose) {
+                alert('Please enter visitor name and purpose of visit');
+                return;
+            }
+            
+            const visitors = JSON.parse(localStorage.getItem('dyna_visitors') || '[]');
+            const visitor = {
+                id: 'VIS-' + Date.now(),
+                name: name,
+                phone: phone || '',
+                purpose: purpose,
+                contact: contact || '',
+                notes: notes || '',
+                checkInTime: new Date().toISOString(),
+                checkOutTime: null,
+                status: 'checked_in',
+                branch: (currentUser && currentUser.branch) || currentBranch || ''
+            };
+            
+            visitors.push(visitor);
+            localStorage.setItem('dyna_visitors', JSON.stringify(visitors));
+            
+            document.getElementById('fdVisitorResult').innerHTML = 
+                '<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;">✅ Visitor registered successfully!</div>';
+            clearVisitorForm();
+            refreshVisitors();
+            try { recordDepartmentEvent && recordDepartmentEvent('visitor_registered', visitor); } catch (e) {}
+        }
+        
+        function clearVisitorForm() {
+            document.getElementById('fdVisitorName').value = '';
+            document.getElementById('fdVisitorPhone').value = '';
+            document.getElementById('fdVisitorPurpose').value = '';
+            document.getElementById('fdVisitorContact').value = '';
+            document.getElementById('fdVisitorNotes').value = '';
+        }
+        
+        function refreshVisitors() {
+            const container = document.getElementById('fdVisitorsList');
+            if (!container) return;
+            
+            const searchTerm = (document.getElementById('fdVisitorSearch')?.value || '').toLowerCase();
+            let visitors = JSON.parse(localStorage.getItem('dyna_visitors') || '[]');
+            
+            // Filter by today
+            const today = new Date().toISOString().split('T')[0];
+            visitors = visitors.filter(v => v.checkInTime.startsWith(today));
+            
+            // Filter by search term
+            if (searchTerm) {
+                visitors = visitors.filter(v => 
+                    (v.name || '').toLowerCase().includes(searchTerm) ||
+                    (v.phone || '').includes(searchTerm) ||
+                    (v.purpose || '').toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            visitors.sort((a, b) => new Date(b.checkInTime) - new Date(a.checkInTime));
+            
+            if (visitors.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No visitors found for today</p>';
+                return;
+            }
+            
+            container.innerHTML = visitors.map(v => `
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong>${v.name}</strong><br>
+                            <small style="color: #666;">${v.phone || 'No phone'}</small><br>
+                            <small style="color: #666;">Purpose: ${v.purpose}</small><br>
+                            ${v.contact ? `<small style="color: #666;">Visiting: ${v.contact}</small><br>` : ''}
+                            <small style="color: #666;">${new Date(v.checkInTime).toLocaleTimeString()}</small>
+                        </div>
+                        <div>
+                            <span style="background: ${v.status === 'checked_out' ? '#d4edda' : '#d1ecf1'}; 
+                                       color: ${v.status === 'checked_out' ? '#155724' : '#0c5460'}; 
+                                       padding: 5px 10px; border-radius: 5px; font-size: 0.85rem;">
+                                ${v.status === 'checked_out' ? 'Checked Out' : 'Checked In'}
+                            </span>
+                        </div>
+                    </div>
+                    ${v.notes ? `<p style="margin-top: 10px; color: #666; font-size: 0.9rem;"><em>${v.notes}</em></p>` : ''}
+                </div>
+            `).join('');
         }
 
         // Loyalty (approx using sales and BV)
