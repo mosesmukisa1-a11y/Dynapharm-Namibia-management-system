@@ -9115,6 +9115,27 @@
         </div>
     </div>
 
+    <!-- Reset Password Modal -->
+    <div class="modal" id="resetPasswordModal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('resetPasswordModal')">&times;</span>
+            <h2>Reset User Password</h2>
+            <form id="resetPasswordForm">
+                <input type="hidden" name="userId" id="resetPasswordUserId">
+                <div class="form-group">
+                    <p><strong>User:</strong> <span id="resetPasswordFullName"></span> (<span id="resetPasswordUsername"></span>)</p>
+                </div>
+                <div class="form-group">
+                    <input type="password" name="newPassword" placeholder="New Password" required autocomplete="new-password" minlength="3">
+                </div>
+                <div class="form-group">
+                    <input type="password" name="confirmPassword" placeholder="Confirm New Password" required autocomplete="new-password" minlength="3">
+                </div>
+                <button type="submit" class="btn btn-success">Reset Password</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Report Modal -->
     <div class="modal" id="reportModal">
         <div class="modal-content" style="max-width: 1000px;">
@@ -24771,10 +24792,21 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
             
-            document.getElementById('resetPasswordUserId').value = userId;
-            document.getElementById('resetPasswordUsername').textContent = user.username;
-            document.getElementById('resetPasswordFullName').textContent = user.fullName;
-            document.getElementById('resetPasswordModal').style.display = 'block';
+            const userIdInput = document.getElementById('resetPasswordUserId');
+            const usernameSpan = document.getElementById('resetPasswordUsername');
+            const fullNameSpan = document.getElementById('resetPasswordFullName');
+            const modal = document.getElementById('resetPasswordModal');
+            
+            if (!userIdInput || !usernameSpan || !fullNameSpan || !modal) {
+                console.error('Reset password modal elements not found');
+                alert('Error: Reset password modal not properly initialized');
+                return;
+            }
+            
+            userIdInput.value = userId;
+            usernameSpan.textContent = user.username;
+            fullNameSpan.textContent = user.fullName;
+            modal.style.display = 'block';
         }
 
         async function deleteUser(userId) {
@@ -24980,7 +25012,9 @@ async function reverseLastPrescriptionPayment(reportId){
         });
 
         // Admin Reset Password Form Handler
-        document.getElementById('resetPasswordForm').addEventListener('submit', async function(e) {
+        const resetPasswordForm = document.getElementById('resetPasswordForm');
+        if (resetPasswordForm) {
+            resetPasswordForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             const formData = new FormData(this);
             
@@ -25055,6 +25089,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 alert('Error resetting password. Please try again.');
             }
         });
+        }
 
         async function addBranch() {
             const name = document.getElementById('newBranchName').value;
@@ -27061,6 +27096,14 @@ async function reverseLastPrescriptionPayment(reportId){
             if (!file.name.match(/\.(xlsx|xls|csv)$/)) {
                 statusDiv.innerHTML = '<p style="color: #e74c3c;">⚠️ Please select a CSV (.csv) or Excel (.xlsx, .xls) file</p>';
                 return;
+            }
+            
+            // Load existing distributors before processing upload
+            try {
+                await loadDistributors();
+            } catch (error) {
+                console.warn('Could not load existing distributors, continuing with empty list:', error);
+                distributors = [];
             }
             
             const fileType = file.name.endsWith('.csv') ? 'CSV' : 'Excel';
