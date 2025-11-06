@@ -1,12 +1,26 @@
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
-  const method = req.method;
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-  const productName = searchParams.get('productName');
-
   try {
+    const method = req.method;
+    // Vercel provides req.url as a string, parse it correctly
+    let searchParams;
+    let id, productName;
+    try {
+      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      searchParams = url.searchParams;
+      id = searchParams.get('id');
+      productName = searchParams.get('productName');
+    } catch (urlError) {
+      // Fallback: parse query string manually
+      const urlParts = req.url.split('?');
+      if (urlParts[1]) {
+        const params = new URLSearchParams(urlParts[1]);
+        id = params.get('id');
+        productName = params.get('productName');
+      }
+    }
+
     if (method === 'GET') {
       if (id) {
         // Get single product
@@ -124,7 +138,7 @@ export default async function handler(req, res) {
     if (method === 'DELETE') {
       if (id) {
         // Delete product or image
-        const type = searchParams.get('type');
+        const type = searchParams ? searchParams.get('type') : null;
         if (type === 'image') {
           await remove('product_images', id, 'id');
           await publishRealtimeEvent('product_images', 'delete', { id });
@@ -139,7 +153,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Products API error:', error);
-    return res.status(500).json({ error: error.message });
+    // Return a proper error response
+    const errorMessage = error?.message || 'Internal server error';
+    const errorStack = process.env.NODE_ENV === 'development' ? error?.stack : undefined;
+    return res.status(500).json({ 
+      error: errorMessage,
+      ...(errorStack && { stack: errorStack })
+    });
   }
 }
 

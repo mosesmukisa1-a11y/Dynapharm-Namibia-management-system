@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dynapharm-v2.8';
+const CACHE_NAME = 'dynapharm-v2.9';
 const urlsToCache = [
   './',
   './index.html',
@@ -13,7 +13,24 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        // Cache files individually to handle failures gracefully
+        // If one file fails, others will still be cached
+        return Promise.allSettled(
+          urlsToCache.map(url => 
+            cache.add(url).catch(err => {
+              console.warn(`Failed to cache ${url}:`, err);
+              // Return a resolved promise so Promise.allSettled doesn't fail
+              return null;
+            })
+          )
+        );
+      })
+      .then(() => {
+        console.log('Cache installation complete');
+      })
+      .catch(err => {
+        console.error('Cache installation error:', err);
+        // Don't fail the installation if caching fails
       })
   );
   // Activate new service worker immediately
