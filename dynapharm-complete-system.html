@@ -14193,13 +14193,42 @@
             await loadData();
             
             const list = document.getElementById('clientList');
-            if (clients.length === 0) {
-                list.innerHTML = '<div style="text-align: center; padding: 40px; color: #7f8c8d;"><h3>📋 No clients registered</h3><p>Clients will appear here once they register through the client portal.</p></div>';
+            
+            // Get branch filter value
+            const branchFilter = document.getElementById('consultantBranchFilter')?.value || '';
+            
+            // Populate branch filter dropdown if not already populated
+            const branchFilterSelect = document.getElementById('consultantBranchFilter');
+            if (branchFilterSelect && branchFilterSelect.options.length <= 1) {
+                branchFilterSelect.innerHTML = '<option value="">All Branches</option>';
+                branches.forEach(branch => {
+                    const option = document.createElement('option');
+                    option.value = branch.id || branch.name;
+                    option.textContent = branch.name || branch.id;
+                    branchFilterSelect.appendChild(option);
+                });
+                // Restore selected value
+                if (branchFilter) branchFilterSelect.value = branchFilter;
+            }
+            
+            // Filter clients by branch if filter is selected
+            let filteredClients = clients;
+            if (branchFilter) {
+                filteredClients = clients.filter(client => {
+                    const clientBranch = client.branch;
+                    // Match by branch ID or name
+                    return clientBranch === branchFilter || 
+                           branches.find(b => (b.id === branchFilter || b.name === branchFilter) && (b.id === clientBranch || b.name === clientBranch));
+                });
+            }
+            
+            if (filteredClients.length === 0) {
+                list.innerHTML = `<div style="text-align: center; padding: 40px; color: #7f8c8d;"><h3>📋 No clients found</h3><p>${branchFilter ? 'No clients registered for the selected branch.' : 'Clients will appear here once they register through the client portal.'}</p></div>`;
                 return;
             }
             
             // Sort clients by timestamp - latest first
-            const sortedClients = [...clients].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const sortedClients = [...filteredClients].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             list.innerHTML = '';
             sortedClients.forEach(client => {
@@ -14310,6 +14339,8 @@
 
         function showAllClients(portal) {
             document.getElementById('consultantSearch').value = '';
+            const branchFilter = document.getElementById('consultantBranchFilter');
+            if (branchFilter) branchFilter.value = '';
             displayClients();
         }
 
@@ -38314,9 +38345,18 @@ This sale appears in the Dispenser Portal sales reports.
                     esClients.onmessage = () => {
                         try { if (typeof loadData === 'function') loadData(); } catch(_) {}
                         try { if (typeof displayClients === 'function') displayClients(); } catch(_) {}
+                        // Also refresh front desk appointments when clients are updated
+                        try { if (typeof refreshFrontdeskAppointments === 'function') refreshFrontdeskAppointments(); } catch(_) {}
                     };
                     esClients.onerror = () => { try { esClients.close(); } catch(_) {}; setTimeout(() => { /* reconnect */ try { const _es = new EventSource('/api/realtime_stream?channel=clients'); _es.onmessage = esClients.onmessage; _es.onerror = esClients.onerror; } catch(_) {} }, 3000); };
                 } catch(_) {}
+                
+                // Also listen to window events for client updates
+                window.addEventListener('clients:updated', () => {
+                    try { if (typeof loadData === 'function') loadData(); } catch(_) {}
+                    try { if (typeof displayClients === 'function') displayClients(); } catch(_) {}
+                    try { if (typeof refreshFrontdeskAppointments === 'function') refreshFrontdeskAppointments(); } catch(_) {}
+                });
             } catch (_) {}
         })();
 
