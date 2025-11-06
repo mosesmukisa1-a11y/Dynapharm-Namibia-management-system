@@ -1716,6 +1716,7 @@
         const ROLE_PORTAL_ACCESS = {
             'admin': ['client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock', 'admin'],
             'consultant': ['client', 'frontdesk', 'consultant'],
+            'sales_staff': ['client', 'frontdesk', 'consultant'],
             'dispenser': ['client', 'dispenser', 'frontdesk'],
             'branch_manager': ['client', 'dispenser', 'frontdesk', 'mis'],
             'finance': ['client', 'finance'],
@@ -8775,7 +8776,8 @@
                         </select>
                     </div>
                     <div id="additionalBranches" style="display: none; margin-top: 10px;">
-                        <label>Additional Branches (for Consultants):</label>
+                        <label><strong>Additional Branches (for Consultants & Sales Staff):</strong></label>
+                        <small style="color: #666; display: block; margin-bottom: 8px;">Select additional branches this user can access. The primary branch is already included.</small>
                         <div id="branchCheckboxes" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
                         </div>
                     </div>
@@ -24061,9 +24063,9 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (additionalBranches) additionalBranches.style.display = 'none';
             } else {
                 if (branchSelect) branchSelect.disabled = false;
-                // Check if role is consultant to show additional branches
+                // Check if role is consultant or sales_staff to show additional branches
                 const role = document.querySelector('select[name="role"]')?.value;
-                if (role === 'consultant' && additionalBranches) {
+                if ((role === 'consultant' || role === 'sales_staff') && additionalBranches) {
                     additionalBranches.style.display = 'block';
                 }
             }
@@ -24086,11 +24088,11 @@ async function reverseLastPrescriptionPayment(reportId){
             const roleSelect = document.querySelector('select[name="role"]');
             const additionalBranches = document.getElementById('additionalBranches');
             
-            if (roleSelect.value === 'consultant') {
+            if (roleSelect.value === 'consultant' || roleSelect.value === 'sales_staff') {
                 additionalBranches.style.display = 'block';
             } else {
                 additionalBranches.style.display = 'none';
-                // Clear all checkboxes when not consultant
+                // Clear all checkboxes when not consultant or sales_staff
                 const checkboxes = document.querySelectorAll('input[name="additionalBranches"]');
                 checkboxes.forEach(cb => cb.checked = false);
             }
@@ -24123,7 +24125,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (primaryBranch) {
                     allBranches.push(primaryBranch);
                 }
-            if (formData.get('role') === 'consultant') {
+            if (formData.get('role') === 'consultant' || formData.get('role') === 'sales_staff') {
                 additionalBranches.forEach(branchId => {
                         if (branchId !== primaryBranch && !allBranches.includes(branchId)) {
                         allBranches.push(branchId);
@@ -37382,10 +37384,32 @@ This sale appears in the Dispenser Portal sales reports.
         (function registerPWA() {
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function () {
-                    navigator.serviceWorker.register('./sw.js').then(function (registration) {
-                        console.log('ServiceWorker registered with scope:', registration.scope);
-                    }).catch(function (err) {
-                        console.warn('ServiceWorker registration failed:', err);
+                    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+                        .then(function (registration) {
+                            console.log('ServiceWorker registered with scope:', registration.scope);
+                            // Force immediate update check
+                            registration.update();
+                            
+                            // Listen for updates
+                            registration.addEventListener('updatefound', function() {
+                                const newWorker = registration.installing;
+                                newWorker.addEventListener('statechange', function() {
+                                    if (newWorker.state === 'activated') {
+                                        // New service worker activated, reload to get fresh content
+                                        if (navigator.serviceWorker.controller) {
+                                            window.location.reload();
+                                        }
+                                    }
+                                });
+                            });
+                        })
+                        .catch(function (err) {
+                            console.warn('ServiceWorker registration failed:', err);
+                        });
+                    
+                    // Check if there's a waiting service worker and prompt reload
+                    navigator.serviceWorker.addEventListener('controllerchange', function() {
+                        window.location.reload();
                     });
                 });
             }
