@@ -434,6 +434,49 @@
             <div class="section-header">
                 <h2>🛒 Our Products</h2>
             </div>
+            <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #c41e3a15 0%, #8b000015 100%); border-left: 4px solid var(--brand-color); border-radius: 8px;">
+                <h3 style="color: var(--brand-color); margin-bottom: 10px; font-size: 1.1rem;">🔐 Staff Portal Access</h3>
+                <p style="color: var(--text-dark); margin-bottom: 8px; line-height: 1.6;">
+                    Our comprehensive health management system includes multiple portals for different roles:
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px;">
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>👨‍⚕️ Consultant</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Client reports & consultations</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>💊 Dispenser</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Prescription management</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>🖥️ Front Desk</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Order & appointment management</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>👑 Admin</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">User & system management</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>💰 Finance</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Payment & revenue tracking</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>📊 MIS</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Sales receipts & reporting</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>🏢 HR</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Employee management</span>
+                    </div>
+                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
+                        <strong>📦 Stock</strong><br>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">Inventory management</span>
+                    </div>
+                </div>
+                <p style="margin-top: 12px; color: var(--text-light); font-size: 0.9rem;">
+                    <strong>Click "Login / Register"</strong> above to access your portal. Default admin: <code>admin</code> / <code>admin123</code>
+                </p>
+            </div>
             <input type="text" id="productSearch" class="search-bar" placeholder="Search products..." oninput="filterProducts()">
             <div id="productsContainer" class="products-grid">
                 <div class="loading">
@@ -482,7 +525,8 @@
             
             <div class="modal-tabs">
                 <button class="modal-tab active" onclick="switchModalTab('distributor')">Distributor</button>
-                <button class="modal-tab" onclick="switchModalTab('staff')">Staff</button>
+                <button class="modal-tab" onclick="switchModalTab('staff')">Staff Login</button>
+                <button class="modal-tab" onclick="switchModalTab('admin')">Admin Portal</button>
             </div>
 
             <!-- Distributor Login/Register Form -->
@@ -517,10 +561,60 @@
                     <input type="password" id="staffPassword" placeholder="Enter your password" required>
                     <div class="error-message" id="staffPasswordError"></div>
                 </div>
-                <button class="btn-submit" onclick="handleStaffLogin()">Login</button>
-                <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
-                    Staff accounts are created by administrators. Contact your administrator if you need access.
-                </p>
+                <button class="btn-submit" onclick="handleStaffLogin()">Login to System</button>
+                <div style="margin-top: 15px; padding: 12px; background: var(--bg-light); border-radius: 8px; font-size: 0.85rem;">
+                    <strong style="color: var(--brand-color);">Available Portals:</strong>
+                    <ul style="margin: 8px 0 0 20px; color: var(--text-light); line-height: 1.6;">
+                        <li>👨‍⚕️ Consultant Portal</li>
+                        <li>💊 Dispenser Portal</li>
+                        <li>🖥️ Front Desk Portal</li>
+                        <li>📊 MIS Portal</li>
+                        <li>💰 Finance Portal</li>
+                        <li>🏢 HR Portal</li>
+                        <li>📦 Stock Management</li>
+                        <li>👑 Admin Portal</li>
+                        <li>🏢 GM Portal</li>
+                        <li>👔 Director Portal</li>
+                    </ul>
+                    <p style="margin-top: 10px; color: var(--text-light); font-size: 0.8rem;">
+                        Access depends on your role. Contact administrator for access.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Admin Portal Form -->
+            <div id="admin-form" class="modal-form">
+                <div class="form-group">
+                    <label>Admin Username *</label>
+                    <input type="text" id="adminUsername" placeholder="Enter admin username" required>
+                    <div class="error-message" id="adminUsernameError"></div>
+                </div>
+                <div class="form-group">
+                    <label>Admin Password *</label>
+                    <input type="password" id="adminPassword" placeholder="Enter admin password" required>
+                    <div class="error-message" id="adminPasswordError"></div>
+                </div>
+                <button class="btn-submit" onclick="handleAdminLogin()">Login to Admin Portal</button>
+                <div style="margin-top: 15px; padding: 12px; background: #fff3cd; border-left: 4px solid #f39c12; border-radius: 8px; font-size: 0.85rem;">
+                    <strong style="color: #856404;">Default Admin Credentials:</strong>
+                    <p style="margin: 8px 0; color: #856404;">
+                        Username: <code>admin</code><br>
+                        Password: <code>admin123</code>
+                    </p>
+                    <p style="margin-top: 10px; color: #856404; font-size: 0.8rem;">
+                        ⚠️ Change default password after first login for security.
+                    </p>
+                </div>
+                <div style="margin-top: 15px; padding: 12px; background: var(--bg-light); border-radius: 8px; font-size: 0.85rem;">
+                    <strong style="color: var(--brand-color);">Admin Portal Features:</strong>
+                    <ul style="margin: 8px 0 0 20px; color: var(--text-light); line-height: 1.6;">
+                        <li>👥 User Management (Create/Edit/Delete users)</li>
+                        <li>🏢 Branch Management</li>
+                        <li>🔐 Password Management</li>
+                        <li>📊 System Configuration</li>
+                        <li>🌐 Access to All Portals</li>
+                    </ul>
+                </div>
             </div>
         </div>
           </div>
@@ -562,6 +656,8 @@
             document.getElementById('distributorDOB').value = '';
             document.getElementById('staffUsername').value = '';
             document.getElementById('staffPassword').value = '';
+            document.getElementById('adminUsername').value = '';
+            document.getElementById('adminPassword').value = '';
             // Clear errors
             document.querySelectorAll('.error-message').forEach(el => el.classList.remove('show'));
         }
@@ -742,10 +838,98 @@
                 localStorage.setItem('currentUser', JSON.stringify(user));
                 localStorage.setItem('currentUserRole', user.role || '');
                 
-                // Redirect to main system
-                window.location.href = 'dynapharm-complete-system.html';
+                // Route to appropriate portal based on role
+                const role = (user.role || '').toLowerCase();
+                let redirectUrl = 'dynapharm-complete-system.html';
+                
+                // Role-based portal routing
+                if (role === 'admin') {
+                    redirectUrl = 'dynapharm-complete-system.html#admin'; // Admin portal
+                } else if (role === 'consultant') {
+                    redirectUrl = 'dynapharm-complete-system.html#consultant'; // Consultant portal
+                } else if (role === 'dispenser') {
+                    redirectUrl = 'dynapharm-complete-system.html#dispenser'; // Dispenser portal
+                } else if (role === 'finance' || role === 'finance_manager') {
+                    redirectUrl = 'dynapharm-complete-system.html#finance'; // Finance portal
+                } else if (role === 'hr' || role === 'hr_manager') {
+                    redirectUrl = 'hr-portal.html'; // HR portal
+                } else if (role === 'mis') {
+                    redirectUrl = 'mis-portal.html'; // MIS portal
+                } else if (role === 'gm' || role === 'general_manager') {
+                    redirectUrl = 'gm-portal.html'; // GM portal
+                } else if (role === 'director') {
+                    redirectUrl = 'director-portal.html'; // Director portal
+                } else if (role === 'stock_manager' || role === 'warehouse') {
+                    redirectUrl = 'stock-management-portal.html'; // Stock portal
+                } else {
+                    // Default: main system (will show appropriate portal based on role)
+                    redirectUrl = 'dynapharm-complete-system.html';
+                }
+                
+                // Redirect to appropriate portal
+                window.location.href = redirectUrl;
             } catch (error) {
                 console.error('Login error:', error);
+                errorDiv.textContent = 'An error occurred. Please try again.';
+                errorDiv.classList.add('show');
+            }
+        }
+
+        // Handle Admin Login
+        async function handleAdminLogin() {
+            const username = document.getElementById('adminUsername').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            const errorDiv = document.getElementById('adminPasswordError');
+            
+            // Clear previous errors
+            errorDiv.classList.remove('show');
+            
+            if (!username || !password) {
+                errorDiv.textContent = 'Please enter both username and password';
+                errorDiv.classList.add('show');
+                return;
+            }
+            
+            try {
+                // Try API first (if users are stored in database)
+                try {
+                    const response = await fetch('/api/users');
+                    if (response.ok) {
+                        users = await response.json();
+                    }
+                } catch (e) {
+                    console.debug('Users API not available, trying localStorage');
+                }
+                
+                // Fallback: Load users from localStorage (set by admin)
+                if (users.length === 0) {
+                    const usersData = localStorage.getItem('dyna_users');
+                    if (usersData) {
+                        users = JSON.parse(usersData);
+                    }
+                }
+                
+                // Find matching user (case-insensitive username, exact password)
+                const user = users.find(u => 
+                    (u.username || '').toLowerCase() === username.toLowerCase() && 
+                    (u.password || '') === password &&
+                    (u.role || '').toLowerCase() === 'admin'
+                );
+                
+                if (!user) {
+                    errorDiv.textContent = 'Invalid admin credentials. Please check your username and password.';
+                    errorDiv.classList.add('show');
+                    return;
+                }
+                
+                // Save session
+                localStorage.setItem('currentUser', JSON.stringify(user));
+                localStorage.setItem('currentUserRole', 'admin');
+                
+                // Redirect to admin portal
+                window.location.href = 'dynapharm-complete-system.html#admin';
+            } catch (error) {
+                console.error('Admin login error:', error);
                 errorDiv.textContent = 'An error occurred. Please try again.';
                 errorDiv.classList.add('show');
             }
@@ -897,6 +1081,9 @@
             });
             document.getElementById('staffPassword')?.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') handleStaffLogin();
+            });
+            document.getElementById('adminPassword')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') handleAdminLogin();
             });
         });
     </script>
