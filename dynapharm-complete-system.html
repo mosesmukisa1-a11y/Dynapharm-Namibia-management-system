@@ -5814,6 +5814,481 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Warehouse Distribution Tab -->
+                <div id="warehouseDistributionTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>🏢 Warehouse Distribution - Country Stock to Warehouses</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Distribute stock from Country Stock to Windhoek and Ondangwa warehouses</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                            <!-- Windhoek Warehouse -->
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <h4 style="color: #2196f3; margin-bottom: 15px;">🏢 Windhoek Warehouse</h4>
+                                <form id="transferToWindhoekForm" onsubmit="handleTransferToWindhoek(event)">
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label class="required">Product</label>
+                                            <select id="windhoekProduct" required onchange="updateWindhoekAvailableQuantity()">
+                                                <option value="">Select Product</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Available in Country</label>
+                                            <input type="text" id="windhoekAvailableQty" readonly style="background-color: #f5f5f5; font-weight: bold; color: #27ae60;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="required">Quantity</label>
+                                            <input type="number" id="windhoekQuantity" min="1" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Notes</label>
+                                            <textarea id="windhoekNotes" rows="2" placeholder="Transfer notes..."></textarea>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-success" style="width: 100%;">📤 Transfer to Windhoek</button>
+                                </form>
+                                <div style="margin-top: 15px;">
+                                    <button class="btn btn-info" onclick="displayWindhoekStock()">🔄 View Windhoek Inventory</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Ondangwa Warehouse -->
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <h4 style="color: #ff9800; margin-bottom: 15px;">🏢 Ondangwa Warehouse</h4>
+                                <form id="transferToOndangwaFormNew" onsubmit="handleTransferToOndangwa(event)">
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label class="required">Product</label>
+                                            <select id="ondangwaProductNew" required onchange="updateOndangwaAvailableQuantity()">
+                                                <option value="">Select Product</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Available in Country</label>
+                                            <input type="text" id="ondangwaAvailableQtyNew" readonly style="background-color: #f5f5f5; font-weight: bold; color: #27ae60;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="required">Quantity</label>
+                                            <input type="number" id="ondangwaQuantityNew" min="1" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Notes</label>
+                                            <textarea id="ondangwaNotesNew" rows="2" placeholder="Transfer notes..."></textarea>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-success" style="width: 100%;">📤 Transfer to Ondangwa</button>
+                                </form>
+                                <div style="margin-top: 15px;">
+                                    <button class="btn btn-info" onclick="displayOndangwaStock()">🔄 View Ondangwa Inventory</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>📦 Warehouse Inventory Summary</h3>
+                        <div id="warehouseInventorySummary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                            <div id="windhoekInventorySummary" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                                <h4>Windhoek Warehouse</h4>
+                                <p style="color: #7f8c8d;">Loading...</p>
+                            </div>
+                            <div id="ondangwaInventorySummary" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                                <h4>Ondangwa Warehouse</h4>
+                                <p style="color: #7f8c8d;">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Branch Distribution Tab -->
+                <div id="branchDistributionTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>🏬 Branch Distribution - Warehouse to Branches</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Distribute stock from warehouses to branches based on requests and replenishment needs</p>
+                        
+                        <form id="branchDistributionForm" onsubmit="handleBranchDistribution(event)" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="required">Source Warehouse</label>
+                                    <select id="branchDistSourceWarehouse" required>
+                                        <option value="">Select Warehouse</option>
+                                        <option value="windhoek">Windhoek Warehouse</option>
+                                        <option value="ondangwa">Ondangwa Warehouse</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">Destination Branch</label>
+                                    <select id="branchDistDestination" required>
+                                        <option value="">Select Branch</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">Product</label>
+                                    <select id="branchDistProduct" required onchange="updateBranchDistAvailableQty()">
+                                        <option value="">Select Product</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Available in Warehouse</label>
+                                    <input type="text" id="branchDistAvailableQty" readonly style="background-color: #f5f5f5; font-weight: bold; color: #27ae60;">
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">Quantity</label>
+                                    <input type="number" id="branchDistQuantity" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Priority</label>
+                                    <select id="branchDistPriority">
+                                        <option value="normal">Normal</option>
+                                        <option value="urgent">Urgent</option>
+                                        <option value="low">Low</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>Notes</label>
+                                    <textarea id="branchDistNotes" rows="2" placeholder="Distribution notes..."></textarea>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success" style="width: 100%;">📤 Distribute to Branch</button>
+                        </form>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>📋 Pending Branch Requests</h3>
+                        <div id="pendingBranchRequests" style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                            <p style="text-align: center; color: #7f8c8d;">Loading requests...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>📊 Distribution History</h3>
+                        <div id="branchDistributionHistory" style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                            <p style="text-align: center; color: #7f8c8d;">Loading history...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Transfers Tab -->
+                <div id="transfersTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>🔄 Stock Transfers - Inter-Location Transfers</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Manage transfers between branches, warehouses, and other locations</p>
+                        
+                        <form id="stockTransferForm" onsubmit="handleStockTransfer(event)" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="required">From Location</label>
+                                    <select id="transferFromLocation" required onchange="loadTransferFromProducts()">
+                                        <option value="">Select Source</option>
+                                        <option value="country">Country Stock</option>
+                                        <option value="windhoek">Windhoek Warehouse</option>
+                                        <option value="ondangwa">Ondangwa Warehouse</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">To Location</label>
+                                    <select id="transferToLocation" required>
+                                        <option value="">Select Destination</option>
+                                        <option value="windhoek">Windhoek Warehouse</option>
+                                        <option value="ondangwa">Ondangwa Warehouse</option>
+                                        <option value="branch">Branch (select below)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="transferBranchSelect" style="display: none;">
+                                    <label>Select Branch</label>
+                                    <select id="transferBranch">
+                                        <option value="">Select Branch</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">Product</label>
+                                    <select id="transferProduct" required onchange="updateTransferAvailableQty()">
+                                        <option value="">Select Product</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Available Quantity</label>
+                                    <input type="text" id="transferAvailableQty" readonly style="background-color: #f5f5f5; font-weight: bold; color: #27ae60;">
+                                </div>
+                                <div class="form-group">
+                                    <label class="required">Quantity</label>
+                                    <input type="number" id="transferQuantity" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Reason</label>
+                                    <select id="transferReason">
+                                        <option value="replenishment">Replenishment</option>
+                                        <option value="adjustment">Stock Adjustment</option>
+                                        <option value="emergency">Emergency</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>Notes</label>
+                                    <textarea id="transferNotes" rows="2" placeholder="Transfer notes..."></textarea>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success" style="width: 100%;">🔄 Create Transfer</button>
+                        </form>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>📋 Active Transfers</h3>
+                        <div class="search-box" style="margin-bottom: 15px;">
+                            <select id="transferStatusFilter" onchange="loadStockTransfers()">
+                                <option value="all">All Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="in_transit">In Transit</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                            <button class="btn btn-info" onclick="loadStockTransfers()">🔄 Refresh</button>
+                        </div>
+                        <div id="activeTransfersList" style="max-height: 500px; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                            <p style="text-align: center; color: #7f8c8d;">Loading transfers...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Shop & Warehouse Sharing Tab -->
+                <div id="sharingTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>🤝 Shop & Warehouse Sharing</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Enable sharing of stock visibility and cross-location access between shops and warehouses</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                            <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; border: 1px solid #2196f3;">
+                                <h4 style="color: #1976d2; margin-bottom: 15px;">🏬 Shop Visibility</h4>
+                                <p style="margin-bottom: 15px; color: #666;">Configure which shops can view warehouse inventory</p>
+                                <div id="shopVisibilityList" style="max-height: 300px; overflow-y: auto;">
+                                    <p style="color: #7f8c8d; text-align: center;">Loading shop visibility settings...</p>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #fff3e0; padding: 20px; border-radius: 8px; border: 1px solid #ff9800;">
+                                <h4 style="color: #f57c00; margin-bottom: 15px;">🏢 Warehouse Sharing</h4>
+                                <p style="margin-bottom: 15px; color: #666;">Configure cross-warehouse stock visibility and sharing</p>
+                                <div id="warehouseSharingList" style="max-height: 300px; overflow-y: auto;">
+                                    <p style="color: #7f8c8d; text-align: center;">Loading warehouse sharing settings...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>➕ Add Sharing Rule</h4>
+                            <form id="sharingRuleForm" onsubmit="handleSharingRule(event)" style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label class="required">From Location</label>
+                                        <select id="sharingFrom" required>
+                                            <option value="">Select Location</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="required">To Location</label>
+                                        <select id="sharingTo" required>
+                                            <option value="">Select Location</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="required">Access Level</label>
+                                        <select id="sharingAccessLevel" required>
+                                            <option value="view">View Only</option>
+                                            <option value="request">Can Request</option>
+                                            <option value="transfer">Can Transfer</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Status</label>
+                                        <select id="sharingStatus">
+                                            <option value="active">Active</option>
+                                            <option value="inactive">Inactive</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-success">➕ Add Sharing Rule</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Orders Tab (Auto & Manual) -->
+                <div id="ordersTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>📋 Orders - Automatic & Manual</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Manage automatic reorder triggers and manual purchase orders</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+                            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; border: 1px solid #4caf50;">
+                                <h4 style="color: #2e7d32; margin-bottom: 15px;">🤖 Automatic Orders</h4>
+                                <p style="margin-bottom: 15px; color: #666;">Orders triggered by reorder points and low stock alerts</p>
+                                <div id="automaticOrdersList" style="max-height: 400px; overflow-y: auto;">
+                                    <p style="color: #7f8c8d; text-align: center;">Loading automatic orders...</p>
+                                </div>
+                                <button class="btn btn-info" onclick="refreshAutomaticOrders()" style="width: 100%; margin-top: 15px;">🔄 Refresh</button>
+                            </div>
+                            
+                            <div style="background: #fff3e0; padding: 20px; border-radius: 8px; border: 1px solid #ff9800;">
+                                <h4 style="color: #f57c00; margin-bottom: 15px;">✋ Manual Orders</h4>
+                                <p style="margin-bottom: 15px; color: #666;">Manually created purchase orders and special requests</p>
+                                <div id="manualOrdersList" style="max-height: 400px; overflow-y: auto;">
+                                    <p style="color: #7f8c8d; text-align: center;">Loading manual orders...</p>
+                                </div>
+                                <button class="btn btn-success" onclick="showCreateManualOrder()" style="width: 100%; margin-top: 15px;">➕ Create Manual Order</button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>⚙️ Automatic Order Settings</h4>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>Enable Auto-Orders</label>
+                                        <input type="checkbox" id="autoOrdersEnabled" checked>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Reorder Point Threshold (%)</label>
+                                        <input type="number" id="reorderThreshold" value="20" min="0" max="100">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Auto-Order Frequency</label>
+                                        <select id="autoOrderFrequency">
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly" selected>Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Require Approval</label>
+                                        <input type="checkbox" id="requireOrderApproval">
+                                    </div>
+                                </div>
+                                <button class="btn btn-success" onclick="saveAutoOrderSettings()">💾 Save Settings</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Country Inventory Tab -->
+                <div id="countryInventoryTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>🌍 Country-Wide Inventory Dashboard</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Comprehensive view of all inventory across country stock, warehouses, and branches</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Country Stock Value</div>
+                                <div id="countryTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white; padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Warehouse Stock</div>
+                                <div id="warehouseTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Branch Stock</div>
+                                <div id="branchTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #ffa726, #fb8c00); color: white; padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Products</div>
+                                <div id="countryTotalProducts" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>📊 Inventory by Location</h4>
+                            <div class="search-box" style="margin-bottom: 15px;">
+                                <select id="countryInvLocationFilter" onchange="displayCountryStockInventory()">
+                                    <option value="all">All Locations</option>
+                                    <option value="country">Country Stock</option>
+                                    <option value="windhoek">Windhoek Warehouse</option>
+                                    <option value="ondangwa">Ondangwa Warehouse</option>
+                                    <option value="branches">All Branches</option>
+                                </select>
+                                <select id="countryInvProductFilter" onchange="displayCountryStockInventory()">
+                                    <option value="all">All Products</option>
+                                </select>
+                                <button class="btn btn-success" onclick="displayCountryStockInventory()">🔄 Refresh</button>
+                                <button class="btn btn-primary" onclick="exportCountryInventory()">📥 Export Report</button>
+                            </div>
+                            <div id="countryInventoryTable" style="max-height: 600px; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                                <p style="text-align: center; color: #7f8c8d;">Loading inventory...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Real-time Sync Tab -->
+                <div id="realtimeTab" class="stock-tab-content" style="display: none;">
+                    <div class="form-section">
+                        <h3>⚡ Real-time Information Sharing</h3>
+                        <p style="margin-bottom: 15px; color: #666;">Monitor real-time synchronization between stock, branch, and other portals</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; border: 1px solid #4caf50;">
+                                <h4 style="color: #2e7d32; margin-bottom: 15px;">🔄 Sync Status</h4>
+                                <div id="syncStatusCards" style="display: grid; gap: 10px;">
+                                    <div style="background: white; padding: 15px; border-radius: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span>Stock Portal</span>
+                                            <span id="syncStockPortal" class="pill good">🟢 Connected</span>
+                                        </div>
+                                    </div>
+                                    <div style="background: white; padding: 15px; border-radius: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span>Branch Portal</span>
+                                            <span id="syncBranchPortal" class="pill good">🟢 Connected</span>
+                                        </div>
+                                    </div>
+                                    <div style="background: white; padding: 15px; border-radius: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span>GM Portal</span>
+                                            <span id="syncGMPortal" class="pill good">🟢 Connected</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #fff3e0; padding: 20px; border-radius: 8px; border: 1px solid #ff9800;">
+                                <h4 style="color: #f57c00; margin-bottom: 15px;">📡 Recent Sync Events</h4>
+                                <div id="realtimeSyncEvents" style="max-height: 300px; overflow-y: auto;">
+                                    <p style="color: #7f8c8d; text-align: center;">Loading sync events...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>⚙️ Sync Configuration</h4>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>Sync Frequency</label>
+                                        <select id="syncFrequency">
+                                            <option value="realtime" selected>Real-time</option>
+                                            <option value="1min">Every 1 minute</option>
+                                            <option value="5min">Every 5 minutes</option>
+                                            <option value="15min">Every 15 minutes</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Auto-Sync Enabled</label>
+                                        <input type="checkbox" id="autoSyncEnabled" checked>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sync Stock Changes</label>
+                                        <input type="checkbox" id="syncStockChanges" checked>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sync Order Changes</label>
+                                        <input type="checkbox" id="syncOrderChanges" checked>
+                                    </div>
+                                </div>
+                                <button class="btn btn-success" onclick="saveSyncSettings()">💾 Save Settings</button>
+                                <button class="btn btn-info" onclick="testSyncConnection()" style="margin-left: 10px;">🔍 Test Connection</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -7309,7 +7784,15 @@
             
             <!-- Live Per-Branch Metrics Dashboard -->
             <div class="form-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                <h3 style="color: white; border-bottom: 2px solid white;">📊 Live Financial Metrics (Today)</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="color: white; border-bottom: 2px solid white; margin: 0;">📊 Live Financial Metrics (Today)</h3>
+                    <select id="financeComparisonPeriod" onchange="refreshFinancialDashboard()" style="padding: 8px 12px; border: 2px solid white; border-radius: 6px; background: rgba(255,255,255,0.2); color: white;">
+                        <option value="none">No Comparison</option>
+                        <option value="yesterday">vs Yesterday</option>
+                        <option value="lastWeek">vs Last Week</option>
+                        <option value="lastMonth">vs Last Month</option>
+                    </select>
+                </div>
                 
                 <!-- Top Level Metrics -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 20px;">
@@ -28230,16 +28713,63 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
         
-        // Show stock tab
+        // Show stock tab - Updated for modern comprehensive structure
         function showStockTab(tabName) {
             document.querySelectorAll('.stock-tab-content').forEach(t => t.style.display = 'none');
             document.querySelectorAll('#stock .tabs button').forEach(b => b.classList.remove('active'));
             
-            document.getElementById(tabName + 'Tab').style.display = 'block';
-            event.target.classList.add('active');
+            const tabElement = document.getElementById(tabName + 'Tab');
+            if (tabElement) {
+                tabElement.style.display = 'block';
+            }
+            
+            // Update active button
+            const button = document.getElementById('stockTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+            if (button) button.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
             
             // Load data when switching tabs
-            if (tabName === 'dashboard') {
+            if (tabName === 'overview') {
+                refreshStockOverview();
+            }
+            else if (tabName === 'countryImport') {
+                renderASNList();
+                renderQualityList();
+                displayCountryStock();
+            }
+            else if (tabName === 'warehouseDistribution') {
+                // Combine windhoek and ondangwa functionality
+                renderPutawayQueue();
+                renderWarehouseCapacity();
+                displayWindhoekStock();
+                displayOndangwaStock();
+                loadWindhoekProducts();
+                loadOndangwaProducts();
+            }
+            else if (tabName === 'branchDistribution') {
+                // Use distribution tab functionality
+                renderReplenishmentSuggestions();
+                renderBranchRequestList();
+                renderRouteBoard();
+                displayDistributionHistory();
+            }
+            else if (tabName === 'transfers') {
+                loadStockTransfers();
+            }
+            else if (tabName === 'sharing') {
+                loadShopWarehouseSharing();
+            }
+            else if (tabName === 'orders') {
+                loadStockOrders();
+            }
+            else if (tabName === 'countryInventory') {
+                displayCountryStockInventory();
+            }
+            else if (tabName === 'realtime') {
+                loadRealtimeSyncStatus();
+            }
+            // Legacy tab support
+            else if (tabName === 'dashboard') {
                 renderForecastList();
                 renderPurchaseOrders();
                 renderSupplierScorecard();
@@ -28254,7 +28784,6 @@ async function reverseLastPrescriptionPayment(reportId){
                 renderPutawayQueue();
                 renderWarehouseCapacity();
                 displayWindhoekStock();
-                displayOndangwaStock();
                 loadWindhoekProducts();
             }
             else if (tabName === 'ondangwa') {
