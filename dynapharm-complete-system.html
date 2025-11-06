@@ -4490,6 +4490,9 @@
                 
                 <div class="search-box">
                     <input type="text" id="consultantSearch" placeholder="Search client by name, phone, or reference number...">
+                    <select id="consultantBranchFilter" style="padding: 10px; margin-right: 10px; border: 2px solid #ddd; border-radius: 6px;" onchange="displayClients()">
+                        <option value="">All Branches</option>
+                    </select>
                     <button class="btn" onclick="searchClients('consultant')">🔍 Search</button>
                     <button class="btn btn-info" onclick="showAllClients('consultant')">📋 Show All Clients</button>
                     <button class="btn btn-success" onclick="refreshConsultantData()">🔄 Refresh Data</button>
@@ -25528,71 +25531,84 @@ async function reverseLastPrescriptionPayment(reportId){
         // Initialize IndexedDB
         function initDistributorsDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open(dbName, dbVersion);
-                
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => {
-                    db = request.result;
-                    // Verify the store exists, if not, force upgrade by reopening with higher version
-                    if (!db.objectStoreNames.contains(storeName)) {
-                        console.warn('Distributors store not found, forcing upgrade...');
-                        db.close();
-                        // Force upgrade by opening with a higher version
-                        const forceUpgradeVersion = dbVersion + 1;
-                        const upgradeRequest = indexedDB.open(dbName, forceUpgradeVersion);
-                        upgradeRequest.onerror = () => reject(upgradeRequest.error);
-                        upgradeRequest.onsuccess = () => {
-                            db = upgradeRequest.result;
-                            resolve(db);
-                        };
-                        upgradeRequest.onupgradeneeded = (event) => {
-                            const upgradeDb = event.target.result;
-                            // Preserve existing stores and add distributors store
-                            if (!upgradeDb.objectStoreNames.contains('clients')) {
-                                const clientsStore = upgradeDb.createObjectStore('clients', { keyPath: 'referenceNumber' });
-                                try { clientsStore.createIndex('fullName', 'fullName', { unique: false }); } catch(_){}
-                                try { clientsStore.createIndex('phone', 'phone', { unique: false }); } catch(_){}
-                                try { clientsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
-                            }
-                            if (!upgradeDb.objectStoreNames.contains('stockMovements')) {
-                                const movementsStore = upgradeDb.createObjectStore('stockMovements', { keyPath: 'id' });
-                                try { movementsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
-                                try { movementsStore.createIndex('branchId', 'branchId', { unique: false }); } catch(_){}
-                                try { movementsStore.createIndex('type', 'type', { unique: false }); } catch(_){}
-                            }
-                            if (!upgradeDb.objectStoreNames.contains(storeName)) {
-                                const objectStore = upgradeDb.createObjectStore(storeName, { keyPath: 'id' });
-                                objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
-                                objectStore.createIndex('distributorName', 'distributorName', { unique: false });
-                            }
-                        };
-                        return;
-                    }
-                    resolve(db);
-                };
-                
-                request.onupgradeneeded = (event) => {
-                    db = event.target.result;
-                    const oldVersion = event.oldVersion || 0;
+                // First check current database state
+                const checkRequest = indexedDB.open(dbName);
+                checkRequest.onerror = () => reject(checkRequest.error);
+                checkRequest.onsuccess = () => {
+                    const checkDb = checkRequest.result;
+                    const currentVersion = checkDb.version;
+                    const storeExists = checkDb.objectStoreNames.contains(storeName);
+                    checkDb.close();
                     
-                    // Create object store if it doesn't exist
-                    if (!db.objectStoreNames.contains(storeName)) {
-                        const objectStore = db.createObjectStore(storeName, { keyPath: 'id' });
-                        objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
-                        objectStore.createIndex('distributorName', 'distributorName', { unique: false });
-                    } else {
-                        // If store exists, ensure indexes are present
-                        const transaction = event.target.transaction;
-                        const objectStore = transaction.objectStore(storeName);
-                        
-                        // Check and create indexes if they don't exist
-                        if (!objectStore.indexNames.contains('distributorCode')) {
-                            objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
-                        }
-                        if (!objectStore.indexNames.contains('distributorName')) {
-                            objectStore.createIndex('distributorName', 'distributorName', { unique: false });
-                        }
+                    // Determine what version to open with
+                    let targetVersion = dbVersion;
+                    if (!storeExists && currentVersion >= dbVersion) {
+                        // Database is at correct version but store is missing - need to force upgrade
+                        targetVersion = currentVersion + 1;
+                        console.log(`Store missing at version ${currentVersion}, upgrading to ${targetVersion}`);
+                    } else if (currentVersion < dbVersion) {
+                        // Database needs upgrade
+                        targetVersion = dbVersion;
+                        console.log(`Upgrading database from ${currentVersion} to ${targetVersion}`);
                     }
+                    
+                    // Open database with target version
+                    const request = indexedDB.open(dbName, targetVersion);
+                    
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => {
+                        db = request.result;
+                        // Final verification
+                        if (!db.objectStoreNames.contains(storeName)) {
+                            reject(new Error('Distributors store was not created. Please refresh the page.'));
+                            return;
+                        }
+                        console.log('✅ Distributors database initialized successfully');
+                        resolve(db);
+                    };
+                    
+                    request.onupgradeneeded = (event) => {
+                        const upgradeDb = event.target.result;
+                        console.log(`Database upgrade: ${event.oldVersion} → ${targetVersion}`);
+                        
+                        // Preserve existing stores (clients and stockMovements)
+                        if (!upgradeDb.objectStoreNames.contains('clients')) {
+                            const clientsStore = upgradeDb.createObjectStore('clients', { keyPath: 'referenceNumber' });
+                            try { clientsStore.createIndex('fullName', 'fullName', { unique: false }); } catch(_){}
+                            try { clientsStore.createIndex('phone', 'phone', { unique: false }); } catch(_){}
+                            try { clientsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
+                        }
+                        if (!upgradeDb.objectStoreNames.contains('stockMovements')) {
+                            const movementsStore = upgradeDb.createObjectStore('stockMovements', { keyPath: 'id' });
+                            try { movementsStore.createIndex('createdAt', 'createdAt', { unique: false }); } catch(_){}
+                            try { movementsStore.createIndex('branchId', 'branchId', { unique: false }); } catch(_){}
+                            try { movementsStore.createIndex('type', 'type', { unique: false }); } catch(_){}
+                        }
+                        
+                        // Create distributors store if it doesn't exist
+                        if (!upgradeDb.objectStoreNames.contains(storeName)) {
+                            console.log('Creating distributors object store...');
+                            const objectStore = upgradeDb.createObjectStore(storeName, { keyPath: 'id' });
+                            objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
+                            objectStore.createIndex('distributorName', 'distributorName', { unique: false });
+                            console.log('✅ Distributors store created');
+                        } else {
+                            // Store exists, ensure indexes are present
+                            try {
+                                const transaction = event.target.transaction;
+                                const objectStore = transaction.objectStore(storeName);
+                                
+                                if (!objectStore.indexNames.contains('distributorCode')) {
+                                    objectStore.createIndex('distributorCode', 'distributorCode', { unique: false });
+                                }
+                                if (!objectStore.indexNames.contains('distributorName')) {
+                                    objectStore.createIndex('distributorName', 'distributorName', { unique: false });
+                                }
+                            } catch (e) {
+                                console.warn('Could not update indexes:', e);
+                            }
+                        }
+                    };
                 };
             });
         }
@@ -25601,6 +25617,18 @@ async function reverseLastPrescriptionPayment(reportId){
         async function loadDistributors() {
             try {
                 if (!db) await initDistributorsDB();
+                
+                // Verify store exists before creating transaction
+                if (!db.objectStoreNames.contains(storeName)) {
+                    console.error('Distributors store does not exist, reinitializing...');
+                    db.close();
+                    db = null;
+                    await initDistributorsDB();
+                    // Double-check after reinit
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        throw new Error('Failed to create distributors store');
+                    }
+                }
                 
                 const transaction = db.transaction([storeName], 'readonly');
                 const store = transaction.objectStore(storeName);
@@ -25625,6 +25653,18 @@ async function reverseLastPrescriptionPayment(reportId){
         async function saveDistributors() {
             try {
                 if (!db) await initDistributorsDB();
+                
+                // Verify store exists before creating transaction
+                if (!db.objectStoreNames.contains(storeName)) {
+                    console.error('Distributors store does not exist, reinitializing...');
+                    db.close();
+                    db = null;
+                    await initDistributorsDB();
+                    // Double-check after reinit
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        throw new Error('Failed to create distributors store');
+                    }
+                }
                 
                 const transaction = db.transaction([storeName], 'readwrite');
                 const store = transaction.objectStore(storeName);
@@ -25814,8 +25854,11 @@ async function reverseLastPrescriptionPayment(reportId){
             dropdown.innerHTML = filteredDistributors.map(dist => {
                 const name = dist.distributorName || dist.name;
                 const code = dist.distributorCode || dist.code;
+                // Escape single quotes and backslashes properly for HTML attribute
+                const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const escapedCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 return `
-                    <div onclick="selectDistributorForReferral('${code}', '${name.replace(/'/g, "\\'")}', '${JSON.stringify(dist).replace(/'/g, "\\'")}')" 
+                    <div onclick="selectDistributorForReferral('${escapedCode}', '${escapedName}')" 
                          style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" 
                          onmouseover="this.style.background='#f8f9fa'" 
                          onmouseout="this.style.background='white'">
@@ -25838,8 +25881,17 @@ async function reverseLastPrescriptionPayment(reportId){
             }, 100);
         }
         
-        function selectDistributorForReferral(code, name, distributorJson) {
-            const distributor = JSON.parse(distributorJson);
+        function selectDistributorForReferral(code, name) {
+            // Look up distributor from the distributors array to get full details
+            const distributor = distributors.find(d => 
+                (d.distributorCode || d.code) === code
+            );
+            
+            if (!distributor) {
+                console.error('Distributor not found:', code);
+                alert('⚠️ Error: Selected distributor not found');
+                return;
+            }
             
             document.getElementById('distributorReferralSearch').value = name;
             document.getElementById('distributorReferralValue').value = code;
@@ -25906,8 +25958,11 @@ async function reverseLastPrescriptionPayment(reportId){
             dropdown.innerHTML = filteredDistributors.map(dist => {
                 const name = dist.distributorName || dist.name;
                 const code = dist.distributorCode || dist.code;
+                // Escape single quotes, backslashes, and double quotes properly for HTML attribute
+                const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const escapedCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 return `
-                    <div onclick="selectDistributorForBonus('${code}', '${name.replace(/'/g, "\\'")}', '${type}')" 
+                    <div onclick="selectDistributorForBonus('${escapedCode}', '${escapedName}', '${type}')" 
                          style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" 
                          onmouseover="this.style.background='#f8f9fa'" 
                          onmouseout="this.style.background='white'">
@@ -26082,8 +26137,11 @@ async function reverseLastPrescriptionPayment(reportId){
             dropdown.innerHTML = filteredDistributors.map(dist => {
                 const name = dist.distributorName || dist.name;
                 const code = dist.distributorCode || dist.code;
+                // Escape single quotes, backslashes, and double quotes properly for HTML attribute
+                const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const escapedCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 return `
-                    <div onclick="selectDistributorForCustomerName('${code}', '${name.replace(/'/g, "\\'")}')" 
+                    <div onclick="selectDistributorForCustomerName('${escapedCode}', '${escapedName}')" 
                          style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" 
                          onmouseover="this.style.background='#f8f9fa'" 
                          onmouseout="this.style.background='white'">
