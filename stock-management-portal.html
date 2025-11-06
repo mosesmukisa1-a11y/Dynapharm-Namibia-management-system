@@ -1284,36 +1284,57 @@
         });
 
         if (csvImportBtn) csvImportBtn.addEventListener('click', () => {
-            if (!csvParsedRows || csvParsedRows.length === 0){ showToast('No rows to import','error'); return; }
-            const importLocation = document.getElementById('csvImportLocation').value || 'country_stock';
-            let ok = 0, fail = 0;
-            csvParsedRows.forEach(r => {
-                const qty = parseInt(r.quantity, 10);
-                const ctns = parseInt(r.totalCtns, 10);
-                const dateOk = /^\d{4}-\d{2}$/.test(String(r.expiryDate||''));
-                if (!r.cartonNo || !r.description || !r.batchNo || !dateOk || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(ctns) || ctns <= 0){
-                    fail++; return;
+            try {
+                if (!csvParsedRows || csvParsedRows.length === 0){ 
+                    showToast('No rows to import','error'); 
+                    return; 
                 }
-                // Import with location specified
-                const importData = { 
-                    cartonNo:r.cartonNo, 
-                    description:r.description, 
-                    batchNo:r.batchNo, 
-                    expiryDate:r.expiryDate, 
-                    quantity:qty, 
-                    totalCtns:ctns,
-                    sourceWarehouseId: importLocation !== 'country_stock' ? importLocation : null
-                };
-                const res = importStockWithBarcode(importData);
-                if (res && res.success) ok++; else fail++;
-            });
-            showToast(`Import done: ${ok} ok, ${fail} failed. Stock imported to ${importLocation}`, fail ? 'error' : 'success');
-            document.getElementById('csvModal').style.display = 'none';
-            // Immediately refresh to show imported stock
-            setTimeout(() => {
-                refreshData();
-                renderWarehouseSnapshot();
-            }, 100);
+                const csvImportLocationEl = document.getElementById('csvImportLocation');
+                const importLocation = (csvImportLocationEl && csvImportLocationEl.value) ? csvImportLocationEl.value : 'country_stock';
+                let ok = 0, fail = 0;
+                csvParsedRows.forEach(r => {
+                    try {
+                        const qty = parseInt(r.quantity, 10);
+                        const ctns = parseInt(r.totalCtns, 10);
+                        const dateOk = /^\d{4}-\d{2}$/.test(String(r.expiryDate||''));
+                        if (!r.cartonNo || !r.description || !r.batchNo || !dateOk || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(ctns) || ctns <= 0){
+                            fail++; 
+                            return;
+                        }
+                        // Import with location specified
+                        const importData = { 
+                            cartonNo:r.cartonNo, 
+                            description:r.description, 
+                            batchNo:r.batchNo, 
+                            expiryDate:r.expiryDate, 
+                            quantity:qty, 
+                            totalCtns:ctns,
+                            sourceWarehouseId: importLocation !== 'country_stock' ? importLocation : null
+                        };
+                        if (typeof importStockWithBarcode === 'function') {
+                            const res = importStockWithBarcode(importData);
+                            if (res && res.success) ok++; else fail++;
+                        } else {
+                            console.error('importStockWithBarcode function not found');
+                            fail++;
+                        }
+                    } catch (err) {
+                        console.error('Error importing row:', err, r);
+                        fail++;
+                    }
+                });
+                showToast(`Import done: ${ok} ok, ${fail} failed. Stock imported to ${importLocation}`, fail ? 'error' : 'success');
+                const csvModal = document.getElementById('csvModal');
+                if (csvModal) csvModal.style.display = 'none';
+                // Immediately refresh to show imported stock
+                setTimeout(() => {
+                    if (typeof refreshData === 'function') refreshData();
+                    if (typeof renderWarehouseSnapshot === 'function') renderWarehouseSnapshot();
+                }, 100);
+            } catch (error) {
+                console.error('CSV import error:', error);
+                showToast('Error during CSV import: ' + (error.message || 'Unknown error'), 'error');
+            }
         });
 
 

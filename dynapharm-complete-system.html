@@ -4490,6 +4490,14 @@
                                 <input type="email" id="distributorEmail" name="email" placeholder="email@example.com">
                             </div>
                             
+                            <div style="grid-column: 1 / -1;">
+                                <label>Profile Photo (Optional)</label>
+                                <input type="file" name="photo" id="distributorPhotoInput" accept="image/*" onchange="previewDistributorPhoto(event)">
+                                <div id="distributorPhotoPreview" style="margin-top: 10px; display: none;">
+                                    <img id="distributorPhotoPreviewImg" src="" alt="Photo preview" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid #ddd;">
+                                </div>
+                            </div>
+                            
                             <div>
                                 <label class="required">Mailing Address (House number, Street)</label>
                                 <input type="text" id="distributorAddress1" name="address1" required placeholder="House No., Street">
@@ -4673,6 +4681,27 @@
                         
                         <div id="distributorAgreementStatus" style="margin-top: 20px;"></div>
                     </form>
+                </div>
+            </div>
+            
+            <!-- Field Program Section -->
+            <div id="dispenserFieldProgramSection" style="display: none;">
+                <div class="form-section">
+                    <h2 style="color: #2c3e50; margin-bottom: 20px;">🚐 Field Program - Staff Stock Requests</h2>
+                    <p style="color: #7f8c8d; margin-bottom: 20px;">Manage stock requests from field staff for field program activities.</p>
+                    
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="showFieldProgramRequestForm()" style="background: #c41e3a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            ➕ New Stock Request
+                        </button>
+                        <button class="btn btn-secondary" onclick="refreshFieldProgramRequests()" style="background: #6c757d; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer;">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                    
+                    <div id="fieldProgramRequestsList" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                        <p style="text-align: center; color: #7f8c8d;">Loading field program requests...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -7329,6 +7358,13 @@
                         <label>Additional Branches (for Consultants):</label>
                         <div id="branchCheckboxes" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
                         </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Profile Photo (Optional)</label>
+                    <input type="file" name="photo" id="userPhotoInput" accept="image/*" onchange="previewUserPhoto(event)">
+                    <div id="userPhotoPreview" style="margin-top: 10px; display: none;">
+                        <img id="userPhotoPreviewImg" src="" alt="Photo preview" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid #ddd;">
                     </div>
                 </div>
                 <button type="submit" class="btn btn-success">Create User</button>
@@ -15005,7 +15041,8 @@
                 followUpDate: document.getElementById('followUpDate').value,
                 followUpNotes: document.getElementById('followUpNotes').value,
                 pdf: uploadedPDF,
-                timestamp: isEditing ? existingReport.timestamp : new Date().toISOString(),
+                timestamp: isEditing ? (existingReport.timestamp || new Date().toISOString()) : new Date().toISOString(),
+                createdAt: isEditing ? (existingReport.createdAt || existingReport.timestamp || new Date().toISOString()) : new Date().toISOString(),
                 lastModified: isEditing ? new Date().toISOString() : undefined,
                 dispensed: isEditing ? existingReport.dispensed : false
             };
@@ -17380,6 +17417,94 @@ async function reverseLastPrescriptionPayment(reportId){
                 m.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
             }
             renderDispenserPendingBonuses();
+        }
+
+        // Field Program Functions
+        function displayFieldProgramRequests() {
+            const listEl = document.getElementById('fieldProgramRequestsList');
+            if (!listEl) return;
+            
+            try {
+                const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+                if (requests.length === 0) {
+                    listEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock requests yet. Click "New Stock Request" to create one.</p>';
+                    return;
+                }
+                
+                listEl.innerHTML = requests.map((req, idx) => `
+                    <div style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div>
+                                <h4 style="margin: 0 0 5px 0;">Request #${req.id || idx + 1}</h4>
+                                <p style="margin: 0; color: #666; font-size: 0.9rem;">Staff: ${req.staffName || 'N/A'} | Branch: ${req.branch || 'N/A'}</p>
+                                <p style="margin: 0; color: #666; font-size: 0.9rem;">Date: ${new Date(req.date || Date.now()).toLocaleDateString()}</p>
+                            </div>
+                            <span style="padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: ${req.status === 'approved' ? '#d4edda' : req.status === 'rejected' ? '#f8d7da' : '#fff3cd'}; color: ${req.status === 'approved' ? '#155724' : req.status === 'rejected' ? '#721c24' : '#856404'};">${(req.status || 'pending').toUpperCase()}</span>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <p><strong>Items:</strong></p>
+                            <ul style="margin: 5px 0; padding-left: 20px;">
+                                ${(req.items || []).map(item => `<li>${item.product || 'N/A'}: ${item.quantity || 0} ${item.unit || 'units'}</li>`).join('')}
+                            </ul>
+                            ${req.notes ? `<p style="margin-top: 10px;"><strong>Notes:</strong> ${req.notes}</p>` : ''}
+                        </div>
+                        ${req.status === 'pending' ? `
+                            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                                <button class="btn btn-success" onclick="approveFieldProgramRequest(${idx})" style="padding: 6px 12px; font-size: 0.85rem;">Approve</button>
+                                <button class="btn btn-danger" onclick="rejectFieldProgramRequest(${idx})" style="padding: 6px 12px; font-size: 0.85rem;">Reject</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading field program requests:', error);
+                listEl.innerHTML = '<p style="text-align: center; color: #dc3545; padding: 20px;">Error loading requests. Please try again.</p>';
+            }
+        }
+
+        function showFieldProgramRequestForm() {
+            const form = prompt('Enter request details in JSON format:\n{ "staffName": "John Doe", "branch": "Windhoek", "items": [{"product": "Product Name", "quantity": 10, "unit": "boxes"}], "notes": "Optional notes" }');
+            if (!form) return;
+            
+            try {
+                const request = JSON.parse(form);
+                request.id = 'FPR' + Date.now();
+                request.date = new Date().toISOString();
+                request.status = 'pending';
+                
+                const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+                requests.push(request);
+                localStorage.setItem('field_program_requests', JSON.stringify(requests));
+                
+                displayFieldProgramRequests();
+                alert('✅ Stock request created successfully!');
+            } catch (error) {
+                alert('❌ Invalid format. Please check your JSON.');
+            }
+        }
+
+        function refreshFieldProgramRequests() {
+            displayFieldProgramRequests();
+        }
+
+        function approveFieldProgramRequest(index) {
+            const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+            if (requests[index]) {
+                requests[index].status = 'approved';
+                requests[index].approvedAt = new Date().toISOString();
+                localStorage.setItem('field_program_requests', JSON.stringify(requests));
+                displayFieldProgramRequests();
+            }
+        }
+
+        function rejectFieldProgramRequest(index) {
+            const requests = JSON.parse(localStorage.getItem('field_program_requests') || '[]');
+            if (requests[index]) {
+                requests[index].status = 'rejected';
+                requests[index].rejectedAt = new Date().toISOString();
+                localStorage.setItem('field_program_requests', JSON.stringify(requests));
+                displayFieldProgramRequests();
+            }
         }
 
         function getUploadedBonusList() {
@@ -21347,6 +21472,25 @@ async function reverseLastPrescriptionPayment(reportId){
                 });
             }
             
+            // Handle photo upload
+            let photoBase64 = null;
+            const photoFile = document.getElementById('userPhotoInput').files[0];
+            if (photoFile) {
+                try {
+                    photoBase64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const base64 = reader.result.split(',')[1];
+                            resolve(base64);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(photoFile);
+                    });
+                } catch (error) {
+                    console.error('Error reading photo:', error);
+                }
+            }
+            
             const newUser = {
                 id: 'USR' + Date.now(),
                 username: formData.get('username'),
@@ -21357,6 +21501,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 role: formData.get('role'),
                 branch: formData.get('branch'),
                 branches: allBranches,
+                photo: photoBase64,
                 createdAt: new Date().toISOString()
             };
             
@@ -21391,6 +21536,8 @@ async function reverseLastPrescriptionPayment(reportId){
                     alert('✅ User created successfully');
             closeModal('addUserModal');
             this.reset();
+                    document.getElementById('userPhotoPreview').style.display = 'none';
+                    document.getElementById('userPhotoPreviewImg').src = '';
                     await refreshAllData();
                 } else {
                     alert('Error creating user: ' + result.message);
@@ -21413,16 +21560,22 @@ async function reverseLastPrescriptionPayment(reportId){
                 
                 const card = document.createElement('div');
                 card.className = 'client-card';
+                const userPhoto = user.photo ? (typeof user.photo === 'string' && user.photo.startsWith('data:') ? user.photo : `data:image/jpeg;base64,${user.photo}`) : null;
                 card.innerHTML = `
-                    <h4>${user.fullName} (${user.username})</h4>
-                    <p>Role: ${user.role} | Primary Branch: ${branchName}</p>
-                    <p>All Branches: ${branchNames}</p>
-                    <p>Email: ${user.email || 'Not provided'} | Phone: ${user.phone || 'Not provided'}</p>
-                    <div style="margin-top: 10px;">
-                        ${user.username !== 'admin' ? `
-                            <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="margin-right: 10px;">Edit Branches</button>
-                            <button class="btn btn-danger" onclick="deleteUser('${user.id}')">Delete</button>
-                        ` : '<p style="color: #27ae60;">Protected</p>'}
+                    <div style="display: flex; gap: 15px; align-items: start;">
+                        ${userPhoto ? `<img src="${userPhoto}" alt="${user.fullName}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd;">` : '<div style="width: 80px; height: 80px; background: #e0e0e0; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px;">👤</div>'}
+                        <div style="flex: 1;">
+                            <h4>${user.fullName} (${user.username})</h4>
+                            <p>Role: ${user.role} | Primary Branch: ${branchName}</p>
+                            <p>All Branches: ${branchNames}</p>
+                            <p>Email: ${user.email || 'Not provided'} | Phone: ${user.phone || 'Not provided'}</p>
+                            <div style="margin-top: 10px;">
+                                ${user.username !== 'admin' ? `
+                                    <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="margin-right: 10px;">Edit Branches</button>
+                                    <button class="btn btn-danger" onclick="deleteUser('${user.id}')">Delete</button>
+                                ` : '<p style="color: #27ae60;">Protected</p>'}
+                            </div>
+                        </div>
                     </div>
                 `;
                 list.appendChild(card);
@@ -32817,6 +32970,44 @@ This sale appears in the Dispenser Portal sales reports.
                 opt.textContent = p.description;
                 select.appendChild(opt);
             });
+        }
+
+        function previewUserPhoto(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const previewDiv = document.getElementById('userPhotoPreview');
+                    const previewImg = document.getElementById('userPhotoPreviewImg');
+                    if (previewDiv && previewImg) {
+                        previewImg.src = e.target.result;
+                        previewDiv.style.display = 'block';
+                    }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                const previewDiv = document.getElementById('userPhotoPreview');
+                if (previewDiv) previewDiv.style.display = 'none';
+            }
+        }
+
+        function previewDistributorPhoto(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const previewDiv = document.getElementById('distributorPhotoPreview');
+                    const previewImg = document.getElementById('distributorPhotoPreviewImg');
+                    if (previewDiv && previewImg) {
+                        previewImg.src = e.target.result;
+                        previewDiv.style.display = 'block';
+                    }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                const previewDiv = document.getElementById('distributorPhotoPreview');
+                if (previewDiv) previewDiv.style.display = 'none';
+            }
         }
 
         function previewProductPhoto(event) {
