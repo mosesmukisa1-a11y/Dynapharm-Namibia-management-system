@@ -272,6 +272,169 @@
             padding: 0 20px;
         }
 
+        /* Features Showcase Section */
+        .features-section {
+            padding: 100px 20px;
+            background: var(--white);
+        }
+
+        .section-header-modern {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-header-modern h2 {
+            font-size: clamp(2rem, 4vw, 2.8rem);
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 16px;
+        }
+
+        .section-header-modern p {
+            font-size: 1.2rem;
+            color: var(--text-light);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: var(--white);
+            padding: 40px 30px;
+            border-radius: 20px;
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 2px solid transparent;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--brand-color);
+            box-shadow: 0 15px 40px rgba(196, 30, 58, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        .feature-link {
+            color: var(--brand-color);
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .feature-link:hover {
+            color: var(--brand-dark);
+            transform: translateX(5px);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Modern Testimonials Styling */
+        .testimonial-card-modern {
+            background: var(--white);
+            border: 2px solid var(--brand-color);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(196, 30, 58, 0.15);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .testimonial-card-modern:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(196, 30, 58, 0.25);
+        }
+
+        .testimonial-icon-bg {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 3rem;
+            opacity: 0.1;
+        }
+
+        .testimonial-header-modern {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .testimonial-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+
+        .testimonial-info-modern h4 {
+            margin: 0;
+            color: var(--text-dark);
+            font-size: 1.1rem;
+        }
+
+        .testimonial-info-modern p {
+            margin: 5px 0 0;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .testimonial-text-modern {
+            color: var(--text-dark);
+            line-height: 1.8;
+            font-style: italic;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .testimonial-rating-modern {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--brand-color);
+            font-size: 0.9rem;
+        }
+
+        .testimonial-date-modern {
+            margin-left: auto;
+            color: var(--text-light);
+            font-size: 0.85rem;
+        }
+
         /* Shop Section */
         .shop-section {
             background: var(--white);
@@ -571,7 +734,12 @@
                 <li><a href="#" onclick="showDistributorTab('shop'); return false;">Guest Portal</a></li>
                 <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
                 <li><a href="#" onclick="showDistributorTab('media'); return false;">Media</a></li>
-                <li id="adminNavItem" style="display: none;"><a href="#" onclick="openTab('admin', event); return false;">Administrator (<span id="adminNavName">admin</span>)</a></li>
+                <li id="adminNavItem" style="display: none;">
+                    <a href="#" onclick="openTab('admin', event); return false;">Administrator (<span id="adminNavName">admin</span>)</a>
+                </li>
+                <li id="landingEditorNavItem" style="display: none;">
+                    <a href="#" onclick="openLandingPageEditor(); return false;" style="color: var(--brand-color); font-weight: 600;">✏️ Edit Landing Page</a>
+                </li>
                 <li id="logoutNavItem" style="display: none;"><a href="#" onclick="logout(); return false;">Logout</a></li>
                 <li id="loginNavItem"><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
             </ul>
@@ -611,6 +779,40 @@
                     <div class="stat-number" id="statSupport">24/7</div>
                     <div class="stat-label">Support Available</div>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Showcase Section -->
+    <section class="features-section">
+        <div class="section-header-modern">
+            <h2 id="featuresTitle">Why Choose Dynapharm?</h2>
+            <p id="featuresSubtitle">Comprehensive health solutions tailored to your needs</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🩺</div>
+                <h3 id="feature1Title">Expert Consultations</h3>
+                <p id="feature1Desc">Book appointments with our experienced health consultants for personalized wellness guidance</p>
+                <a href="#" class="feature-link" onclick="showDistributorTab('checkup'); return false;">Learn More →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💊</div>
+                <h3 id="feature2Title">Premium Products</h3>
+                <p id="feature2Desc">Browse our extensive catalog of 85+ health and wellness products from trusted brands</p>
+                <a href="#" class="feature-link" onclick="showDistributorTab('shop'); return false;">Shop Now →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3 id="feature3Title">Distributor Program</h3>
+                <p id="feature3Desc">Join our network and earn while helping others achieve their wellness goals</p>
+                <a href="distributor-portal.html" target="_blank" class="feature-link">Get Started →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏥</div>
+                <h3 id="feature4Title">Full Body Check-ups</h3>
+                <p id="feature4Desc">Comprehensive health assessments available at all our branch locations</p>
+                <a href="#" class="feature-link" onclick="showDistributorTab('checkup'); return false;">Book Now →</a>
             </div>
         </div>
     </section>
@@ -954,6 +1156,113 @@
                 </div>
             </div>
         </div>
+
+    <!-- Landing Page Editor Modal -->
+    <div id="landingPageEditorModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <button class="modal-close" onclick="closeLandingPageEditor()">&times;</button>
+            <h2 style="color: var(--brand-color); margin-bottom: 20px;">✏️ Edit Landing Page Content</h2>
+            
+            <form onsubmit="event.preventDefault(); saveLandingPageContent();">
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: var(--brand-color); margin-bottom: 15px; border-bottom: 2px solid var(--border); padding-bottom: 10px;">Hero Section</h3>
+                    <div class="form-group">
+                        <label>Hero Badge Text</label>
+                        <input type="text" id="editHeroBadge" placeholder="🏥 Trusted Health Partner Since 2010">
+                    </div>
+                    <div class="form-group">
+                        <label>Hero Title Highlight (Gradient Text)</label>
+                        <input type="text" id="editHeroTitleHighlight" placeholder="Natural Solutions">
+                    </div>
+                    <div class="form-group">
+                        <label>Hero Subtitle</label>
+                        <textarea id="editHeroSubtitle" rows="3" placeholder="Premium health products, expert consultations..."></textarea>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Stat: Customers</label>
+                            <input type="text" id="editStatCustomers" placeholder="10,000+">
+                        </div>
+                        <div class="form-group">
+                            <label>Stat: Products</label>
+                            <input type="text" id="editStatProducts" placeholder="85+">
+                        </div>
+                        <div class="form-group">
+                            <label>Stat: Branches</label>
+                            <input type="text" id="editStatBranches" placeholder="5+">
+                        </div>
+                        <div class="form-group">
+                            <label>Stat: Support</label>
+                            <input type="text" id="editStatSupport" placeholder="24/7">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: var(--brand-color); margin-bottom: 15px; border-bottom: 2px solid var(--border); padding-bottom: 10px;">Features Section</h3>
+                    <div class="form-group">
+                        <label>Features Title</label>
+                        <input type="text" id="editFeaturesTitle" placeholder="Why Choose Dynapharm?">
+                    </div>
+                    <div class="form-group">
+                        <label>Features Subtitle</label>
+                        <input type="text" id="editFeaturesSubtitle" placeholder="Comprehensive health solutions...">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h4 style="color: var(--text-dark); margin-bottom: 10px;">Feature 1</h4>
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" id="editFeature1Title" placeholder="Expert Consultations">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="editFeature1Desc" rows="3" placeholder="Book appointments..."></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 style="color: var(--text-dark); margin-bottom: 10px;">Feature 2</h4>
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" id="editFeature2Title" placeholder="Premium Products">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="editFeature2Desc" rows="3" placeholder="Browse our extensive catalog..."></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 style="color: var(--text-dark); margin-bottom: 10px;">Feature 3</h4>
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" id="editFeature3Title" placeholder="Distributor Program">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="editFeature3Desc" rows="3" placeholder="Join our network..."></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 style="color: var(--text-dark); margin-bottom: 10px;">Feature 4</h4>
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" id="editFeature4Title" placeholder="Full Body Check-ups">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="editFeature4Desc" rows="3" placeholder="Comprehensive health assessments..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; justify-content: flex-end; margin-top: 30px;">
+                    <button type="button" class="btn-submit" style="background: var(--border); color: var(--text-dark);" onclick="closeLandingPageEditor()">Cancel</button>
+                    <button type="submit" class="btn-submit">💾 Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
           </div>
           
     <script>
@@ -1275,6 +1584,7 @@
                 document.getElementById('logoutNavItem').style.display = 'block';
                 document.getElementById('loginNavItem').style.display = 'none';
                 document.getElementById('adminNavName').textContent = user.username || 'admin';
+                document.getElementById('landingEditorNavItem').style.display = 'block';
                 document.getElementById('portalTabs').style.display = 'block';
                 
                 // Redirect to admin portal
@@ -2252,6 +2562,7 @@
             document.getElementById('portalTabs').style.display = 'none';
             document.getElementById('distributorSubTabs').style.display = 'none';
             document.getElementById('adminNavItem').style.display = 'none';
+            document.getElementById('landingEditorNavItem').style.display = 'none';
             document.getElementById('logoutNavItem').style.display = 'none';
             document.getElementById('loginNavItem').style.display = 'block';
             window.location.reload();
@@ -2297,25 +2608,21 @@
             contentDiv.innerHTML = testimonials.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)).map(testimonial => {
                 const date = new Date(testimonial.date || testimonial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
                 return `
-                    <div style="background: white; border: 2px solid #c41e3a; border-radius: 12px; padding: 25px; box-shadow: 0 4px 12px rgba(196, 30, 58, 0.15); position: relative;">
-                        <div style="position: absolute; top: 15px; right: 15px; font-size: 2rem; opacity: 0.2;">💬</div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                                <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #c41e3a, #8b0000); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
-                                    ${testimonial.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                    <h4 style="margin: 0; color: #2c3e50; font-size: 1.1rem;">${testimonial.name}</h4>
-                                    <p style="margin: 0; color: #666; font-size: 0.85rem;">${testimonial.location || 'Namibia'}</p>
-                                </div>
+                    <div class="testimonial-card-modern">
+                        <div class="testimonial-icon-bg">💬</div>
+                        <div class="testimonial-header-modern">
+                            <div class="testimonial-avatar">${testimonial.name.charAt(0).toUpperCase()}</div>
+                            <div class="testimonial-info-modern">
+                                <h4>${testimonial.name}</h4>
+                                <p>${testimonial.location || 'Namibia'}</p>
                             </div>
                         </div>
-                        <p style="color: #333; line-height: 1.8; font-style: italic; margin-bottom: 15px; position: relative; z-index: 1;">
+                        <p class="testimonial-text-modern">
                             "${testimonial.text}"
                         </p>
-                        <div style="display: flex; align-items: center; gap: 5px; color: #c41e3a; font-size: 0.9rem;">
-                            ⭐⭐⭐⭐⭐
-                            <span style="margin-left: auto; color: #666; font-size: 0.8rem;">${date}</span>
+                        <div class="testimonial-rating-modern">
+                            <span>⭐⭐⭐⭐⭐</span>
+                            <span class="testimonial-date-modern">${date}</span>
                         </div>
                     </div>
                 `;
@@ -2354,21 +2661,112 @@
             alert('Thank you for sharing your story! Your testimonial has been submitted.');
         }
 
+        // Landing Page Content Management
+        function loadLandingPageContent() {
+            try {
+                const content = JSON.parse(localStorage.getItem('landingPageContent') || '{}');
+                
+                // Hero Section
+                if (content.heroBadge) document.getElementById('heroBadge').textContent = content.heroBadge;
+                if (content.heroTitleHighlight) document.getElementById('heroTitleHighlight').textContent = content.heroTitleHighlight;
+                if (content.heroSubtitle) document.getElementById('heroSubtitle').textContent = content.heroSubtitle;
+                if (content.statCustomers) document.getElementById('statCustomers').textContent = content.statCustomers;
+                if (content.statProducts) document.getElementById('statProducts').textContent = content.statProducts;
+                if (content.statBranches) document.getElementById('statBranches').textContent = content.statBranches;
+                if (content.statSupport) document.getElementById('statSupport').textContent = content.statSupport;
+                
+                // Features Section
+                if (content.featuresTitle) document.getElementById('featuresTitle').textContent = content.featuresTitle;
+                if (content.featuresSubtitle) document.getElementById('featuresSubtitle').textContent = content.featuresSubtitle;
+                if (content.feature1Title) document.getElementById('feature1Title').textContent = content.feature1Title;
+                if (content.feature1Desc) document.getElementById('feature1Desc').textContent = content.feature1Desc;
+                if (content.feature2Title) document.getElementById('feature2Title').textContent = content.feature2Title;
+                if (content.feature2Desc) document.getElementById('feature2Desc').textContent = content.feature2Desc;
+                if (content.feature3Title) document.getElementById('feature3Title').textContent = content.feature3Title;
+                if (content.feature3Desc) document.getElementById('feature3Desc').textContent = content.feature3Desc;
+                if (content.feature4Title) document.getElementById('feature4Title').textContent = content.feature4Title;
+                if (content.feature4Desc) document.getElementById('feature4Desc').textContent = content.feature4Desc;
+            } catch(e) {
+                console.error('Error loading landing page content:', e);
+            }
+        }
+
+        function saveLandingPageContent() {
+            const content = {
+                heroBadge: document.getElementById('editHeroBadge').value,
+                heroTitleHighlight: document.getElementById('editHeroTitleHighlight').value,
+                heroSubtitle: document.getElementById('editHeroSubtitle').value,
+                statCustomers: document.getElementById('editStatCustomers').value,
+                statProducts: document.getElementById('editStatProducts').value,
+                statBranches: document.getElementById('editStatBranches').value,
+                statSupport: document.getElementById('editStatSupport').value,
+                featuresTitle: document.getElementById('editFeaturesTitle').value,
+                featuresSubtitle: document.getElementById('editFeaturesSubtitle').value,
+                feature1Title: document.getElementById('editFeature1Title').value,
+                feature1Desc: document.getElementById('editFeature1Desc').value,
+                feature2Title: document.getElementById('editFeature2Title').value,
+                feature2Desc: document.getElementById('editFeature2Desc').value,
+                feature3Title: document.getElementById('editFeature3Title').value,
+                feature3Desc: document.getElementById('editFeature3Desc').value,
+                feature4Title: document.getElementById('editFeature4Title').value,
+                feature4Desc: document.getElementById('editFeature4Desc').value
+            };
+            
+            localStorage.setItem('landingPageContent', JSON.stringify(content));
+            loadLandingPageContent();
+            alert('Landing page content saved successfully!');
+        }
+
+        function openLandingPageEditor() {
+            const content = JSON.parse(localStorage.getItem('landingPageContent') || '{}');
+            
+            // Populate form fields
+            document.getElementById('editHeroBadge').value = content.heroBadge || '🏥 Trusted Health Partner Since 2010';
+            document.getElementById('editHeroTitleHighlight').value = content.heroTitleHighlight || 'Natural Solutions';
+            document.getElementById('editHeroSubtitle').value = content.heroSubtitle || 'Premium health products, expert consultations, and comprehensive wellness services designed to help you live your healthiest life.';
+            document.getElementById('editStatCustomers').value = content.statCustomers || '10,000+';
+            document.getElementById('editStatProducts').value = content.statProducts || '85+';
+            document.getElementById('editStatBranches').value = content.statBranches || '5+';
+            document.getElementById('editStatSupport').value = content.statSupport || '24/7';
+            document.getElementById('editFeaturesTitle').value = content.featuresTitle || 'Why Choose Dynapharm?';
+            document.getElementById('editFeaturesSubtitle').value = content.featuresSubtitle || 'Comprehensive health solutions tailored to your needs';
+            document.getElementById('editFeature1Title').value = content.feature1Title || 'Expert Consultations';
+            document.getElementById('editFeature1Desc').value = content.feature1Desc || 'Book appointments with our experienced health consultants for personalized wellness guidance';
+            document.getElementById('editFeature2Title').value = content.feature2Title || 'Premium Products';
+            document.getElementById('editFeature2Desc').value = content.feature2Desc || 'Browse our extensive catalog of 85+ health and wellness products from trusted brands';
+            document.getElementById('editFeature3Title').value = content.feature3Title || 'Distributor Program';
+            document.getElementById('editFeature3Desc').value = content.feature3Desc || 'Join our network and earn while helping others achieve their wellness goals';
+            document.getElementById('editFeature4Title').value = content.feature4Title || 'Full Body Check-ups';
+            document.getElementById('editFeature4Desc').value = content.feature4Desc || 'Comprehensive health assessments available at all our branch locations';
+            
+            // Show editor modal
+            document.getElementById('landingPageEditorModal').style.display = 'flex';
+        }
+
+        function closeLandingPageEditor() {
+            document.getElementById('landingPageEditorModal').style.display = 'none';
+        }
+
         // Initialize on load
         document.addEventListener('DOMContentLoaded', function() {
             loadShopProducts();
+            loadLandingPageContent();
             
             // Check if user is logged in
             const currentUser = localStorage.getItem('currentUser');
             if (currentUser) {
                 try {
                     const user = JSON.parse(currentUser);
-                    document.getElementById('adminNavItem').style.display = 'block';
-                    document.getElementById('logoutNavItem').style.display = 'block';
-                    document.getElementById('loginNavItem').style.display = 'none';
-                    document.getElementById('adminNavName').textContent = user.username || 'admin';
-                    document.getElementById('portalTabs').style.display = 'block';
-                    document.getElementById('distributorSubTabs').style.display = 'block';
+            document.getElementById('adminNavItem').style.display = 'block';
+            document.getElementById('logoutNavItem').style.display = 'block';
+            document.getElementById('loginNavItem').style.display = 'none';
+            document.getElementById('adminNavName').textContent = user.username || 'admin';
+            const userRole = user.role || localStorage.getItem('currentUserRole') || '';
+            if (userRole === 'admin') {
+                document.getElementById('landingEditorNavItem').style.display = 'block';
+            }
+            document.getElementById('portalTabs').style.display = 'block';
+            document.getElementById('distributorSubTabs').style.display = 'block';
                 } catch(e) {}
             }
             
