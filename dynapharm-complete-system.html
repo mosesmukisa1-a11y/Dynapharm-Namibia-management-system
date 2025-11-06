@@ -31394,124 +31394,27 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             // Pre-load database images
             await loadProductImagesFromDatabase();
             
-            shopProductsGrid.innerHTML = products.map(product => {
-                const selectedType = document.getElementById('shopCustomerType')?.value || '';
-                const effectiveType = shopCustomerTypeSelected ? (previousCustomerType || selectedType || 'customer') : 'distributor';
-                const displayPrice = effectiveType === 'distributor' ? product.dp : product.cp;
-                const priceLabel = effectiveType === 'distributor' ? 'DP' : 'CP';
-                
-                // Get display name from mapping (website format)
-                const displayName = getProductDisplayName(product.description);
-                
-                // Get product images - try stored first, then database, then website
-                let productPhotos = null;
-                
-                // Try localStorage first
-                if (photoMap[product.description]) {
-                    const stored = photoMap[product.description];
-                    productPhotos = Array.isArray(stored) ? stored : [stored];
-                    // Filter out invalid entries
-                    if (productPhotos) {
-                        productPhotos = productPhotos.filter(p => {
-                            if (!p) return false;
-                            if (typeof p === 'string') return p.trim().length > 0 && !p.includes('placehold.co');
-                            return true;
-                        });
-                    }
-                }
-                
-                // Try database cache
-                if ((!productPhotos || productPhotos.length === 0) && productImagesCache) {
-                    if (productImagesCache[product.description]) {
-                        productPhotos = productImagesCache[product.description];
-                    }
-                }
-                
-                // If no stored photos or only placeholders, try to get from website
-                if (!productPhotos || productPhotos.length === 0 || 
-                    (productPhotos.length === 1 && typeof productPhotos[0] === 'string' && productPhotos[0].includes('placehold.co'))) {
-                    const slug = productNameToSlug(product.description);
-                    const { imageUrls } = getProductImageUrl(product.description);
-                    // Use website image URLs from dynapharm.net/ph
-                    // Use only the most likely URL to avoid excessive 404s
-                    if (imageUrls && imageUrls.length > 0) {
-                    productPhotos = [imageUrls[0]]; // Try only the first URL, browser will handle 404
-                    }
-                }
-                
-                // Ensure it's an array
-                if (!productPhotos) productPhotos = [];
-                if (!Array.isArray(productPhotos)) {
-                    productPhotos = [productPhotos];
-                }
-                
-                // Filter out invalid entries (allow objects for new variant format)
-                productPhotos = productPhotos.filter(photo => {
-                    if (!photo) return false;
-                    if (typeof photo === 'string') {
-                        const url = photo.trim();
-                        return url.length > 0 && !url.includes('placehold.co') && (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/'));
-                    }
-                    if (typeof photo === 'object') {
-                        return !!(photo.full || photo.src || photo.w600 || photo.w300 || photo.url);
-                    }
-                    return false;
-                });
-                
-                // If still no valid photos, try direct website image paths
-                if (productPhotos.length === 0) {
-                    const slug = productNameToSlug(product.description);
-                    const { imageUrls } = getProductImageUrl(product.description);
-                    if (imageUrls && imageUrls.length > 0) {
-                    productPhotos = [imageUrls[0]]; // Try only first URL to reduce failed requests
-                    }
-                }
-                // Limit to max 4 photos
-                if (productPhotos.length > 4) {
-                    productPhotos = productPhotos.slice(0, 4);
-                }
-                
-                const uniqueId = `product-carousel-${product.description.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}-${Math.random()}`;
-                
-                    return `
-                    <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); content-visibility: auto; contain-intrinsic-size: 300px 260px;">
-                        <div class="product-carousel-container" id="${uniqueId}" data-photo-count="${productPhotos.length}" style="position: relative; width: 100%; height: 200px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; cursor: pointer; background: #f0f0f0; perspective: 800px; transform-style: preserve-3d;">
-                            ${productPhotos.map((photo, idx) => {
-                                const isObj = typeof photo === 'object' && photo !== null;
-                                const src = isObj ? (photo.full || photo.src || photo.w600 || photo.w300) : photo;
-                                const srcset = isObj ? `${photo.w300 || src} 300w, ${photo.w600 || src} 600w, ${photo.full || src} 1200w` : '';
-                                return `
-                                <img ${srcset ? `srcset="${srcset}"` : ''} src="${src}" alt="${displayName} - Image ${idx + 1}" 
-                                     data-index="${idx}" ${idx === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy" fetchpriority="low"'} decoding="async" referrerpolicy="no-referrer" width="200" height="200" sizes="(max-width: 640px) 100vw, 600px"
-                                     onerror="if(!this.hasAttribute('data-failed')) { this.setAttribute('data-failed', '1'); const placeholder = 'https://placehold.co/200x200?text=' + encodeURIComponent('${displayName.replace(/'/g, "\\'")}'); if(!this.src.includes('placehold.co')) { this.src = placeholder; } }"
-                                     onload="this.style.filter='none'; this.style.background='transparent'; this.removeAttribute('data-failed');"
-                                     style="width: 100%; height: 200px; object-fit: cover; position: ${idx === 0 ? 'relative' : 'absolute'}; top: 0; left: 0; opacity: ${idx === 0 ? '1' : '0'}; transform: ${idx === 0 ? 'rotateY(0deg) scale(1)' : 'rotateY(90deg) scale(0.95)'}; transition: opacity 0.6s ease, transform 0.6s ease; backface-visibility: hidden; background:#f3f4f6; filter: blur(8px);">
-                                `;
-                            }).join('')}
-                            ${productPhotos.length > 1 ? `
-                                <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px;">
-                                    ${productPhotos.map((_, idx) => `<div class="carousel-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.5)'}; cursor: pointer; transition: background 0.3s;"></div>`).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                        <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem;">${displayName}</h4>
-                        <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
-                            N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
-                        </p>
-                        ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
-                        <button class="btn btn-success" onclick="addToShopCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px;">
-                            Add to Cart
-                        </button>
-                    </div>
-                `;
-            }).join('');
+            // Show loading state
+            shopProductsGrid.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">Loading products...</p>';
             
-            // Initialize all carousels after HTML is set
+            // Get effective customer type
+            const selectedType = document.getElementById('shopCustomerType')?.value || '';
+            const effectiveType = shopCustomerTypeSelected ? (previousCustomerType || selectedType || 'customer') : 'distributor';
+            
+            // Generate HTML for all products using async function
+            const productsHTML = await Promise.all(products.map(async (product) => {
+                return await generateProductHTML(product, effectiveType, photoMap);
+            }));
+            
+            shopProductsGrid.innerHTML = productsHTML.join('');
+            
+            // Initialize carousels after rendering
             try {
                 initializeProductCarousels();
             } catch (e) {
                 console.error('Error initializing carousels:', e);
             }
+            
         }
         
         function onShopCustomerTypeChange() {
