@@ -4900,8 +4900,11 @@
                     <button class="btn btn-success" onclick="refreshDispenserData()">🔄 Refresh Data</button>
                 </div>
 
-                <!-- Status/Date Filters -->
+                <!-- Status/Date/Branch Filters -->
                 <div class="search-box" style="gap: 10px; align-items: center;">
+                    <select id="rxBranchFilter" onchange="displayPrescriptions()" style="padding: 10px; border: 2px solid #ddd; border-radius: 6px;">
+                        <option value="">All Branches</option>
+                    </select>
                     <select id="rxStatusFilter" onchange="displayPrescriptions()" style="padding: 10px;">
                         <option value="all" selected>Status: All</option>
                         <option value="pending">Pending</option>
@@ -14275,13 +14278,25 @@
         function searchClients(portal) {
             const searchTerm = document.getElementById('consultantSearch').value.toLowerCase();
             const list = document.getElementById('clientList');
+            const branchFilter = document.getElementById('consultantBranchFilter')?.value || '';
             
             if (!searchTerm) {
                 displayClients();
                 return;
             }
             
-            const filteredClients = clients.filter(client => 
+            // First filter by branch if selected
+            let filteredClients = clients;
+            if (branchFilter) {
+                filteredClients = clients.filter(client => {
+                    const clientBranch = client.branch;
+                    return clientBranch === branchFilter || 
+                           branches.find(b => (b.id === branchFilter || b.name === branchFilter) && (b.id === clientBranch || b.name === clientBranch));
+                });
+            }
+            
+            // Then filter by search term
+            filteredClients = filteredClients.filter(client => 
                 client.fullName.toLowerCase().includes(searchTerm) ||
                 client.phone.includes(searchTerm) ||
                 client.referenceNumber.toLowerCase().includes(searchTerm) ||
@@ -17648,9 +17663,37 @@
                 }
             }
             
+            // Populate branch filter dropdown dynamically
+            const branchFilterSelect = document.getElementById('rxBranchFilter');
+            if (branchFilterSelect && branchFilterSelect.options.length <= 1) {
+                branchFilterSelect.innerHTML = '<option value="">All Branches</option>';
+                branches.forEach(branch => {
+                    const option = document.createElement('option');
+                    option.value = branch.id || branch.name;
+                    option.textContent = branch.name || branch.id;
+                    branchFilterSelect.appendChild(option);
+                });
+            }
+            
+            // Get branch filter value
+            const branchFilter = branchFilterSelect?.value || '';
+            
             const list = document.getElementById('prescriptionList');
             // Filter only actual reports (with id field) that have prescriptions
     let pendingReports = reports.filter(r => r.id && r.prescription && r.medicines);
+    
+    // Filter by branch if selected
+    if (branchFilter) {
+        pendingReports = pendingReports.filter(report => {
+            const client = clients.find(c => c.referenceNumber === report.clientId);
+            if (!client) return false;
+            const clientBranch = client.branch;
+            // Match by branch ID or name
+            return clientBranch === branchFilter || 
+                   branches.find(b => (b.id === branchFilter || b.name === branchFilter) && 
+                                    (b.id === clientBranch || b.name === clientBranch));
+        });
+    }
 
     // Apply status/date filters if present
     try {
@@ -18139,13 +18182,27 @@
         function searchPrescriptions(portal) {
             const searchTerm = document.getElementById('dispenserSearch').value.toLowerCase();
             const list = document.getElementById('prescriptionList');
+            const branchFilter = document.getElementById('rxBranchFilter')?.value || '';
             
             if (!searchTerm) {
                 displayPrescriptions();
                 return;
             }
             
-            const pendingReports = reports.filter(r => !r.dispensed && r.prescription);
+            // First filter by branch if selected
+            let pendingReports = reports.filter(r => r.id && r.prescription && r.medicines);
+            if (branchFilter) {
+                pendingReports = pendingReports.filter(report => {
+                    const client = clients.find(c => c.referenceNumber === report.clientId);
+                    if (!client) return false;
+                    const clientBranch = client.branch;
+                    return clientBranch === branchFilter || 
+                           branches.find(b => (b.id === branchFilter || b.name === branchFilter) && 
+                                            (b.id === clientBranch || b.name === clientBranch));
+                });
+            }
+            
+            // Then filter by search term
             let filteredReports = pendingReports.filter(report => {
                 const client = clients.find(c => c.referenceNumber === report.clientId);
                 return (
@@ -18209,9 +18266,11 @@
         }
 
 function clearRxFilters() {
+    const b = document.getElementById('rxBranchFilter');
     const s = document.getElementById('rxStatusFilter');
     const f = document.getElementById('rxFromDate');
     const t = document.getElementById('rxToDate');
+    if (b) b.value = '';
     if (s) s.value = 'all';
     if (f) f.value = '';
     if (t) t.value = '';
@@ -27633,8 +27692,13 @@ async function reverseLastPrescriptionPayment(reportId){
                     return;
                 }
                 
-                // Save to database via API (bulk insert)
+                // PRIMARY: Save to backend database (available to all users)
+                let backendSaveSuccess = false;
+                let backendError = null;
+                
                 try {
+                    statusDiv.innerHTML = `<p style="color: #f39c12;">⏳ Saving ${uniqueNewDistributors.length} distributor(s) to database...</p>`;
+                    
                     const bulkResponse = await fetch('/api/distributors', {
                         method: 'POST',
                         headers: {
@@ -27648,8 +27712,8 @@ async function reverseLastPrescriptionPayment(reportId){
                             commission_rate: dist.commissionRate || 0,
                             status: dist.status || 'active',
                             branch: window.currentUser?.branch || null,
-                            // Store all agreement form data in metadata
-                            _agreement_data: {
+                            // Store all agreement form data as JSON
+                            agreement_data: JSON.stringify({
                                 birthdate: dist.birthdate,
                                 age: dist.age,
                                 sex: dist.sex,
@@ -27675,52 +27739,67 @@ async function reverseLastPrescriptionPayment(reportId){
                                 dateReceived: dist.dateReceived,
                                 receivedBy: dist.receivedBy,
                                 processedBy: dist.processedBy,
+                                originalColumns: dist._originalColumns || {},
                                 uploadedAt: new Date().toISOString(),
                                 uploadedBy: window.currentUser?.fullName || 'Admin'
-                            }
+                            })
                         })))
                     });
                     
                     if (!bulkResponse.ok) {
-                        const error = await bulkResponse.json();
-                        throw new Error(error.error || 'Failed to save distributors to database');
+                        const errorData = await bulkResponse.json().catch(() => ({ error: 'Unknown error' }));
+                        throw new Error(errorData.error || `Server error: ${bulkResponse.status} ${bulkResponse.statusText}`);
                     }
                     
                     const bulkResult = await bulkResponse.json();
                     console.log('✅ Saved to database:', bulkResult);
-                } catch (apiError) {
-                    console.warn('Database save failed, saving locally:', apiError);
-                }
-                
-                // Also save to local storage for immediate access
-                distributors.push(...uniqueNewDistributors);
-                
-                // Try to save with error handling for quota exceeded
-                try {
-                    await saveDistributors();
-                    let message = `<p style="color: #27ae60;">✅ Successfully added ${uniqueNewDistributors.length} new distributor(s)!</p>`;
+                    backendSaveSuccess = true;
+                    
+                    // Update local cache with saved data
+                    distributors.push(...uniqueNewDistributors);
+                    
+                    // Also save to local storage as cache (for offline access)
+                    try {
+                        await saveDistributors();
+                    } catch (localError) {
+                        console.warn('Local cache save failed (non-critical):', localError);
+                    }
+                    
+                    let message = `<p style="color: #27ae60;">✅ Successfully saved ${uniqueNewDistributors.length} distributor(s) to database! Available to all users.</p>`;
                     if (duplicates.length > 0) {
                         message += `<p style="color: #f39c12; font-size: 0.9rem; margin-top: 5px;">⚠️ Skipped ${duplicates.length} duplicate(s): ${duplicates.map(d => d.distributorCode || 'N/A').join(', ')}</p>`;
                     }
                     statusDiv.innerHTML = message;
-                } catch (error) {
-                    if (error.message.includes('quota')) {
+                    
+                } catch (apiError) {
+                    backendError = apiError;
+                    console.error('❌ Database save failed:', apiError);
+                    
+                    // FALLBACK: Save to local storage only if backend is unavailable
+                    try {
+                        statusDiv.innerHTML = `<p style="color: #e74c3c;">⚠️ Database unavailable. Saving locally as fallback...</p>`;
+                        
+                        distributors.push(...uniqueNewDistributors);
+                        await saveDistributors();
+                        
                         statusDiv.innerHTML = `
-                            <p style="color: #e74c3c;">⚠️ Storage limit reached!</p>
-                            <p style="color: #7f8c8d; font-size: 0.9rem; margin-top: 10px;">
-                                Local storage is full. Please clear some data or contact support.
-                                <br><br>
-                                Distributors in memory: ${distributors.length}
-                                <br><br>
-                                <button onclick="clearAllDistributors()" class="btn" style="padding: 8px 16px; background: #c41e3a; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                                    🗑️ Clear All Distributors
-                                </button>
+                            <p style="color: #e74c3c;">⚠️ Database unavailable - saved locally only</p>
+                            <p style="color: #7f8c8d; font-size: 0.9rem; margin-top: 5px;">
+                                ${uniqueNewDistributors.length} distributor(s) saved to local storage only.<br>
+                                <strong>These will NOT be visible to other users.</strong><br>
+                                Error: ${apiError.message}<br><br>
+                                Please try again later or contact support.
                             </p>
                         `;
-                        // Remove the items we just added since save failed
-                        distributors.splice(-newDistributors.length);
-                    } else {
-                        throw error;
+                    } catch (localError) {
+                        statusDiv.innerHTML = `
+                            <p style="color: #e74c3c;">❌ Failed to save distributors</p>
+                            <p style="color: #7f8c8d; font-size: 0.9rem; margin-top: 5px;">
+                                Database error: ${apiError.message}<br>
+                                Local storage error: ${localError.message}
+                            </p>
+                        `;
+                        throw localError;
                     }
                 }
                 

@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynapharm Namibia - Modern Landing Page Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --brand-color: #c41e3a;
+            --brand-dark: #8b0000;
+            --text-dark: #1f2a37;
+            --text-light: #64748b;
+            --bg-light: #f6f8fb;
+            --white: #ffffff;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: var(--text-dark);
+            background: var(--bg-light);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            padding: 1rem 0;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--brand-color);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-dark);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--brand-color);
+        }
+
+        .btn-login {
+            background: var(--brand-color);
+            color: var(--white);
+            padding: 10px 24px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            background: var(--brand-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(196, 30, 58, 0.3);
+        }
+
+        /* Hero Section */
+        .hero-modern {
+            position: relative;
+            min-height: 90vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: linear-gradient(135deg, #c41e3a 0%, #8b0000 50%, #6b0f1f 100%);
+        }
+
+        .hero-background {
+            position: absolute;
+            inset: 0;
+        }
+
+        .hero-gradient {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.15) 0%, transparent 60%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            color: white;
+            max-width: 900px;
+            padding: 60px 20px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .hero-title {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-subtitle {
+            font-size: clamp(1.1rem, 2vw, 1.4rem);
+            opacity: 0.95;
+            margin-bottom: 40px;
+            line-height: 1.7;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 60px;
+            animation: fadeInUp 0.8s ease-out 0.6s both;
+        }
+
+        .btn-primary-large {
+            background: white;
+            color: #c41e3a;
+            padding: 18px 40px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary-large:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.3);
+        }
+
+        .btn-secondary-large {
+            background: transparent;
+            color: white;
+            padding: 18px 40px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: 3px solid white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary-large:hover {
+            background: white;
+            color: #c41e3a;
+            transform: translateY(-3px);
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+            animation: fadeInUp 0.8s ease-out 0.8s both;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.15; }
+            50% { opacity: 0.25; }
+        }
+
+        /* Features Section */
+        .features-section {
+            padding: 100px 20px;
+            background: var(--white);
+        }
+
+        .section-header-modern {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-header-modern h2 {
+            font-size: clamp(2rem, 4vw, 2.8rem);
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 16px;
+        }
+
+        .section-header-modern p {
+            font-size: 1.2rem;
+            color: var(--text-light);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: var(--white);
+            padding: 40px 30px;
+            border-radius: 20px;
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 2px solid transparent;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--brand-color);
+            box-shadow: 0 15px 40px rgba(196, 30, 58, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        .feature-link {
+            color: var(--brand-color);
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .feature-link:hover {
+            color: var(--brand-dark);
+            transform: translateX(5px);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @media (max-width: 768px) {
+            .hero-modern {
+                min-height: 70vh;
+            }
+            
+            .hero-cta {
+                flex-direction: column;
+            }
+            
+            .btn-primary-large,
+            .btn-secondary-large {
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Product Categories Section */
+        .categories-section {
+            padding: 100px 20px;
+            background: var(--bg-light);
+        }
+
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .category-card {
+            background: var(--white);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            transition: all 0.4s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .category-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(196, 30, 58, 0.2);
+        }
+
+        .category-image {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5rem;
+        }
+
+        .category-info {
+            padding: 25px;
+        }
+
+        .category-info h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 10px;
+        }
+
+        .category-info p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        /* Testimonials Section */
+        .testimonials-section {
+            padding: 100px 20px;
+            background: var(--white);
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .testimonial-card {
+            background: var(--white);
+            border: 2px solid var(--brand-color);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(196, 30, 58, 0.15);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(196, 30, 58, 0.25);
+        }
+
+        .testimonial-icon {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 3rem;
+            opacity: 0.1;
+        }
+
+        .testimonial-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .testimonial-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+
+        .testimonial-info h4 {
+            margin: 0;
+            color: var(--text-dark);
+            font-size: 1.1rem;
+        }
+
+        .testimonial-info p {
+            margin: 5px 0 0;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .testimonial-text {
+            color: var(--text-dark);
+            line-height: 1.8;
+            font-style: italic;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .testimonial-rating {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--brand-color);
+            font-size: 0.9rem;
+        }
+
+        .testimonial-date {
+            margin-left: auto;
+            color: var(--text-light);
+            font-size: 0.85rem;
+        }
+
+        /* Footer */
+        .footer {
+            background: linear-gradient(135deg, #1f2a37 0%, #0f1419 100%);
+            color: white;
+            padding: 60px 20px 30px;
+            margin-top: 80px;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 20px;
+            color: var(--brand-color);
+        }
+
+        .footer-section p,
+        .footer-section a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            line-height: 2;
+            display: block;
+        }
+
+        .footer-section a:hover {
+            color: white;
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <span>🏥</span>
+                <span>Dynapharm Namibia</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#">Home</a></li>
+                <li><a href="#">Guest Portal</a></li>
+                <li><a href="#">About Us</a></li>
+                <li><a href="#">Media</a></li>
+                <li><button class="btn-login">Login / Register</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-modern">
+        <div class="hero-background">
+            <div class="hero-gradient"></div>
+        </div>
+        <div class="hero-content">
+            <div class="hero-badge">🏥 Trusted Health Partner Since 2010</div>
+            <h1 class="hero-title">
+                Transform Your Health with<br>
+                <span class="gradient-text">Natural Solutions</span>
+            </h1>
+            <p class="hero-subtitle">
+                Premium health products, expert consultations, and comprehensive wellness services 
+                designed to help you live your healthiest life.
+            </p>
+            <div class="hero-cta">
+                <button class="btn-primary-large">🛒 Shop Products</button>
+                <button class="btn-secondary-large">🏥 Book Consultation</button>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <div class="stat-number">10,000+</div>
+                    <div class="stat-label">Happy Customers</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">85+</div>
+                    <div class="stat-label">Premium Products</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">5+</div>
+                    <div class="stat-label">Branch Locations</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">24/7</div>
+                    <div class="stat-label">Support Available</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section">
+        <div class="section-header-modern">
+            <h2>Why Choose Dynapharm?</h2>
+            <p>Comprehensive health solutions tailored to your needs</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🩺</div>
+                <h3>Expert Consultations</h3>
+                <p>Book appointments with our experienced health consultants for personalized wellness guidance</p>
+                <a href="#" class="feature-link">Learn More →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💊</div>
+                <h3>Premium Products</h3>
+                <p>Browse our extensive catalog of 85+ health and wellness products from trusted brands</p>
+                <a href="#" class="feature-link">Shop Now →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Distributor Program</h3>
+                <p>Join our network and earn while helping others achieve their wellness goals</p>
+                <a href="#" class="feature-link">Get Started →</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏥</div>
+                <h3>Full Body Check-ups</h3>
+                <p>Comprehensive health assessments available at all our branch locations</p>
+                <a href="#" class="feature-link">Book Now →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Product Categories Section -->
+    <section class="categories-section">
+        <div class="section-header-modern">
+            <h2>Shop by Category</h2>
+            <p>Explore our wide range of health and wellness products</p>
+        </div>
+        <div class="categories-grid">
+            <div class="category-card">
+                <div class="category-image">🌿</div>
+                <div class="category-info">
+                    <h3>Vitamins & Supplements</h3>
+                    <p>Essential nutrients for optimal health and wellness</p>
+                </div>
+            </div>
+            <div class="category-card">
+                <div class="category-image">💪</div>
+                <div class="category-info">
+                    <h3>Health & Wellness</h3>
+                    <p>Products to support your active lifestyle</p>
+                </div>
+            </div>
+            <div class="category-card">
+                <div class="category-image">🧴</div>
+                <div class="category-info">
+                    <h3>Personal Care</h3>
+                    <p>Natural care products for daily wellness</p>
+                </div>
+            </div>
+            <div class="category-card">
+                <div class="category-image">🏥</div>
+                <div class="category-info">
+                    <h3>Medical Supplies</h3>
+                    <p>Professional medical equipment and supplies</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="testimonials-section">
+        <div class="section-header-modern">
+            <h2>What Our Customers Say</h2>
+            <p>Real stories from people who transformed their health with Dynapharm</p>
+        </div>
+        <div class="testimonials-grid">
+            <div class="testimonial-card">
+                <div class="testimonial-icon">💬</div>
+                <div class="testimonial-header">
+                    <div class="testimonial-avatar">S</div>
+                    <div class="testimonial-info">
+                        <h4>Sarah M.</h4>
+                        <p>Windhoek, Namibia</p>
+                    </div>
+                </div>
+                <p class="testimonial-text">
+                    "Two years ago, I was dying… today, I am healthy and 6 months pregnant! 
+                    Dynapharm products have truly transformed my life. I am so grateful for the natural solutions they provide."
+                </p>
+                <div class="testimonial-rating">
+                    <span>⭐⭐⭐⭐⭐</span>
+                    <span class="testimonial-date">November 2025</span>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="testimonial-icon">💬</div>
+                <div class="testimonial-header">
+                    <div class="testimonial-avatar">M</div>
+                    <div class="testimonial-info">
+                        <h4>Maria K.</h4>
+                        <p>Ondangwa, Namibia</p>
+                    </div>
+                </div>
+                <p class="testimonial-text">
+                    "I had cancer of the ovaries stage 3… I have an option to treat it by taking Dynapharm products… 
+                    The natural approach combined with my medical treatment has been life-changing. I feel stronger and more hopeful every day."
+                </p>
+                <div class="testimonial-rating">
+                    <span>⭐⭐⭐⭐⭐</span>
+                    <span class="testimonial-date">November 2025</span>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="testimonial-icon">💬</div>
+                <div class="testimonial-header">
+                    <div class="testimonial-avatar">J</div>
+                    <div class="testimonial-info">
+                        <h4>John D.</h4>
+                        <p>Swakopmund, Namibia</p>
+                    </div>
+                </div>
+                <p class="testimonial-text">
+                    "My arthritic pain was unbearable… After using Dynapharm's natural relief products for just a few weeks, 
+                    I noticed a significant improvement. I can now move freely without constant pain."
+                </p>
+                <div class="testimonial-rating">
+                    <span>⭐⭐⭐⭐⭐</span>
+                    <span class="testimonial-date">November 2025</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>Dynapharm Namibia</h3>
+                <p>Your trusted health and wellness partner. We're committed to improving lives through natural solutions and expert care.</p>
+            </div>
+            <div class="footer-section">
+                <h3>Contact Us</h3>
+                <p>📍 Shop Commercial Building</p>
+                <p>Independence Avenue</p>
+                <p>📞 061-300877</p>
+                <p>✉️ info@dynapharmnamibia.com</p>
+            </div>
+            <div class="footer-section">
+                <h3>Quick Links</h3>
+                <a href="#">Shop Products</a>
+                <a href="#">Book Consultation</a>
+                <a href="#">Distributor Portal</a>
+                <a href="#">About Us</a>
+            </div>
+            <div class="footer-section">
+                <h3>Services</h3>
+                <a href="#">Health Consultations</a>
+                <a href="#">Full Body Check-ups</a>
+                <a href="#">Distributor Program</a>
+                <a href="#">Branch Locations</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 Dynapharm International Namibia. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+</html>
+

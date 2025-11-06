@@ -62,7 +62,7 @@ export default async function handler(req, res) {
         const results = [];
         for (const dist of body) {
           try {
-            const distributor = await insert('distributors', {
+            const distributorData = {
               id: dist.id || `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               distributor_code: dist.distributor_code || dist.code,
               distributor_name: dist.distributor_name || dist.name,
@@ -70,8 +70,19 @@ export default async function handler(req, res) {
               email: dist.email || null,
               commission_rate: dist.commission_rate || 0,
               status: dist.status || 'active',
-              branch: dist.branch || null
+              branch: dist.branch || null,
+              // Store agreement data as JSON string (if provided)
+              agreement_data: dist.agreement_data || null
+            };
+            
+            // Remove any undefined values to avoid SQL errors
+            Object.keys(distributorData).forEach(key => {
+              if (distributorData[key] === undefined) {
+                delete distributorData[key];
+              }
             });
+            
+            const distributor = await insert('distributors', distributorData);
             results.push(distributor);
           } catch (error) {
             // Skip duplicates
@@ -87,19 +98,18 @@ export default async function handler(req, res) {
         
         return res.json({ success: true, count: results.length, distributors: results });
       } else {
-        // Create single distributor - only use valid table columns
-        // Extract additional data (like _agreement_data) for potential future use
-        const { _agreement_data, ...validFields } = body;
-        
+        // Create single distributor
         const distributorData = {
-          id: validFields.id || `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          distributor_code: validFields.distributor_code || validFields.code,
-          distributor_name: validFields.distributor_name || validFields.name,
-          mobile_no: validFields.mobile_no || validFields.mobile || null,
-          email: validFields.email || null,
-          commission_rate: validFields.commission_rate || 0,
-          status: validFields.status || 'active',
-          branch: validFields.branch || null
+          id: body.id || `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          distributor_code: body.distributor_code || body.code,
+          distributor_name: body.distributor_name || body.name,
+          mobile_no: body.mobile_no || body.mobile || null,
+          email: body.email || null,
+          commission_rate: body.commission_rate || 0,
+          status: body.status || 'active',
+          branch: body.branch || null,
+          // Store agreement data as JSON string (if provided)
+          agreement_data: body.agreement_data || null
         };
         
         // Remove any undefined values to avoid SQL errors

@@ -103,24 +103,166 @@
             background: var(--brand-dark);
         }
 
-        /* Hero Section */
+        /* Hero Section - Modern Design */
         .hero {
-            background: linear-gradient(135deg, var(--brand-color) 0%, var(--brand-dark) 100%);
+            position: relative;
+            min-height: 90vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: linear-gradient(135deg, #c41e3a 0%, #8b0000 50%, #6b0f1f 100%);
             color: var(--white);
-            padding: 60px 20px;
+        }
+
+        .hero-background {
+            position: absolute;
+            inset: 0;
+        }
+
+        .hero-gradient {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.15) 0%, transparent 60%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
             text-align: center;
+            max-width: 900px;
+            padding: 60px 20px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: fadeInUp 0.8s ease-out;
         }
 
         .hero h1 {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .hero p {
-            font-size: 1.2rem;
+            font-size: clamp(1.1rem, 2vw, 1.4rem);
+            opacity: 0.95;
+            margin-bottom: 40px;
+            line-height: 1.7;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 60px;
+            animation: fadeInUp 0.8s ease-out 0.6s both;
+        }
+
+        .btn-hero-primary {
+            background: white;
+            color: #c41e3a;
+            padding: 18px 40px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-hero-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.3);
+        }
+
+        .btn-hero-secondary {
+            background: transparent;
+            color: white;
+            padding: 18px 40px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: 3px solid white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-hero-secondary:hover {
+            background: white;
+            color: #c41e3a;
+            transform: translateY(-3px);
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+            animation: fadeInUp 0.8s ease-out 0.8s both;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
             opacity: 0.9;
-            max-width: 600px;
-            margin: 0 auto;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.15; }
+            50% { opacity: 0.25; }
         }
 
         /* Main Content */
@@ -438,9 +580,39 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <h1>DYNAPHARM INTERNATIONAL NAMIBIA</h1>
-        <p>Comprehensive Health Management System</p>
-        <p style="font-size: 0.9rem; margin-top: 10px;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
+        <div class="hero-background">
+            <div class="hero-gradient"></div>
+        </div>
+        <div class="hero-content">
+            <div class="hero-badge" id="heroBadge">🏥 Trusted Health Partner Since 2010</div>
+            <h1>
+                Transform Your Health with<br>
+                <span class="gradient-text" id="heroTitleHighlight">Natural Solutions</span>
+            </h1>
+            <p id="heroSubtitle">Premium health products, expert consultations, and comprehensive wellness services designed to help you live your healthiest life.</p>
+            <div class="hero-cta">
+                <button class="btn-hero-primary" onclick="showDistributorTab('shop')">🛒 Shop Products</button>
+                <button class="btn-hero-secondary" onclick="showDistributorTab('checkup')">🏥 Book Consultation</button>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="statCustomers">10,000+</div>
+                    <div class="stat-label">Happy Customers</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="statProducts">85+</div>
+                    <div class="stat-label">Premium Products</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="statBranches">5+</div>
+                    <div class="stat-label">Branch Locations</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="statSupport">24/7</div>
+                    <div class="stat-label">Support Available</div>
+                </div>
+            </div>
+        </div>
     </section>
     
     <!-- Portal Tabs -->
@@ -1405,9 +1577,8 @@
                 return;
             }
             
-            // Redirect to login/register for checkout
-            alert('Please login or register to complete your order.');
-            openLoginModal();
+            // Show checkout modal with delivery/pickup options
+            showCheckoutModal();
         }
 
         function clearShopCart() {
@@ -1415,6 +1586,509 @@
                 shopCart = [];
                 updateShopCart();
                 displayProducts(allProducts);
+            }
+        }
+
+        // Checkout Modal Functions
+        let allTowns = [];
+        let allBranches = [];
+        let selectedDeliveryMethod = 'pickup';
+        let selectedTown = null;
+        let selectedBranch = null;
+        let deliveryFeeData = null;
+
+        async function showCheckoutModal() {
+            const modal = document.getElementById('checkoutModal') || createCheckoutModal();
+            modal.style.display = 'flex';
+            
+            // Load towns and branches
+            await loadTowns();
+            await loadBranches();
+            
+            // Reset form
+            selectedDeliveryMethod = 'pickup';
+            selectedTown = null;
+            selectedBranch = null;
+            deliveryFeeData = null;
+            
+            // Reset form fields
+            const nameInput = document.getElementById('checkoutCustomerName');
+            const phoneInput = document.getElementById('checkoutCustomerPhone');
+            const emailInput = document.getElementById('checkoutCustomerEmail');
+            const addressInput = document.getElementById('checkoutDeliveryAddress');
+            const notesInput = document.getElementById('checkoutNotes');
+            const branchSelect = document.getElementById('checkoutBranch');
+            const townSelect = document.getElementById('checkoutTown');
+            
+            if (nameInput) nameInput.value = '';
+            if (phoneInput) phoneInput.value = '';
+            if (emailInput) emailInput.value = '';
+            if (addressInput) addressInput.value = '';
+            if (notesInput) notesInput.value = '';
+            if (branchSelect) branchSelect.value = '';
+            if (townSelect) townSelect.value = '';
+            
+            // Set default delivery method to pickup
+            const pickupRadio = document.querySelector('input[name="deliveryMethod"][value="pickup"]');
+            if (pickupRadio) pickupRadio.checked = true;
+            
+            updateCheckoutForm();
+        }
+
+        function createCheckoutModal() {
+            const modal = document.createElement('div');
+            modal.id = 'checkoutModal';
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+                    <span class="modal-close" onclick="closeCheckoutModal()">&times;</span>
+                    <h2 style="color: var(--brand-color); margin-bottom: 20px;">Checkout</h2>
+                    
+                    <!-- Order Summary -->
+                    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h3 style="margin-bottom: 10px; font-size: 1.1rem;">Order Summary</h3>
+                        <div id="checkoutOrderSummary"></div>
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid var(--border);">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span>Subtotal:</span>
+                                <strong id="checkoutSubtotal">N$ 0.00</strong>
+                            </div>
+                            <div style="display: none; justify-content: space-between; margin-bottom: 5px;" id="deliveryFeeRow">
+                                <span>Delivery Fee:</span>
+                                <strong id="checkoutDeliveryFee">N$ 0.00</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: bold; color: var(--brand-color); margin-top: 10px; padding-top: 10px; border-top: 2px solid var(--border);">
+                                <span>Total:</span>
+                                <span id="checkoutTotal">N$ 0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Customer Information -->
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" id="checkoutCustomerName" required placeholder="Enter your full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number *</label>
+                        <input type="tel" id="checkoutCustomerPhone" required placeholder="+264 81 234 5678">
+                    </div>
+                    <div class="form-group">
+                        <label>Email (Optional)</label>
+                        <input type="email" id="checkoutCustomerEmail" placeholder="your.email@example.com">
+                    </div>
+
+                    <!-- Delivery Method Selection -->
+                    <div class="form-group">
+                        <label>Delivery Method *</label>
+                        <div style="display: flex; gap: 15px; margin-top: 10px;">
+                            <label style="display: flex; align-items: center; cursor: pointer; padding: 10px; border: 2px solid var(--border); border-radius: 8px; flex: 1;">
+                                <input type="radio" name="deliveryMethod" value="pickup" checked onchange="handleDeliveryMethodChange('pickup')" style="margin-right: 8px;">
+                                <span>📍 Branch Pickup (0% fee)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer; padding: 10px; border: 2px solid var(--border); border-radius: 8px; flex: 1;">
+                                <input type="radio" name="deliveryMethod" value="delivery" onchange="handleDeliveryMethodChange('delivery')" style="margin-right: 8px;">
+                                <span>🚚 Home Delivery</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Branch Selection (for pickup) -->
+                    <div class="form-group" id="branchSelectionGroup">
+                        <label>Select Branch for Pickup *</label>
+                        <select id="checkoutBranch" required onchange="handleBranchChange()">
+                            <option value="">-- Select Branch --</option>
+                        </select>
+                    </div>
+
+                    <!-- Town Selection (for delivery) -->
+                    <div class="form-group" id="townSelectionGroup" style="display: none;">
+                        <label>Select Town for Delivery *</label>
+                        <select id="checkoutTown" onchange="handleTownChange()">
+                            <option value="">-- Select Town --</option>
+                        </select>
+                        <div id="deliveryFeeInfo" style="margin-top: 10px; padding: 10px; background: #eef6ff; border-radius: 8px; display: none;">
+                            <small style="color: #0b5aa0;" id="deliveryFeeText"></small>
+                        </div>
+                    </div>
+
+                    <!-- Delivery Address (for delivery) -->
+                    <div class="form-group" id="deliveryAddressGroup" style="display: none;">
+                        <label>Delivery Address *</label>
+                        <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Enter your full delivery address"></textarea>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="form-group">
+                        <label>Order Notes (Optional)</label>
+                        <textarea id="checkoutNotes" rows="2" placeholder="Any special instructions..."></textarea>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button class="btn-submit" onclick="submitOrder()" style="margin-top: 20px;">Place Order</button>
+                    <button onclick="closeCheckoutModal()" style="background: var(--border); color: var(--text-dark); padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 10px;">Cancel</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            return modal;
+        }
+
+        function closeCheckoutModal() {
+            const modal = document.getElementById('checkoutModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function loadTowns() {
+            try {
+                const response = await fetch('/api/towns');
+                if (response.ok) {
+                    allTowns = await response.json();
+                } else {
+                    // Fallback: use default towns
+                    allTowns = [
+                        { id: 'town_windhoek', name: 'Windhoek' },
+                        { id: 'town_oshakati', name: 'Oshakati' },
+                        { id: 'town_ondangwa', name: 'Ondangwa' },
+                        { id: 'town_rundu', name: 'Rundu' },
+                        { id: 'town_walvis_bay', name: 'Walvis Bay' },
+                        { id: 'town_swakopmund', name: 'Swakopmund' },
+                        { id: 'town_katima_mulilo', name: 'Katima Mulilo' },
+                        { id: 'town_gobabis', name: 'Gobabis' },
+                        { id: 'town_otjiwarongo', name: 'Otjiwarongo' },
+                    ];
+                }
+                
+                // Populate town dropdown
+                const townSelect = document.getElementById('checkoutTown');
+                if (townSelect) {
+                    townSelect.innerHTML = '<option value="">-- Select Town --</option>';
+                    allTowns.forEach(town => {
+                        const option = document.createElement('option');
+                        option.value = town.id;
+                        option.textContent = town.name;
+                        townSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading towns:', error);
+            }
+        }
+
+        async function loadBranches() {
+            try {
+                const response = await fetch('/api/branches');
+                if (response.ok) {
+                    allBranches = await response.json();
+                } else {
+                    // Fallback: use localStorage
+                    const stored = localStorage.getItem('dyna_branches');
+                    if (stored) {
+                        allBranches = JSON.parse(stored);
+                    } else {
+                        allBranches = [
+                            { id: 'townshop', name: 'TOWNSHOP (Head Office)' },
+                            { id: 'khomasdal', name: 'KHOMASDAL DPC' },
+                            { id: 'katima', name: 'KATIMA DPC' },
+                            { id: 'ondangwa', name: 'ONDANGWA DPC' },
+                            { id: 'swakopmund', name: 'SWAKOPMUND DPC' },
+                            { id: 'rundu', name: 'RUNDU DPC' },
+                        ];
+                    }
+                }
+                
+                // Populate branch dropdown
+                const branchSelect = document.getElementById('checkoutBranch');
+                if (branchSelect) {
+                    branchSelect.innerHTML = '<option value="">-- Select Branch --</option>';
+                    allBranches.forEach(branch => {
+                        const option = document.createElement('option');
+                        option.value = branch.id;
+                        option.textContent = branch.name || branch.branch_name;
+                        branchSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading branches:', error);
+            }
+        }
+
+        function handleDeliveryMethodChange(method) {
+            selectedDeliveryMethod = method;
+            updateCheckoutForm();
+        }
+
+        function handleBranchChange() {
+            const branchSelect = document.getElementById('checkoutBranch');
+            selectedBranch = branchSelect ? branchSelect.value : null;
+            updateCheckoutTotals();
+        }
+
+        async function handleTownChange() {
+            const townSelect = document.getElementById('checkoutTown');
+            selectedTown = townSelect ? townSelect.value : null;
+            
+            if (selectedTown && selectedDeliveryMethod === 'delivery') {
+                await calculateDeliveryFee();
+            } else {
+                deliveryFeeData = null;
+                updateCheckoutTotals();
+            }
+        }
+
+        async function calculateDeliveryFee() {
+            if (!selectedTown || shopCart.length === 0) return;
+            
+            const subtotal = shopCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            try {
+                const response = await fetch('/api/delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        town_id: selectedTown,
+                        branch_id: selectedBranch || null,
+                        subtotal: subtotal
+                    })
+                });
+                
+                if (response.ok) {
+                    deliveryFeeData = await response.json();
+                    updateDeliveryFeeDisplay();
+                    updateCheckoutTotals();
+                } else {
+                    // Fallback: use default calculation
+                    const distance = 60; // Assume far distance
+                    deliveryFeeData = {
+                        delivery_fee_percentage: distance >= 50 ? 20.00 : 15.00,
+                        delivery_fee: (subtotal * (distance >= 50 ? 20.00 : 15.00)) / 100,
+                        distance_km: distance
+                    };
+                    updateDeliveryFeeDisplay();
+                    updateCheckoutTotals();
+                }
+            } catch (error) {
+                console.error('Error calculating delivery fee:', error);
+                // Fallback calculation
+                const distance = 60;
+                deliveryFeeData = {
+                    delivery_fee_percentage: 20.00,
+                    delivery_fee: (subtotal * 20.00) / 100,
+                    distance_km: distance
+                };
+                updateDeliveryFeeDisplay();
+                updateCheckoutTotals();
+            }
+        }
+
+        function updateDeliveryFeeDisplay() {
+            const feeInfo = document.getElementById('deliveryFeeInfo');
+            const feeText = document.getElementById('deliveryFeeText');
+            
+            if (feeInfo && feeText && deliveryFeeData) {
+                const distance = deliveryFeeData.distance_km;
+                const percentage = deliveryFeeData.delivery_fee_percentage;
+                const feeType = distance >= 50 ? 'far' : 'near';
+                
+                if (distance !== null) {
+                    feeText.textContent = `Distance: ${distance}km from nearest branch. Delivery fee: ${percentage}% (${feeType === 'far' ? '50km+' : '<50km'})`;
+                } else {
+                    feeText.textContent = `Delivery fee: ${percentage}% (estimated)`;
+                }
+                feeInfo.style.display = 'block';
+            }
+        }
+
+        function updateCheckoutForm() {
+            const branchGroup = document.getElementById('branchSelectionGroup');
+            const townGroup = document.getElementById('townSelectionGroup');
+            const addressGroup = document.getElementById('deliveryAddressGroup');
+            const branchSelect = document.getElementById('checkoutBranch');
+            const townSelect = document.getElementById('checkoutTown');
+            const addressInput = document.getElementById('checkoutDeliveryAddress');
+            
+            if (selectedDeliveryMethod === 'pickup') {
+                if (branchGroup) branchGroup.style.display = 'block';
+                if (townGroup) townGroup.style.display = 'none';
+                if (addressGroup) addressGroup.style.display = 'none';
+                if (branchSelect) branchSelect.required = true;
+                if (townSelect) townSelect.required = false;
+                if (addressInput) addressInput.required = false;
+                deliveryFeeData = null;
+            } else {
+                if (branchGroup) branchGroup.style.display = 'none';
+                if (townGroup) townGroup.style.display = 'block';
+                if (addressGroup) addressGroup.style.display = 'block';
+                if (branchSelect) branchSelect.required = false;
+                if (townSelect) townSelect.required = true;
+                if (addressInput) addressInput.required = true;
+                if (selectedTown) {
+                    calculateDeliveryFee();
+                }
+            }
+            
+            updateCheckoutTotals();
+        }
+
+        function updateCheckoutTotals() {
+            // Update order summary
+            const summaryDiv = document.getElementById('checkoutOrderSummary');
+            if (summaryDiv) {
+                summaryDiv.innerHTML = shopCart.map(item => `
+                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <span>${item.name} x ${item.quantity}</span>
+                        <strong>N$ ${(item.price * item.quantity).toFixed(2)}</strong>
+                    </div>
+                `).join('');
+            }
+            
+            // Calculate totals
+            const subtotal = shopCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const deliveryFee = deliveryFeeData ? deliveryFeeData.delivery_fee : 0;
+            const total = subtotal + deliveryFee;
+            
+            // Update display
+            const subtotalEl = document.getElementById('checkoutSubtotal');
+            const deliveryFeeEl = document.getElementById('checkoutDeliveryFee');
+            const deliveryFeeRow = document.getElementById('deliveryFeeRow');
+            const totalEl = document.getElementById('checkoutTotal');
+            
+            if (subtotalEl) subtotalEl.textContent = `N$ ${subtotal.toFixed(2)}`;
+            if (deliveryFeeEl) deliveryFeeEl.textContent = `N$ ${deliveryFee.toFixed(2)}`;
+            if (deliveryFeeRow) {
+                deliveryFeeRow.style.display = selectedDeliveryMethod === 'delivery' && deliveryFee > 0 ? 'flex' : 'none';
+            }
+            if (totalEl) totalEl.textContent = `N$ ${total.toFixed(2)}`;
+        }
+
+        async function submitOrder() {
+            // Validate form
+            const customerName = document.getElementById('checkoutCustomerName')?.value.trim();
+            const customerPhone = document.getElementById('checkoutCustomerPhone')?.value.trim();
+            const customerEmail = document.getElementById('checkoutCustomerEmail')?.value.trim();
+            const deliveryAddress = document.getElementById('checkoutDeliveryAddress')?.value.trim();
+            const notes = document.getElementById('checkoutNotes')?.value.trim();
+            
+            if (!customerName || !customerPhone) {
+                alert('Please fill in your name and phone number.');
+                return;
+            }
+            
+            if (selectedDeliveryMethod === 'pickup' && !selectedBranch) {
+                alert('Please select a branch for pickup.');
+                return;
+            }
+            
+            if (selectedDeliveryMethod === 'delivery') {
+                if (!selectedTown) {
+                    alert('Please select a town for delivery.');
+                    return;
+                }
+                if (!deliveryAddress) {
+                    alert('Please enter your delivery address.');
+                    return;
+                }
+            }
+            
+            // Prepare order data
+            const subtotal = shopCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const deliveryFee = deliveryFeeData ? deliveryFeeData.delivery_fee : 0;
+            const total = subtotal + deliveryFee;
+            
+            const orderItems = shopCart.map(item => ({
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                customer_type: item.customerType,
+                cp: item.cp,
+                dp: item.dp,
+                bv: item.bv
+            }));
+            
+            const customerType = shopCart[0]?.customerType || 'customer';
+            
+            const orderData = {
+                customer_name: customerName,
+                customer_phone: customerPhone,
+                customer_email: customerEmail || null,
+                customer_type: customerType,
+                delivery_method: selectedDeliveryMethod,
+                branch_id: selectedDeliveryMethod === 'pickup' ? selectedBranch : null,
+                town_id: selectedDeliveryMethod === 'delivery' ? selectedTown : null,
+                delivery_address: selectedDeliveryMethod === 'delivery' ? deliveryAddress : null,
+                subtotal: subtotal,
+                items: orderItems,
+                notes: notes || null
+            };
+            
+            // Submit order
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+                
+                if (response.ok) {
+                    const order = await response.json();
+                    
+                    // Save to localStorage as fallback
+                    try {
+                        const existingOrders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+                        existingOrders.push(order);
+                        localStorage.setItem('dyna_online_orders', JSON.stringify(existingOrders));
+                    } catch (e) {
+                        console.error('Error saving to localStorage:', e);
+                    }
+                    
+                    // Show success message
+                    alert(`Order placed successfully! Order Number: ${order.order_number}\n\nTotal: N$ ${order.total_amount.toFixed(2)}\n\nWe will contact you shortly to confirm your order.`);
+                    
+                    // Clear cart
+                    shopCart = [];
+                    updateShopCart();
+                    
+                    // Close modal
+                    closeCheckoutModal();
+                    
+                    // Refresh products display
+                    displayProducts(allProducts);
+                } else {
+                    const error = await response.json();
+                    alert(`Error placing order: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error submitting order:', error);
+                
+                // Fallback: save to localStorage only
+                const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                const fallbackOrder = {
+                    id: `order_${Date.now()}`,
+                    order_number: orderNumber,
+                    ...orderData,
+                    delivery_fee: deliveryFee,
+                    delivery_fee_percentage: deliveryFeeData ? deliveryFeeData.delivery_fee_percentage : 0,
+                    total_amount: total,
+                    distance_km: deliveryFeeData ? deliveryFeeData.distance_km : null,
+                    status: 'pending',
+                    payment_status: 'pending',
+                    created_at: new Date().toISOString()
+                };
+                
+                try {
+                    const existingOrders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+                    existingOrders.push(fallbackOrder);
+                    localStorage.setItem('dyna_online_orders', JSON.stringify(existingOrders));
+                    
+                    alert(`Order saved locally! Order Number: ${orderNumber}\n\nTotal: N$ ${total.toFixed(2)}\n\nNote: Order saved offline. Please contact us to confirm.`);
+                    
+                    // Clear cart
+                    shopCart = [];
+                    updateShopCart();
+                    closeCheckoutModal();
+                    displayProducts(allProducts);
+                } catch (e) {
+                    alert('Error saving order. Please try again or contact us directly.');
+                }
             }
         }
 
@@ -1726,9 +2400,16 @@
             }
             
             // Close modal on outside click
-            document.getElementById('loginModal').addEventListener('click', function(e) {
+            document.getElementById('loginModal')?.addEventListener('click', function(e) {
                 if (e.target === this) {
                     closeLoginModal();
+                }
+            });
+            
+            // Close checkout modal on outside click
+            document.getElementById('checkoutModal')?.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeCheckoutModal();
                 }
             });
             
