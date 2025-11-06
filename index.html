@@ -357,6 +357,19 @@
             display: block;
         }
 
+        .note {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .note.hidden {
+            display: none;
+        }
+
         /* Mobile Responsive */
         @media (max-width: 768px) {
             .nav-links {
@@ -462,76 +475,112 @@
             </div>
         </section>
 
-        <!-- Online Shop Section -->
+        <!-- Guest Portal - Consultation Booking Section -->
         <section class="shop-section" style="margin-top: 40px;">
             <div class="section-header">
-                <h2>🛍️ Online Shop</h2>
+                <h2>🏥 Book a Health Consultation</h2>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 20px;">
-                <div style="background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); padding: 30px; border-radius: 12px; color: white;">
-                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-                        <span>🛒</span>
-                        <span>Shop Health Products</span>
-                    </h3>
-                    <p style="margin-bottom: 20px; opacity: 0.95; line-height: 1.6;">
-                        Browse our extensive catalog of premium health and wellness products. From vitamins and supplements to personal care items, find everything you need for a healthier lifestyle.
-                    </p>
-                    <button onclick="showSection('shop'); document.getElementById('productSearch')?.focus();" 
-                            style="background: white; color: var(--brand-color); padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: transform 0.3s;"
-                            onmouseover="this.style.transform='scale(1.05)'"
-                            onmouseout="this.style.transform='scale(1)'">
-                        Browse Products →
-                    </button>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px; margin-top: 20px;">
+                <div class="card" style="background: var(--white); padding: 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="color: var(--brand-color); margin-bottom: 10px; font-size: 1.3rem;">Consultation Request</h3>
+                    <p style="color: var(--text-light); margin-bottom: 20px; font-size: 0.95rem;">Provide your details and preferred slot. We will confirm shortly.</p>
+
+                    <div id="consultation-success-box" class="note hidden" style="background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;">
+                        ✅ Your request was submitted. We will reach out to confirm your appointment.
+                    </div>
+
+                    <form id="consultation-booking-form" style="display: grid; gap: 15px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Full name *</label>
+                                <input type="text" id="consultFullName" name="fullName" placeholder="e.g. Jane Doe" required style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                            <div class="form-group">
+                                <label>Preferred branch *</label>
+                                <select id="consultBranch" name="branch" required style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                                    <option value="" disabled selected>Select branch</option>
+                                    <option>Windhoek Main</option>
+                                    <option>Oshakati</option>
+                                    <option>Walvis Bay</option>
+                                    <option>Swakopmund</option>
+                                    <option>Rundu</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="consultPhone" name="phone" placeholder="e.g. +264 81 234 5678" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 5px;">Phone or Email is required</div>
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="consultEmail" name="email" placeholder="e.g. jane@example.com" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Preferred date *</label>
+                                <input type="date" id="consultDate" name="date" required style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                            <div class="form-group">
+                                <label>Preferred time *</label>
+                                <input type="time" id="consultTime" name="time" required style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Consultation type</label>
+                                <select id="consultType" name="type" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                                    <option>General Wellness</option>
+                                    <option>Nutritional Guidance</option>
+                                    <option>Product Advisory</option>
+                                    <option>Follow-up</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Notes (optional)</label>
+                                <input type="text" id="consultNotes" name="notes" placeholder="Reason / symptoms / preferences" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
+                            <button type="button" id="reset-consult-form" style="background: var(--border); color: var(--text-dark); padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Clear</button>
+                            <button type="submit" class="btn-submit">Request Appointment</button>
+                        </div>
+                    </form>
+                    <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 15px; text-align: center;">
+                        By requesting, you consent to be contacted to confirm the booking.
+                    </div>
                 </div>
-                <div style="background: var(--white); border: 2px solid var(--border); padding: 30px; border-radius: 12px;">
-                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; color: var(--brand-color); display: flex; align-items: center; gap: 10px;">
-                        <span>💊</span>
-                        <span>Featured Categories</span>
-                    </h3>
-                    <ul style="list-style: none; padding: 0; margin: 0;">
-                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
-                            <span>🌿</span>
-                            <span>Vitamins & Supplements</span>
-                        </li>
-                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
-                            <span>💪</span>
-                            <span>Health & Wellness</span>
-                        </li>
-                        <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
-                            <span>🧴</span>
-                            <span>Personal Care</span>
-                        </li>
-                        <li style="padding: 10px 0; display: flex; align-items: center; gap: 10px;">
-                            <span>🏥</span>
-                            <span>Medical Supplies</span>
-                        </li>
-                    </ul>
-                </div>
-                <div style="background: var(--bg-light); padding: 30px; border-radius: 12px; border-left: 4px solid var(--brand-color);">
-                    <h3 style="font-size: 1.5rem; margin-bottom: 15px; color: var(--brand-color); display: flex; align-items: center; gap: 10px;">
-                        <span>⭐</span>
-                        <span>Why Shop With Us?</span>
-                    </h3>
-                    <ul style="list-style: none; padding: 0; margin: 0; line-height: 2;">
-                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
-                            <span style="color: var(--brand-color);">✓</span>
-                            <span>Premium Quality Products</span>
-                        </li>
-                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
-                            <span style="color: var(--brand-color);">✓</span>
-                            <span>Competitive Prices</span>
-                        </li>
-                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
-                            <span style="color: var(--brand-color);">✓</span>
-                            <span>Expert Health Advice</span>
-                        </li>
-                        <li style="padding: 5px 0; display: flex; align-items: center; gap: 10px;">
-                            <span style="color: var(--brand-color);">✓</span>
-                            <span>Fast & Reliable Service</span>
-                        </li>
-                    </ul>
+
+                <div class="card" style="background: var(--white); padding: 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="color: var(--brand-color); margin-bottom: 15px; font-size: 1.3rem;">How it works</h3>
+                    <ol style="margin: 0; padding-left: 20px; line-height: 2; color: var(--text-dark);">
+                        <li><strong>Submit request</strong>: Fill in your details and preferred slot.</li>
+                        <li><strong>Confirmation message</strong>: We'll contact you via phone or email.</li>
+                        <li><strong>Visit branch</strong>: Arrive 10 minutes early with your ID.</li>
+                    </ol>
+                    <div style="margin-top: 20px;">
+                        <button id="view-consult-appointments" style="background: var(--brand-color); color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">View my requests</button>
+                    </div>
+                    <div style="margin-top: 15px; padding: 12px; background: var(--bg-light); border-radius: 8px; font-size: 0.85rem; color: var(--text-light);">
+                        Requests are stored on this device. Staff can also assist in-branch.
+                    </div>
                 </div>
             </div>
+
+            <!-- Appointment List -->
+            <section id="consult-list-card" class="shop-section hidden" style="margin-top: 30px;">
+                <div class="section-header">
+                    <h2>My appointment requests</h2>
+                    <span style="background: #eef6ff; color: #0b5aa0; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;">Local only</span>
+                </div>
+                <div id="consult-appt-list" style="margin-top: 20px;"></div>
+            </section>
         </section>
 
         <!-- About Us Section -->
@@ -1296,9 +1345,124 @@
             displayProducts(filtered);
         }
 
+        // Consultation Booking Functionality
+        const CONSULT_STORAGE_KEY = 'dyna_consult_appointments';
+        
+        function loadConsultAppointments() {
+            try {
+                return JSON.parse(localStorage.getItem(CONSULT_STORAGE_KEY) || '[]');
+            } catch(_) {
+                return [];
+            }
+        }
+        
+        function saveConsultAppointments(list) {
+            localStorage.setItem(CONSULT_STORAGE_KEY, JSON.stringify(list));
+            try {
+                if (window.cloudAutoSaveAll) {
+                    window.cloudAutoSaveAll('Cloud sync: new consultation request');
+                }
+            } catch(_) {}
+        }
+        
+        function renderConsultList() {
+            const listWrap = document.getElementById('consult-appt-list');
+            if (!listWrap) return;
+            
+            const appts = loadConsultAppointments();
+            const visible = appts.filter(a => a.status !== 'completed');
+            
+            if (!visible.length) {
+                listWrap.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">No upcoming appointments yet.</div>';
+                return;
+            }
+            
+            listWrap.innerHTML = visible.map(a => `
+                <div style="padding: 15px; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg-light); margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+                        <div style="font-weight: 700; color: var(--text-dark);">${a.fullName}</div>
+                        <span style="background: #eef6ff; color: #0b5aa0; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;">${a.type || 'Consultation'} • ${a.branch}</span>
+                    </div>
+                    <div style="color: var(--text-light); font-size: 0.9rem; margin-top: 6px;">
+                        ${a.date} at ${a.time} • ${a.phone || a.email || ''}
+                    </div>
+                    ${a.notes ? `<div style="margin-top: 8px; padding: 8px; background: white; border-radius: 6px; color: var(--text-dark);">${a.notes.replace(/[<>]/g, '')}</div>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        function handleConsultationSubmit(e) {
+            e.preventDefault();
+            const form = e.target;
+            const data = Object.fromEntries(new FormData(form).entries());
+            
+            const errs = [];
+            if (!data.fullName || data.fullName.trim().length < 2) errs.push('Full name');
+            if (!data.phone && !data.email) errs.push('Phone or Email');
+            if (!data.date) errs.push('Preferred date');
+            if (!data.time) errs.push('Preferred time');
+            if (!data.branch) errs.push('Branch');
+            
+            if (errs.length) {
+                alert('Please provide: ' + errs.join(', '));
+                return;
+            }
+            
+            const appts = loadConsultAppointments();
+            const appt = {
+                id: 'appt_' + Date.now(),
+                createdAt: new Date().toISOString(),
+                status: 'pending',
+                fullName: data.fullName.trim(),
+                phone: (data.phone || '').trim(),
+                email: (data.email || '').trim(),
+                date: data.date,
+                time: data.time,
+                branch: data.branch,
+                type: data.type,
+                notes: (data.notes || '').trim()
+            };
+            
+            appts.push(appt);
+            saveConsultAppointments(appts);
+            
+            const successBox = document.getElementById('consultation-success-box');
+            if (successBox) successBox.classList.remove('hidden');
+            
+            renderConsultList();
+            form.reset();
+        }
+
         // Initialize on load
         document.addEventListener('DOMContentLoaded', function() {
             loadShopProducts();
+            
+            // Consultation booking form
+            const consultForm = document.getElementById('consultation-booking-form');
+            if (consultForm) {
+                consultForm.addEventListener('submit', handleConsultationSubmit);
+            }
+            
+            const resetConsultBtn = document.getElementById('reset-consult-form');
+            if (resetConsultBtn) {
+                resetConsultBtn.addEventListener('click', function() {
+                    if (consultForm) consultForm.reset();
+                    const successBox = document.getElementById('consultation-success-box');
+                    if (successBox) successBox.classList.add('hidden');
+                });
+            }
+            
+            const viewConsultBtn = document.getElementById('view-consult-appointments');
+            if (viewConsultBtn) {
+                viewConsultBtn.addEventListener('click', function() {
+                    const listCard = document.getElementById('consult-list-card');
+                    if (listCard) {
+                        listCard.classList.remove('hidden');
+                        renderConsultList();
+                        listCard.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            }
             
             // Close modal on outside click
             document.getElementById('loginModal').addEventListener('click', function(e) {
