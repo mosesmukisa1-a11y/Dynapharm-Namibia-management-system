@@ -10473,7 +10473,41 @@
 
         // Adapter: Clients
         async function loadClientsAdapter() {
-            // Try DB first
+            // PRIMARY: Load from backend database
+            try {
+                const response = await fetch('/api/clients');
+                if (response.ok) {
+                    const backendClients = await response.json();
+                    // Transform backend format to local format
+                    const clients = backendClients.map(client => ({
+                        id: client.id,
+                        referenceNumber: client.reference_number,
+                        fullName: client.full_name,
+                        phone: client.phone,
+                        email: client.email,
+                        gender: client.gender,
+                        dateOfBirth: client.date_of_birth,
+                        address: client.address,
+                        city: client.city,
+                        branch: client.branch,
+                        ...(client.data ? (typeof client.data === 'string' ? JSON.parse(client.data) : client.data) : {}),
+                        createdAt: client.created_at
+                    }));
+                    
+                    // Update local cache
+                    try {
+                        await dbBulkPut(DYN_CLIENTS_STORE, clients);
+                        localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                    } catch(_) {}
+                    
+                    console.log(`✅ Loaded ${clients.length} clients from backend database`);
+                    return clients;
+                }
+            } catch (apiError) {
+                console.warn('Backend load failed, using local cache:', apiError);
+            }
+            
+            // FALLBACK: Try DB first
             const fromDb = await dbGetAll(DYN_CLIENTS_STORE);
             if (Array.isArray(fromDb)) return fromDb;
             // Fallback to localStorage
@@ -10481,6 +10515,36 @@
         }
 
         async function saveAllClientsAdapter(list) {
+            // PRIMARY: Save to backend database
+            try {
+                if (Array.isArray(list) && list.length > 0) {
+                    const response = await fetch('/api/clients', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(list.map(client => ({
+                            id: client.id || client.referenceNumber,
+                            reference_number: client.referenceNumber || client.reference_number,
+                            full_name: client.fullName || client.full_name,
+                            phone: client.phone,
+                            email: client.email,
+                            gender: client.gender,
+                            date_of_birth: client.dateOfBirth || client.date_of_birth,
+                            address: client.address,
+                            city: client.city,
+                            branch: client.branch,
+                            data: JSON.stringify(client)
+                        })))
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`✅ Saved ${list.length} clients to backend database`);
+                    }
+                }
+            } catch (apiError) {
+                console.warn('Backend save failed, using local storage:', apiError);
+            }
+            
+            // FALLBACK: Also save to local storage as cache
             try {
                 if (Array.isArray(list)) {
                     await dbBulkPut(DYN_CLIENTS_STORE, list);
@@ -10492,6 +10556,38 @@
         async function addClientAdapter(client) {
             const now = new Date().toISOString();
             const record = { createdAt: now, ...client };
+            
+            // PRIMARY: Save to backend database
+            try {
+                const response = await fetch('/api/clients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: record.id || record.referenceNumber,
+                        reference_number: record.referenceNumber || record.reference_number,
+                        full_name: record.fullName || record.full_name,
+                        phone: record.phone,
+                        email: record.email,
+                        gender: record.gender,
+                        date_of_birth: record.dateOfBirth || record.date_of_birth,
+                        address: record.address,
+                        city: record.city,
+                        branch: record.branch,
+                        data: JSON.stringify(record)
+                    })
+                });
+                
+                if (response.ok) {
+                    const saved = await response.json();
+                    console.log('✅ Client saved to backend database');
+                    // Update record with saved data
+                    Object.assign(record, saved);
+                }
+            } catch (apiError) {
+                console.warn('Backend save failed, using local storage:', apiError);
+            }
+            
+            // FALLBACK: Also save to local storage as cache
             try { await dbAdd(DYN_CLIENTS_STORE, record); } catch(_) {}
             try {
                 const ls = safeParseFromStorage('dyna_clients', '[]');
@@ -13827,48 +13923,66 @@
                     return;
                 }
                 
+                // STEP 1: Save to backend database FIRST
+                console.log('💾 Saving client to backend database...');
                 const result = await apiRequest('/clients', 'POST', client);
                 
                 // Handle different response formats
                 const success = result?.success || (result?.client && result?.total !== undefined) || (result?.id && !result?.error);
                 
-                if (success) {
-                    // Add to clients array
-                    clients.push(client);
-                    
-                    // IMPORTANT: Save to localStorage immediately for persistence
-                    // This ensures data persists even if API fails later or on refresh
-                    try {
-                        localStorage.setItem('dyna_clients', JSON.stringify(clients));
-                        console.log(`✅ Client saved to localStorage: ${referenceNumber}`);
-                    } catch (storageError) {
-                        console.error('❌ Error saving client to localStorage:', storageError);
-                        // Continue anyway - API save was successful
-                    }
-                    
-                    // Realtime: notify other portals about new client
-                    try {
-                        // Publish via Vercel SSE channel "clients"
-                        fetch('/api/realtime_publish', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                channel: 'clients',
-                                event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now() }
-                            })
+                // STEP 2: Only proceed if backend save was successful
+                if (!success) {
+                    const errorMsg = result?.message || result?.error || 'Unknown error';
+                    console.error('❌ Backend save failed:', errorMsg);
+                    alert('❌ Error saving client to database: ' + errorMsg + '\n\nPlease try again or contact support.');
+                    return; // Stop here - don't add to local arrays or trigger updates
+                }
+                
+                console.log('✅ Client saved to backend database successfully');
+                
+                // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
+                // Add to clients array only after successful backend save
+                clients.push(client);
+                
+                // Save to localStorage as cache/backup (backend is source of truth)
+                try {
+                    localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                    console.log(`✅ Client cached to localStorage: ${referenceNumber}`);
+                } catch (storageError) {
+                    console.error('❌ Error caching client to localStorage:', storageError);
+                    // Continue anyway - backend save was successful
+                }
+                
+                // STEP 4: Notify all users via real-time updates (only after successful backend save)
+                try {
+                    // Publish via Vercel SSE channel "clients"
+                    fetch('/api/realtime_publish', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            channel: 'clients',
+                            event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client }
+                        })
+                    }).catch(_ => {});
+                } catch(_) {}
+                try {
+                    // Publish via Railway WebSocket gateway if configured
+                    const m = document.querySelector('meta[name="rt-base"]');
+                    const rtBase = m && m.content && m.content.trim();
+                    if (rtBase) {
+                        fetch(rtBase.replace(/\/$/, '') + '/publish', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client } })
                         }).catch(_ => {});
-                    } catch(_) {}
-                    try {
-                        // Publish via Railway WebSocket gateway if configured
-                        const m = document.querySelector('meta[name="rt-base"]');
-                        const rtBase = m && m.content && m.content.trim();
-                        if (rtBase) {
-                            fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now() } })
-                            }).catch(_ => {});
-                        }
-                    } catch(_) {}
+                    }
+                } catch(_) {}
+                
+                // Dispatch window event for local listeners
+                try {
+                    window.dispatchEvent(new CustomEvent('clients:updated', { 
+                        detail: { referenceNumber, action: 'created', client, ts: Date.now() } 
+                    }));
+                } catch(_) {}
             
                     const refEl = document.getElementById('clientRefNumber');
                     if (refEl) {
@@ -13878,9 +13992,9 @@
             
                     alert(`✅ Client saved successfully!\n\nReference: ${referenceNumber}\n${client.referralName ? `Referred by: ${client.referralName}\n\n` : ''}Save this reference number for future visits.`);
 
-            // If appointment flow, create a simple appointment record
-            try {
-                if (visitType === 'appointment') {
+                    // If appointment flow, create a simple appointment record
+                    try {
+                        if (visitType === 'appointment') {
                     const preferredDate = formData.get('preferredDate');
                     const preferredTime = formData.get('preferredTime');
                     if (!preferredDate || !preferredTime) {
@@ -13898,6 +14012,35 @@
                             clientReference: referenceNumber,
                             clientForm: client
                         };
+                        
+                        // PRIMARY: Save to backend database
+                        try {
+                            const response = await fetch('/api/appointments', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    id: appointment.id,
+                                    client_reference: referenceNumber,
+                                    full_name: fullName,
+                                    phone: client.phone,
+                                    email: client.email,
+                                    date: preferredDate,
+                                    time: preferredTime,
+                                    branch: preferredBranch,
+                                    type: 'Full Body Check-Up',
+                                    status: 'pending',
+                                    data: JSON.stringify({ clientForm: client })
+                                })
+                            });
+                            
+                            if (response.ok) {
+                                console.log('✅ Appointment saved to backend database');
+                            }
+                        } catch (apiError) {
+                            console.warn('Backend save failed, using local storage:', apiError);
+                        }
+                        
+                        // FALLBACK: Also save to local storage as cache
                         try {
                             appointments.push(appointment);
                             localStorage.setItem('dyna_appointments', JSON.stringify(appointments));
@@ -13931,15 +14074,12 @@
                             document.body.appendChild(el);
                             setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity 300ms'; setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 320); }, 2500);
                         })(`✅ Appointment request sent. Ref: ${referenceNumber} (${preferredDate} @ ${preferredTime})`);
+                        }
                     }
-                }
-            } catch (e) { console.warn('Appointment creation step skipped:', e); }
-            
-            if (confirm('Print form?')) {
-                window.print();
-                    }
-                } else {
-                    alert('❌ Error saving client: ' + (result.message || 'Unknown error'));
+                } catch (e) { console.warn('Appointment creation step skipped:', e); }
+                
+                if (confirm('Print form?')) {
+                    window.print();
                 }
             } catch (error) {
                 console.error('❌ Error saving client:', error);
@@ -16774,27 +16914,39 @@
             const validatedReport = validateReportPricing(report);
             
             try {
+                // STEP 1: Save to backend database FIRST
                 // Use PUT for editing, POST for new reports
                 const method = isEditing ? 'PUT' : 'POST';
+                console.log(`💾 Saving report to backend database (${method})...`);
                 const result = await apiRequest('/reports', method, validatedReport);
                 
-                if (result.success) {
-                    if (isEditing) {
-                        // Update existing report in local array
-                        const index = reports.findIndex(r => r.id === validatedReport.id);
-                        if (index !== -1) {
-                            reports[index] = validatedReport;
-                        }
-                        alert('✅ Report updated successfully! ID: ' + validatedReport.id);
-                    } else {
-                        // Add new report to local array
-                        reports.push(validatedReport);
-                        alert('✅ Report created successfully! ID: ' + validatedReport.id);
+                // STEP 2: Only proceed if backend save was successful
+                if (!result.success) {
+                    const errorMsg = result?.message || result?.error || 'Unknown error';
+                    console.error('❌ Backend save failed:', errorMsg);
+                    alert('❌ Error saving report to database: ' + errorMsg + '\n\nPlease try again or contact support.');
+                    return; // Stop here - don't add to local arrays or trigger updates
+                }
+                
+                console.log('✅ Report saved to backend database successfully');
+                
+                // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
+                if (isEditing) {
+                    // Update existing report in local array only after successful backend save
+                    const index = reports.findIndex(r => r.id === validatedReport.id);
+                    if (index !== -1) {
+                        reports[index] = validatedReport;
                     }
-                    
-                    // Clear editing flag
-                    window.editingReportId = null;
-                    
+                    alert('✅ Report updated successfully! ID: ' + validatedReport.id);
+                } else {
+                    // Add new report to local array only after successful backend save
+                    reports.push(validatedReport);
+                    alert('✅ Report created successfully! ID: ' + validatedReport.id);
+                }
+                
+                // Clear editing flag
+                window.editingReportId = null;
+                
             closeModal('reportModal');
             document.getElementById('consultantNotes').value = '';
                     document.getElementById('followUpDate').value = '';
@@ -16805,32 +16957,59 @@
                     // Clear medicine selections
                     document.querySelectorAll('#medicineGrid input:checked').forEach(cb => cb.checked = false);
                     
-                    // Persist and notify other sections
+                    // Persist to localStorage as cache/backup (backend is source of truth)
                     try { 
                         localStorage.setItem('dyna_reports', JSON.stringify(reports));
-                        console.log(`✅ Report saved to localStorage: ${validatedReport.id} for client ${validatedReport.clientId}`);
+                        console.log(`✅ Report cached to localStorage: ${validatedReport.id} for client ${validatedReport.clientId}`);
                     } catch(storageError) {
-                        console.error('❌ Error saving report to localStorage:', storageError);
+                        console.error('❌ Error caching report to localStorage:', storageError);
                     }
-                    try { window.dispatchEvent(new CustomEvent('reports:updated', { detail: { id: validatedReport.id, action: isEditing ? 'updated' : 'created' } })); } catch(_) {}
-                    // Global notify (best-effort)
-                    try { fetch('/api/realtime_publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'reports', event: { id: validatedReport.id, action: isEditing ? 'updated' : 'created', ts: Date.now() } }) }); } catch(_) {}
+                    
+                    // STEP 4: Notify all users via real-time updates (only after successful backend save)
+                    try { 
+                        window.dispatchEvent(new CustomEvent('reports:updated', { 
+                            detail: { id: validatedReport.id, action: isEditing ? 'updated' : 'created', report: validatedReport, ts: Date.now() } 
+                        })); 
+                    } catch(_) {}
+                    
+                    // Global notify via API (best-effort)
+                    try { 
+                        fetch('/api/realtime_publish', { 
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'application/json' }, 
+                            body: JSON.stringify({ 
+                                channel: 'reports', 
+                                event: { 
+                                    id: validatedReport.id, 
+                                    action: isEditing ? 'updated' : 'created', 
+                                    ts: Date.now(),
+                                    data: validatedReport
+                                } 
+                            }) 
+                        }); 
+                    } catch(_) {}
                     try {
                         const m = document.querySelector('meta[name="rt-base"]');
                         const rtBase = m && m.content && m.content.trim();
                         if (rtBase) {
                             fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ event: { id: validatedReport.id, action: isEditing ? 'updated' : 'created', ts: Date.now() } })
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                    event: { 
+                                        id: validatedReport.id, 
+                                        action: isEditing ? 'updated' : 'created', 
+                                        ts: Date.now(),
+                                        data: validatedReport
+                                    } 
+                                })
                             });
                         }
                     } catch(_) {}
+                    
                     // Refresh consultant and dispenser views
                     await refreshConsultantData();
                     try { if (typeof displayPrescriptions === 'function') await displayPrescriptions(); } catch(_) {}
-                } else {
-                    alert('Error saving report: ' + result.message);
-                }
             } catch (error) {
                 console.error('Error saving report:', error);
                 alert('Error saving report. Please try again.');

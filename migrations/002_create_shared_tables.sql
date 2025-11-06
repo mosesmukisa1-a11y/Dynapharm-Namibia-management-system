@@ -141,3 +141,4 @@ CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employe
 CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
 CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);
 
+

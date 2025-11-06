@@ -12,3 +12,4 @@ ADD COLUMN IF NOT EXISTS agreement_data TEXT;
 -- Add comment to document the column
 COMMENT ON COLUMN distributors.agreement_data IS 'JSON string containing detailed distributor agreement data including birthdate, address, upline info, sponsor info, and all original CSV columns';
 
+
