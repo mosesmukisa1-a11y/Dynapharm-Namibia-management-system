@@ -4371,11 +4371,17 @@
                             </table>
                         </div>
                         
-                        <!-- Stock Movements History -->
+                        <!-- Stock Movements History (Restricted) -->
                         <div style="margin-top: 30px;">
                             <h3 style="color: #2c3e50; margin-bottom: 15px;">📊 Recent Stock Movements</h3>
                             <div id="branchInventoryMovements" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
                                 <p style="text-align: center; color: #7f8c8d;">Loading movements...</p>
+                            </div>
+                            <div id="branchInventoryRestrictedNotice" style="display: none; background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                                <p style="color: #856404; margin: 0;">
+                                    <strong>⚠️ Restricted Access:</strong> Sensitive inventory data (expected stock, stock losses, and adjustments) requires GM clearance. 
+                                    Contact your General Manager for access to this information.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -6686,6 +6692,142 @@
                         <div id="recruitingCampaignsList" class="campaign-tab-content" style="display: none;"></div>
                         <div id="sponsoringCampaignsList" class="campaign-tab-content" style="display: none;"></div>
                         <div id="giftCampaignsList" class="campaign-tab-content" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Inventory Oversight & Management -->
+                <div class="form-section" style="margin-top: 30px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3>📦 Inventory Oversight & Management</h3>
+                        <button class="btn btn-primary" onclick="refreshGMInventoryData()">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Inventory Tabs -->
+                    <div class="tabs" style="margin-bottom: 20px;">
+                        <button class="tab-button active" onclick="switchGMInventoryTab('overview')" id="gmInvTabOverview">📊 Overview</button>
+                        <button class="tab-button" onclick="switchGMInventoryTab('expected')" id="gmInvTabExpected">📥 Expected Stock</button>
+                        <button class="tab-button" onclick="switchGMInventoryTab('losses')" id="gmInvTabLosses">⚠️ Stock Losses</button>
+                        <button class="tab-button" onclick="switchGMInventoryTab('manipulations')" id="gmInvTabManipulations">🔍 Manipulations Audit</button>
+                        <button class="tab-button" onclick="switchGMInventoryTab('approvals')" id="gmInvTabApprovals">✅ Pending Approvals</button>
+                        <button class="tab-button" onclick="switchGMInventoryTab('allbranches')" id="gmInvTabAllBranches">🏬 All Branches</button>
+                    </div>
+                    
+                    <!-- Inventory Content -->
+                    <div id="gmInventoryContent" style="min-height: 400px;">
+                        <!-- Overview Tab -->
+                        <div id="gmInvOverview" class="gm-inv-tab-content active">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                                <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px;">
+                                    <div style="font-size: 0.9rem; opacity: 0.9;">Total Stock Value (All Branches)</div>
+                                    <div id="gmTotalStockValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white; padding: 20px; border-radius: 12px;">
+                                    <div style="font-size: 0.9rem; opacity: 0.9;">Pending Expected Stock Requests</div>
+                                    <div id="gmPendingExpectedStock" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; padding: 20px; border-radius: 12px;">
+                                    <div style="font-size: 0.9rem; opacity: 0.9;">Stock Losses (This Month)</div>
+                                    <div id="gmStockLosses" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #ffa726, #fb8c00); color: white; padding: 20px; border-radius: 12px;">
+                                    <div style="font-size: 0.9rem; opacity: 0.9;">Pending Adjustments</div>
+                                    <div id="gmPendingAdjustments" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
+                                </div>
+                            </div>
+                            <div id="gmInventoryOverviewTable" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <h4 style="margin-top: 0;">Branch Inventory Summary</h4>
+                                <div id="gmBranchInventorySummary"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Expected Stock Tab -->
+                        <div id="gmInvExpected" class="gm-inv-tab-content" style="display: none;">
+                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h4 style="margin: 0;">Expected Stock Requests Requiring Approval</h4>
+                                    <div style="display: flex; gap: 10px;">
+                                        <select id="gmExpectedBranchFilter" onchange="loadGMExpectedStock()" style="padding: 8px;">
+                                            <option value="all">All Branches</option>
+                                        </select>
+                                        <select id="gmExpectedStatusFilter" onchange="loadGMExpectedStock()" style="padding: 8px;">
+                                            <option value="pending">Pending Approval</option>
+                                            <option value="all">All Status</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="rejected">Rejected</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="gmExpectedStockList" style="max-height: 600px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Stock Losses Tab -->
+                        <div id="gmInvLosses" class="gm-inv-tab-content" style="display: none;">
+                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h4 style="margin: 0;">Stock Losses & Discrepancies</h4>
+                                    <div style="display: flex; gap: 10px;">
+                                        <input type="date" id="gmLossesDateFrom" onchange="loadGMStockLosses()" style="padding: 8px;">
+                                        <input type="date" id="gmLossesDateTo" onchange="loadGMStockLosses()" style="padding: 8px;">
+                                        <select id="gmLossesBranchFilter" onchange="loadGMStockLosses()" style="padding: 8px;">
+                                            <option value="all">All Branches</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="gmStockLossesList" style="max-height: 600px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Manipulations Audit Tab -->
+                        <div id="gmInvManipulations" class="gm-inv-tab-content" style="display: none;">
+                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h4 style="margin: 0;">Stock Manipulation Audit Trail</h4>
+                                    <div style="display: flex; gap: 10px;">
+                                        <input type="text" id="gmManipSearch" placeholder="Search by user, product, branch..." 
+                                               onkeyup="loadGMStockManipulations()" style="padding: 8px; min-width: 250px;">
+                                        <select id="gmManipBranchFilter" onchange="loadGMStockManipulations()" style="padding: 8px;">
+                                            <option value="all">All Branches</option>
+                                        </select>
+                                        <select id="gmManipTypeFilter" onchange="loadGMStockManipulations()" style="padding: 8px;">
+                                            <option value="all">All Types</option>
+                                            <option value="adjustment">Adjustments</option>
+                                            <option value="loss">Losses</option>
+                                            <option value="transfer">Transfers</option>
+                                            <option value="receive">Receipts</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="gmStockManipulationsList" style="max-height: 600px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Pending Approvals Tab -->
+                        <div id="gmInvApprovals" class="gm-inv-tab-content" style="display: none;">
+                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h4 style="margin: 0;">Pending Inventory Approvals</h4>
+                                    <button class="btn btn-success" onclick="loadGMPendingInventoryApprovals()">🔄 Refresh</button>
+                                </div>
+                                <div id="gmPendingInventoryApprovalsList" style="max-height: 600px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- All Branches Tab -->
+                        <div id="gmInvAllBranches" class="gm-inv-tab-content" style="display: none;">
+                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h4 style="margin: 0;">All Branch Inventory (Full Access)</h4>
+                                    <div style="display: flex; gap: 10px;">
+                                        <select id="gmAllBranchesBranchFilter" onchange="loadGMAllBranchInventory()" style="padding: 8px;">
+                                            <option value="all">All Branches</option>
+                                        </select>
+                                        <button class="btn btn-info" onclick="exportGMInventoryReport()">📥 Export Report</button>
+                                    </div>
+                                </div>
+                                <div id="gmAllBranchInventoryList" style="max-height: 600px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
