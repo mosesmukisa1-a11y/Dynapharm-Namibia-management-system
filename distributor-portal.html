@@ -127,9 +127,14 @@
                 </div>
                 <form id="loginForm">
                     <div style="margin-bottom: 16px;">
-                        <label for="nbNumber">NB Number *</label>
-                        <input type="text" id="nbNumber" name="nbNumber" placeholder="e.g., NB001544" required pattern="NB[0-9]+" autocomplete="off">
-                        <small style="color: var(--muted); font-size: 12px; display: block; margin-top: 4px;">Your distributor NB number from the uploaded CSV</small>
+                        <label for="nbNumber">Select Distributor *</label>
+                        <div style="position: relative;">
+                            <input type="text" id="distributorSearch" placeholder="Search by name or NB number..." autocomplete="off" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; margin-bottom: 4px;" oninput="filterDistributorOptions()">
+                            <select id="nbNumber" name="nbNumber" required style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;" onchange="updateSearchFromSelect()">
+                                <option value="">-- Select your distributor account --</option>
+                            </select>
+                        </div>
+                        <small style="color: var(--muted); font-size: 12px; display: block; margin-top: 4px;">Search or select your distributor from the list</small>
                     </div>
                     <div style="margin-bottom: 24px;">
                         <label for="dob">Date of Birth *</label>
@@ -436,11 +441,12 @@
         // Login function
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const nbNumber = document.getElementById('nbNumber').value.trim().toUpperCase();
+            const nbNumberSelect = document.getElementById('nbNumber');
+            const nbNumber = nbNumberSelect ? nbNumberSelect.value.trim().toUpperCase() : '';
             const dob = document.getElementById('dob').value;
             
             if (!nbNumber || !dob) {
-                showLoginError('Please enter both NB number and date of birth');
+                showLoginError('Please select a distributor and enter your date of birth');
                 return;
             }
 
@@ -459,7 +465,7 @@
                 });
 
                 if (!distributor) {
-                    showLoginError('Distributor not found. Please check your NB number or contact support.');
+                    showLoginError('Distributor not found. Please refresh the distributor list and try again.');
                     submitBtn.disabled = false;
                     submitBtn.textContent = originalText;
                     return;
@@ -519,6 +525,114 @@
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('dashboard').classList.add('hidden');
             document.getElementById('loginForm').reset();
+            // Clear search input
+            const searchInput = document.getElementById('distributorSearch');
+            if (searchInput) searchInput.value = '';
+        }
+
+        // Store all distributors for filtering
+        let allDistributors = [];
+
+        // Populate distributor dropdown
+        function populateDistributorDropdown(distributors) {
+            const select = document.getElementById('nbNumber');
+            if (!select) return;
+            
+            // Store all distributors for filtering
+            allDistributors = distributors || [];
+            
+            // Clear existing options except the first placeholder
+            select.innerHTML = '<option value="">-- Select your distributor account --</option>';
+            
+            if (!distributors || distributors.length === 0) {
+                select.innerHTML += '<option value="" disabled>No distributors available</option>';
+                return;
+            }
+            
+            // Sort distributors by name for easier selection
+            const sortedDistributors = [...distributors].sort((a, b) => {
+                const nameA = (a.distributorName || a.name || '').toLowerCase();
+                const nameB = (b.distributorName || b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            // Add each distributor as an option
+            sortedDistributors.forEach(dist => {
+                const code = (dist.distributorCode || dist.code || '').toString().toUpperCase().trim();
+                const name = (dist.distributorName || dist.name || '').trim();
+                if (code && name) {
+                    const option = document.createElement('option');
+                    option.value = code;
+                    option.textContent = `${code} - ${name}`;
+                    option.dataset.distributorId = dist.id;
+                    option.dataset.distributorName = name;
+                    option.dataset.searchText = `${code} ${name}`.toLowerCase();
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        // Filter distributor options based on search input
+        function filterDistributorOptions() {
+            const searchInput = document.getElementById('distributorSearch');
+            const select = document.getElementById('nbNumber');
+            if (!searchInput || !select) return;
+            
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            const options = select.querySelectorAll('option');
+            
+            if (!searchTerm) {
+                // Show all options if search is empty
+                options.forEach(opt => {
+                    opt.style.display = '';
+                });
+                // Clear selection if search is cleared
+                if (select.value && !select.value.includes('--')) {
+                    select.value = '';
+                }
+                return;
+            }
+            
+            // Filter options based on search term
+            let visibleCount = 0;
+            options.forEach(opt => {
+                if (opt.value === '') {
+                    opt.style.display = ''; // Always show placeholder
+                    return;
+                }
+                
+                const searchText = opt.dataset.searchText || opt.textContent.toLowerCase();
+                if (searchText.includes(searchTerm)) {
+                    opt.style.display = '';
+                    visibleCount++;
+                } else {
+                    opt.style.display = 'none';
+                }
+            });
+            
+            // If only one option matches and search is substantial, auto-select it
+            if (visibleCount === 1 && searchTerm.length >= 3) {
+                const visibleOption = Array.from(options).find(opt => 
+                    opt.style.display !== 'none' && opt.value !== ''
+                );
+                if (visibleOption) {
+                    select.value = visibleOption.value;
+                }
+            }
+        }
+
+        // Update search field when dropdown selection changes
+        function updateSearchFromSelect() {
+            const select = document.getElementById('nbNumber');
+            const searchInput = document.getElementById('distributorSearch');
+            if (!select || !searchInput) return;
+            
+            const selectedOption = select.options[select.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                searchInput.value = selectedOption.textContent;
+            } else {
+                searchInput.value = '';
+            }
         }
 
         // Refresh distributor list and update count
@@ -527,6 +641,10 @@
             if (countEl) countEl.textContent = 'Loading...';
             
             const distributors = await loadDistributors();
+            
+            // Populate the dropdown
+            populateDistributorDropdown(distributors);
+            
             if (countEl) {
                 if (distributors.length > 0) {
                     countEl.textContent = `✅ ${distributors.length} distributor(s) available`;
@@ -541,7 +659,7 @@
 
         // Check if already logged in and load distributor count
         window.addEventListener('DOMContentLoaded', async function() {
-            // Load and display distributor count
+            // Load and display distributor count and populate dropdown
             await refreshDistributorList();
             
             // Check for existing session
