@@ -426,22 +426,53 @@
             </a>
             <ul class="nav-links">
                 <li><a href="#" onclick="showSection('shop'); return false;">Home</a></li>
-                <li><a href="distributor-guest.html">Guest Portal</a></li>
+                <li><a href="#" onclick="showDistributorTab('shop'); return false;">Guest Portal</a></li>
                 <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
-                <li><a href="#" onclick="showSection('media'); return false;">Media</a></li>
-                <li><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
+                <li><a href="#" onclick="showDistributorTab('media'); return false;">Media</a></li>
+                <li id="adminNavItem" style="display: none;"><a href="#" onclick="openTab('admin', event); return false;">Administrator (<span id="adminNavName">admin</span>)</a></li>
+                <li id="logoutNavItem" style="display: none;"><a href="#" onclick="logout(); return false;">Logout</a></li>
+                <li id="loginNavItem"><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
             </ul>
         </div>
     </nav>
 
     <!-- Hero Section -->
     <section class="hero">
-        <h1>🏥 Welcome to Dynapharm Namibia</h1>
-        <p>Your Trusted Wellness Partner</p>
+        <h1>DYNAPHARM INTERNATIONAL NAMIBIA</h1>
+        <p>Comprehensive Health Management System</p>
+        <p style="font-size: 0.9rem; margin-top: 10px;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
     </section>
+    
+    <!-- Portal Tabs -->
+    <div id="portalTabs" style="display: none; max-width: 1200px; margin: 0 auto; padding: 0 20px; background: var(--white); border-bottom: 2px solid var(--brand-color);">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; padding: 10px 0;">
+            <button class="tab-button active" onclick="openTab('client', event)" style="background: var(--brand-color); color: white; padding: 12px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600;">Distributor / Guest</button>
+            <button class="tab-button" onclick="openTab('frontdesk', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Front Desk Portal</button>
+            <button class="tab-button" onclick="openTab('consultant', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Consultant Portal</button>
+            <button class="tab-button" onclick="openTab('dispenser', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Branch Portal</button>
+            <button class="tab-button" onclick="openTab('hr-portal', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">HR Portal</button>
+            <button class="tab-button" onclick="openTab('finance', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Finance Portal</button>
+            <button class="tab-button" onclick="openTab('gm', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">GM Portal</button>
+            <button class="tab-button" onclick="openTab('director', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Director Portal</button>
+            <button class="tab-button" onclick="openTab('mis', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">MIS Portal</button>
+            <button class="tab-button" onclick="openTab('stock', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Stock Management</button>
+            <button class="tab-button" onclick="openTab('admin', event)" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">Admin Portal</button>
+        </div>
+    </div>
 
     <!-- Main Content -->
     <div class="main-content">
+        <!-- Distributor Portal Sub-tabs (shown when logged in or on Guest Portal) -->
+        <div id="distributorSubTabs" style="display: none; max-width: 1200px; margin: 0 auto 20px; padding: 0 20px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; border-bottom: 2px solid var(--border);">
+                <button class="distributor-tab-btn active" onclick="showDistributorTab('shop')" style="background: var(--brand-color); color: white; padding: 12px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600;">🛒 Shop</button>
+                <button class="distributor-tab-btn" onclick="showDistributorTab('checkup')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">🏥 Full Body Check Up</button>
+                <button class="distributor-tab-btn" onclick="showDistributorTab('media')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">📰 Media & News</button>
+                <button class="distributor-tab-btn" onclick="showDistributorTab('testimonials')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">💬 Testimonials</button>
+                <a href="distributor-portal.html" target="_blank" class="distributor-tab-btn" style="text-decoration: none; display: inline-block; background: var(--brand-color); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">📊 Distributor Dashboard</a>
+            </div>
+        </div>
+        
         <!-- Shop Section -->
         <section id="shop-section" class="shop-section">
             <div class="section-header">
@@ -581,6 +612,43 @@
                 </div>
                 <div id="consult-appt-list" style="margin-top: 20px;"></div>
             </section>
+        </section>
+
+        <!-- Testimonials Section -->
+        <section id="distributor-testimonials-tab" class="shop-section" style="display: none; margin-top: 40px;">
+            <div class="section-header">
+                <h2>💬 Testimonials</h2>
+            </div>
+            <p style="margin-bottom: 20px; color: var(--text-light);">Read what our customers and members say about Dynapharm products and services</p>
+            
+            <div id="testimonialsContent" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; margin-bottom: 40px;">
+                <!-- Testimonials will be loaded here -->
+            </div>
+            
+            <!-- Add Testimonial Form -->
+            <div style="background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); color: white; padding: 30px; border-radius: 12px;">
+                <h3 style="color: white; margin-bottom: 15px;">Share Your Story</h3>
+                <p style="margin-bottom: 20px; opacity: 0.9;">Have you experienced positive results with Dynapharm products? Share your testimonial with us!</p>
+                <form onsubmit="submitTestimonial(event)">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label style="color: white;">Your Name</label>
+                            <input type="text" id="testimonialName" placeholder="Your name" style="padding: 10px; width: 100%; border-radius: 5px; border: none;">
+                        </div>
+                        <div class="form-group">
+                            <label style="color: white;">Location</label>
+                            <input type="text" id="testimonialLocation" placeholder="City, Country" style="padding: 10px; width: 100%; border-radius: 5px; border: none;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label style="color: white;">Your Testimonial</label>
+                        <textarea id="testimonialText" rows="4" required placeholder="Share your experience with Dynapharm products..." style="padding: 10px; width: 100%; border-radius: 5px; border: none; font-family: inherit;"></textarea>
+                    </div>
+                    <div>
+                        <button type="submit" style="background: white; color: #c41e3a; padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Submit Testimonial</button>
+                    </div>
+                </form>
+            </div>
         </section>
 
         <!-- About Us Section -->
@@ -935,6 +1003,13 @@
                 localStorage.setItem('currentUser', JSON.stringify(user));
                 localStorage.setItem('currentUserRole', user.role || '');
                 
+                // Update navigation
+                document.getElementById('adminNavItem').style.display = 'block';
+                document.getElementById('logoutNavItem').style.display = 'block';
+                document.getElementById('loginNavItem').style.display = 'none';
+                document.getElementById('adminNavName').textContent = user.username || 'admin';
+                document.getElementById('portalTabs').style.display = 'block';
+                
                 // Route to appropriate portal based on role
                 const role = (user.role || '').toLowerCase();
                 let redirectUrl = 'dynapharm-complete-system.html';
@@ -1022,6 +1097,13 @@
                 // Save session
                 localStorage.setItem('currentUser', JSON.stringify(user));
                 localStorage.setItem('currentUserRole', 'admin');
+                
+                // Update navigation
+                document.getElementById('adminNavItem').style.display = 'block';
+                document.getElementById('logoutNavItem').style.display = 'block';
+                document.getElementById('loginNavItem').style.display = 'none';
+                document.getElementById('adminNavName').textContent = user.username || 'admin';
+                document.getElementById('portalTabs').style.display = 'block';
                 
                 // Redirect to admin portal
                 window.location.href = 'dynapharm-complete-system.html#admin';
@@ -1433,9 +1515,188 @@
             form.reset();
         }
 
+        // Tab Management Functions
+        function openTab(tabName, event) {
+            // Redirect to main system for portal access
+            if (tabName !== 'client') {
+                window.location.href = `dynapharm-complete-system.html#${tabName}`;
+                return;
+            }
+            
+            // Show portal tabs and distributor sub-tabs for client/distributor portal
+            document.getElementById('portalTabs').style.display = 'block';
+            document.getElementById('distributorSubTabs').style.display = 'block';
+            showDistributorTab('shop');
+            
+            // Update active tab button
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.style.background = 'transparent';
+                btn.style.color = 'var(--text-dark)';
+            });
+            if (event && event.target) {
+                event.target.style.background = 'var(--brand-color)';
+                event.target.style.color = 'white';
+            }
+        }
+        
+        function showDistributorTab(tabName) {
+            // Hide all distributor tabs
+            document.querySelectorAll('[id^="distributor-"]').forEach(el => {
+                if (el.classList.contains('shop-section') || el.classList.contains('distributor-subtab')) {
+                    el.style.display = 'none';
+                }
+            });
+            
+            // Show selected tab
+            if (tabName === 'shop') {
+                document.getElementById('shop-section').style.display = 'block';
+            } else if (tabName === 'testimonials') {
+                document.getElementById('distributor-testimonials-tab').style.display = 'block';
+                loadTestimonials();
+            } else if (tabName === 'checkup') {
+                // Show consultation booking section
+                document.querySelector('#consult-list-card').parentElement.style.display = 'block';
+            } else if (tabName === 'media') {
+                document.getElementById('media-section').classList.add('active');
+            }
+            
+            // Update active sub-tab button
+            document.querySelectorAll('.distributor-tab-btn').forEach(btn => {
+                btn.style.background = 'transparent';
+                btn.style.color = 'var(--text-dark)';
+            });
+            event?.target?.classList?.add('active');
+            if (event?.target) {
+                event.target.style.background = 'var(--brand-color)';
+                event.target.style.color = 'white';
+            }
+        }
+        
+        function logout() {
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('currentUserRole');
+            document.getElementById('portalTabs').style.display = 'none';
+            document.getElementById('distributorSubTabs').style.display = 'none';
+            document.getElementById('adminNavItem').style.display = 'none';
+            document.getElementById('logoutNavItem').style.display = 'none';
+            document.getElementById('loginNavItem').style.display = 'block';
+            window.location.reload();
+        }
+        
+        // Testimonials Functions
+        function loadTestimonials() {
+            const contentDiv = document.getElementById('testimonialsContent');
+            if (!contentDiv) return;
+            
+            try {
+                let testimonials = JSON.parse(localStorage.getItem('dyna_testimonials') || '[]');
+                
+                if (testimonials.length === 0) {
+                    const defaultTestimonials = [
+                        { id: 'TEST001', name: 'Sarah M.', location: 'Windhoek, Namibia', text: 'Two years ago, I was dying… today, I am healthy and 6 months pregnant! Dynapharm products have truly transformed my life. I am so grateful for the natural solutions they provide.', date: new Date().toISOString(), approved: true },
+                        { id: 'TEST002', name: 'Maria K.', location: 'Ondangwa, Namibia', text: 'I had cancer of the ovaries stage 3… I have an option to treat it by taking Dynapharm products… The natural approach combined with my medical treatment has been life-changing. I feel stronger and more hopeful every day.', date: new Date().toISOString(), approved: true },
+                        { id: 'TEST003', name: 'John D.', location: 'Swakopmund, Namibia', text: 'My arthritic pain was unbearable… After using Dynapharm\'s natural relief products for just a few weeks, I noticed a significant improvement. I can now move freely without constant pain.', date: new Date().toISOString(), approved: true },
+                        { id: 'TEST004', name: 'Anna T.', location: 'Rundu, Namibia', text: 'I WAS A WALKING MEDICINE BOX, UNTIL DYNAPHARM. Now I take natural supplements and feel better than I have in years. The products are effective and I trust them completely.', date: new Date().toISOString(), approved: true },
+                        { id: 'TEST005', name: 'Grace L.', location: 'Katima Mulilo, Namibia', text: 'I HAD BREAST CANCER …NOW I AM HEALED! Dynapharm products have been an essential part of my healing journey. The support and quality products have given me hope and strength.', date: new Date().toISOString(), approved: true }
+                    ];
+                    localStorage.setItem('dyna_testimonials', JSON.stringify(defaultTestimonials));
+                    displayTestimonials(defaultTestimonials);
+                } else {
+                    const approved = testimonials.filter(t => t.approved !== false);
+                    displayTestimonials(approved);
+                }
+            } catch (error) {
+                console.error('Error loading testimonials:', error);
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px; grid-column: 1/-1;">Error loading testimonials.</p>';
+            }
+        }
+        
+        function displayTestimonials(testimonials) {
+            const contentDiv = document.getElementById('testimonialsContent');
+            if (!contentDiv) return;
+            
+            if (testimonials.length === 0) {
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 40px; grid-column: 1/-1;">No testimonials yet. Be the first to share your story!</p>';
+                return;
+            }
+            
+            contentDiv.innerHTML = testimonials.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)).map(testimonial => {
+                const date = new Date(testimonial.date || testimonial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+                return `
+                    <div style="background: white; border: 2px solid #c41e3a; border-radius: 12px; padding: 25px; box-shadow: 0 4px 12px rgba(196, 30, 58, 0.15); position: relative;">
+                        <div style="position: absolute; top: 15px; right: 15px; font-size: 2rem; opacity: 0.2;">💬</div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #c41e3a, #8b0000); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
+                                    ${testimonial.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h4 style="margin: 0; color: #2c3e50; font-size: 1.1rem;">${testimonial.name}</h4>
+                                    <p style="margin: 0; color: #666; font-size: 0.85rem;">${testimonial.location || 'Namibia'}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color: #333; line-height: 1.8; font-style: italic; margin-bottom: 15px; position: relative; z-index: 1;">
+                            "${testimonial.text}"
+                        </p>
+                        <div style="display: flex; align-items: center; gap: 5px; color: #c41e3a; font-size: 0.9rem;">
+                            ⭐⭐⭐⭐⭐
+                            <span style="margin-left: auto; color: #666; font-size: 0.8rem;">${date}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function submitTestimonial(event) {
+            event.preventDefault();
+            const name = document.getElementById('testimonialName').value.trim();
+            const location = document.getElementById('testimonialLocation').value.trim();
+            const text = document.getElementById('testimonialText').value.trim();
+            
+            if (!name || !text) {
+                alert('Please fill in your name and testimonial.');
+                return;
+            }
+            
+            const testimonials = JSON.parse(localStorage.getItem('dyna_testimonials') || '[]');
+            const newTestimonial = {
+                id: 'TEST' + Date.now(),
+                name: name,
+                location: location || 'Namibia',
+                text: text,
+                date: new Date().toISOString(),
+                approved: true
+            };
+            
+            testimonials.push(newTestimonial);
+            localStorage.setItem('dyna_testimonials', JSON.stringify(testimonials));
+            
+            document.getElementById('testimonialName').value = '';
+            document.getElementById('testimonialLocation').value = '';
+            document.getElementById('testimonialText').value = '';
+            
+            loadTestimonials();
+            alert('Thank you for sharing your story! Your testimonial has been submitted.');
+        }
+
         // Initialize on load
         document.addEventListener('DOMContentLoaded', function() {
             loadShopProducts();
+            
+            // Check if user is logged in
+            const currentUser = localStorage.getItem('currentUser');
+            if (currentUser) {
+                try {
+                    const user = JSON.parse(currentUser);
+                    document.getElementById('adminNavItem').style.display = 'block';
+                    document.getElementById('logoutNavItem').style.display = 'block';
+                    document.getElementById('loginNavItem').style.display = 'none';
+                    document.getElementById('adminNavName').textContent = user.username || 'admin';
+                    document.getElementById('portalTabs').style.display = 'block';
+                    document.getElementById('distributorSubTabs').style.display = 'block';
+                } catch(e) {}
+            }
             
             // Consultation booking form
             const consultForm = document.getElementById('consultation-booking-form');
