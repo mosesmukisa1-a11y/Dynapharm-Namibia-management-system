@@ -434,54 +434,30 @@
             <div class="section-header">
                 <h2>🛒 Our Products</h2>
             </div>
-            <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #c41e3a15 0%, #8b000015 100%); border-left: 4px solid var(--brand-color); border-radius: 8px;">
-                <h3 style="color: var(--brand-color); margin-bottom: 10px; font-size: 1.1rem;">🔐 Staff Portal Access</h3>
-                <p style="color: var(--text-dark); margin-bottom: 8px; line-height: 1.6;">
-                    Our comprehensive health management system includes multiple portals for different roles:
-                </p>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px;">
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>👨‍⚕️ Consultant</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Client reports & consultations</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>💊 Dispenser</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Prescription management</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>🖥️ Front Desk</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Order & appointment management</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>👑 Admin</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">User & system management</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>💰 Finance</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Payment & revenue tracking</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>📊 MIS</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Sales receipts & reporting</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>🏢 HR</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Employee management</span>
-                    </div>
-                    <div style="padding: 8px; background: white; border-radius: 6px; font-size: 0.9rem;">
-                        <strong>📦 Stock</strong><br>
-                        <span style="color: var(--text-light); font-size: 0.85rem;">Inventory management</span>
-                    </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                <input type="text" id="productSearch" class="search-bar" placeholder="🔍 Search products..." oninput="filterProducts()" style="flex: 1; min-width: 250px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button onclick="openCart()" style="background: var(--brand-color); color: white; padding: 12px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; position: relative;">
+                        <span>🛒 Cart</span>
+                        <span id="cartCount" style="background: white; color: var(--brand-color); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold;">0</span>
+                    </button>
                 </div>
-                <p style="margin-top: 12px; color: var(--text-light); font-size: 0.9rem;">
-                    <strong>Click "Login / Register"</strong> above to access your portal. Default admin: <code>admin</code> / <code>admin123</code>
-                </p>
             </div>
-            <input type="text" id="productSearch" class="search-bar" placeholder="Search products..." oninput="filterProducts()">
             <div id="productsContainer" class="products-grid">
                 <div class="loading">
           <div class="spinner"></div>
                     <p>Loading products...</p>
+                </div>
+            </div>
+            
+            <!-- Shopping Cart -->
+            <div id="shopCartSection" style="display: none; margin-top: 30px; background: var(--white); padding: 25px; border-radius: 12px; border: 2px solid var(--brand-color); box-shadow: 0 4px 12px rgba(196, 30, 58, 0.1);">
+                <h3 style="color: var(--brand-color); margin-bottom: 10px; font-size: 1.5rem;">🛒 Shopping Cart</h3>
+                <div id="shopCartItems"></div>
+                <div style="text-align: right; margin-top: 20px; padding-top: 20px; border-top: 2px solid var(--border);">
+                    <p style="font-size: 1.5rem; font-weight: bold; color: var(--brand-color); margin-bottom: 15px;">Total: <span id="shopCartTotal">N$ 0.00</span></p>
+                    <button class="btn-submit" onclick="checkoutShopOrder()" style="margin-right: 10px;">Proceed to Checkout</button>
+                    <button onclick="clearShopCart()" style="background: var(--border); color: var(--text-dark); padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Clear Cart</button>
                 </div>
             </div>
         </section>
@@ -1100,6 +1076,11 @@
             }
         }
 
+        // Shopping cart
+        let shopCart = [];
+        let shopCustomerTypeSelected = false;
+        let pendingCartItem = null;
+
         function displayProducts(products) {
             const container = document.getElementById('productsContainer');
             if (products.length === 0) {
@@ -1109,8 +1090,11 @@
             
             container.innerHTML = products.map(product => {
                 const name = product.description || product.name || 'Product';
-                const price = product.dp || product.price || 0;
+                const cp = product.cp || product.price || 0;
+                const dp = product.dp || product.cp || product.price || 0;
+                const bv = product.bv || 0;
                 const image = product.image || product.photo || '';
+                const displayPrice = shopCustomerTypeSelected && shopCart.length > 0 && shopCart[0].customerType === 'distributor' ? dp : cp;
                 
                 return `
                     <div class="product-card">
@@ -1120,11 +1104,187 @@
                              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'250\' height=\'200\'%3E%3Crect fill=\'%23f6f8fb\' width=\'250\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'%3ENo Image%3C/text%3E%3C/svg%3E'">
                         <div class="product-info">
                             <div class="product-name">${name}</div>
-                            <div class="product-price">N$ ${parseFloat(price).toFixed(2)}</div>
+                            <div class="product-price">N$ ${parseFloat(displayPrice).toFixed(2)}</div>
+                            <button onclick="addToShopCart('${name.replace(/'/g, "\\'")}', ${cp}, ${dp}, ${bv})" 
+                                    style="width: 100%; margin-top: 10px; background: var(--brand-color); color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                ➕ Add to Cart
+                            </button>
                         </div>
-      </div>
+                    </div>
                 `;
             }).join('');
+        }
+
+        function addToShopCart(productName, cp, dp, bv) {
+            pendingCartItem = { productName, cp, dp, bv };
+            
+            if (shopCart.length === 0) {
+                showCustomerTypeModal();
+                return;
+            }
+            
+            const firstItemCustomerType = shopCart[0].customerType;
+            if (firstItemCustomerType) {
+                addToCartWithCustomerType(productName, cp, dp, bv, firstItemCustomerType);
+            } else {
+                showCustomerTypeModal();
+            }
+        }
+
+        function showCustomerTypeModal() {
+            const modal = document.getElementById('customerTypeModal') || createCustomerTypeModal();
+            modal.style.display = 'flex';
+        }
+
+        function createCustomerTypeModal() {
+            const modal = document.createElement('div');
+            modal.id = 'customerTypeModal';
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <span class="modal-close" onclick="closeCustomerTypeModal()">&times;</span>
+                    <h2 style="color: var(--brand-color); margin-bottom: 20px;">Select Customer Type</h2>
+                    <p style="margin-bottom: 20px; color: var(--text-light);">Please select your customer type to continue shopping.</p>
+                    <div class="form-group">
+                        <label>Customer Type</label>
+                        <select id="modalCustomerType" style="padding: 12px; width: 100%; font-size: 1rem; border: 2px solid var(--border); border-radius: 8px;">
+                            <option value="customer">Customer (CP Pricing)</option>
+                            <option value="distributor">Distributor (DP Pricing)</option>
+                        </select>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn-submit" onclick="confirmCustomerTypeSelection()">Confirm</button>
+                        <button class="btn" onclick="closeCustomerTypeModal()" style="background: var(--border); margin-top: 10px;">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            return modal;
+        }
+
+        function closeCustomerTypeModal() {
+            const modal = document.getElementById('customerTypeModal');
+            if (modal) modal.style.display = 'none';
+            pendingCartItem = null;
+        }
+
+        function confirmCustomerTypeSelection() {
+            const customerType = document.getElementById('modalCustomerType')?.value;
+            if (!customerType || !pendingCartItem) {
+                alert('Please select a customer type.');
+                return;
+            }
+            
+            shopCustomerTypeSelected = true;
+            addToCartWithCustomerType(
+                pendingCartItem.productName,
+                pendingCartItem.cp,
+                pendingCartItem.dp,
+                pendingCartItem.bv,
+                customerType
+            );
+            
+            closeCustomerTypeModal();
+            displayProducts(allProducts); // Refresh to show correct prices
+        }
+
+        function addToCartWithCustomerType(productName, cp, dp, bv, customerType) {
+            const price = customerType === 'distributor' ? dp : cp;
+            
+            const existingItem = shopCart.find(item => item.name === productName && item.customerType === customerType);
+            
+            if (existingItem) {
+                existingItem.quantity += 1;
+            } else {
+                shopCart.push({
+                    name: productName,
+                    price: price,
+                    cp: cp,
+                    dp: dp,
+                    bv: bv,
+                    quantity: 1,
+                    customerType: customerType
+                });
+            }
+            
+            updateShopCart();
+        }
+
+        function updateShopCart() {
+            const cartSection = document.getElementById('shopCartSection');
+            const cartItems = document.getElementById('shopCartItems');
+            const cartTotal = document.getElementById('shopCartTotal');
+            const cartCount = document.getElementById('cartCount');
+            
+            if (!cartSection || !cartItems || !cartTotal) return;
+            
+            if (shopCart.length === 0) {
+                cartSection.style.display = 'none';
+                shopCustomerTypeSelected = false;
+                if (cartCount) cartCount.textContent = '0';
+                return;
+            }
+            
+            cartSection.style.display = 'block';
+            
+            const customerType = shopCart[0]?.customerType;
+            const typeLabel = customerType === 'distributor' ? 'Distributor (DP Pricing)' : 'Customer (CP Pricing)';
+            
+            cartItems.innerHTML = `
+                <p style="color: var(--text-light); margin-bottom: 15px;">Customer Type: <strong>${typeLabel}</strong></p>
+                ${shopCart.map((item, index) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); background: var(--bg-light); border-radius: 8px; margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <strong>${item.name}</strong>
+                            <p style="color: var(--text-light); font-size: 0.9rem; margin-top: 5px;">N$${item.price.toFixed(2)} x ${item.quantity}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="font-size: 1.2rem; font-weight: bold; color: var(--brand-color);">N$${(item.price * item.quantity).toFixed(2)}</p>
+                            <button onclick="removeFromShopCart(${index})" style="padding: 5px 10px; margin-top: 5px; background: #dc2626; color: white; border: none; border-radius: 5px; cursor: pointer;">Remove</button>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+            
+            const total = shopCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            cartTotal.textContent = `N$ ${total.toFixed(2)}`;
+            
+            const countVal = shopCart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+            if (cartCount) cartCount.textContent = String(countVal);
+        }
+
+        function removeFromShopCart(index) {
+            shopCart.splice(index, 1);
+            updateShopCart();
+            displayProducts(allProducts);
+        }
+
+        function openCart() {
+            const cartSection = document.getElementById('shopCartSection');
+            if (cartSection && shopCart.length > 0) {
+                cartSection.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                alert('Your cart is empty. Add products to your cart first.');
+            }
+        }
+
+        function checkoutShopOrder() {
+            if (shopCart.length === 0) {
+                alert('Your cart is empty.');
+                return;
+            }
+            
+            // Redirect to login/register for checkout
+            alert('Please login or register to complete your order.');
+            openLoginModal();
+        }
+
+        function clearShopCart() {
+            if (confirm('Are you sure you want to clear your cart?')) {
+                shopCart = [];
+                updateShopCart();
+                displayProducts(allProducts);
+            }
         }
 
         function filterProducts() {
