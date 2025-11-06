@@ -6,10 +6,10 @@
   "installCommand": "npm install",
   "framework": null,
   "redirects": [
-    { "source": "/", "destination": "/dynapharm-complete-system.html", "permanent": false },
     { "source": "/dynapharm-complete-system", "destination": "/dynapharm-complete-system.html", "permanent": false },
     { "source": "/distributor/guest", "destination": "/distributor-guest.html", "permanent": false },
-    { "source": "/staff/appointments", "destination": "/appointments-admin.html", "permanent": false }
+    { "source": "/staff/appointments", "destination": "/appointments-admin.html", "permanent": false },
+    { "source": "/shop", "destination": "/", "permanent": false }
   ],
   "headers": [
     {

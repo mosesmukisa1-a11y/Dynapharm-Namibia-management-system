@@ -1,80 +1,882 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynapharm Namibia Health - Redirecting...</title>
+    <title>Dynapharm Namibia - Health & Wellness Products</title>
     <link rel="icon" href="./favicon.ico">
-    <script>
-        // Redirect to main application immediately
-        window.location.href = './dynapharm-complete-system.html';
-    </script>
-    <meta http-equiv="refresh" content="0; url=./dynapharm-complete-system.html">
+    <meta name="description" content="Dynapharm Namibia - Your trusted health and wellness partner. Shop premium health products and book appointments.">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#c41e3a">
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        * {
             margin: 0;
             padding: 0;
-            background-color: #f0f2f5;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --brand-color: #c41e3a;
+            --brand-dark: #8b0000;
+            --text-dark: #1f2a37;
+            --text-light: #64748b;
+            --bg-light: #f6f8fb;
+            --white: #ffffff;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: var(--text-dark);
+            background: var(--bg-light);
+            line-height: 1.6;
+        }
+
+        /* Navigation Bar */
+        .navbar {
+            background: var(--white);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            padding: 1rem 0;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
-            min-height: 100vh;
-            color: #333;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--brand-color);
+            text-decoration: none;
+        }
+
+        .logo img {
+            height: 40px;
+            width: auto;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-dark);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-links a:hover {
+            color: var(--brand-color);
+        }
+
+        .nav-links .btn-login {
+            background: var(--brand-color);
+            color: var(--white);
+            padding: 10px 24px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .nav-links .btn-login:hover {
+            background: var(--brand-dark);
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--brand-color) 0%, var(--brand-dark) 100%);
+            color: var(--white);
+            padding: 60px 20px;
             text-align: center;
         }
-        .container {
-            background: #fff;
-            padding: 40px;
+
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        /* Shop Section */
+        .shop-section {
+            background: var(--white);
             border-radius: 12px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .section-header h2 {
+            color: var(--brand-color);
+            font-size: 1.8rem;
+        }
+
+        .search-bar {
+            width: 100%;
+            max-width: 400px;
+            padding: 12px 20px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .product-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .product-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+
+        .product-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background: var(--bg-light);
+        }
+
+        .product-info {
+            padding: 15px;
+        }
+
+        .product-name {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+        }
+
+        .product-price {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--brand-color);
+            margin-top: 10px;
+        }
+
+        /* About Us Section */
+        .about-section {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 40px;
+            margin: 40px auto;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: none;
+        }
+
+        .about-section.active {
+            display: block;
+        }
+
+        /* Login/Register Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 40px;
             max-width: 500px;
             width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
         }
-        .logo { margin-bottom: 20px; }
-        .logo img { display:block; max-width: 220px; height:auto; margin: 0 auto; }
-        p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            margin-bottom: 25px;
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-light);
         }
+
+        .modal-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .modal-tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-light);
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .modal-tab.active {
+            color: var(--brand-color);
+            border-bottom-color: var(--brand-color);
+        }
+
+        .modal-form {
+            display: none;
+        }
+
+        .modal-form.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--brand-color);
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: var(--brand-color);
+            color: var(--white);
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-submit:hover {
+            background: var(--brand-dark);
+        }
+
+        .error-message {
+            color: #dc2626;
+            font-size: 0.9rem;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                gap: 15px;
+            }
+
+            .nav-links a {
+                font-size: 0.9rem;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .products-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .modal-content {
+                padding: 30px 20px;
+            }
+        }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-light);
+        }
+
         .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            border-left-color: #c41e3a;
+            border: 4px solid var(--border);
+            border-top-color: var(--brand-color);
             border-radius: 50%;
             width: 40px;
             height: 40px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px auto;
+            margin: 0 auto 20px;
         }
+
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .short-url {
-            background: #e8f5e9;
-            padding: 15px;
-            border-radius: 8px;
-            border: 2px solid #4caf50;
-            margin: 20px 0;
-            font-family: monospace;
-            font-size: 1.2em;
-            color: #2e7d32;
+            to { transform: rotate(360deg); }
         }
     </style>
   </head>
   <body>
-      <div class="container">
-          <div class="logo"><img src="./assets/dynapharm-logo.png" alt="Dynapharm Namibia Logo"></div>
-          <p>Redirecting to Health Management Portal...</p>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo" onclick="showSection('shop'); return false;">
+                <img src="./assets/dynapharm-logo.png" alt="Dynapharm Logo" onerror="this.style.display='none'">
+                <span>Dynapharm Namibia</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#" onclick="showSection('shop'); return false;">Home</a></li>
+                <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
+                <li><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>🏥 Welcome to Dynapharm Namibia</h1>
+        <p>Your trusted partner for health and wellness products</p>
+    </section>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Shop Section -->
+        <section id="shop-section" class="shop-section">
+            <div class="section-header">
+                <h2>🛒 Our Products</h2>
+            </div>
+            <input type="text" id="productSearch" class="search-bar" placeholder="Search products..." oninput="filterProducts()">
+            <div id="productsContainer" class="products-grid">
+                <div class="loading">
           <div class="spinner"></div>
-          
-          <div class="short-url">
-              <strong>New Short URL:</strong><br>
-              dynapharm-namibia-health
+                    <p>Loading products...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- About Us Section -->
+        <section id="about-section" class="about-section">
+            <h2 style="color: var(--brand-color); margin-bottom: 20px;">About Dynapharm Namibia</h2>
+            <p style="margin-bottom: 15px; line-height: 1.8;">
+                Dynapharm Namibia is a leading health and wellness company dedicated to providing high-quality health products 
+                and services to individuals and families across Namibia. We are committed to improving the health and well-being 
+                of our community through innovative products and exceptional customer service.
+            </p>
+            <h3 style="color: var(--brand-color); margin-top: 30px; margin-bottom: 15px;">Our Mission</h3>
+            <p style="margin-bottom: 15px; line-height: 1.8;">
+                To provide accessible, high-quality health and wellness solutions that empower individuals to lead healthier, 
+                happier lives.
+            </p>
+            <h3 style="color: var(--brand-color); margin-top: 30px; margin-bottom: 15px;">Contact Us</h3>
+            <p style="margin-bottom: 10px;"><strong>Address:</strong> Shop Commercial Building, Independence Avenue</p>
+            <p style="margin-bottom: 10px;"><strong>Phone:</strong> 061-300877</p>
+            <p><strong>Email:</strong> info@dynapharmnamibia.com</p>
+        </section>
+    </div>
+
+    <!-- Login/Register Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+            <h2 style="color: var(--brand-color); margin-bottom: 20px;">Login / Register</h2>
+            
+            <div class="modal-tabs">
+                <button class="modal-tab active" onclick="switchModalTab('distributor')">Distributor</button>
+                <button class="modal-tab" onclick="switchModalTab('staff')">Staff</button>
+            </div>
+
+            <!-- Distributor Login/Register Form -->
+            <div id="distributor-form" class="modal-form active">
+                <div class="form-group">
+                    <label>Select Distributor Account *</label>
+                    <select id="distributorSelect" required>
+                        <option value="">-- Select your distributor --</option>
+                    </select>
+                    <div class="error-message" id="distributorError"></div>
+                </div>
+                <div class="form-group">
+                    <label>Date of Birth *</label>
+                    <input type="date" id="distributorDOB" required>
+                    <div class="error-message" id="distributorDOBError"></div>
+                </div>
+                <button class="btn-submit" onclick="handleDistributorLogin()">Login / Register</button>
+                <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
+                    New distributors must be registered by a branch manager. Contact your branch for registration.
+                </p>
+            </div>
+
+            <!-- Staff Login Form -->
+            <div id="staff-form" class="modal-form">
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" id="staffUsername" placeholder="Enter your username" required>
+                    <div class="error-message" id="staffUsernameError"></div>
+                </div>
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" id="staffPassword" placeholder="Enter your password" required>
+                    <div class="error-message" id="staffPasswordError"></div>
+                </div>
+                <button class="btn-submit" onclick="handleStaffLogin()">Login</button>
+                <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
+                    Staff accounts are created by administrators. Contact your administrator if you need access.
+                </p>
+            </div>
+        </div>
           </div>
           
-          <p><a href="./dynapharm-complete-system.html" style="color: #667eea; text-decoration: none;">Click here if not redirected automatically</a></p>
+    <script>
+        // Global state
+        let allProducts = [];
+        let allDistributors = [];
+        let users = [];
+
+        // Section Navigation
+        function showSection(section) {
+            if (section === 'shop') {
+                document.getElementById('shop-section').style.display = 'block';
+                document.getElementById('about-section').classList.remove('active');
+                loadShopProducts();
+            } else if (section === 'about') {
+                document.getElementById('shop-section').style.display = 'none';
+                document.getElementById('about-section').classList.add('active');
+            }
+        }
+
+        // Modal Functions
+        function openLoginModal() {
+            document.getElementById('loginModal').classList.add('active');
+            loadDistributorsForLogin();
+        }
+
+        function closeLoginModal() {
+            document.getElementById('loginModal').classList.remove('active');
+            // Reset forms
+            document.getElementById('distributorSelect').value = '';
+            document.getElementById('distributorDOB').value = '';
+            document.getElementById('staffUsername').value = '';
+            document.getElementById('staffPassword').value = '';
+            // Clear errors
+            document.querySelectorAll('.error-message').forEach(el => el.classList.remove('show'));
+        }
+
+        function switchModalTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update forms
+            document.querySelectorAll('.modal-form').forEach(form => form.classList.remove('active'));
+            document.getElementById(tab + '-form').classList.add('active');
+        }
+
+        // Load distributors for login dropdown
+        async function loadDistributorsForLogin() {
+            const select = document.getElementById('distributorSelect');
+            select.innerHTML = '<option value="">Loading distributors...</option>';
+            
+            try {
+                // Try database API first (primary source)
+                const response = await fetch('/api/distributors');
+                if (response.ok) {
+                    allDistributors = await response.json();
+                    console.log(`Loaded ${allDistributors.length} distributors from database`);
+                } else {
+                    // Fallback 1: localStorage cache
+                    const cached = localStorage.getItem('dyna_distributors_cache');
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        const age = Date.now() - (parsed.timestamp || 0);
+                        if (age < 3600000 && parsed.data && parsed.data.length > 0) { // 1 hour cache
+                            allDistributors = parsed.data;
+                            console.log(`Loaded ${allDistributors.length} distributors from cache`);
+                        }
+                    }
+                    
+                    // Fallback 2: localStorage direct
+                    if (allDistributors.length === 0) {
+                        const stored = localStorage.getItem('dyna_distributors');
+                        if (stored) {
+                            allDistributors = JSON.parse(stored);
+                            console.log(`Loaded ${allDistributors.length} distributors from localStorage`);
+                        }
+                    }
+                }
+                
+                // Populate dropdown
+                select.innerHTML = '<option value="">-- Select your distributor --</option>';
+                
+                if (allDistributors.length === 0) {
+                    select.innerHTML += '<option value="" disabled>No distributors found. Please contact your branch manager for registration.</option>';
+                    return;
+                }
+                
+                // Sort by name for easier selection
+                const sorted = [...allDistributors].sort((a, b) => {
+                    const nameA = (a.distributor_name || a.distributorName || a.name || '').toLowerCase();
+                    const nameB = (b.distributor_name || b.distributorName || b.name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                
+                sorted.forEach(dist => {
+                    const code = (dist.distributor_code || dist.distributorCode || dist.code || '').toString().toUpperCase().trim();
+                    const name = (dist.distributor_name || dist.distributorName || dist.name || '').trim();
+                    if (code && name) {
+                        const option = document.createElement('option');
+                        option.value = code;
+                        option.textContent = `${code} - ${name}`;
+                        option.dataset.distributorId = dist.id;
+                        option.dataset.dob = dist.birthdate || dist.birth_date || '';
+                        select.appendChild(option);
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading distributors:', error);
+                select.innerHTML = '<option value="">Error loading distributors. Please refresh and try again.</option>';
+            }
+        }
+
+        // Handle Distributor Login
+        async function handleDistributorLogin() {
+            const select = document.getElementById('distributorSelect');
+            const dobInput = document.getElementById('distributorDOB');
+            const errorDiv = document.getElementById('distributorError');
+            const dobErrorDiv = document.getElementById('distributorDOBError');
+            
+            // Clear previous errors
+            errorDiv.classList.remove('show');
+            dobErrorDiv.classList.remove('show');
+            
+            const selectedCode = select.value;
+            const dob = dobInput.value;
+            
+            if (!selectedCode) {
+                errorDiv.textContent = 'Please select a distributor';
+                errorDiv.classList.add('show');
+                return;
+            }
+            
+            if (!dob) {
+                dobErrorDiv.textContent = 'Please enter your date of birth';
+                dobErrorDiv.classList.add('show');
+                return;
+            }
+            
+            // Find selected distributor
+            const selectedOption = select.options[select.selectedIndex];
+            const storedDOB = selectedOption.dataset.dob;
+            
+            if (storedDOB) {
+                const storedDate = new Date(storedDOB).toISOString().split('T')[0];
+                if (storedDate !== dob) {
+                    dobErrorDiv.textContent = 'Date of birth does not match. Please check and try again.';
+                    dobErrorDiv.classList.add('show');
+                    return;
+                }
+            }
+            
+            // Redirect to distributor portal
+            window.location.href = `distributor-portal.html?nb=${encodeURIComponent(selectedCode)}&dob=${encodeURIComponent(dob)}`;
+        }
+
+        // Handle Staff Login
+        async function handleStaffLogin() {
+            const username = document.getElementById('staffUsername').value.trim();
+            const password = document.getElementById('staffPassword').value;
+            const errorDiv = document.getElementById('staffPasswordError');
+            
+            // Clear previous errors
+            errorDiv.classList.remove('show');
+            
+            if (!username || !password) {
+                errorDiv.textContent = 'Please enter both username and password';
+                errorDiv.classList.add('show');
+                return;
+            }
+            
+            try {
+                // Try API first (if users are stored in database)
+                try {
+                    const response = await fetch('/api/users');
+                    if (response.ok) {
+                        users = await response.json();
+                    }
+                } catch (e) {
+                    console.debug('Users API not available, trying localStorage');
+                }
+                
+                // Fallback: Load users from localStorage (set by admin)
+                if (users.length === 0) {
+                    const usersData = localStorage.getItem('dyna_users');
+                    if (usersData) {
+                        users = JSON.parse(usersData);
+                    }
+                }
+                
+                // Find matching user (case-insensitive username, exact password)
+                const user = users.find(u => 
+                    (u.username || '').toLowerCase() === username.toLowerCase() && 
+                    (u.password || '') === password
+                );
+                
+                if (!user) {
+                    errorDiv.textContent = 'Invalid username or password. Please check your credentials or contact your administrator.';
+                    errorDiv.classList.add('show');
+                    return;
+                }
+                
+                // Verify user is not a distributor (should use distributor portal)
+                if (user.role === 'distributor' || (user.role || '').toLowerCase().includes('distributor')) {
+                    errorDiv.textContent = 'Distributors should use the Distributor login option.';
+                    errorDiv.classList.add('show');
+                    return;
+                }
+                
+                // Save session
+                localStorage.setItem('currentUser', JSON.stringify(user));
+                localStorage.setItem('currentUserRole', user.role || '');
+                
+                // Redirect to main system
+                window.location.href = 'dynapharm-complete-system.html';
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'An error occurred. Please try again.';
+                errorDiv.classList.add('show');
+            }
+        }
+
+        // Load Shop Products
+        async function loadShopProducts() {
+            const container = document.getElementById('productsContainer');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading products...</p></div>';
+            
+            try {
+                let products = [];
+                
+                // Method 1: Try API endpoint
+                try {
+                    const response = await fetch('/api/products');
+                    if (response.ok) {
+                        const apiProducts = await response.json();
+                        if (Array.isArray(apiProducts) && apiProducts.length > 0) {
+                            products = apiProducts.map(p => ({
+                                description: p.name || p.description || p.product_name,
+                                name: p.name || p.description || p.product_name,
+                                dp: p.dp || p.distributor_price || p.price,
+                                cp: p.cp || p.customer_price,
+                                bv: p.bv || p.business_volume,
+                                image: p.image || p.image_url || p.photo
+                            }));
+                        }
+                    }
+                } catch (e) {
+                    console.debug('API not available, trying localStorage');
+                }
+                
+                // Method 2: Try localStorage (set by main system)
+                if (products.length === 0) {
+                    try {
+                        const priceList = JSON.parse(localStorage.getItem('dyna_price_list') || '[]');
+                        if (priceList.length > 0) {
+                            products = priceList;
+                        }
+                    } catch (e) {
+                        console.debug('localStorage price list not available');
+                    }
+                }
+                
+                // Method 3: Try loading from main system window.PRICE_LIST
+                if (products.length === 0) {
+                    try {
+                        // Check if we can access the main system
+                        if (window.opener && window.opener.PRICE_LIST) {
+                            products = window.opener.PRICE_LIST;
+                        } else if (window.parent !== window && window.parent.PRICE_LIST) {
+                            products = window.parent.PRICE_LIST;
+                        }
+                    } catch (e) {
+                        console.debug('Cannot access parent window');
+                    }
+                }
+                
+                // Method 4: Try to load product images from database
+                if (products.length > 0) {
+                    try {
+                        const imagesResponse = await fetch('/api/product_images');
+                        if (imagesResponse.ok) {
+                            const images = await imagesResponse.json();
+                            const imageMap = new Map();
+                            images.forEach(img => {
+                                const productName = (img.product_name || '').toLowerCase();
+                                if (!imageMap.has(productName) || img.is_primary) {
+                                    imageMap.set(productName, img.image_data || img.image_url);
+                                }
+                            });
+                            
+                            // Attach images to products
+                            products = products.map(p => {
+                                const productName = (p.description || p.name || '').toLowerCase();
+                                const image = imageMap.get(productName);
+                                return { ...p, image: image || p.image || p.photo };
+                            });
+                        }
+                    } catch (e) {
+                        console.debug('Could not load product images');
+                    }
+                }
+                
+                // Display products
+                if (products.length > 0) {
+                    allProducts = products;
+                    displayProducts(products);
+                } else {
+                    container.innerHTML = '<div class="loading"><p>No products available at the moment. Please check back later.</p></div>';
+                }
+            } catch (error) {
+                console.error('Error loading products:', error);
+                container.innerHTML = '<div class="loading"><p>Error loading products. Please refresh the page.</p></div>';
+            }
+        }
+
+        function displayProducts(products) {
+            const container = document.getElementById('productsContainer');
+            if (products.length === 0) {
+                container.innerHTML = '<div class="loading"><p>No products found.</p></div>';
+                return;
+            }
+            
+            container.innerHTML = products.map(product => {
+                const name = product.description || product.name || 'Product';
+                const price = product.dp || product.price || 0;
+                const image = product.image || product.photo || '';
+                
+                return `
+                    <div class="product-card">
+                        <img src="${image || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'250\' height=\'200\'%3E%3Crect fill=\'%23f6f8fb\' width=\'250\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'%3ENo Image%3C/text%3E%3C/svg%3E'}" 
+                             alt="${name}" 
+                             class="product-image"
+                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'250\' height=\'200\'%3E%3Crect fill=\'%23f6f8fb\' width=\'250\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'%3ENo Image%3C/text%3E%3C/svg%3E'">
+                        <div class="product-info">
+                            <div class="product-name">${name}</div>
+                            <div class="product-price">N$ ${parseFloat(price).toFixed(2)}</div>
+                        </div>
       </div>
+                `;
+            }).join('');
+        }
+
+        function filterProducts() {
+            const searchTerm = document.getElementById('productSearch').value.toLowerCase();
+            const filtered = allProducts.filter(product => {
+                const name = (product.description || product.name || '').toLowerCase();
+                return name.includes(searchTerm);
+            });
+            displayProducts(filtered);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadShopProducts();
+            
+            // Close modal on outside click
+            document.getElementById('loginModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeLoginModal();
+                }
+            });
+            
+            // Allow Enter key to submit forms
+            document.getElementById('distributorDOB')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') handleDistributorLogin();
+            });
+            document.getElementById('staffPassword')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') handleStaffLogin();
+            });
+        });
+    </script>
+    
+    <!-- Load main system script for product data if available -->
+    <script>
+        // Try to sync with main system's product data
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'dyna_price_list' || e.key === 'dyna_products') {
+                loadShopProducts();
+            }
+        });
+    </script>
   </body>
 </html>

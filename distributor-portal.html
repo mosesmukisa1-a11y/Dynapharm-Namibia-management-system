@@ -662,6 +662,61 @@
             // Load and display distributor count and populate dropdown
             await refreshDistributorList();
             
+            // Check for URL parameters from landing page login
+            const urlParams = new URLSearchParams(window.location.search);
+            const nbParam = urlParams.get('nb');
+            const dobParam = urlParams.get('dob');
+            
+            if (nbParam && dobParam) {
+                // Auto-fill and attempt login
+                const distributors = await loadDistributors();
+                const distributor = distributors.find(d => {
+                    const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
+                    return code === nbParam.toUpperCase();
+                });
+                
+                if (distributor) {
+                    // Verify DOB
+                    if (distributor.birthdate || distributor.birth_date) {
+                        const storedDOB = distributor.birthdate || distributor.birth_date;
+                        const storedDate = new Date(storedDOB).toISOString().split('T')[0];
+                        if (storedDate === dobParam) {
+                            // Auto-login
+                            currentDistributor = distributor;
+                            localStorage.setItem('distributor_portal_session', JSON.stringify({
+                                nbNumber: nbParam.toUpperCase(),
+                                distributorName: distributor.distributorName || distributor.name,
+                                distributorId: distributor.id,
+                                loginTime: new Date().toISOString()
+                            }));
+                            await loadDashboardData();
+                            showDashboard();
+                            // Clean URL
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                            return;
+                        }
+                    }
+                }
+                
+                // If auto-login failed, populate form
+                const select = document.getElementById('nbNumber');
+                const searchInput = document.getElementById('distributorSearch');
+                const dobInput = document.getElementById('dob');
+                
+                if (select) {
+                    select.value = nbParam.toUpperCase();
+                    if (searchInput) {
+                        const selectedOption = select.options[select.selectedIndex];
+                        if (selectedOption) {
+                            searchInput.value = selectedOption.textContent;
+                        }
+                    }
+                }
+                if (dobInput) {
+                    dobInput.value = dobParam;
+                }
+            }
+            
             // Check for existing session
             const session = localStorage.getItem('distributor_portal_session');
             if (session) {
