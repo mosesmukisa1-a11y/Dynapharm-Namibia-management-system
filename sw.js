@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dynapharm-v2.9';
+const CACHE_NAME = 'dynapharm-v3.0';
 const urlsToCache = [
   './',
   './index.html',
