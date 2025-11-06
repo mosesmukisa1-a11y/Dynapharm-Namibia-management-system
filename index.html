@@ -222,6 +222,16 @@
             display: block;
         }
 
+        .about-section a {
+            color: var(--brand-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .about-section a:hover {
+            text-decoration: underline;
+        }
+
         /* Login/Register Modal */
         .modal {
             display: none;
@@ -403,7 +413,9 @@
             </a>
             <ul class="nav-links">
                 <li><a href="#" onclick="showSection('shop'); return false;">Home</a></li>
+                <li><a href="distributor-guest.html">Guest Portal</a></li>
                 <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
+                <li><a href="#" onclick="showSection('media'); return false;">Media</a></li>
                 <li><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
             </ul>
         </div>
@@ -412,7 +424,7 @@
     <!-- Hero Section -->
     <section class="hero">
         <h1>🏥 Welcome to Dynapharm Namibia</h1>
-        <p>Your trusted partner for health and wellness products</p>
+        <p>Your Trusted Wellness Partner</p>
     </section>
 
     <!-- Main Content -->
@@ -448,6 +460,17 @@
             <p style="margin-bottom: 10px;"><strong>Address:</strong> Shop Commercial Building, Independence Avenue</p>
             <p style="margin-bottom: 10px;"><strong>Phone:</strong> 061-300877</p>
             <p><strong>Email:</strong> info@dynapharmnamibia.com</p>
+        </section>
+
+        <!-- Media Section -->
+        <section id="media-section" class="about-section">
+            <h2 style="color: var(--brand-color); margin-bottom: 20px;">📰 Media & News</h2>
+            <p style="margin-bottom: 15px; line-height: 1.8;">
+                Stay updated with the latest news, health tips, and company updates from Dynapharm Namibia.
+            </p>
+            <p style="margin-bottom: 15px; line-height: 1.8; color: var(--text-light);">
+                For the latest media updates, news, and health tips, please visit our <a href="distributor-guest.html" style="color: var(--brand-color); text-decoration: underline;">Guest Portal</a>.
+            </p>
         </section>
     </div>
 
@@ -513,10 +536,16 @@
             if (section === 'shop') {
                 document.getElementById('shop-section').style.display = 'block';
                 document.getElementById('about-section').classList.remove('active');
+                document.getElementById('media-section').classList.remove('active');
                 loadShopProducts();
             } else if (section === 'about') {
                 document.getElementById('shop-section').style.display = 'none';
                 document.getElementById('about-section').classList.add('active');
+                document.getElementById('media-section').classList.remove('active');
+            } else if (section === 'media') {
+                document.getElementById('shop-section').style.display = 'none';
+                document.getElementById('about-section').classList.remove('active');
+                document.getElementById('media-section').classList.add('active');
             }
         }
 
