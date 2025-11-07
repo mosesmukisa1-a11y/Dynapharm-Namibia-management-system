@@ -19,19 +19,21 @@
         }
 
         :root {
-            --brand-color: #c41e3a;
-            --brand-dark: #8b0000;
+            --brand-color: #b71c1c;
+            --brand-dark: #7f0000;
             --text-dark: #1f2a37;
             --text-light: #64748b;
-            --bg-light: #f6f8fb;
+            --bg-light: #fdf2f3;
             --white: #ffffff;
-            --border: #e5e7eb;
+            --border: #f1f5f9;
+            --soft-border: #f8d7da;
+            --accent-gold: #fbbf24;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             color: var(--text-dark);
-            background: var(--bg-light);
+            background: #ffffff;
             line-height: 1.6;
         }
 
@@ -41,8 +43,8 @@
 
         /* Navigation Bar */
         .navbar {
-            background: var(--white);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: linear-gradient(180deg, rgba(183, 28, 28, 0.08) 0%, rgba(255,255,255,1) 60%);
+            box-shadow: 0 8px 20px rgba(183, 28, 28, 0.08);
             position: sticky;
             top: 0;
             z-index: 1000;
@@ -89,7 +91,7 @@
         }
 
         .nav-links a:hover {
-            color: var(--brand-color);
+            color: var(--brand-dark);
         }
 
         .nav-links .btn-login {
@@ -338,13 +340,13 @@
         /* Hero Section - Modern Design */
         .hero {
             position: relative;
-            min-height: 90vh;
+            min-height: 80vh;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
-            background: linear-gradient(135deg, #c41e3a 0%, #8b0000 50%, #6b0f1f 100%);
-            color: var(--white);
+            background: linear-gradient(135deg, #fff5f5 0%, #ffe6e8 45%, #ffffff 100%);
+            color: var(--text-dark);
         }
 
         .hero-background {
@@ -356,27 +358,67 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.15) 0%, transparent 60%);
-            animation: pulse 4s ease-in-out infinite;
+            background: radial-gradient(circle at 25% 50%, rgba(183, 28, 28, 0.18) 0%, transparent 60%);
+            animation: pulse 6s ease-in-out infinite;
         }
 
         .hero-content {
             position: relative;
             z-index: 2;
-            text-align: center;
-            max-width: 900px;
-            padding: 60px 20px;
+            max-width: 1200px;
+            padding: 80px 20px 60px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 60px;
+            align-items: center;
+        }
+
+        .hero-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            text-align: left;
+        }
+
+        .hero-visual {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hero-visual::before {
+            content: '';
+            position: absolute;
+            width: 340px;
+            height: 340px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(183, 28, 28, 0.14) 0%, rgba(183, 28, 28, 0) 70%);
+            z-index: 1;
+        }
+
+        .hero-visual img {
+            position: relative;
+            z-index: 2;
+            max-width: 320px;
+            width: 100%;
+            border-radius: 28px;
+            box-shadow: 0 24px 55px rgba(183, 28, 28, 0.18);
         }
 
         .hero-badge {
-            display: inline-block;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-            padding: 8px 20px;
-            border-radius: 50px;
-            font-size: 0.9rem;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(183, 28, 28, 0.12);
+            border: 1px solid var(--soft-border);
+            padding: 8px 18px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--brand-dark);
+            margin-bottom: 10px;
             animation: fadeInUp 0.8s ease-out;
         }
 

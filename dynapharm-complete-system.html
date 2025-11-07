@@ -483,6 +483,31 @@
             cursor: pointer;
         }
         .tab-button.active { background: white; color: #c41e3a; font-weight: bold; }
+#stockWorkflowNav {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+#stockWorkflowNav .workflow-tab {
+    justify-content: flex-start;
+    text-align: left;
+    background: rgba(196, 30, 58, 0.08);
+    color: #0f1830;
+    border-radius: 10px;
+    border: 1px solid rgba(196, 30, 58, 0.2);
+    font-weight: 600;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+#stockWorkflowNav .workflow-tab:hover {
+    background: rgba(196, 30, 58, 0.15);
+    border-color: rgba(196, 30, 58, 0.35);
+}
+#stockWorkflowNav .workflow-tab.active {
+    background: #c41e3a;
+    color: #ffffff;
+    border-color: #c41e3a;
+}
         .tab-content { padding: 30px; display: none; }
         .tab-content.active { display: block; }
         .stock-tab-content { padding: 20px; display: none; }
@@ -5886,14 +5911,14 @@
                     <button id="stockStaffTabBtn" class="btn" onclick="toggleStockView('staff')" style="min-width: 160px;">👤 Staff Services</button>
                 </div>
 
-                <div id="stockWorkflowNav" style="margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
-                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
+                <div id="stockWorkflowNav">
+                    <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="branchDistribution" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="transfers" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="orders" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
+                    <button type="button" class="tab-button workflow-tab" data-tab="distribution" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
                 </div>
 
                 <div id="stockTabsContainer" style="margin-top:12px;">
