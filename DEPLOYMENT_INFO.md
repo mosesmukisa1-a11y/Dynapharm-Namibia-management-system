@@ -32,9 +32,19 @@ Share this URL with your entire team:
 
 ## Default Login Accounts
 
-- **Consultant**: username `consultant` / password `consultant123`
-- **Dispenser**: username `dispenser` / password `dispenser123`  
-- **Admin**: username `admin` / password `admin123`
+## Authentication
+- User accounts authenticate against the backend PostgreSQL database (`migrations/004_create_users_table.sql`).
+- Default Dynapharm credentials are seeded automatically when you run `node migrations/run-migrations.js` with `DATABASE_URL` configured.
+- Login, logout, and session validation live under `/api/auth`. Sessions use HttpOnly cookies signed with `AUTH_SECRET`.
+
+### Required environment variables
+- `DATABASE_URL`
+- `AUTH_SECRET`
+
+### Optional environment variables
+- `AUTH_ALLOWED_ORIGINS`
+- `AUTH_TOKEN_TTL`
+- `AUTH_REFRESH_TTL`
 
 ## System Features
 

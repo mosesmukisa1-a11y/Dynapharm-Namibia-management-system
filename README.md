@@ -51,16 +51,28 @@ After this, your site will be live at:
 - GM Portal
 - Director Portal
 
-### Default Logins
-- **Consultant**: username `consultant` / password `consultant123`
-- **Dispenser**: username `dispenser` / password `dispenser123`
-- **Admin**: username `admin` / password `admin123`
+### Authentication
+- User accounts now authenticate against the PostgreSQL `users` table (`migrations/004_create_users_table.sql`).
+- The migration runner seeds the existing Dynapharm credentials with bcrypt hashes. Run `node migrations/run-migrations.js` after setting `DATABASE_URL` to keep defaults in sync.
+- `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me` provide secure session handling with HttpOnly cookies.
+- All API routes share the same CORS helper so backend data is only available to authenticated origins.
+
+#### Required environment variables
+- `DATABASE_URL`: PostgreSQL connection string used by the migration runner and API routes.
+- `AUTH_SECRET`: secret key used to sign session tokens.
+
+#### Optional environment variables
+- `AUTH_ALLOWED_ORIGINS`: comma-separated list of origins allowed to send credentialed requests. Defaults to echoing any `Origin` header.
+- `AUTH_TOKEN_TTL`: access token lifetime in seconds (default `3600`).
+- `AUTH_REFRESH_TTL`: refresh window in seconds (default `604800`).
 
 ---
 
 ## Important Notes
 
-- The `.nojekyll` file ensures the HTML file works correctly
-- No GitHub Actions workflow is needed - branch deployment is simpler and more reliable
-- All updates to the `main` branch will automatically deploy to GitHub Pages
+- Install dependencies (`npm install`) before running migrations or local API tests.
+- Run `node migrations/run-migrations.js` whenever new migrations are added.
+- The `.nojekyll` file ensures the HTML file works correctly.
+- No GitHub Actions workflow is needed - branch deployment is simpler and more reliable.
+- All updates to the `main` branch will automatically deploy to GitHub Pages.
 

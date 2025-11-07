@@ -3956,6 +3956,7 @@
                 <button class="tab-button" onclick="showOrderTab('crm')">👥 CRM</button>
                 <button class="tab-button" onclick="showOrderTab('notifications')">🔔 Notifications</button>
                 <button class="tab-button" onclick="showOrderTab('staffComm')">💬 Staff Communication</button>
+                <button class="tab-button" onclick="showOrderTab('staffServices')">👤 Staff</button>
             </div>
             
             <!-- Pending Orders Tab -->
@@ -22396,7 +22397,31 @@ async function reverseLastPrescriptionPayment(reportId){
 
         initializeCommunicationPanels();
 
-        function showDispenserLeaveRequest() {
+        const STAFF_SERVICES_CONTEXTS = {};
+        let activeStaffContext = 'branch';
+
+        function registerStaffServicesContext(contextKey, config = {}) {
+            if (!contextKey) return;
+            STAFF_SERVICES_CONTEXTS[contextKey] = {
+                leaveStatusId: config.leaveStatusId || null,
+                cashStatusId: config.cashStatusId || null
+            };
+        }
+
+        function getStaffStatusElement(contextKey, type) {
+            const context = STAFF_SERVICES_CONTEXTS[contextKey] || {};
+            const fallbackId = type === 'leave' ? 'myLeaveStatus' : 'myCashStatus';
+            const targetId = type === 'leave' ? context.leaveStatusId : context.cashStatusId;
+            return document.getElementById(targetId || fallbackId);
+        }
+
+        function refreshStaffServices(contextKey = 'branch') {
+            viewMyLeaveRequests(contextKey);
+            viewMyCashRequests(contextKey);
+        }
+
+        function openStaffLeaveRequest(contextKey = 'branch') {
+            activeStaffContext = contextKey;
             const modal = document.createElement('div');
             modal.id = 'leaveRequestModal';
             modal.className = 'modal';
@@ -22441,10 +22466,10 @@ async function reverseLastPrescriptionPayment(reportId){
             `;
             document.body.appendChild(modal);
         }
-        
-        function viewMyLeaveRequests() {
+
+        function viewMyLeaveRequests(contextKey = 'branch') {
             const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.staff === currentUser?.username);
-            const statusDiv = document.getElementById('myLeaveStatus');
+            const statusDiv = getStaffStatusElement(contextKey, 'leave');
             if (!statusDiv) return;
             
             if (requests.length === 0) {
@@ -22485,10 +22510,12 @@ async function reverseLastPrescriptionPayment(reportId){
             localStorage.setItem('leaveRequests', JSON.stringify(requests));
             closeModal('leaveRequestModal');
             alert('Leave request submitted successfully!');
-            viewMyLeaveRequests();
+            const context = activeStaffContext || 'branch';
+            refreshStaffServices(context);
         }
-        
-        function showDispenserCashRequest() {
+
+        function openStaffCashRequest(contextKey = 'branch') {
+            activeStaffContext = contextKey;
             const modal = document.createElement('div');
             modal.id = 'cashRequestModal';
             modal.className = 'modal';
@@ -22517,7 +22544,7 @@ async function reverseLastPrescriptionPayment(reportId){
             `;
             document.body.appendChild(modal);
         }
-        
+
         function submitCashRequest(e) {
             e.preventDefault();
             try {
@@ -22543,17 +22570,19 @@ async function reverseLastPrescriptionPayment(reportId){
                 alert('Cash request submitted successfully! It will be reviewed by Finance.');
                 closeModal('cashRequestModal');
                 displayFinanceCashRequests && displayFinanceCashRequests();
+                const context = activeStaffContext || 'branch';
+                refreshStaffServices(context);
             } catch (err) {
                 console.warn('submitCashRequest error', err);
                 alert('Error submitting cash request.');
             }
         }
-        
-        function viewMyCashRequests() {
+
+        function viewMyCashRequests(contextKey = 'branch') {
             try {
                 const list = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
                 const mine = list.filter(r => r.employeeId === (currentUser?.username || ''));
-                const container = document.getElementById('myCashStatus');
+                const container = getStaffStatusElement(contextKey, 'cash');
                 if (!container) return;
                 if (mine.length === 0) {
                     container.innerHTML = '<p style="color: #666;">No cash requests yet.</p>';
@@ -22573,13 +22602,25 @@ async function reverseLastPrescriptionPayment(reportId){
                 console.warn('viewMyCashRequests error', e);
             }
         }
-        
+
+        function showDispenserLeaveRequest() {
+            openStaffLeaveRequest('branch');
+        }
+
+        function showDispenserCashRequest() {
+            openStaffCashRequest('branch');
+        }
+
         function loadMyStaffStatus() {
-            viewMyLeaveRequests();
-            viewMyCashRequests();
+            refreshStaffServices('branch');
             showStaffSubTab(staffSubTabActive || 'services');
             renderStaffCommunications();
         }
+
+        registerStaffServicesContext('branch', {
+            leaveStatusId: 'staffLeaveStatus-branch',
+            cashStatusId: 'staffCashStatus-branch'
+        });
         
         // Cash drawer functions
         function openCashDrawer() {

@@ -15,6 +15,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { Pool } from 'pg';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -86,12 +87,15 @@ async function main() {
     const migrations = [
       '001_add_agreement_data.sql',
       '002_create_shared_tables.sql',
-      '003_create_file_uploads_table.sql'
+      '003_create_file_uploads_table.sql',
+      '004_create_users_table.sql'
     ];
     
     for (const migration of migrations) {
       await runMigration(migration);
     }
+
+    await seedDefaultUsers();
     
     console.log('\n✅ All migrations completed successfully!');
     process.exit(0);
@@ -106,6 +110,154 @@ async function main() {
 // Run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();
+}
+
+async function seedDefaultUsers() {
+  const defaultUsers = [
+    {
+      id: 'USR001',
+      username: 'admin',
+      password: 'walker33',
+      fullName: 'Administrator',
+      email: 'admin@dynapharm.com.na',
+      phone: '061-300877',
+      role: 'admin',
+      branch: 'townshop',
+      branches: ['townshop'],
+      createdAt: '2025-01-20T10:00:00.000Z'
+    },
+    {
+      id: 'USR1759829667953',
+      username: 'moses',
+      password: 'walker33',
+      fullName: 'MOSES MUKISA',
+      email: 'mosesmukisa1@gmail.com',
+      phone: '0817317160',
+      role: 'consultant',
+      branch: 'townshop',
+      branches: ['townshop','khomasdal','katima','outapi','ondangwa','okongo','okahao','nkurenkuru','swakopmund','hochland-park','rundu','gobabis','walvisbay','eenhana','otjiwarongo'],
+      createdAt: '2025-10-07T09:34:27.953Z'
+    },
+    {
+      id: 'USR1759829814781',
+      username: 'Geneva',
+      password: 'Pearl_11',
+      fullName: 'Jennifer Joseph',
+      email: 'shange1124@gmail.com',
+      phone: '0852803618',
+      role: 'consultant',
+      branch: 'townshop',
+      branches: ['townshop','khomasdal','katima','outapi','ondangwa','okongo','okahao','nkurenkuru','swakopmund','hochland-park','rundu','gobabis','walvisbay','eenhana','otjiwarongo'],
+      createdAt: '2025-10-07T09:36:54.781Z'
+    },
+    {
+      id: 'USR1759830625722',
+      username: 'NAEM',
+      password: 'PASSWORD',
+      fullName: 'NAEM HANGULA',
+      email: 'naemhangula4@gmail.com',
+      phone: '0817499757',
+      role: 'dispenser',
+      branch: 'townshop',
+      branches: ['townshop'],
+      createdAt: '2025-10-07T09:50:25.722Z'
+    },
+    {
+      id: 'USR1759928153488',
+      username: 'GEINGOS',
+      password: 'ALBERTO99',
+      fullName: 'HILMA C',
+      email: 'geingoshilma@gmail',
+      phone: '0814137106',
+      role: 'consultant',
+      branch: 'townshop',
+      branches: ['townshop','khomasdal','katima','outapi','ondangwa','okongo','okahao','nkurenkuru','swakopmund','hochland-park','rundu','gobabis','walvisbay','eenhana','otjiwarongo'],
+      createdAt: '2025-10-08T12:55:53.488Z'
+    },
+    {
+      id: 'USR2000000000001',
+      username: 'stock',
+      password: 'stock123',
+      fullName: 'Stock Manager',
+      email: 'stock@dynapharm.com.na',
+      phone: '0812000000',
+      role: 'stock',
+      branch: 'townshop',
+      branches: ['townshop'],
+      createdAt: '2025-01-20T10:00:00.000Z'
+    },
+    {
+      id: 'USR2000000000002',
+      username: 'mis',
+      password: 'mis123',
+      fullName: 'MIS Manager',
+      email: 'mis@dynapharm.com.na',
+      phone: '0813000000',
+      role: 'mis',
+      branch: 'townshop',
+      branches: ['townshop'],
+      createdAt: '2025-01-20T10:00:00.000Z'
+    }
+  ];
+
+  console.log('\n👥 Seeding default users...');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    for (const user of defaultUsers) {
+      const existing = await client.query('SELECT id, password_hash FROM users WHERE username = $1', [user.username]);
+      let passwordHash;
+
+      if (existing.rowCount > 0) {
+        const existingHash = existing.rows[0].password_hash;
+        const matches = await bcrypt.compare(user.password, existingHash).catch(() => false);
+        passwordHash = matches ? existingHash : await bcrypt.hash(user.password, 10);
+      } else {
+        passwordHash = await bcrypt.hash(user.password, 10);
+      }
+
+      await client.query(
+        `INSERT INTO users (id, username, password_hash, role, full_name, email, phone, branch, branches, is_active, metadata, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,NOW())
+         ON CONFLICT (username) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           role = EXCLUDED.role,
+           full_name = EXCLUDED.full_name,
+           email = EXCLUDED.email,
+           phone = EXCLUDED.phone,
+           branch = EXCLUDED.branch,
+           branches = EXCLUDED.branches,
+           is_active = EXCLUDED.is_active,
+           metadata = EXCLUDED.metadata,
+           updated_at = NOW();`,
+        [
+          user.id,
+          user.username,
+          passwordHash,
+          user.role,
+          user.fullName,
+          user.email,
+          user.phone,
+          user.branch,
+          JSON.stringify(user.branches || []),
+          true,
+          JSON.stringify({ source: 'default_seed', createdAt: user.createdAt }),
+          user.createdAt ? new Date(user.createdAt) : new Date()
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    console.log('   ✅ Default users seeded successfully.');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('   ❌ Failed to seed users:', error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 

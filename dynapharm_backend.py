@@ -83,7 +83,7 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                 data = load_json_file(CLIENTS_FILE)
             elif path == '/api/users':
                 data = load_json_file(USERS_FILE, [
-                    {"id":"USR001","username":"admin","password":"admin123","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
+                    {"id":"USR001","username":"admin","password":"walker33","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
                     {"id":"USR002","username":"consultant","password":"consultant123","fullName":"Dr. John Smith","email":"consultant@dynapharm.com.na","phone":"061-300877","role":"consultant","branch":"townshop","branches":["townshop","khomasdal","hochland-park"]},
                     {"id":"USR003","username":"dispenser","password":"dispenser123","fullName":"Jane Doe","email":"dispenser@dynapharm.com.na","phone":"061-300877","role":"dispenser","branch":"townshop","branches":["townshop"]}
                 ])
@@ -141,7 +141,7 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                 
             elif path == '/api/users':
                 users = load_json_file(USERS_FILE, [
-                    {"id":"USR001","username":"admin","password":"admin123","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
+                    {"id":"USR001","username":"admin","password":"walker33","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
                     {"id":"USR002","username":"consultant","password":"consultant123","fullName":"Dr. John Smith","email":"consultant@dynapharm.com.na","phone":"061-300877","role":"consultant","branch":"townshop","branches":["townshop","khomasdal","hochland-park"]},
                     {"id":"USR003","username":"dispenser","password":"dispenser123","fullName":"Jane Doe","email":"dispenser@dynapharm.com.na","phone":"061-300877","role":"dispenser","branch":"townshop","branches":["townshop"]}
                 ])
@@ -205,7 +205,7 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
             
             if path == '/api/users':
                 users = load_json_file(USERS_FILE, [
-                    {"id":"USR001","username":"admin","password":"admin123","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
+                    {"id":"USR001","username":"admin","password":"walker33","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
                     {"id":"USR002","username":"consultant","password":"consultant123","fullName":"Dr. John Smith","email":"consultant@dynapharm.com.na","phone":"061-300877","role":"consultant","branch":"townshop","branches":["townshop","khomasdal","hochland-park"]},
                     {"id":"USR003","username":"dispenser","password":"dispenser123","fullName":"Jane Doe","email":"dispenser@dynapharm.com.na","phone":"061-300877","role":"dispenser","branch":"townshop","branches":["townshop"]}
                 ])
@@ -275,7 +275,7 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
             if path == '/api/users' and 'id' in query_params:
                 user_id = query_params['id'][0]
                 users = load_json_file(USERS_FILE, [
-                    {"id":"USR001","username":"admin","password":"admin123","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
+                    {"id":"USR001","username":"admin","password":"walker33","fullName":"Administrator","email":"admin@dynapharm.com.na","phone":"061-300877","role":"admin","branch":"townshop","branches":["townshop"]},
                     {"id":"USR002","username":"consultant","password":"consultant123","fullName":"Dr. John Smith","email":"consultant@dynapharm.com.na","phone":"061-300877","role":"consultant","branch":"townshop","branches":["townshop","khomasdal","hochland-park"]},
                     {"id":"USR003","username":"dispenser","password":"dispenser123","fullName":"Jane Doe","email":"dispenser@dynapharm.com.na","phone":"061-300877","role":"dispenser","branch":"townshop","branches":["townshop"]}
                 ])

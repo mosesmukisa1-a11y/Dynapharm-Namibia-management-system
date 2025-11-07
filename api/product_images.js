@@ -1,6 +1,13 @@
+import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
+  applyAuthCors(req, res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const method = req.method;
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');

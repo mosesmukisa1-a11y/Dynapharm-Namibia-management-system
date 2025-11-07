@@ -78,10 +78,10 @@ git push -u origin main
 - **Backend Health**: `https://your-railway-url.up.railway.app/api/health`
 - **API Test**: `https://your-railway-url.up.railway.app/api/users`
 
-### Test Login:
-- **Admin**: `admin` / `admin123`
-- **Consultant**: `consultant` / `consultant123`
-- **Dispenser**: `dispenser` / `dispenser123`
+### Authentication Checklist:
+- Run `node migrations/run-migrations.js` after setting `DATABASE_URL` to seed the default Dynapharm accounts with hashed passwords.
+- Set `AUTH_SECRET` (and optionally `AUTH_ALLOWED_ORIGINS`, `AUTH_TOKEN_TTL`, `AUTH_REFRESH_TTL`) before deploying the API.
+- Verify `/api/auth/login` and `/api/auth/me` return expected responses using your seeded credentials.
 
 ---
 

@@ -1,6 +1,13 @@
+import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
+  applyAuthCors(req, res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
     const method = req.method;
     // Vercel provides req.url as a string, parse it correctly
