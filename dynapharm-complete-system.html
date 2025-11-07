@@ -6051,7 +6051,7 @@
                                         <tbody id="stockImportTableBody">
                                             <tr>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98" required>
+                                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <input type="text" class="stock-description" style="width: 100%; padding: 8px;" placeholder="Product description" required>
@@ -6066,7 +6066,7 @@
                                                     <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" placeholder="Qty" min="1" required>
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1" required>
+                                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1">
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
@@ -6209,7 +6209,7 @@
                                         <tbody id="stockImportTableBody">
                                             <tr>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98" required>
+                                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <input type="text" class="stock-description" style="width: 100%; padding: 8px;" placeholder="Product description" required>
@@ -6224,7 +6224,7 @@
                                                     <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" placeholder="Qty" min="1" required>
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1" required>
+                                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1">
                                                 </td>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
@@ -31904,12 +31904,69 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Stock Import Functions with Barcode and FEFO
+        const STOCK_IMPORT_AUTO_PREFIX = 'AUTO';
+
+        function generateAutoCartonCode(seed = '') {
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const random = Math.random().toString(36).substr(2, 4).toUpperCase();
+            const suffix = seed !== undefined && seed !== null && seed !== ''
+                ? String(seed).toUpperCase()
+                : '';
+            return `${STOCK_IMPORT_AUTO_PREFIX}-${timestamp}${suffix ? '-' + suffix : ''}-${random}`;
+        }
+
+        function parsePositiveInteger(value) {
+            if (value === undefined || value === null) return null;
+            const num = Number(String(value).replace(/[^\d.-]/g, ''));
+            if (Number.isNaN(num) || !Number.isFinite(num) || num <= 0) return null;
+            return Math.floor(num);
+        }
+
+        function normalizeExpiryInput(rawValue) {
+            if (!rawValue && rawValue !== 0) return null;
+            let value = String(rawValue).trim();
+            if (!value) return null;
+
+            // Direct YYYY-MM
+            if (/^\d{4}-\d{2}$/.test(value)) {
+                return value;
+            }
+
+            // YYYY/MM
+            if (/^\d{4}\/\d{2}$/.test(value)) {
+                return value.replace('/', '-');
+            }
+
+            // MM-YYYY or MM/YYYY
+            if (/^(\d{2})[-\/]\d{4}$/.test(value)) {
+                const [month, year] = value.split(/[\/-]/);
+                return `${year}-${month}`;
+            }
+
+            // Attempt Date parsing (supports DD/MM/YYYY, DD-MM-YYYY, etc.)
+            const replaced = value.replace(/\./g, '-').replace(/\//g, '-');
+            const parsed = new Date(replaced);
+            if (!Number.isNaN(parsed.getTime())) {
+                const year = parsed.getFullYear();
+                const month = String(parsed.getMonth() + 1).padStart(2, '0');
+                return `${year}-${month}`;
+            }
+
+            // Attempt ISO fragment (e.g. 2025-03-15T00:00:00)
+            const isoMatch = value.match(/(\d{4})[-/](\d{2})/);
+            if (isoMatch) {
+                return `${isoMatch[1]}-${isoMatch[2]}`;
+            }
+
+            return null;
+        }
+
         function addStockImportRow() {
             const tbody = document.getElementById('stockImportTableBody');
             const newRow = document.createElement('tr');
             newRow.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd;">
-                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98" required>
+                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
                     <input type="text" class="stock-description" style="width: 100%; padding: 8px;" placeholder="Product description" required>
@@ -31924,7 +31981,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" placeholder="Qty" min="1" required>
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
-                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1" required>
+                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1">
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
                     <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
