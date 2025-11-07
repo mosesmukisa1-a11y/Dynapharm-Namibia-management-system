@@ -103,6 +103,234 @@
             background: var(--brand-dark);
         }
 
+        /* Account Menu */
+        .nav-links .account-nav {
+            position: relative;
+            display: none;
+        }
+
+        .account-button {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 999px;
+            background: var(--white);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+            cursor: pointer;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .account-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+        }
+
+        .account-initials {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
+            color: white;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .account-initials.large {
+            width: 52px;
+            height: 52px;
+            font-size: 1.15rem;
+        }
+
+        .account-name-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.15;
+        }
+
+        .account-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-light);
+        }
+
+        .account-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .account-chevron {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-left: 2px;
+        }
+
+        .account-menu {
+            position: absolute;
+            top: calc(100% + 14px);
+            right: 0;
+            width: 280px;
+            background: var(--white);
+            border-radius: 18px;
+            box-shadow: 0 30px 70px rgba(15, 23, 42, 0.22);
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 18px;
+            z-index: 2200;
+        }
+
+        .account-menu.active {
+            display: flex;
+        }
+
+        .account-menu::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            right: 36px;
+            width: 20px;
+            height: 20px;
+            background: var(--white);
+            transform: rotate(45deg);
+            box-shadow: -5px -5px 15px rgba(15, 23, 42, 0.08);
+        }
+
+        .account-menu-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .account-menu-name {
+            font-weight: 700;
+            color: var(--text-dark);
+            font-size: 1.05rem;
+        }
+
+        .account-menu-role {
+            color: var(--brand-color);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .account-menu-branch {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .account-menu-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .account-menu-primary,
+        .account-menu-secondary {
+            width: 100%;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .account-menu-primary {
+            background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
+            color: white;
+            box-shadow: 0 18px 30px rgba(196, 30, 58, 0.28);
+        }
+
+        .account-menu-secondary {
+            background: rgba(100, 116, 139, 0.1);
+            color: var(--text-dark);
+        }
+
+        .account-menu-primary:hover,
+        .account-menu-secondary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+        }
+
+        .nav-action {
+            margin-left: 10px;
+        }
+
+        /* Hero Auth States */
+        .hero[data-auth-state="signed-in"] {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #312e81 100%);
+        }
+
+        .hero[data-auth-state="signed-in"] .hero-badge {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.35);
+        }
+
+        .hero[data-auth-state="signed-in"] .btn-hero-primary {
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            color: white;
+        }
+
+        .hero[data-auth-state="signed-in"] .btn-hero-secondary {
+            border-color: rgba(255, 255, 255, 0.8);
+            color: white;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            background: var(--brand-color);
+            color: white;
+            padding: 16px 22px;
+            border-radius: 14px;
+            box-shadow: 0 25px 55px rgba(196, 30, 58, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            font-weight: 600;
+            z-index: 4000;
+            min-width: 220px;
+            text-align: center;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.info {
+            background: var(--text-dark);
+            box-shadow: 0 25px 55px rgba(15, 23, 42, 0.35);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            box-shadow: 0 25px 55px rgba(22, 163, 74, 0.35);
+        }
+
+        .toast.error {
+            background: #dc2626;
+            box-shadow: 0 25px 55px rgba(220, 38, 38, 0.35);
+        }
+
         /* Hero Section - Modern Design */
         .hero {
             position: relative;
@@ -734,17 +962,37 @@
                 <li><a href="#" onclick="showDistributorTab('shop'); return false;">Guest Portal</a></li>
                 <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
                 <li><a href="#" onclick="showDistributorTab('media'); return false;">Media</a></li>
-                <li id="adminNavItem" style="display: none;">
-                    <a href="#" onclick="openTab('admin', event); return false;">Administrator (<span id="adminNavName">admin</span>)</a>
+                <li id="loginNavItem" class="nav-action"><button class="btn-login" id="openAuthModalButton" onclick="openLoginModal()">Sign In</button></li>
+                <li id="accountNavItem" class="account-nav">
+                    <button class="account-button" id="accountButton" onclick="toggleAccountMenu(event)">
+                        <span class="account-initials" id="accountInitials">DN</span>
+                        <span class="account-name-wrap">
+                            <span class="account-label">Signed in</span>
+                            <span class="account-name" id="accountName">Dynapharm</span>
+                        </span>
+                        <span class="account-chevron">▾</span>
+                    </button>
+                    <div class="account-menu" id="accountMenu">
+                        <div class="account-menu-header">
+                            <div class="account-initials large" id="accountMenuInitials">DN</div>
+                            <div>
+                                <div class="account-menu-name" id="accountMenuName">Dynapharm User</div>
+                                <div class="account-menu-role" id="accountMenuRole">Consultant</div>
+                                <div class="account-menu-branch" id="accountMenuBranch"></div>
+                            </div>
+                        </div>
+                        <div class="account-menu-actions">
+                            <button type="button" class="account-menu-primary" onclick="navigateToRolePortal()">Enter my portal</button>
+                            <button type="button" class="account-menu-secondary" onclick="logout()">Sign out</button>
+                        </div>
+                    </div>
                 </li>
-                <li id="logoutNavItem" style="display: none;"><a href="#" onclick="logout(); return false;">Logout</a></li>
-                <li id="loginNavItem"><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
             </ul>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <section class="hero">
+    <section class="hero" data-auth-state="signed-out">
         <div class="hero-background">
             <div class="hero-gradient"></div>
         </div>
@@ -756,8 +1004,8 @@
             </h1>
             <p id="heroSubtitle">Premium health products, expert consultations, and comprehensive wellness services designed to help you live your healthiest life.</p>
             <div class="hero-cta">
-                <button class="btn-hero-primary" onclick="showDistributorTab('shop')">🛒 Shop Products</button>
-                <button class="btn-hero-secondary" onclick="showDistributorTab('checkup')">🏥 Book Consultation</button>
+                <button class="btn-hero-primary" id="heroPrimaryAction" onclick="showDistributorTab('shop')">🛒 Shop Products</button>
+                <button class="btn-hero-secondary" id="heroSecondaryAction" onclick="showDistributorTab('checkup')">🏥 Book Consultation</button>
             </div>
             <div class="hero-stats">
                 <div class="stat-item">
@@ -1310,6 +1558,428 @@
         let distributorAuthMode = 'login';
         let users = [];
 
+        const DEFAULT_USERS = [
+            {
+                id: 'USR001',
+                username: 'admin',
+                password: 'walker33',
+                fullName: 'Administrator',
+                email: 'admin@dynapharm.com.na',
+                phone: '061-300877',
+                role: 'admin',
+                branch: 'townshop',
+                branches: ['townshop']
+            },
+            {
+                id: 'USR1759829667953',
+                username: 'moses',
+                password: 'walker33',
+                fullName: 'MOSES MUKISA',
+                email: 'mosesmukisa1@gmail.com',
+                phone: '0817317160',
+                role: 'consultant',
+                branch: 'townshop',
+                branches: ['townshop', 'khomasdal', 'katima', 'outapi', 'ondangwa', 'okongo', 'okahao', 'nkurenkuru', 'swakopmund', 'hochland-park', 'rundu', 'gobabis', 'walvisbay', 'eenhana', 'otjiwarongo'],
+                createdAt: '2025-10-07T09:34:27.953Z'
+            },
+            {
+                id: 'USR1759829814781',
+                username: 'Geneva',
+                password: 'Pearl_11',
+                fullName: 'Jennifer Joseph',
+                email: 'shange1124@gmail.com',
+                phone: '0852803618',
+                role: 'consultant',
+                branch: 'townshop',
+                branches: ['townshop', 'khomasdal', 'katima', 'outapi', 'ondangwa', 'okongo', 'okahao', 'nkurenkuru', 'swakopmund', 'hochland-park', 'rundu', 'gobabis', 'walvisbay', 'eenhana', 'otjiwarongo'],
+                createdAt: '2025-10-07T09:36:54.781Z'
+            },
+            {
+                id: 'USR1759830625722',
+                username: 'NAEM',
+                password: 'PASSWORD',
+                fullName: 'NAEM HANGULA',
+                email: 'naemhangula4@gmail.com',
+                phone: '0817499757',
+                role: 'dispenser',
+                branch: 'townshop',
+                branches: ['townshop'],
+                createdAt: '2025-10-07T09:50:25.722Z'
+            },
+            {
+                id: 'USR1759928153488',
+                username: 'GEINGOS',
+                password: 'ALBERTO99',
+                fullName: 'HILMA C',
+                email: 'geingoshilma@gmail',
+                phone: '0814137106',
+                role: 'consultant',
+                branch: 'townshop',
+                branches: ['townshop', 'khomasdal', 'katima', 'outapi', 'ondangwa', 'okongo', 'okahao', 'nkurenkuru', 'swakopmund', 'hochland-park', 'rundu', 'gobabis', 'walvisbay', 'eenhana', 'otjiwarongo'],
+                createdAt: '2025-10-08T12:55:53.488Z'
+            }
+        ];
+
+        function ensureDefaultUsersSeeded() {
+            try {
+                const existingRaw = localStorage.getItem('dyna_users');
+
+                if (!existingRaw) {
+                    localStorage.setItem('dyna_users', JSON.stringify(DEFAULT_USERS));
+                    console.info('Seeded default Dynapharm users (fresh browser).');
+                    return;
+                }
+
+                let parsed;
+                try {
+                    parsed = JSON.parse(existingRaw);
+                } catch (parseError) {
+                    console.warn('Failed to parse stored Dynapharm users, reseeding defaults.', parseError);
+                    localStorage.setItem('dyna_users', JSON.stringify(DEFAULT_USERS));
+                    return;
+                }
+
+                if (!Array.isArray(parsed)) {
+                    console.warn('Invalid Dynapharm users structure detected, reseeding defaults.');
+                    localStorage.setItem('dyna_users', JSON.stringify(DEFAULT_USERS));
+                    return;
+                }
+
+                const existingUsernames = new Set(parsed.map(user => (user.username || '').toLowerCase()));
+                let updated = false;
+
+                DEFAULT_USERS.forEach(defaultUser => {
+                    if (!existingUsernames.has(defaultUser.username.toLowerCase())) {
+                        parsed.push(defaultUser);
+                        existingUsernames.add(defaultUser.username.toLowerCase());
+                        updated = true;
+                    }
+                });
+
+                if (parsed.length === 0) {
+                    localStorage.setItem('dyna_users', JSON.stringify(DEFAULT_USERS));
+                    console.info('Seeded default Dynapharm users because none were found.');
+                } else if (updated) {
+                    localStorage.setItem('dyna_users', JSON.stringify(parsed));
+                    console.info('Added missing default Dynapharm users to localStorage.');
+                }
+            } catch (error) {
+                console.error('Error ensuring Dynapharm default users. Attempting to seed defaults.', error);
+                try {
+                    localStorage.setItem('dyna_users', JSON.stringify(DEFAULT_USERS));
+                } catch (storageError) {
+                    console.error('Failed to seed default Dynapharm users.', storageError);
+                }
+            }
+        }
+
+        ensureDefaultUsersSeeded();
+
+        let currentAccountUser = null;
+        const heroSection = document.querySelector('.hero');
+        const heroBadgeEl = document.getElementById('heroBadge');
+        const heroTitleHighlightEl = document.getElementById('heroTitleHighlight');
+        const heroSubtitleEl = document.getElementById('heroSubtitle');
+        const heroPrimaryButton = document.getElementById('heroPrimaryAction');
+        const heroSecondaryButton = document.getElementById('heroSecondaryAction');
+        const accountNavItem = document.getElementById('accountNavItem');
+        const accountInitialsEl = document.getElementById('accountInitials');
+        const accountNameEl = document.getElementById('accountName');
+        const accountMenu = document.getElementById('accountMenu');
+        const accountMenuInitials = document.getElementById('accountMenuInitials');
+        const accountMenuName = document.getElementById('accountMenuName');
+        const accountMenuRole = document.getElementById('accountMenuRole');
+        const accountMenuBranch = document.getElementById('accountMenuBranch');
+        const loginNavItem = document.getElementById('loginNavItem');
+        const toastEl = document.getElementById('globalToast');
+
+        const HERO_DEFAULTS = {
+            badge: '🏥 Trusted Health Partner Since 2010',
+            highlight: 'Natural Solutions',
+            subtitle: 'Premium health products, expert consultations, and comprehensive wellness services designed to help you live your healthiest life.',
+            primaryLabel: '🛒 Shop Products',
+            secondaryLabel: '🏥 Book Consultation'
+        };
+
+        let toastTimeoutId = null;
+
+        function loadLocalUsers() {
+            try {
+                const stored = localStorage.getItem('dyna_users');
+                if (!stored) {
+                    users = [...DEFAULT_USERS];
+                    return users;
+                }
+
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                    users = parsed;
+                    return parsed;
+                }
+            } catch (error) {
+                console.warn('Failed to parse local Dynapharm users, using defaults.', error);
+            }
+
+            users = [...DEFAULT_USERS];
+            return users;
+        }
+
+        function getInitials(name) {
+            if (!name) return 'DN';
+            const cleaned = name.trim();
+            if (!cleaned) return 'DN';
+            const parts = cleaned.split(/\s+/).slice(0, 2);
+            return parts.map(part => part.charAt(0).toUpperCase()).join('') || cleaned.charAt(0).toUpperCase();
+        }
+
+        function setHeroAction(button, label, handler) {
+            if (!button) return;
+            button.textContent = label;
+            button.onclick = handler;
+        }
+
+        function renderHeroState(user) {
+            if (!heroSection || !heroBadgeEl || !heroTitleHighlightEl || !heroSubtitleEl) return;
+
+            if (user) {
+                heroSection.setAttribute('data-auth-state', 'signed-in');
+                heroBadgeEl.textContent = '👋 Welcome back';
+                heroTitleHighlightEl.textContent = user.fullName || user.username || 'Dynapharm Team';
+                const roleLabel = (user.role || '').toLowerCase();
+                const friendlyRole = roleLabel ? roleLabel.replace(/_/g, ' ') : 'team member';
+                heroSubtitleEl.textContent = `You’re signed in as ${friendlyRole}. Jump back into your portal or explore the latest wellness insights.`;
+                setHeroAction(heroPrimaryButton, '🚀 Enter my portal', () => navigateToRolePortal());
+                setHeroAction(heroSecondaryButton, '📊 View reports', () => {
+                    openTab('reports');
+                    document.getElementById('portalTabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            } else {
+                heroSection.setAttribute('data-auth-state', 'signed-out');
+                heroBadgeEl.textContent = HERO_DEFAULTS.badge;
+                heroTitleHighlightEl.textContent = HERO_DEFAULTS.highlight;
+                heroSubtitleEl.textContent = HERO_DEFAULTS.subtitle;
+                setHeroAction(heroPrimaryButton, HERO_DEFAULTS.primaryLabel, () => showDistributorTab('shop'));
+                setHeroAction(heroSecondaryButton, HERO_DEFAULTS.secondaryLabel, () => showDistributorTab('checkup'));
+            }
+        }
+
+        function showToast(message, variant = 'success') {
+            if (!toastEl || !message) return;
+            toastEl.textContent = message;
+            toastEl.classList.remove('success', 'error', 'info');
+            toastEl.classList.add(variant);
+            toastEl.classList.add('show');
+
+            if (toastTimeoutId) {
+                clearTimeout(toastTimeoutId);
+            }
+
+            toastTimeoutId = setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 3200);
+        }
+
+        function closeAccountMenu() {
+            accountMenu?.classList.remove('active');
+        }
+
+        function toggleAccountMenu(event) {
+            event?.preventDefault();
+            event?.stopPropagation();
+            if (!accountMenu) return;
+            if (accountMenu.classList.contains('active')) {
+                accountMenu.classList.remove('active');
+            } else {
+                accountMenu.classList.add('active');
+            }
+        }
+
+        function navigateToRolePortal() {
+            if (!currentAccountUser) {
+                openLoginModal();
+                return;
+            }
+
+            const targetUrl = getRoleRedirect((currentAccountUser.role || '').toLowerCase());
+            window.location.href = targetUrl;
+        }
+
+        function findLocalUserByCredentials(username, password) {
+            const localUsers = loadLocalUsers();
+            return localUsers.find(user =>
+                (user.username || '').toLowerCase() === username.toLowerCase() &&
+                (user.password || '') === password
+            );
+        }
+
+        async function authenticateViaApi(username, password) {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const payload = await response.json().catch(() => null);
+                    if (payload?.success && payload.user) {
+                        return { success: true, user: payload.user };
+                    }
+                    return { success: false, message: 'Unexpected authentication response.' };
+                }
+
+                let message = 'Unable to sign in. Please check your credentials.';
+                try {
+                    const payload = await response.json();
+                    if (payload?.error) {
+                        message = payload.error;
+                    }
+                } catch (parseError) {
+                    // ignore JSON parse errors
+                }
+
+                const result = { success: false, message, status: response.status };
+                if (response.status >= 500) {
+                    result.networkError = true;
+                }
+                return result;
+            } catch (error) {
+                console.warn('Authentication service unreachable, falling back to local cache.', error);
+                return {
+                    success: false,
+                    message: 'Unable to reach authentication service. Please try again.',
+                    networkError: true
+                };
+            }
+        }
+
+        function normalizeUser(user) {
+            if (!user) return null;
+
+            const branches = Array.isArray(user.branches)
+                ? user.branches
+                : typeof user.branches === 'string'
+                    ? (() => {
+                        try { return JSON.parse(user.branches || '[]'); } catch { return []; }
+                    })()
+                    : [];
+
+            return {
+                id: user.id,
+                username: user.username,
+                fullName: user.fullName || user.full_name || user.name || user.username,
+                email: user.email || null,
+                phone: user.phone || null,
+                role: user.role || '',
+                branch: user.branch || null,
+                branches
+            };
+        }
+
+        function renderAuthState(user) {
+            const portalTabs = document.getElementById('portalTabs');
+            const distributorSubTabs = document.getElementById('distributorSubTabs');
+
+            currentAccountUser = user;
+
+            if (user) {
+                loginNavItem?.classList.add('hidden');
+                if (loginNavItem) loginNavItem.style.display = 'none';
+                accountNavItem?.style.setProperty('display', 'block');
+
+                const initials = getInitials(user.fullName || user.username);
+                if (accountInitialsEl) accountInitialsEl.textContent = initials;
+                if (accountNameEl) accountNameEl.textContent = user.fullName || user.username || 'Dynapharm Team';
+                if (accountMenuInitials) accountMenuInitials.textContent = initials;
+                if (accountMenuName) accountMenuName.textContent = user.fullName || user.username || 'Dynapharm Team';
+                if (accountMenuRole) accountMenuRole.textContent = (user.role || 'team member').replace(/_/g, ' ');
+                if (accountMenuBranch) accountMenuBranch.textContent = user.branch ? `Primary branch • ${user.branch}` : '';
+
+                renderHeroState(user);
+
+                if (portalTabs) portalTabs.style.display = 'block';
+                if (distributorSubTabs) distributorSubTabs.style.display = 'block';
+
+                const normalizedRole = (user.role || '').toLowerCase();
+                toggleLandingEditorButton(normalizedRole === 'admin');
+            } else {
+                loginNavItem?.classList.remove('hidden');
+                if (loginNavItem) loginNavItem.style.display = 'list-item';
+                accountNavItem?.style.setProperty('display', 'none');
+                closeAccountMenu();
+                renderHeroState(null);
+
+                if (portalTabs) portalTabs.style.display = 'none';
+                if (distributorSubTabs) distributorSubTabs.style.display = 'none';
+
+                toggleLandingEditorButton(false);
+            }
+        }
+
+        function getRoleRedirect(role) {
+            const normalizedRole = (role || '').toLowerCase();
+            switch (normalizedRole) {
+                case 'admin':
+                    return 'dynapharm-complete-system.html#admin';
+                case 'consultant':
+                    return 'dynapharm-complete-system.html#consultant';
+                case 'dispenser':
+                    return 'dynapharm-complete-system.html#dispenser';
+                case 'finance':
+                case 'finance_manager':
+                    return 'dynapharm-complete-system.html#finance';
+                case 'hr':
+                case 'hr_manager':
+                    return 'hr-portal.html';
+                case 'mis':
+                    return 'mis-portal.html';
+                case 'gm':
+                case 'general_manager':
+                    return 'gm-portal.html';
+                case 'director':
+                    return 'director-portal.html';
+                case 'stock_manager':
+                case 'warehouse':
+                case 'stock':
+                    return 'stock-management-portal.html';
+                default:
+                    return 'dynapharm-complete-system.html';
+            }
+        }
+
+        function finalizeUserSession(user, options = {}) {
+            const normalized = normalizeUser(user);
+            if (!normalized) {
+                console.error('Cannot finalize session without valid user.');
+                return;
+            }
+
+            try {
+                localStorage.setItem('currentUser', JSON.stringify(normalized));
+            } catch (storageError) {
+                console.warn('Unable to persist current user in localStorage.', storageError);
+            }
+
+            try {
+                localStorage.setItem('currentUserRole', normalized.role || '');
+            } catch (storageError) {
+                console.warn('Unable to persist current user role.', storageError);
+            }
+            renderAuthState(normalized);
+
+            if (options.closeModal !== false) {
+                closeLoginModal();
+            }
+
+            showToast(`Welcome back, ${normalized.fullName || normalized.username}!`, 'success');
+
+            const redirectUrl = getRoleRedirect(normalized.role);
+            window.location.href = redirectUrl;
+        }
+
         // Section Navigation
         function showSection(section) {
             if (section === 'shop') {
@@ -1805,96 +2475,35 @@
                 return;
             }
             
-            try {
-                // Try API first (if users are stored in database)
-                try {
-                    const response = await fetch('/api/users');
-                    if (response.ok) {
-                        users = await response.json();
-                    }
-                } catch (e) {
-                    console.debug('Users API not available, trying localStorage');
-                }
-                
-                // Fallback: Load users from localStorage (set by admin)
-                if (users.length === 0) {
-                    const usersData = localStorage.getItem('dyna_users');
-                    if (usersData) {
-                        users = JSON.parse(usersData);
-                    }
-                }
-                
-                // Find matching user (case-insensitive username, exact password)
-                const user = users.find(u => 
-                    (u.username || '').toLowerCase() === username.toLowerCase() && 
-                    (u.password || '') === password
-                );
-                
-                if (!user) {
-                    errorDiv.textContent = 'Invalid username or password. Please check your credentials or contact your administrator.';
-                    errorDiv.classList.add('show');
-                    return;
-                }
-                
-                // Verify user is not a distributor (should use distributor portal)
-                if (user.role === 'distributor' || (user.role || '').toLowerCase().includes('distributor')) {
-                    errorDiv.textContent = 'Distributors should use the Distributor login option.';
-                    errorDiv.classList.add('show');
-                    return;
-                }
-                
-                // Save session
-                localStorage.setItem('currentUser', JSON.stringify(user));
-                localStorage.setItem('currentUserRole', user.role || '');
-                
-                // Update navigation
-                document.getElementById('adminNavItem').style.display = 'block';
-                document.getElementById('logoutNavItem').style.display = 'block';
-                document.getElementById('loginNavItem').style.display = 'none';
-                document.getElementById('adminNavName').textContent = user.username || 'admin';
-                
-                // Route to appropriate portal based on role
-                const role = (user.role || '').toLowerCase();
-                
-                // Show landing page editor for admin users
-                if (role === 'admin') {
-                    toggleLandingEditorButton(true);
-                }
-                
-                document.getElementById('portalTabs').style.display = 'block';
-                let redirectUrl = 'dynapharm-complete-system.html';
-                
-                // Role-based portal routing
-                if (role === 'admin') {
-                    redirectUrl = 'dynapharm-complete-system.html#admin'; // Admin portal
-                } else if (role === 'consultant') {
-                    redirectUrl = 'dynapharm-complete-system.html#consultant'; // Consultant portal
-                } else if (role === 'dispenser') {
-                    redirectUrl = 'dynapharm-complete-system.html#dispenser'; // Dispenser portal
-                } else if (role === 'finance' || role === 'finance_manager') {
-                    redirectUrl = 'dynapharm-complete-system.html#finance'; // Finance portal
-                } else if (role === 'hr' || role === 'hr_manager') {
-                    redirectUrl = 'hr-portal.html'; // HR portal
-                } else if (role === 'mis') {
-                    redirectUrl = 'mis-portal.html'; // MIS portal
-                } else if (role === 'gm' || role === 'general_manager') {
-                    redirectUrl = 'gm-portal.html'; // GM portal
-                } else if (role === 'director') {
-                    redirectUrl = 'director-portal.html'; // Director portal
-                } else if (role === 'stock_manager' || role === 'warehouse') {
-                    redirectUrl = 'stock-management-portal.html'; // Stock portal
-                } else {
-                    // Default: main system (will show appropriate portal based on role)
-                    redirectUrl = 'dynapharm-complete-system.html';
-                }
-                
-                // Redirect to appropriate portal
-                window.location.href = redirectUrl;
-            } catch (error) {
-                console.error('Login error:', error);
-                errorDiv.textContent = 'An error occurred. Please try again.';
-                errorDiv.classList.add('show');
+            const apiResult = await authenticateViaApi(username, password);
+
+            if (apiResult.success && apiResult.user) {
+                finalizeUserSession(apiResult.user);
+                return;
             }
+
+            if (!apiResult.networkError) {
+                errorDiv.textContent = apiResult.message || 'Invalid username or password. Please check your credentials or contact your administrator.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            const fallbackUser = findLocalUserByCredentials(username, password);
+
+            if (!fallbackUser) {
+                errorDiv.textContent = apiResult.message || 'Unable to reach authentication service. Please try again.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            if ((fallbackUser.role || '').toLowerCase().includes('distributor')) {
+                errorDiv.textContent = 'Distributors should use the Distributor login option.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            console.info('Logged in using offline credential cache.');
+            finalizeUserSession(fallbackUser);
         }
 
         // Handle Admin Login
@@ -1912,57 +2521,35 @@
                 return;
             }
             
-            try {
-                // Try API first (if users are stored in database)
-                try {
-                    const response = await fetch('/api/users');
-                    if (response.ok) {
-                        users = await response.json();
-                    }
-                } catch (e) {
-                    console.debug('Users API not available, trying localStorage');
-                }
-                
-                // Fallback: Load users from localStorage (set by admin)
-                if (users.length === 0) {
-                    const usersData = localStorage.getItem('dyna_users');
-                    if (usersData) {
-                        users = JSON.parse(usersData);
-                    }
-                }
-                
-                // Find matching user (case-insensitive username, exact password)
-                const user = users.find(u => 
-                    (u.username || '').toLowerCase() === username.toLowerCase() && 
-                    (u.password || '') === password &&
-                    (u.role || '').toLowerCase() === 'admin'
-                );
-                
-                if (!user) {
-                    errorDiv.textContent = 'Invalid admin credentials. Please check your username and password.';
+            const apiResult = await authenticateViaApi(username, password);
+
+            if (apiResult.success && apiResult.user) {
+                if ((apiResult.user.role || '').toLowerCase() !== 'admin') {
+                    errorDiv.textContent = 'This account does not have administrator access.';
                     errorDiv.classList.add('show');
                     return;
                 }
-                
-                // Save session
-                localStorage.setItem('currentUser', JSON.stringify(user));
-                localStorage.setItem('currentUserRole', 'admin');
-                
-                // Update navigation
-                document.getElementById('adminNavItem').style.display = 'block';
-                document.getElementById('logoutNavItem').style.display = 'block';
-                document.getElementById('loginNavItem').style.display = 'none';
-                document.getElementById('adminNavName').textContent = user.username || 'admin';
-                toggleLandingEditorButton(true);
-                document.getElementById('portalTabs').style.display = 'block';
-                
-                // Redirect to admin portal
-                window.location.href = 'dynapharm-complete-system.html#admin';
-            } catch (error) {
-                console.error('Admin login error:', error);
-                errorDiv.textContent = 'An error occurred. Please try again.';
-                errorDiv.classList.add('show');
+
+                finalizeUserSession(apiResult.user);
+                return;
             }
+
+            if (!apiResult.networkError) {
+                errorDiv.textContent = apiResult.message || 'Invalid admin credentials. Please check your username and password.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            const fallbackUser = findLocalUserByCredentials(username, password);
+
+            if (!fallbackUser || (fallbackUser.role || '').toLowerCase() !== 'admin') {
+                errorDiv.textContent = apiResult.message || 'Unable to reach authentication service. Please try again.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            console.info('Admin logged in using offline credential cache.');
+            finalizeUserSession(fallbackUser);
         }
 
         // Load Shop Products

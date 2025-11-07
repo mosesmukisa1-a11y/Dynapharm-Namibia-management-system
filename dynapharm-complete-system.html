@@ -8353,9 +8353,15 @@
                 </div>
             </div>
             <div id="directorContent" style="display: none;">
-                <div class="user-profile" id="directorProfile"></div>
-                
-                <div class="portal-header">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                    <button id="directorMainTabBtn" class="btn btn-primary" onclick="toggleDirectorView('main')" style="min-width: 170px;">🏢 Executive Dashboard</button>
+                    <button id="directorStaffTabBtn" class="btn" onclick="toggleDirectorView('staff')" style="min-width: 170px;">👤 Staff Services</button>
+                </div>
+
+                <div id="directorMainSection">
+                    <div class="user-profile" id="directorProfile"></div>
+                    
+                    <div class="portal-header">
                     <h2>🎯 Director Portal - Executive Overview</h2>
                     <p>Monitor Revenue, CIF, BV, Margin, and Stock Management</p>
                     <button class="btn btn-primary" onclick="refreshDirectorData()">🔄 Refresh Data</button>
@@ -8417,6 +8423,34 @@
                 <div class="form-section" style="margin-top: 30px;">
                     <h3>📦 Branch Inventory Breakdown</h3>
                     <div id="directorInventoryBreakdown" class="scroll-x" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;"></div>
+                </div>
+                </div>
+
+                <div id="directorStaffSection" style="display: none;">
+                    <div class="form-section">
+                        <h3>👤 Director Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Submit executive leave or cash requests directly from the director portal.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Plan executive leave while keeping approvals in sync.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('director')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('director')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-director" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request executive reimbursements or cash advances.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('director')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('director')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-director" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -9237,9 +9271,15 @@
                 </div>
             </div>
             <div id="misContent" style="display: none;">
-                <div class="user-profile" id="misProfile"></div>
-                
-                <div class="portal-header">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                    <button id="misMainTabBtn" class="btn btn-primary" onclick="toggleMISView('main')" style="min-width: 160px;">📑 MIS Dashboard</button>
+                    <button id="misStaffTabBtn" class="btn" onclick="toggleMISView('staff')" style="min-width: 160px;">👤 Staff Services</button>
+                </div>
+
+                <div id="misMainSection">
+                    <div class="user-profile" id="misProfile"></div>
+                    
+                    <div class="portal-header">
                     <h2>📊 MIS Portal - Sales Receipt Management</h2>
                     <p>View and analyze sales receipts across all branches</p>
                     <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: center;">
@@ -32701,17 +32741,23 @@ async function reverseLastPrescriptionPayment(reportId){
         // Stock Import Functions with Barcode and FEFO
         const STOCK_IMPORT_AUTO_PREFIX = 'AUTO';
 
-        function getActiveImportTableBody() {
-            const bodies = Array.from(document.querySelectorAll('#stockImportTableBody'));
-            if (bodies.length === 0) return null;
-            const visibleBody = bodies.find(body => body && body.offsetParent !== null);
-            return visibleBody || bodies[0];
-        }
-
-        function getVisibleImportRows() {
-            const activeBody = getActiveImportTableBody();
-            if (!activeBody) return [];
-            return Array.from(activeBody.querySelectorAll('tr')).filter(row => row && row.offsetParent !== null);
+        function resolveImportTableBody(fallbackId = 'stockImportTableBody') {
+            if (typeof window !== 'undefined' && window.event && window.event.currentTarget) {
+                const target = window.event.currentTarget;
+                const table = target.closest('table');
+                if (table) {
+                    const tbody = table.querySelector('tbody');
+                    if (tbody) return tbody;
+                }
+            }
+            const bodies = document.querySelectorAll(`#${fallbackId}`);
+            if (bodies.length === 1) return bodies[0];
+            if (bodies.length > 1) {
+                const visible = Array.from(bodies).find(body => body && body.offsetParent !== null);
+                if (visible) return visible;
+                return bodies[0];
+            }
+            return document.getElementById(fallbackId) || null;
         }
 
         function generateAutoCartonCode(seed = '') {
@@ -32770,7 +32816,7 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function addStockImportRow() {
-            const tbody = getActiveImportTableBody();
+            const tbody = resolveImportTableBody();
             if (!tbody) return;
             const newRow = document.createElement('tr');
             newRow.innerHTML = `
@@ -32801,7 +32847,7 @@ async function reverseLastPrescriptionPayment(reportId){
         
         function removeStockImportRow(btn) {
             const row = btn.closest('tr');
-            const tbody = btn.closest('tbody') || getActiveImportTableBody();
+            const tbody = btn.closest('tbody') || resolveImportTableBody();
             if (!tbody) return;
             if (tbody.children.length > 1) {
                 row.remove();
@@ -32854,7 +32900,7 @@ async function reverseLastPrescriptionPayment(reportId){
                             return;
                         }
                         
-                        const tbody = getActiveImportTableBody();
+                        const tbody = resolveImportTableBody();
                         if (!tbody) {
                             alert('Stock import table not found in the portal.');
                             return;
@@ -32974,7 +33020,7 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         function clearStockImportForm() {
-            const tbody = getActiveImportTableBody();
+            const tbody = resolveImportTableBody();
             if (!tbody) return;
             tbody.innerHTML = `
                 <tr>
@@ -33016,12 +33062,15 @@ async function reverseLastPrescriptionPayment(reportId){
         document.getElementById('bulkStockImportForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const rows = getVisibleImportRows();
+            const form = e.currentTarget;
+            const rows = Array.from(form.querySelectorAll('tbody tr'));
             const items = [];
+            let visibleRowCount = 0;
             
-            for (let i = 0; i < rows.length; i++) {
-                const row = rows[i];
-                const rowNumber = i + 1;
+            for (const row of rows) {
+                if (!row || row.offsetParent === null) continue; // ignore hidden/legacy rows
+                visibleRowCount++;
+                const rowNumber = visibleRowCount;
 
                 const cartonInput = row.querySelector('.stock-carton-no');
                 const descriptionInput = row.querySelector('.stock-description');
@@ -33061,6 +33110,11 @@ async function reverseLastPrescriptionPayment(reportId){
                 }
 
                 items.push({ cartonNo, description, batchNo, expiryDate: normalizedExpiry, quantity, totalCtns });
+            }
+
+            if (visibleRowCount === 0) {
+                alert('Add at least one row before importing.');
+                return;
             }
             
             // Import each item with barcode generation
@@ -34411,6 +34465,58 @@ async function reverseLastPrescriptionPayment(reportId){
         registerStaffServicesContext('finance', {
             leaveStatusId: 'staffLeaveStatus-finance',
             cashStatusId: 'staffCashStatus-finance'
+        });
+
+        function toggleGMView(view) {
+            const mainSection = document.getElementById('gmMainSection');
+            const staffSection = document.getElementById('gmStaffSection');
+            const mainBtn = document.getElementById('gmMainTabBtn');
+            const staffBtn = document.getElementById('gmStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('gm');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        registerStaffServicesContext('gm', {
+            leaveStatusId: 'staffLeaveStatus-gm',
+            cashStatusId: 'staffCashStatus-gm'
+        });
+
+        function toggleDirectorView(view) {
+            const mainSection = document.getElementById('directorMainSection');
+            const staffSection = document.getElementById('directorStaffSection');
+            const mainBtn = document.getElementById('directorMainTabBtn');
+            const staffBtn = document.getElementById('directorStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('director');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        registerStaffServicesContext('director', {
+            leaveStatusId: 'staffLeaveStatus-director',
+            cashStatusId: 'staffCashStatus-director'
         });
 
         async function refreshFinancialDashboard() {
