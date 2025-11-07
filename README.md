@@ -76,3 +76,12 @@ After this, your site will be live at:
 - No GitHub Actions workflow is needed - branch deployment is simpler and more reliable.
 - All updates to the `main` branch will automatically deploy to GitHub Pages.
 
+---
+
+## Frontend Quality Toolkit
+
+- `npm run lint` – static analysis via ESLint (browser + HTML awareness).
+- `npm run format` / `npm run format:check` – Prettier formatting helpers.
+- The landing page exports a `window.DynapharmApp` helper so Playwright/Cypress tests can seed data quickly.
+- For performance/accessibility spot checks, run the site locally (`npm run dev`) and audit with `npx lighthouse http://localhost:8000 --view`.
+

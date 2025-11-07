@@ -10,7 +10,10 @@
     "test": "curl http://localhost:8001/api/health",
     "auto-commit": "node tools/auto-commit.js",
     "guard": "node tools/guard-inline-events.js",
-    "predeploy": "npm run guard"
+    "predeploy": "npm run guard",
+    "lint": "eslint assets/js/main.js assets/js/sw-register.js index.html",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [
     "healthcare",
@@ -40,6 +43,13 @@
     "cookie": "^0.6.0"
   },
   "devDependencies": {
-    "chokidar": "^3.6.0"
+    "chokidar": "^3.6.0",
+    "@eslint/js": "^9.12.0",
+    "eslint": "^9.12.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-html": "^8.1.2",
+    "eslint-plugin-import": "^2.29.1",
+    "globals": "^15.9.0",
+    "prettier": "^3.3.3"
   }
 }

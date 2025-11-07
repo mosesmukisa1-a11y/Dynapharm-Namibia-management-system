@@ -12513,6 +12513,40 @@
             return { error: 'Offline mode - limited functionality' };
         }
 
+        function ensureBranchDirectory() {
+            const ensureArray = (value) => (Array.isArray(value) ? value : []);
+            if (!Array.isArray(branches) || branches.length === 0) {
+                try {
+                    branches = ensureArray(safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON));
+                } catch (_) {
+                    branches = [];
+                }
+                if (!Array.isArray(branches) || branches.length === 0) {
+                    try {
+                        branches = ensureArray(JSON.parse(DEFAULT_BRANCHES_JSON));
+                    } catch (_) {
+                        branches = [];
+                    }
+                }
+            }
+            if (!Array.isArray(branches)) {
+                branches = [];
+            }
+            if (branches.length > 0) {
+                const unique = [];
+                const seen = new Set();
+                branches.forEach(branch => {
+                    if (!branch) return;
+                    const key = (branch.id || branch.name || '').trim();
+                    if (!key || seen.has(key)) return;
+                    seen.add(key);
+                    unique.push(branch);
+                });
+                branches = unique;
+            }
+            return branches;
+        }
+        
         async function loadData() {
             try {
                 const clientResponse = await apiRequest('/clients');
@@ -12583,6 +12617,14 @@
                     localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     console.log(`✅ Extracted ${clients.length} clients from reports`);
                 }
+            }
+            ensureBranchDirectory();
+            try {
+                if (typeof populateBranchSelects === 'function') {
+                    populateBranchSelects();
+                }
+            } catch (e) {
+                console.debug('Unable to populate branch selectors after data load:', e);
             }
         }
 
@@ -36479,6 +36521,7 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // Populate branch selectors
         function populateBranchSelects() {
+            ensureBranchDirectory();
             const financeSelect = document.getElementById('financeBranchSelect');
             const depositSelect = document.getElementById('depositBranch');
             const bonusSelect = document.getElementById('bonusBranch');
@@ -36499,6 +36542,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     });
                 }
             });
+            refreshBonusBranchFilterOptions();
         }
         
         // Shift Manager Functions
@@ -37056,6 +37100,43 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
+        function refreshBonusBranchFilterOptions(extraAreas = []) {
+            const branchFilter = document.getElementById('bonusUploadBranchFilter');
+            if (!branchFilter) return;
+            ensureBranchDirectory();
+            const currentValue = branchFilter.value;
+            const optionMap = new Map();
+            optionMap.set('', 'All Branches');
+            (Array.isArray(branches) ? branches : []).forEach(branch => {
+                if (!branch) return;
+                const value = (branch.id || branch.name || '').trim();
+                const label = (branch.name || branch.id || '').trim();
+                if (!value || optionMap.has(value)) return;
+                optionMap.set(value, label || value);
+            });
+            const appendAreas = Array.from(new Set(
+                (Array.isArray(extraAreas) ? extraAreas : [])
+                    .concat(Array.isArray(bonusUploadData) ? bonusUploadData.map(r => r?.area) : [])
+            ));
+            appendAreas.forEach(area => {
+                const value = (area || '').trim();
+                if (!value || optionMap.has(value)) return;
+                optionMap.set(value, value);
+            });
+            branchFilter.innerHTML = '';
+            optionMap.forEach((label, value) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                branchFilter.appendChild(option);
+            });
+            if (optionMap.has(currentValue)) {
+                branchFilter.value = currentValue;
+            } else {
+                branchFilter.value = '';
+            }
+        }
+
         function renderOfflineReconciliationView(snapshot, month) {
             const body = document.getElementById('reconBody');
             const summary = document.getElementById('reconSummary');
@@ -37385,6 +37466,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     const storedBranch = localStorage.getItem('finance_bonus_branch');
                     if (storedBranch !== null) newBranchFilter.value = storedBranch;
                 } catch (_) {}
+                refreshBonusBranchFilterOptions();
             }
 
             initializeBonusWorkflow();
@@ -37477,6 +37559,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 }
             }
             bonusUploadData = data;
+            refreshBonusBranchFilterOptions(data.map(item => item.area));
             const totalAmount = data.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
             renderBonusUploadTable();
             if (errors.length) {
@@ -37504,8 +37587,29 @@ async function reverseLastPrescriptionPayment(reportId){
         // Render bonus upload table
         function renderBonusUploadTable() {
             const branchFilter = document.getElementById('bonusUploadBranchFilter');
-            const branch = branchFilter ? branchFilter.value : '';
-            const data = bonusUploadData.filter(r => !branch || r.area === branch);
+            const selectionRaw = branchFilter ? branchFilter.value : '';
+            const selection = (selectionRaw || '').trim().toLowerCase();
+            const data = bonusUploadData.filter(row => {
+                if (!selection) return true;
+                const areaValue = (row.area || '').trim().toLowerCase();
+                const stockistValue = (row.stockist || '').trim().toLowerCase();
+                if (areaValue === selection || stockistValue === selection) return true;
+                const branchMatch = (Array.isArray(branches) ? branches.find(branch => {
+                    if (!branch) return false;
+                    const id = (branch.id || '').trim().toLowerCase();
+                    const name = (branch.name || '').trim().toLowerCase();
+                    return selection === id || selection === name;
+                }) : null);
+                if (!branchMatch) return false;
+                const identifiers = [
+                    (branchMatch.id || '').trim().toLowerCase(),
+                    (branchMatch.name || '').trim().toLowerCase(),
+                    (branchMatch.code || '').trim().toLowerCase(),
+                    (branchMatch.area || '').trim().toLowerCase()
+                ].filter(Boolean);
+                if (identifiers.includes(areaValue)) return true;
+                return identifiers.some(token => stockistValue.includes(token));
+            });
             
             const body = document.getElementById('bonusUploadBody');
             const wrap = document.getElementById('bonusUploadTableWrap');
@@ -37889,6 +37993,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     clearStoredBonusStatus(month);
                 }
             }
+            refreshBonusBranchFilterOptions();
             refreshBonusWorkflowSummary();
         }
         

@@ -19,6 +19,7 @@ CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 BRANCHES_FILE = os.path.join(DATA_DIR, "branches.json")
 REPORTS_FILE = os.path.join(DATA_DIR, "reports.json")
+EMPLOYEES_FILE = os.path.join(DATA_DIR, "employees.json")
 
 # Create data directory if it doesn't exist
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -87,6 +88,8 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                     {"id":"USR002","username":"consultant","password":"consultant123","fullName":"Dr. John Smith","email":"consultant@dynapharm.com.na","phone":"061-300877","role":"consultant","branch":"townshop","branches":["townshop","khomasdal","hochland-park"]},
                     {"id":"USR003","username":"dispenser","password":"dispenser123","fullName":"Jane Doe","email":"dispenser@dynapharm.com.na","phone":"061-300877","role":"dispenser","branch":"townshop","branches":["townshop"]}
                 ])
+            elif path == '/api/employees':
+                data = load_json_file(EMPLOYEES_FILE, [])
             elif path == '/api/branches':
                 data = load_json_file(BRANCHES_FILE, [
                     {"id":"townshop","name":"TOWNSHOP (Head Office)","location":"Shop No.1 Continental Building Independence Avenue - Windhoek","phone":"814683999"},
@@ -149,6 +152,19 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                 save_json_file(USERS_FILE, users)
                 response = {"success": True, "message": "User saved"}
                 
+            elif path == '/api/employees':
+                employees = load_json_file(EMPLOYEES_FILE, [])
+                if not isinstance(employees, list):
+                    employees = []
+                new_employee = data if isinstance(data, dict) else {}
+                if not new_employee:
+                    response = {"error": "Invalid employee payload"}
+                else:
+                    if not new_employee.get('id'):
+                        new_employee = {**new_employee, "id": f"EMP{int(time.time() * 1000)}"}
+                    employees.append(new_employee)
+                    save_json_file(EMPLOYEES_FILE, employees)
+                    response = {"success": True, "message": "Employee saved", "employee": new_employee}
             elif path == '/api/branches':
                 branches = load_json_file(BRANCHES_FILE, [
                     {"id":"townshop","name":"TOWNSHOP (Head Office)","location":"Shop No.1 Continental Building Independence Avenue - Windhoek","phone":"814683999"},
@@ -171,6 +187,26 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                 save_json_file(BRANCHES_FILE, branches)
                 response = {"success": True, "message": "Branch saved"}
                 
+            elif path == '/api/employees':
+                employees = load_json_file(EMPLOYEES_FILE, [])
+                if not isinstance(employees, list):
+                    employees = []
+                if not isinstance(data, dict) or not data.get('id'):
+                    response = {"error": "Employee id required"}
+                else:
+                    updated = False
+                    for idx, employee in enumerate(employees):
+                        if employee.get('id') == data['id'] or employee.get('employeeId') == data.get('employeeId'):
+                            employees[idx] = data
+                            updated = True
+                            break
+                    if not updated:
+                        employees.append(data)
+                        message = "Employee created"
+                    else:
+                        message = "Employee updated"
+                    save_json_file(EMPLOYEES_FILE, employees)
+                    response = {"success": True, "message": message, "employee": data}
             elif path == '/api/reports':
                 reports = load_json_file(REPORTS_FILE)
                 # Filter out client data that might have been mixed in
@@ -283,6 +319,21 @@ class DynapharmAPIHandler(BaseHTTPRequestHandler):
                 save_json_file(USERS_FILE, users)
                 response = {"success": True, "message": "User deleted"}
                 
+            elif path == '/api/employees' and 'id' in query_params:
+                employee_id = query_params['id'][0]
+                employees = load_json_file(EMPLOYEES_FILE, [])
+                if not isinstance(employees, list):
+                    employees = []
+                initial_len = len(employees)
+                employees = [
+                    emp for emp in employees
+                    if emp.get('id') != employee_id and emp.get('employeeId') != employee_id
+                ]
+                if len(employees) != initial_len:
+                    save_json_file(EMPLOYEES_FILE, employees)
+                    response = {"success": True, "message": "Employee deleted"}
+                else:
+                    response = {"error": "Employee not found"}
             elif path == '/api/branches' and 'id' in query_params:
                 branch_id = query_params['id'][0]
                 branches = load_json_file(BRANCHES_FILE, [
