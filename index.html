@@ -37,6 +37,46 @@
             line-height: 1.6;
         }
 
+        .top-bar {
+            background: var(--brand-color);
+            color: var(--white);
+            padding: 6px 0;
+            font-size: 0.85rem;
+        }
+
+        .top-bar .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            padding: 0 20px;
+        }
+
+        .top-bar ul {
+            display: flex;
+            gap: 18px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            align-items: center;
+        }
+
+        .top-bar li {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .top-bar a {
+            color: var(--white);
+            text-decoration: none;
+        }
+
+        .top-bar a:hover {
+            text-decoration: underline;
+        }
+
         body.modal-open {
             overflow: hidden;
         }
@@ -1013,6 +1053,88 @@
             color: var(--text-dark);
         }
 
+        footer.site-footer {
+            background: linear-gradient(180deg, #fff 0%, #ffe6ea 100%);
+            padding: 50px 20px 30px;
+            margin-top: 80px;
+            border-top: 1px solid rgba(183, 28, 28, 0.12);
+        }
+
+        .footer-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 30px;
+        }
+
+        .footer-inner h4 {
+            margin-bottom: 16px;
+            color: var(--brand-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.95rem;
+        }
+
+        .footer-inner ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 12px;
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        .footer-inner li strong {
+            color: var(--text-dark);
+        }
+
+        .footer-inner a {
+            color: var(--brand-dark);
+            text-decoration: none;
+        }
+
+        .footer-inner a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-bottom {
+            max-width: 1200px;
+            margin: 30px auto 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 0.85rem;
+            color: rgba(15, 23, 42, 0.6);
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+        }
+
+        .footer-social a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(183, 28, 28, 0.12);
+            color: var(--brand-dark);
+            text-decoration: none;
+            font-size: 1rem;
+        }
+
+        .footer-social a:hover {
+            background: var(--brand-dark);
+            color: var(--white);
+        }
+
         /* Login/Register Modal */
         .modal {
             display: none;
@@ -1229,6 +1351,16 @@
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
+            .top-bar .container {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .top-bar ul {
+                flex-wrap: wrap;
+            }
+
             .nav-links {
                 gap: 15px;
             }
@@ -1276,6 +1408,15 @@
                 grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             }
 
+            .footer-inner {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
             .modal-content.auth-modal {
                 padding: 36px 24px;
             }
@@ -1313,6 +1454,19 @@
     </style>
   </head>
   <body>
+    <div class="top-bar">
+        <div class="container">
+            <ul>
+                <li>Distributor Login</li>
+                <li>MLM</li>
+                <li>LRP</li>
+            </ul>
+            <ul>
+                <li><a href="tel:+26461300877">📞 061-300877</a></li>
+                <li><a href="mailto:info@dynapharmnamibia.com">✉️ info@dynapharmnamibia.com</a></li>
+            </ul>
+        </div>
+    </div>
     <!-- Navigation Bar -->
     <nav class="navbar">
         <div class="nav-container">
@@ -1759,17 +1913,63 @@
             </div>
         </section>
 
-        <!-- Media Section -->
-        <section id="media-section" class="about-section">
-            <h2 style="color: var(--brand-color); margin-bottom: 20px;">📰 Media & News</h2>
-            <p style="margin-bottom: 15px; line-height: 1.8;">
-                Stay updated with the latest news, health tips, and company updates from Dynapharm Namibia.
-            </p>
-            <p style="margin-bottom: 15px; line-height: 1.8; color: var(--text-light);">
-                For the latest media updates, news, and health tips, please visit our <a href="distributor-guest.html" style="color: var(--brand-color); text-decoration: underline;">Guest Portal</a>.
-            </p>
-        </section>
-    </div>
+    <!-- Media Section -->
+    <section id="media-section" class="about-section">
+        <h2 style="color: var(--brand-color); margin-bottom: 20px;">📰 Media & News</h2>
+        <p style="margin-bottom: 15px; line-height: 1.8;">
+            Stay updated with the latest news, health tips, and company updates from Dynapharm Namibia.
+        </p>
+        <p style="margin-bottom: 15px; line-height: 1.8; color: var(--text-light);">
+            For the latest media updates, news, and health tips, please visit our <a href="distributor-guest.html" style="color: var(--brand-color); text-decoration: underline;">Guest Portal</a>.
+        </p>
+    </section>
+</div>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div>
+                <h4>Dynapharm Namibia</h4>
+                <p style="margin: 0; color: var(--text-light); line-height: 1.8;">
+                    Empowering communities with natural wellness solutions, guided by the standards of Dynapharm International.
+                </p>
+            </div>
+            <div>
+                <h4>Head Office Contact</h4>
+                <ul>
+                    <li><strong>Address:</strong> Unit 1202, Robinsons-Equitable Tower, Ortigas Center Pasig City</li>
+                    <li><strong>Phone:</strong> +63 2 86372618</li>
+                    <li><strong>Email:</strong> <a href="mailto:support@dynapharm.net">support@dynapharm.net</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Namibia Network</h4>
+                <ul>
+                    <li><strong>Main Branch:</strong> Windhoek</li>
+                    <li><strong>Support Line:</strong> 061-300877</li>
+                    <li><a href="#" onclick="showDistributorTab('checkup'); return false;">Book a consultation</a></li>
+                    <li><a href="distributor-portal.html" target="_blank">Portal access</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Useful Links</h4>
+                <ul>
+                    <li><a href="#" onclick="showSection('shop'); return false;">Home</a></li>
+                    <li><a href="#" onclick="showDistributorTab('shop'); return false;">Shop Products</a></li>
+                    <li><a href="#" onclick="showDistributorTab('testimonials'); return false;">Testimonials</a></li>
+                    <li><a href="#" onclick="showSection('about'); return false;">About Dynapharm</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>© 2025 Dynapharm Namibia. All rights reserved.</span>
+            <div class="footer-social">
+                <span style="font-weight: 600; color: var(--brand-dark);">Follow Us:</span>
+                <a href="#" aria-label="Facebook">FB</a>
+                <a href="#" aria-label="Instagram">IG</a>
+                <a href="#" aria-label="YouTube">YT</a>
+            </div>
+        </div>
+    </footer>
 
     <!-- Login/Register Modal -->
     <div id="loginModal" class="modal">
