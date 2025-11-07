@@ -32146,6 +32146,25 @@ async function reverseLastPrescriptionPayment(reportId){
                 container.innerHTML = '<p style="text-align: center; padding: 20px; color: #d32f2f;">❌ Error loading distribution history. Please refresh the page.</p>';
             }
         }
+
+        function updateStockWorkflowNavActive(tabName) {
+            try {
+                const nav = document.getElementById('stockWorkflowNav');
+                if (!nav) return;
+                const buttons = nav.querySelectorAll('button.workflow-tab');
+                if (buttons.length === 0) return;
+
+                buttons.forEach(btn => {
+                    if (!btn.dataset.tab) {
+                        const match = (btn.getAttribute('onclick') || '').match(/showStockTab\('([^']+)'\)/);
+                        if (match) btn.dataset.tab = match[1];
+                    }
+                    btn.classList.toggle('active', btn.dataset.tab === tabName);
+                });
+            } catch (error) {
+                console.warn('updateStockWorkflowNavActive error', error);
+            }
+        }
         
         // Show stock tab - Updated for modern comprehensive structure
         function showStockTab(tabName) {
@@ -32164,6 +32183,8 @@ async function reverseLastPrescriptionPayment(reportId){
             if (typeof event !== 'undefined' && event && event.target && event.target.classList) {
                 event.target.classList.add('active');
             }
+
+            updateStockWorkflowNavActive(tabName);
             
             // Load data when switching tabs
             if (tabName === 'overview') {
@@ -33088,12 +33109,21 @@ async function reverseLastPrescriptionPayment(reportId){
                     if (tbody) return tbody;
                 }
             }
-            const bodies = document.querySelectorAll(`#${fallbackId}`);
-            if (bodies.length === 1) return bodies[0];
-            if (bodies.length > 1) {
-                const visible = Array.from(bodies).find(body => body && body.offsetParent !== null);
+
+            const dataBodies = document.querySelectorAll('[data-stock-import-body="true"]');
+            if (dataBodies.length === 1) return dataBodies[0];
+            if (dataBodies.length > 1) {
+                const visibleBody = Array.from(dataBodies).find(body => body && body.offsetParent !== null);
+                if (visibleBody) return visibleBody;
+                return dataBodies[0];
+            }
+
+            const fallbackBodies = document.querySelectorAll(`#${fallbackId}`);
+            if (fallbackBodies.length === 1) return fallbackBodies[0];
+            if (fallbackBodies.length > 1) {
+                const visible = Array.from(fallbackBodies).find(body => body && body.offsetParent !== null);
                 if (visible) return visible;
-                return bodies[0];
+                return fallbackBodies[0];
             }
             return document.getElementById(fallbackId) || null;
         }
