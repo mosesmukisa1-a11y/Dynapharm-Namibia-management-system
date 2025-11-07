@@ -1887,7 +1887,7 @@
             'stock': ['client', 'stock'],
             'guest': ['client'] // Guest can only access shop
         };
-
+        
         function extractArray(data, fallback = []) {
             if (Array.isArray(data)) return data;
             if (data && Array.isArray(data.data)) return data.data;
@@ -1896,7 +1896,30 @@
             return Array.isArray(fallback) ? fallback : [];
         }
         
-        function checkExistingSession() {
+        async function checkExistingSession() {
+            try {
+                const response = await fetch('/api/auth/me', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    const user = data?.user;
+                    const role = (user?.role || '').toLowerCase();
+                    if (user && role && role !== 'guest') {
+                        setAuthenticatedUser(user);
+                        hideLandingPage();
+                        showAuthorizedPortals(role);
+                        updateNavigationForUser(user, role);
+                        setTimeout(() => {
+                            if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
+                                loadShopProducts();
+                            }
+                        }, 500);
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.warn('Session lookup error:', error);
+            }
+
             const savedUser = localStorage.getItem('currentUser');
             const savedRole = localStorage.getItem('currentUserRole');
             if (savedUser && savedRole) {
@@ -1904,14 +1927,10 @@
                     const user = JSON.parse(savedUser);
                     const role = savedRole.toLowerCase();
                     if (role !== 'guest') {
-                        // User is already logged in, hide landing page and show authorized portals
+                        setAuthenticatedUser(user);
                         hideLandingPage();
-                        currentUser = user;
-                        window.currentUser = user;
-                        setCurrentUserRole(role);
                         showAuthorizedPortals(role);
                         updateNavigationForUser(user, role);
-                        // Load shop products if client portal is available
                         setTimeout(() => {
                             if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
                                 loadShopProducts();
@@ -1923,11 +1942,9 @@
                     console.error('Error parsing saved session:', e);
                 }
             }
-            // No valid session, show landing page with shop and checkup tabs
+
             showLandingPage();
-            // Show shop tab by default
             showLandingTab('shop');
-            // Load shop products on landing page
             setTimeout(() => {
                 if (typeof loadShopProducts === 'function') {
                     loadShopProducts();
@@ -5298,17 +5315,17 @@
                             <!-- Leave Request -->
                             <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; border: 2px solid #4caf50;">
                                 <h4 style="color: #2e7d32; margin-bottom: 15px;">📅 Leave Management</h4>
-                                <button class="btn btn-success" onclick="showDispenserLeaveRequest()">Request Leave</button>
-                                <button class="btn btn-info" onclick="viewMyLeaveRequests()">My Leave Requests</button>
-                                <div id="myLeaveStatus" style="margin-top: 15px;"></div>
+                                <button class="btn btn-success" onclick="openStaffLeaveRequest('branch')">Request Leave</button>
+                                <button class="btn btn-info" onclick="viewMyLeaveRequests('branch')">My Leave Requests</button>
+                                <div id="staffLeaveStatus-branch" style="margin-top: 15px;"></div>
                             </div>
                             
                             <!-- Cash Request -->
                             <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; border: 2px solid #2196f3;">
                                 <h4 style="color: #1565c0; margin-bottom: 15px;">💵 Cash Requests</h4>
-                                <button class="btn btn-success" onclick="showDispenserCashRequest()">Request Cash</button>
-                                <button class="btn btn-info" onclick="viewMyCashRequests()">My Cash Requests</button>
-                                <div id="myCashStatus" style="margin-top: 15px;"></div>
+                                <button class="btn btn-success" onclick="openStaffCashRequest('branch')">Request Cash</button>
+                                <button class="btn btn-info" onclick="viewMyCashRequests('branch')">My Cash Requests</button>
+                                <div id="staffCashStatus-branch" style="margin-top: 15px;"></div>
                             </div>
                         </div>
                     </div>
@@ -9372,24 +9389,26 @@
     </div>
 
     <!-- Login Modal -->
-    <div class="modal" id="loginModal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('loginModal')">&times;</span>
-            <h2>Login</h2>
-            <form id="loginForm">
+    <div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle" aria-describedby="loginModalDescription" aria-hidden="true">
+        <div class="modal-content" role="document">
+            <button type="button" id="loginCloseButton" aria-label="Close login dialog" style="position:absolute;top:12px;right:12px;border:none;background:transparent;font-size:26px;line-height:1;padding:4px;border-radius:50%;cursor:pointer;">&times;</button>
+            <h2 id="loginModalTitle">Portal Login</h2>
+            <p id="loginModalDescription" style="margin-bottom: 20px; color: #555;">Sign in to access the selected portal.</p>
+            <form id="loginForm" novalidate>
                 <div class="form-group">
-                    <input type="text" id="username" placeholder="Username" required autocomplete="username">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="e.g. admin" required autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
                 </div>
-                <button type="submit" class="btn">Login</button>
-                <div style="margin-top: 15px; font-size: 0.85rem; color: #666; background: #f8f9fa; padding: 10px; border-radius: 5px;">
-                    <p><strong>Default Test Accounts:</strong></p>
-                    <p>Admin: <code>admin</code> / <code>admin123</code></p>
-                    <p>Consultant: <code>consultant</code> / <code>consultant123</code></p>
-                    <p>Dispenser: <code>dispenser</code> / <code>dispenser123</code></p>
+                <div class="form-group" style="display:flex; gap: 10px; align-items:center; justify-content:flex-start;">
+                    <button type="submit" class="btn btn-success" id="loginSubmitButton">Login</button>
+                    <button type="button" class="btn" id="loginCancelButton">Cancel</button>
                 </div>
+                <p id="loginError" role="alert" aria-live="polite" style="color:#c41e3a; margin-top: 10px; min-height: 1.5em; font-size: 0.9rem;"></p>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #666;">Need help? Contact the system administrator to reset your password.</p>
             </form>
         </div>
     </div>
@@ -11720,7 +11739,8 @@
                     method: method,
                     headers: {
                         'Content-Type': 'application/json',
-                    }
+                    },
+                    credentials: 'include'
                 };
                 
                 if (data) {
@@ -13430,7 +13450,7 @@
                     loadAdminDistributorDirectory();
                 }, 200);
             }
-
+            
             // Finance Portal - ensure data is loaded when tab is opened
             if (tabName === 'finance') {
                 setTimeout(async () => {
@@ -14368,40 +14388,40 @@
                 
                 // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
                 // Add to clients array only after successful backend save
-                clients.push(client);
-                
+                    clients.push(client);
+                    
                 // Save to localStorage as cache/backup (backend is source of truth)
-                try {
-                    localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                    try {
+                        localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     console.log(`✅ Client cached to localStorage: ${referenceNumber}`);
-                } catch (storageError) {
+                    } catch (storageError) {
                     console.error('❌ Error caching client to localStorage:', storageError);
                     // Continue anyway - backend save was successful
-                }
-                
-                // STEP 4: Notify all users via real-time updates (only after successful backend save)
-                try {
-                    // Publish via Vercel SSE channel "clients"
-                    fetch('/api/realtime_publish', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            channel: 'clients',
-                            event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client }
-                        })
-                    }).catch(_ => {});
-                } catch(_) {}
-                try {
-                    // Publish via Railway WebSocket gateway if configured
-                    const m = document.querySelector('meta[name="rt-base"]');
-                    const rtBase = m && m.content && m.content.trim();
-                    if (rtBase) {
-                        fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client } })
-                        }).catch(_ => {});
                     }
-                } catch(_) {}
+                    
+                // STEP 4: Notify all users via real-time updates (only after successful backend save)
+                    try {
+                        // Publish via Vercel SSE channel "clients"
+                        fetch('/api/realtime_publish', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                channel: 'clients',
+                            event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client }
+                            })
+                        }).catch(_ => {});
+                    } catch(_) {}
+                    try {
+                        // Publish via Railway WebSocket gateway if configured
+                        const m = document.querySelector('meta[name="rt-base"]');
+                        const rtBase = m && m.content && m.content.trim();
+                        if (rtBase) {
+                            fetch(rtBase.replace(/\/$/, '') + '/publish', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event: { type: 'clients:updated', referenceNumber, action: 'created', ts: Date.now(), data: client } })
+                            }).catch(_ => {});
+                        }
+                    } catch(_) {}
                 
                 // Dispatch window event for local listeners
                 try {
@@ -14418,9 +14438,9 @@
             
                     alert(`✅ Client saved successfully!\n\nReference: ${referenceNumber}\n${client.referralName ? `Referred by: ${client.referralName}\n\n` : ''}Save this reference number for future visits.`);
 
-                    // If appointment flow, create a simple appointment record
-                    try {
-                        if (visitType === 'appointment') {
+            // If appointment flow, create a simple appointment record
+            try {
+                if (visitType === 'appointment') {
                     const preferredDate = formData.get('preferredDate');
                     const preferredTime = formData.get('preferredTime');
                     if (!preferredDate || !preferredTime) {
@@ -14500,12 +14520,12 @@
                             document.body.appendChild(el);
                             setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity 300ms'; setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 320); }, 2500);
                         })(`✅ Appointment request sent. Ref: ${referenceNumber} (${preferredDate} @ ${preferredTime})`);
-                        }
                     }
-                } catch (e) { console.warn('Appointment creation step skipped:', e); }
-                
-                if (confirm('Print form?')) {
-                    window.print();
+                }
+            } catch (e) { console.warn('Appointment creation step skipped:', e); }
+            
+            if (confirm('Print form?')) {
+                window.print();
                 }
             } catch (error) {
                 console.error('❌ Error saving client:', error);
@@ -14597,164 +14617,330 @@
         }
 
         function showLogin(portal) {
-            currentPortal = portal;
-            window.currentPortal = portal; // Set global for permission checks
-            // Update modal title to show which portal
-            const modalTitle = document.querySelector('#loginModal h2');
-            modalTitle.textContent = `${portal.charAt(0).toUpperCase() + portal.slice(1)} Portal Login`;
-            document.getElementById('loginModal').style.display = 'block';
-            // Clear previous values
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
+    const targetPortal = portal;
+    if (currentUser && isPortalAllowedForRole(currentUser.role, targetPortal)) {
+        currentPortal = targetPortal;
+        window.currentPortal = targetPortal;
+        handlePortalLoginSuccess(currentUser, { silent: true });
+        return;
+    }
+    openLoginModal(targetPortal);
+}
+
+const PORTAL_LABELS = {
+    frontdesk: 'Front Desk',
+    consultant: 'Consultant',
+    dispenser: 'Branch',
+    admin: 'Admin',
+    finance: 'Finance',
+    stock: 'Stock',
+    mis: 'MIS',
+    gm: 'General Manager',
+    director: 'Director',
+    'hr-portal': 'HR',
+    client: 'Client'
+};
+const loginModal = document.getElementById('loginModal');
+const loginForm = document.getElementById('loginForm');
+const loginError = document.getElementById('loginError');
+const loginSubmitButton = document.getElementById('loginSubmitButton');
+const loginCancelButton = document.getElementById('loginCancelButton');
+const loginCloseButton = document.getElementById('loginCloseButton');
+let loginModalPreviousFocus = null;
+let loginTrapHandler = null;
+
+function getPortalLabel(portal) {
+    if (!portal) return 'Portal';
+    return PORTAL_LABELS[portal] || portal.charAt(0).toUpperCase() + portal.slice(1);
+}
+
+function trapFocus(event, container) {
+    if (event.key !== 'Tab') return;
+    const focusable = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey) {
+        if (document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
         }
-        
-        // Auto-login functions REMOVED - All portals now require proper authentication
+    } else if (document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
 
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            
-            console.log('=== LOGIN DEBUG START ===');
-            console.log('Username:', username, 'Password entered:', password ? '***' : '(empty)');
-            console.log('Current portal:', currentPortal);
-            
-            // Get users directly from localStorage to avoid timing issues
-            let loginUsers = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
-            console.log('Users from localStorage:', loginUsers);
-            
-            // If no users found, try to load from API/fallback
-            if (!loginUsers || loginUsers.length === 0) {
-                console.log('No users in localStorage, loading from API...');
-                await loadData();
-                loginUsers = users;
-                console.log('Users after loadData:', loginUsers);
-            }
-            
-            console.log('Total users available:', loginUsers ? loginUsers.length : 0);
-            console.log('User names:', loginUsers ? loginUsers.map(u => u.username) : 'none');
-            
-            // Try to find the user
-            const user = loginUsers ? loginUsers.find(u => u.username === username && u.password === password) : null;
-            console.log('Found user:', user ? user.username + ' (' + user.role + ')' : 'NOT FOUND');
-            
-            if (!user) {
-                console.log('=== LOGIN FAILED ===');
-                alert('Invalid username or password');
-                return;
-            }
-            
-            console.log('User found! Role:', user.role, 'Required portal:', currentPortal);
-            console.log('User details:', JSON.stringify(user, null, 2));
-            
-            if (user.role !== currentPortal) {
-                console.log('=== ROLE MISMATCH ===');
-                console.log('DEBUG: Showing content anyway for troubleshooting');
-                // Temporarily allow any role to login to consultant portal for debugging
-                if (currentPortal === 'consultant') {
-                    console.log('DEBUG: Bypassing role check for consultant portal');
+function handleLoginEscape(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeLoginModal();
+    }
+}
+
+function openLoginModal(portal) {
+    currentPortal = portal;
+    window.currentPortal = portal;
+    const label = getPortalLabel(portal);
+    const modalTitle = document.getElementById('loginModalTitle');
+    if (modalTitle) modalTitle.textContent = `${label} Portal Login`;
+    const modalDescription = document.getElementById('loginModalDescription');
+    if (modalDescription) modalDescription.textContent = `Sign in to access the ${label.toLowerCase()} portal.`;
+    if (loginError) loginError.textContent = '';
+    if (loginForm) loginForm.reset();
+    loginModalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (loginModal) {
+        loginModal.style.display = 'block';
+        loginModal.setAttribute('aria-hidden', 'false');
+        loginTrapHandler = (event) => trapFocus(event, loginModal);
+        loginModal.addEventListener('keydown', loginTrapHandler);
+    }
+    document.addEventListener('keydown', handleLoginEscape);
+    const usernameField = document.getElementById('username');
+    if (usernameField) usernameField.focus();
+}
+
+function closeLoginModal() {
+    if (loginModal) {
+        loginModal.style.display = 'none';
+        loginModal.setAttribute('aria-hidden', 'true');
+        if (loginTrapHandler) {
+            loginModal.removeEventListener('keydown', loginTrapHandler);
+            loginTrapHandler = null;
+        }
+    }
+    document.removeEventListener('keydown', handleLoginEscape);
+    if (loginError) loginError.textContent = '';
+    if (loginForm) loginForm.reset();
+    if (loginModalPreviousFocus && typeof loginModalPreviousFocus.focus === 'function') {
+        loginModalPreviousFocus.focus();
+    }
+    loginModalPreviousFocus = null;
+}
+
+async function loginPortalRequest(username, password) {
+    const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include'
+    });
+    let data = null;
+    try {
+        data = await response.json();
+    } catch (_) {}
+    if (!response.ok) {
+        throw new Error(data?.error || 'Invalid username or password');
+    }
+    return data;
+}
+
+async function logoutRequest() {
+    try {
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (_) {}
+}
+
+function isPortalAllowedForRole(role, portal) {
+    const normalizedRole = (role || '').toLowerCase();
+    if (!normalizedRole) return false;
+    if (normalizedRole === 'admin') return true;
+    const allowed = ROLE_PORTAL_ACCESS[normalizedRole] || [];
+    return allowed.includes(portal);
+}
+
+function setAuthenticatedUser(user) {
+    currentUser = { ...user };
+    window.currentUser = currentUser;
+    if (Array.isArray(users)) {
+        const existingIndex = users.findIndex(u => u.id === currentUser.id);
+        if (existingIndex >= 0) {
+            users[existingIndex] = { ...users[existingIndex], ...currentUser };
                 } else {
-                    alert(`This user is a ${user.role}, not a ${currentPortal}. Please use the correct portal.`);
-                    return;
-                }
-            }
-            
-            console.log('=== LOGIN SUCCESS ===');
-            console.log('Displaying content for portal:', currentPortal);
+            users.push({ ...currentUser });
+        }
+    }
+    try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
+    const normalizedRole = (user.role || 'guest').toLowerCase();
+    setCurrentUserRole(normalizedRole);
+}
 
-            // Initialize branch selection for consultant/dispenser (optional - not required for login)
-            try {
-                if (currentPortal === 'consultant' || currentPortal === 'dispenser') {
+function handlePortalLoginSuccess(user, options = {}) {
+    setAuthenticatedUser(user);
+    const role = (user.role || '').toLowerCase();
+    hideLandingPage();
+    showAuthorizedPortals(role);
+    updateNavigationForUser(user, role);
+
+    const portal = currentPortal;
+    if (portal) {
+        const authElement = document.getElementById(portal + 'Auth');
+        const contentElement = document.getElementById(portal + 'Content');
+        if (authElement) authElement.style.display = 'none';
+        if (contentElement) contentElement.style.display = 'block';
+    }
+
+    try {
+        if ((portal === 'consultant' || portal === 'dispenser')) {
                     if (!currentBranch || currentBranch === '') {
                         if (user.branch) {
-                            // Auto-assign single branch users
                             currentBranch = user.branch;
-                            const sel = document.getElementById('branchSelect');
-                            if (sel) sel.value = currentBranch;
-                            const checkSel = document.getElementById('checkupBranchSelect');
-                            if (checkSel) checkSel.value = currentBranch;
                         } else if (Array.isArray(user.branches) && user.branches.length > 0) {
-                            // Auto-select first branch if user has multiple branches assigned
                             currentBranch = user.branches[0];
-                            const sel = document.getElementById('branchSelect');
-                            if (sel) sel.value = currentBranch;
-                            const checkSel = document.getElementById('checkupBranchSelect');
-                            if (checkSel) checkSel.value = currentBranch;
-                        }
-                        // If no branch is available, user can proceed and select branch when needed for specific operations
-                    }
                 }
-            } catch (e) { /* no-op */ }
+                const branchSelect = document.getElementById('branchSelect');
+                if (branchSelect && currentBranch) branchSelect.value = currentBranch;
+                const checkupBranchSelect = document.getElementById('checkupBranchSelect');
+                if (checkupBranchSelect && currentBranch) checkupBranchSelect.value = currentBranch;
+            }
+        }
+    } catch (_) {}
 
-            // Login successful
-            currentUser = user;
-            window.currentUser = user; // Set global for permission checks
-            window.currentPortal = currentPortal; // Set global for permission checks
-            setCurrentUserRole(user.role); // Store role in localStorage
-            closeModal('loginModal');
-            
-            const authElement = document.getElementById(currentPortal + 'Auth');
-            const contentElement = document.getElementById(currentPortal + 'Content');
-            
-            console.log('Auth element:', authElement, 'Display:', authElement ? authElement.style.display : 'not found');
-            console.log('Content element:', contentElement, 'Display:', contentElement ? contentElement.style.display : 'not found');
-            
-            if (authElement) authElement.style.display = 'none';
-            if (contentElement) contentElement.style.display = 'block';
-            
-            console.log('After update - Auth display:', authElement ? authElement.style.display : 'not found');
-            console.log('After update - Content display:', contentElement ? contentElement.style.display : 'not found');
-            
-            // Start real-time synchronization (delayed to avoid login conflicts)
             setTimeout(() => {
+        try {
                 startAutoRefresh();
                 showRealtimeStatus();
-            }, 2000);
-            
-            const branchName = branches.find(b => b.id === user.branch)?.name || 'Unknown';
-            const profile = document.getElementById(currentPortal + 'Profile');
-            if(profile) {
+        } catch (_) {}
+    }, 1000);
+
+    const branchName = branches.find(b => b.id === user.branch)?.name || user.branch || 'Unknown';
+    if (portal) {
+        const profile = document.getElementById(portal + 'Profile');
+        if (profile) {
                 profile.innerHTML = `
-                    <h4>Welcome, ${user.fullName}</h4>
+                <h4>Welcome, ${user.fullName || user.username}</h4>
                     <p>Role: ${user.role} | Branch: ${branchName}</p>
                     <button class="btn btn-warning" onclick="showChangePassword()">Change Password</button>
                     <button class="btn btn-danger" onclick="logout()">Logout</button>
                 `;
+        }
             }
             
-            if (currentPortal === 'consultant') {
+    if (portal === 'consultant') {
                 displayClients();
                 displayMyReports();
                 displayFollowUps();
-            }
-            if (currentPortal === 'dispenser') {
+    } else if (portal === 'dispenser') {
                 displayPrescriptions();
                 displayPriceList();
-                // Show Branch Stock by default after login
                 showDispenserTab('stock');
-            }
-            if (currentPortal === 'mis') {
+    } else if (portal === 'mis') {
                 loadMISBranches();
                 displayMISReports();
-            }
-            if (currentPortal === 'admin') {
+    } else if (portal === 'admin') {
                 loadUserList();
                 loadBranchListAdmin();
             }
             
-            alert(`Welcome, ${user.fullName}! Real-time sync activated.`);
-        });
+    if (!options.silent) {
+        try {
+            alert(`Welcome, ${user.fullName || user.username}! Real-time sync activated.`);
+        } catch (_) {}
+    }
+}
 
-        function logout() {
+if (loginCancelButton) {
+    loginCancelButton.addEventListener('click', () => {
+        closeLoginModal();
+    });
+}
+if (loginCloseButton) {
+    loginCloseButton.addEventListener('click', () => {
+        closeLoginModal();
+    });
+}
+if (loginModal) {
+    loginModal.addEventListener('click', (event) => {
+        if (event.target === loginModal) {
+            closeLoginModal();
+        }
+    });
+}
+
+if (loginForm) {
+    loginForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!currentPortal) {
+            if (loginError) loginError.textContent = 'Please select a portal to continue.';
+            return;
+        }
+        const usernameField = document.getElementById('username');
+        const passwordField = document.getElementById('password');
+        const username = usernameField ? usernameField.value.trim() : '';
+        const password = passwordField ? passwordField.value || '' : '';
+        if (!username || !password) {
+            if (loginError) loginError.textContent = 'Username and password are required.';
+            if (!username && usernameField) usernameField.focus();
+            else if (passwordField) passwordField.focus();
+            return;
+        }
+        if (loginError) loginError.textContent = '';
+        const originalButtonText = loginSubmitButton ? loginSubmitButton.textContent : 'Login';
+        if (loginSubmitButton) {
+            loginSubmitButton.disabled = true;
+            loginSubmitButton.textContent = 'Signing in...';
+        }
+        try {
+            const data = await loginPortalRequest(username, password);
+            const user = data?.user;
+            if (!user) {
+                throw new Error('Unexpected response from server.');
+            }
+            if (!isPortalAllowedForRole(user.role, currentPortal)) {
+                await logoutRequest();
+                if (loginError) loginError.textContent = `The ${getPortalLabel(currentPortal)} portal is not available for the ${user.role} role.`;
+                if (passwordField) {
+                    passwordField.value = '';
+                    passwordField.focus();
+                }
+                return;
+            }
+            handlePortalLoginSuccess(user);
+            closeLoginModal();
+        } catch (error) {
+            if (loginError) loginError.textContent = error.message || 'Unable to login. Please try again.';
+            if (passwordField) {
+                passwordField.value = '';
+                passwordField.focus();
+            }
+        } finally {
+            if (loginSubmitButton) {
+                loginSubmitButton.disabled = false;
+                loginSubmitButton.textContent = originalButtonText;
+            }
+        }
+    });
+}
+
+async function logout() {
+    const portal = currentPortal;
+    await logoutRequest();
             currentUser = null;
-            window.currentUser = null; // Clear global for permission checks
-            window.currentPortal = null; // Clear global
-            setCurrentUserRole('guest'); // Reset role
+    window.currentUser = null;
+    currentPortal = null;
+    window.currentPortal = null;
+    try { localStorage.removeItem('currentUser'); } catch (_) {}
+    setCurrentUserRole('guest');
             stopAutoRefresh();
             hideRealtimeStatus();
-            document.getElementById(currentPortal + 'Auth').style.display = 'block';
-            document.getElementById(currentPortal + 'Content').style.display = 'none';
+    closeLoginModal();
+    if (portal) {
+        const authElement = document.getElementById(portal + 'Auth');
+        const contentElement = document.getElementById(portal + 'Content');
+        if (authElement) authElement.style.display = 'block';
+        if (contentElement) contentElement.style.display = 'none';
+    }
             openTab('client');
+    showLandingPage();
+    showLandingTab('shop');
+    setTimeout(() => {
+        if (typeof loadShopProducts === 'function') {
+            loadShopProducts();
+        }
+    }, 500);
         }
 
         async function displayClients() {
@@ -17357,22 +17543,22 @@
                 console.log('✅ Report saved to backend database successfully');
                 
                 // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
-                if (isEditing) {
+                    if (isEditing) {
                     // Update existing report in local array only after successful backend save
-                    const index = reports.findIndex(r => r.id === validatedReport.id);
-                    if (index !== -1) {
-                        reports[index] = validatedReport;
-                    }
-                    alert('✅ Report updated successfully! ID: ' + validatedReport.id);
-                } else {
+                        const index = reports.findIndex(r => r.id === validatedReport.id);
+                        if (index !== -1) {
+                            reports[index] = validatedReport;
+                        }
+                        alert('✅ Report updated successfully! ID: ' + validatedReport.id);
+                    } else {
                     // Add new report to local array only after successful backend save
-                    reports.push(validatedReport);
-                    alert('✅ Report created successfully! ID: ' + validatedReport.id);
-                }
-                
-                // Clear editing flag
-                window.editingReportId = null;
-                
+                        reports.push(validatedReport);
+                        alert('✅ Report created successfully! ID: ' + validatedReport.id);
+                    }
+                    
+                    // Clear editing flag
+                    window.editingReportId = null;
+                    
             closeModal('reportModal');
             document.getElementById('consultantNotes').value = '';
                     document.getElementById('followUpDate').value = '';
@@ -25446,7 +25632,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (statusEl) {
                     statusEl.innerHTML = '<span style="color: #dc2626;">A user with that username already exists.</span>';
                 } else {
-                    alert('Username exists');
+                alert('Username exists');
                 }
                 return;
             }
@@ -25493,19 +25679,19 @@ async function reverseLastPrescriptionPayment(reportId){
 
                 try {
                     window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: createdUser, action: 'created' } }));
-                    const m = document.querySelector('meta[name="rt-base"]');
-                    const rtBase = m && m.content && m.content.trim();
-                    if (rtBase) {
-                        fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        const m = document.querySelector('meta[name="rt-base"]');
+                        const rtBase = m && m.content && m.content.trim();
+                        if (rtBase) {
+                            fetch(rtBase.replace(/\/$/, '') + '/publish', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ event: { type: 'users:updated', user: createdUser, action: 'created', ts: Date.now() } })
-                        }).catch(_ => {});
-                    }
-                    fetch('/api/realtime_publish', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            }).catch(_ => {});
+                        }
+                        fetch('/api/realtime_publish', { 
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                         body: JSON.stringify({ channel: 'users', event: { user: createdUser, action: 'created', ts: Date.now() } })
-                    }).catch(_ => {});
-                } catch (_) {}
+                        }).catch(_ => {});
+                    } catch (_) {}
 
                 loadUserList();
 
@@ -25513,7 +25699,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     statusEl.innerHTML = `<span style="color: #16a34a;">✅ ${createdUser.fullName || createdUser.username} added successfully.</span>`;
                 }
 
-                this.reset();
+            this.reset();
                 const preview = document.getElementById('userPhotoPreview');
                 const previewImg = document.getElementById('userPhotoPreviewImg');
                 if (preview) preview.style.display = 'none';
@@ -25524,13 +25710,13 @@ async function reverseLastPrescriptionPayment(reportId){
                     if (statusEl) statusEl.innerHTML = '';
                 }, 1000);
 
-                await refreshAllData();
+                    await refreshAllData();
             } catch (error) {
                 console.error('Error creating user:', error);
                 if (statusEl) {
                     statusEl.innerHTML = `<span style="color: #dc2626;">❌ ${error.message || 'Error creating user. Please try again.'}</span>`;
                 } else {
-                    alert('Error creating user. Please try again.');
+                alert('Error creating user. Please try again.');
                 }
             }
         });
@@ -25632,29 +25818,29 @@ async function reverseLastPrescriptionPayment(reportId){
                         return;
                     }
 
-                    users = users.filter(u => u.id !== userId);
-                    try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
+                users = users.filter(u => u.id !== userId);
+                try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
 
-                    // Broadcast user update event for real-time sync
-                    try {
+                        // Broadcast user update event for real-time sync
+                        try {
                         window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: fallbackUser, action: 'deleted' } }));
-                        const m = document.querySelector('meta[name="rt-base"]');
-                        const rtBase = m && m.content && m.content.trim();
-                        if (rtBase) {
-                            fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            const m = document.querySelector('meta[name="rt-base"]');
+                            const rtBase = m && m.content && m.content.trim();
+                            if (rtBase) {
+                                fetch(rtBase.replace(/\/$/, '') + '/publish', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ event: { type: 'users:updated', user: fallbackUser, action: 'deleted', ts: Date.now() } })
-                            }).catch(_ => {});
-                        }
-                        fetch('/api/realtime_publish', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                }).catch(_ => {});
+                            }
+                            fetch('/api/realtime_publish', { 
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                             body: JSON.stringify({ channel: 'users', event: { user: fallbackUser, action: 'deleted', ts: Date.now() } })
-                        }).catch(_ => {});
-                    } catch (_) {}
+                            }).catch(_ => {});
+                        } catch (_) {}
 
                     alert(`✅ ${fallbackUser.fullName || fallbackUser.username} deleted successfully`);
                     loadUserList();
-                    await refreshAllData();
+                        await refreshAllData();
                 } catch (error) {
                     console.error('Error deleting user:', error);
                     alert('Error deleting user. Please try again.');
@@ -26458,27 +26644,27 @@ async function reverseLastPrescriptionPayment(reportId){
             }
 
             if (loaded.length === 0) {
-                try {
-                    if (!db) await initDistributorsDB();
-
+            try {
+                if (!db) await initDistributorsDB();
+                
+                if (!db.objectStoreNames.contains(storeName)) {
+                    console.error('Distributors store does not exist, reinitializing...');
+                    db.close();
+                    db = null;
+                    await initDistributorsDB();
                     if (!db.objectStoreNames.contains(storeName)) {
-                        console.error('Distributors store does not exist, reinitializing...');
-                        db.close();
-                        db = null;
-                        await initDistributorsDB();
-                        if (!db.objectStoreNames.contains(storeName)) {
-                            throw new Error('Failed to create distributors store');
-                        }
+                        throw new Error('Failed to create distributors store');
                     }
-
-                    const transaction = db.transaction([storeName], 'readonly');
-                    const store = transaction.objectStore(storeName);
-                    const request = store.getAll();
-
+                }
+                
+                const transaction = db.transaction([storeName], 'readonly');
+                const store = transaction.objectStore(storeName);
+                const request = store.getAll();
+                
                     loaded = await new Promise((resolve, reject) => {
                         request.onsuccess = () => resolve(request.result || []);
-                        request.onerror = () => reject(request.error);
-                    });
+                    request.onerror = () => reject(request.error);
+                });
 
                     if (loaded.length > 0) {
                         source = 'indexedDB';
@@ -28665,13 +28851,13 @@ async function reverseLastPrescriptionPayment(reportId){
                     const bulkResult = await bulkResponse.json();
                     console.log('✅ Saved to database:', bulkResult);
                     backendSaveSuccess = true;
-                    
+                
                     // Update local cache with saved data
-                    distributors.push(...uniqueNewDistributors);
-                    
+                distributors.push(...uniqueNewDistributors);
+                
                     // Also save to local storage as cache (for offline access)
-                    try {
-                        await saveDistributors();
+                try {
+                    await saveDistributors();
                     } catch (localError) {
                         console.warn('Local cache save failed (non-critical):', localError);
                     }
@@ -31209,7 +31395,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
         }
-
+        
         // Display functions
         function displayCountryStock() {
             const container = document.getElementById('countryStockList');
@@ -32290,6 +32476,19 @@ async function reverseLastPrescriptionPayment(reportId){
         // Stock Import Functions with Barcode and FEFO
         const STOCK_IMPORT_AUTO_PREFIX = 'AUTO';
 
+        function getActiveImportTableBody() {
+            const bodies = Array.from(document.querySelectorAll('#stockImportTableBody'));
+            if (bodies.length === 0) return null;
+            const visibleBody = bodies.find(body => body && body.offsetParent !== null);
+            return visibleBody || bodies[0];
+        }
+
+        function getVisibleImportRows() {
+            const activeBody = getActiveImportTableBody();
+            if (!activeBody) return [];
+            return Array.from(activeBody.querySelectorAll('tr')).filter(row => row && row.offsetParent !== null);
+        }
+
         function generateAutoCartonCode(seed = '') {
             const timestamp = Date.now().toString(36).toUpperCase();
             const random = Math.random().toString(36).substr(2, 4).toUpperCase();
@@ -32346,7 +32545,8 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function addStockImportRow() {
-            const tbody = document.getElementById('stockImportTableBody');
+            const tbody = getActiveImportTableBody();
+            if (!tbody) return;
             const newRow = document.createElement('tr');
             newRow.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd;">
@@ -32376,7 +32576,8 @@ async function reverseLastPrescriptionPayment(reportId){
         
         function removeStockImportRow(btn) {
             const row = btn.closest('tr');
-            const tbody = document.getElementById('stockImportTableBody');
+            const tbody = btn.closest('tbody') || getActiveImportTableBody();
+            if (!tbody) return;
             if (tbody.children.length > 1) {
                 row.remove();
             } else {
@@ -32391,30 +32592,30 @@ async function reverseLastPrescriptionPayment(reportId){
                 fileInput.type = 'file';
                 fileInput.accept = '.csv';
                 fileInput.style.display = 'none';
-
+                
                 fileInput.addEventListener('change', async function(e) {
                     const file = e.target.files[0];
                     if (!file) {
                         if (fileInput.parentNode) document.body.removeChild(fileInput);
                         return;
                     }
-
+                    
                     try {
                         const text = await file.text();
                         const lines = text.split(/\r?\n/).filter(line => line.trim());
-
+                        
                         if (lines.length < 2) {
                             alert('CSV file must have at least a header row and one data row');
                             return;
                         }
-
+                        
                         const firstLine = lines[0];
                         let delimiter = ',';
                         if (firstLine.includes('\t')) delimiter = '\t';
                         else if (firstLine.includes(';')) delimiter = ';';
-
+                        
                         const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, '').toLowerCase());
-
+                        
                         const cartonIdx = headers.findIndex(h => h.includes('carton') || h.includes('ctn'));
                         const descIdx = headers.findIndex(h => h.includes('description') || h.includes('product') || h.includes('name'));
                         const batchIdx = headers.findIndex(h => h.includes('batch'));
@@ -32422,23 +32623,23 @@ async function reverseLastPrescriptionPayment(reportId){
                         const qtyIdx = headers.findIndex(h => h.includes('quantity') || h.includes('qty') || h.includes('qnt'));
                         const totalCtnsIdx = headers.findIndex(h => h.includes('total') && (h.includes('carton') || h.includes('ctn')))
                             || headers.findIndex(h => h.includes('total') && !h.includes('value') && !h.includes('amount'));
-
+                        
                         if (descIdx === -1 || qtyIdx === -1 || batchIdx === -1 || expiryIdx === -1) {
                             alert('CSV must include Description, Quantity, Batch and Expiry columns to satisfy FEFO requirements.');
                             return;
                         }
-
-                        const tbody = document.getElementById('stockImportTableBody');
+                        
+                        const tbody = getActiveImportTableBody();
                         if (!tbody) {
                             alert('Stock import table not found in the portal.');
                             return;
                         }
                         tbody.innerHTML = '';
-
+                        
                         let successCount = 0;
                         let errorCount = 0;
                         const errorMessages = [];
-
+                        
                         for (let i = 1; i < lines.length; i++) {
                             const rawLine = lines[i].trim();
                             if (!rawLine) continue;
@@ -32476,7 +32677,7 @@ async function reverseLastPrescriptionPayment(reportId){
                                 errorMessages.push(`Row ${i + 1}: invalid quantity`);
                                 continue;
                             }
-
+                            
                             const totalCtnsValue = totalCtnsIdx >= 0 ? values[totalCtnsIdx] : null;
                             const totalCtns = parsePositiveInteger(totalCtnsValue) || quantity;
                             const cartonValue = cartonIdx >= 0 ? values[cartonIdx] : '';
@@ -32509,7 +32710,7 @@ async function reverseLastPrescriptionPayment(reportId){
                             tbody.appendChild(newRow);
                             successCount++;
                         }
-
+                        
                         if (successCount === 0) {
                             if (tbody.children.length === 0) addStockImportRow();
                             alert('❌ No valid rows found in CSV file');
@@ -32534,11 +32735,11 @@ async function reverseLastPrescriptionPayment(reportId){
                         alert('❌ Error importing CSV: ' + error.message);
                     } finally {
                         if (fileInput.parentNode) {
-                            document.body.removeChild(fileInput);
+                        document.body.removeChild(fileInput);
                         }
                     }
                 });
-
+                
                 document.body.appendChild(fileInput);
                 fileInput.click();
             } catch (error) {
@@ -32548,7 +32749,8 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         function clearStockImportForm() {
-            const tbody = document.getElementById('stockImportTableBody');
+            const tbody = getActiveImportTableBody();
+            if (!tbody) return;
             tbody.innerHTML = `
                 <tr>
                     <td style="padding: 10px; border: 1px solid #ddd;">
@@ -32589,7 +32791,7 @@ async function reverseLastPrescriptionPayment(reportId){
         document.getElementById('bulkStockImportForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const rows = document.querySelectorAll('#stockImportTableBody tr');
+            const rows = getVisibleImportRows();
             const items = [];
             
             for (let i = 0; i < rows.length; i++) {
@@ -32615,7 +32817,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     alert(`Please provide Description, Batch, Expiry and Quantity for row ${rowNumber}.`);
                     return;
                 }
-
+                
                 if (!cartonNo) {
                     cartonNo = generateAutoCartonCode(rowNumber);
                     if (cartonInput) cartonInput.value = cartonNo;
@@ -36694,7 +36896,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             populateProductDropdowns();
             // Populate initial import row product dropdown
             try {
-                const firstRow = document.querySelector('#stockImportTableBody tr');
+                const [firstRow] = getVisibleImportRows();
                 if (firstRow) populateImportRowProductDropdown(firstRow);
             } catch (e) { console.warn('initial import row populate error', e); }
             updatePriceBadges();
@@ -39923,8 +40125,8 @@ This sale appears in the Dispenser Portal sales reports.
                 const file = files[i];
                 try {
                     // Create optimized variants
-                    const { maxDimension, quality } = getPhotoOptimizationSettings();
-                    const variants = await createImageVariantsFromFile(file, { maxDimension, quality });
+                        const { maxDimension, quality } = getPhotoOptimizationSettings();
+                        const variants = await createImageVariantsFromFile(file, { maxDimension, quality });
                     
                     // Upload to backend
                     const formData = new FormData();
@@ -39975,17 +40177,17 @@ This sale appears in the Dispenser Portal sales reports.
                             photoMap[productName].push(variants);
                         }
                     }
-                } catch (e) {
+                    } catch (e) {
                     console.error('Image processing/upload failed for', file.name, e);
                     backendErrorCount++;
+                    }
                 }
-            }
             
-            // Ensure we don't exceed 4 photos
-            photoMap[productName] = photoMap[productName].slice(0, 4);
+                // Ensure we don't exceed 4 photos
+                photoMap[productName] = photoMap[productName].slice(0, 4);
             
             // FALLBACK: Also save to local storage as cache
-            localStorage.setItem('dyna_product_photos', JSON.stringify(photoMap));
+                localStorage.setItem('dyna_product_photos', JSON.stringify(photoMap));
             
             // Update status
             if (status) {
@@ -40002,9 +40204,9 @@ This sale appears in the Dispenser Portal sales reports.
             if (typeof loadProductPhotos === 'function') {
                 loadProductPhotos();
             }
-            if (typeof loadShopProducts === 'function') {
-                loadShopProducts();
-            }
+                if (typeof loadShopProducts === 'function') {
+                    loadShopProducts();
+                }
             if (typeof clearPhotoForm === 'function') {
                 clearPhotoForm();
             }
