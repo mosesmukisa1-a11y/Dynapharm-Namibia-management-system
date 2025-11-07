@@ -26711,9 +26711,9 @@ async function reverseLastPrescriptionPayment(reportId){
                 const alias = fieldAliasMap[key];
                 const targetKey = alias || (key.includes('_') ? key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()) : key);
 
-                if (normalized[targetKey] === undefined) {
-                    normalized[targetKey] = agreement[key];
-                }
+                    if (normalized[targetKey] === undefined) {
+                        normalized[targetKey] = agreement[key];
+                    }
 
                 if (targetKey !== key && normalized[key] === undefined) {
                     normalized[key] = agreement[key];
@@ -34331,7 +34331,7 @@ async function reverseLastPrescriptionPayment(reportId){
             populateBranchSelects();
             document.getElementById('bankDepositModal').style.display = 'block';
         }
-
+        
         function readFileAsDataUrl(file) {
             if (!file) return Promise.resolve(null);
             return new Promise((resolve, reject) => {
@@ -34433,6 +34433,43 @@ async function reverseLastPrescriptionPayment(reportId){
             });
         }
 
+        function updateDepositIndicators(statusCounts = {}) {
+            const pendingCount = statusCounts.pending || 0;
+            const pill = document.getElementById('depositPendingPill');
+            if (pill) {
+                if (pendingCount > 0) {
+                    pill.textContent = pendingCount;
+                    pill.style.display = 'inline-flex';
+                } else {
+                    pill.style.display = 'none';
+                }
+            }
+
+            const globalAlerts = document.getElementById('globalAlerts');
+            if (!globalAlerts) return;
+
+            let depositAlert = document.getElementById('depositAlert');
+
+            if (pendingCount > 0) {
+                if (!depositAlert) {
+                    depositAlert = document.createElement('div');
+                    depositAlert.id = 'depositAlert';
+                    depositAlert.className = 'alert';
+                    globalAlerts.appendChild(depositAlert);
+                }
+                const message = pendingCount === 1
+                    ? '1 bank deposit slip needs your approval.'
+                    : `${pendingCount} bank deposit slips need your approval.`;
+                depositAlert.innerHTML = `<strong>Finance Notice:</strong> ${message}`;
+                globalAlerts.style.display = 'block';
+            } else if (depositAlert) {
+                depositAlert.remove();
+                if (!globalAlerts.children.length) {
+                    globalAlerts.style.display = 'none';
+                }
+            }
+        }
+
         function renderDepositInbox() {
             const pendingContainer = document.getElementById('depositList-pending');
             const reviewedContainer = document.getElementById('depositList-reviewed');
@@ -34471,6 +34508,8 @@ async function reverseLastPrescriptionPayment(reportId){
             if (rejectedBadge) rejectedBadge.textContent = `Rejected: ${counts.rejected || 0}`;
             if (tabPendingCount) tabPendingCount.textContent = counts.pending || 0;
             if (tabReviewedCount) tabReviewedCount.textContent = reviewed.length;
+
+            updateDepositIndicators(counts);
 
             const makeMetaBlock = (label, value) => `
                 <div><strong>${label}:</strong><br>${value}</div>
