@@ -2697,6 +2697,63 @@
                 }
             } catch(_) { /* ignore */ }
         });
+
+        function toggleMISView(view) {
+            const mainSection = document.getElementById('misMainSection');
+            const staffSection = document.getElementById('misStaffSection');
+            const mainBtn = document.getElementById('misMainTabBtn');
+            const staffBtn = document.getElementById('misStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('mis');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        function toggleAdminView(view) {
+            const mainSection = document.getElementById('adminMainSection');
+            const staffSection = document.getElementById('adminStaffSection');
+            const mainBtn = document.getElementById('adminMainTabBtn');
+            const staffBtn = document.getElementById('adminStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('admin');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        registerStaffServicesContext('mis', {
+            leaveStatusId: 'staffLeaveStatus-mis',
+            cashStatusId: 'staffCashStatus-mis'
+        });
+
+        registerStaffServicesContext('admin', {
+            leaveStatusId: 'staffLeaveStatus-admin',
+            cashStatusId: 'staffCashStatus-admin'
+        });
+
+        registerStaffServicesContext('stock', {
+            leaveStatusId: 'staffLeaveStatus-stock',
+            cashStatusId: 'staffCashStatus-stock'
+        });
     </script>
     <!-- SheetJS library for Excel parsing -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" crossorigin="anonymous" onerror="console.warn('⚠️ xlsx library failed to load, Excel export may not work')"></script>
@@ -5823,7 +5880,13 @@
                         <button class="btn" id="stockHelpBtnGlobal">❓ Help</button>
                     </div>
                 </div>
-                
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+                    <button id="stockMainTabBtn" class="btn btn-primary" onclick="toggleStockView('main')" style="min-width: 160px;">📦 Stock Tools</button>
+                    <button id="stockStaffTabBtn" class="btn" onclick="toggleStockView('staff')" style="min-width: 160px;">👤 Staff Services</button>
+                </div>
+
+                <div id="stockTabsContainer" style="margin-top:12px;">
                 <!-- Stock Management Tabs - Modern Comprehensive Structure -->
                 <div class="tabs" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 3px solid #c41e3a; padding-bottom: 10px;">
                     <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
@@ -5837,7 +5900,20 @@
                     <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
                     <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
                 </div>
-                
+
+                <div class="tabs" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; background: rgba(12, 20, 42, 0.65); border: 1px solid #1e2a44; border-radius: 10px; padding: 10px;">
+                    <span style="pointer-events:none; font-size: 0.85rem; color: #8aa0b5; align-self: center; padding-right: 6px;">Advanced Tools:</span>
+                    <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode & Scans</button>
+                    <button class="tab-button" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder Plans</button>
+                    <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch & Returns</button>
+                    <button class="tab-button" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
+                    <button class="tab-button" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Legacy Country</button>
+                    <button class="tab-button" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Legacy Windhoek</button>
+                    <button class="tab-button" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Legacy Ondangwa</button>
+                    <button class="tab-button" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Legacy Distribution</button>
+                    <button class="tab-button" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Inventory Log</button>
+                </div>
+
                 <!-- Overview Tab - Stock Management Dashboard -->
                 <div id="overviewTab" class="stock-tab-content" style="display: block;">
                     <!-- KPI Dashboard -->
@@ -7276,6 +7352,34 @@
                         </div>
                     </div>
                 </div>
+                </div> <!-- /#stockTabsContainer -->
+
+                <div id="stockStaffSection" style="display:none;">
+                    <div class="form-section">
+                        <h3>👤 Stock Team Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Leave and cash support tools for warehouse and logistics teams.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Request shift swaps or planned leave for stock operations.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('stock')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('stock')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-stock" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash for urgent branch or warehouse deliveries.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('stock')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('stock')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-stock" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -8613,6 +8717,34 @@
                     </div>
                     <div id="inventoryList" style="max-height: 500px; overflow-y: auto;"></div>
                 </div>
+                </div>
+
+                <div id="adminStaffSection" style="display: none;">
+                    <div class="form-section">
+                        <h3>👤 Admin Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Request leave or cash advances while working in the Admin portal.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Submit your own leave requests and view status.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('admin')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('admin')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-admin" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash or reimbursement for admin operations.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('admin')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('admin')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-admin" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -9274,6 +9406,33 @@
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
                     <button id="misMainTabBtn" class="btn btn-primary" onclick="toggleMISView('main')" style="min-width: 160px;">📑 MIS Dashboard</button>
                     <button id="misStaffTabBtn" class="btn" onclick="toggleMISView('staff')" style="min-width: 160px;">👤 Staff Services</button>
+                </div>
+
+                <div id="misStaffSection" style="display: none;">
+                    <div class="form-section">
+                        <h3>👤 MIS Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Leave and cash requests for MIS analysts and reporting staff.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Request leave for reporting or reconciliation teams.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('mis')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('mis')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-mis" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash for audits, logistics or field checks.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('mis')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('mis')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-mis" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="misMainSection">
@@ -31840,9 +31999,10 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // Show stock tab - Updated for modern comprehensive structure
         function showStockTab(tabName) {
-            document.querySelectorAll('.stock-tab-content').forEach(t => t.style.display = 'none');
-            document.querySelectorAll('#stock .tabs button').forEach(b => b.classList.remove('active'));
-            
+            const tabScope = document.getElementById('stockTabsContainer') || document;
+            tabScope.querySelectorAll('.stock-tab-content').forEach(t => t.style.display = 'none');
+            tabScope.querySelectorAll('.tabs .tab-button').forEach(b => b.classList.remove('active'));
+
             const tabElement = document.getElementById(tabName + 'Tab');
             if (tabElement) {
                 tabElement.style.display = 'block';
@@ -31851,7 +32011,9 @@ async function reverseLastPrescriptionPayment(reportId){
             // Update active button
             const button = document.getElementById('stockTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
             if (button) button.classList.add('active');
-            if (event && event.target) event.target.classList.add('active');
+            if (typeof event !== 'undefined' && event && event.target && event.target.classList) {
+                event.target.classList.add('active');
+            }
             
             // Load data when switching tabs
             if (tabName === 'overview') {
@@ -31897,6 +32059,9 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             else if (tabName === 'realtime') {
                 loadRealtimeSyncStatus();
+            }
+            else if (tabName === 'staffServices') {
+                refreshStaffServices('stock');
             }
             // Legacy tab support
             else if (tabName === 'dashboard') {
@@ -31944,6 +32109,29 @@ async function reverseLastPrescriptionPayment(reportId){
                 displayBatchTracking();
             }
             else if (tabName === 'valuation') displayStockValuation();
+        }
+
+        function toggleStockView(view) {
+            const tabContainer = document.getElementById('stockTabsContainer');
+            const staffSection = document.getElementById('stockStaffSection');
+            const mainBtn = document.getElementById('stockMainTabBtn');
+            const staffBtn = document.getElementById('stockStaffTabBtn');
+
+            if (!tabContainer || !staffSection) return;
+
+            if (view === 'staff') {
+                tabContainer.style.display = 'none';
+                staffSection.style.display = 'block';
+                tabContainer.querySelectorAll('.tabs .tab-button').forEach(b => b.classList.remove('active'));
+                if (mainBtn) mainBtn.classList.remove('btn-primary');
+                if (staffBtn) staffBtn.classList.add('btn-primary');
+            } else {
+                tabContainer.style.display = 'block';
+                staffSection.style.display = 'none';
+                if (staffBtn) staffBtn.classList.remove('btn-primary');
+                if (mainBtn) mainBtn.classList.add('btn-primary');
+                showStockTab('overview');
+            }
         }
 
         // New Stock Management Functions for Modern Tabs
@@ -37260,7 +37448,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             populateProductDropdowns();
             // Populate initial import row product dropdown
             try {
-                const [firstRow] = getVisibleImportRows();
+                const firstRow = document.querySelector('#stockImportTableBody tr');
                 if (firstRow) populateImportRowProductDropdown(firstRow);
             } catch (e) { console.warn('initial import row populate error', e); }
             updatePriceBadges();

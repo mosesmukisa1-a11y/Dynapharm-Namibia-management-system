@@ -35,6 +35,10 @@
             line-height: 1.6;
         }
 
+        body.modal-open {
+            overflow: hidden;
+        }
+
         /* Navigation Bar */
         .navbar {
             background: var(--white);
@@ -792,6 +796,15 @@
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
+            box-shadow: 0 35px 80px rgba(15, 23, 42, 0.18);
+        }
+
+        .modal-content.auth-modal {
+            padding: 48px 42px;
+            max-width: 560px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.97), rgba(246, 248, 251, 0.95));
+            border: 1px solid rgba(226, 232, 240, 0.7);
+            backdrop-filter: blur(10px);
         }
 
         .modal-close {
@@ -807,33 +820,93 @@
 
         .modal-tabs {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 30px;
-            border-bottom: 2px solid var(--border);
+            background: rgba(15, 23, 42, 0.05);
+            padding: 6px;
+            border-radius: 12px;
         }
 
         .modal-tab {
-            padding: 12px 24px;
-            background: none;
+            flex: 1;
+            padding: 12px 14px;
+            background: transparent;
             border: none;
             cursor: pointer;
             font-weight: 600;
             color: var(--text-light);
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
+            border-radius: 10px;
+            transition: all 0.25s ease;
         }
 
         .modal-tab.active {
+            background: var(--white);
             color: var(--brand-color);
-            border-bottom-color: var(--brand-color);
+            box-shadow: 0 10px 20px rgba(196, 30, 58, 0.12);
         }
 
         .modal-form {
             display: none;
+            margin-top: 20px;
         }
 
         .modal-form.active {
             display: block;
+        }
+
+        .auth-footnote {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: var(--text-light);
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .auth-card {
+            background: rgba(15, 23, 42, 0.05);
+            border-radius: 14px;
+            padding: 20px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            margin-top: 18px;
+        }
+
+        .auth-card.warning {
+            background: #fff8e6;
+            border-color: #facc15;
+            color: #92400e;
+        }
+
+        .auth-card + .auth-card {
+            margin-top: 12px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .auth-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 18px;
+            border-radius: 999px;
+            background: rgba(196, 30, 58, 0.15);
+            color: var(--brand-dark);
+            font-weight: 600;
+            font-size: 0.85rem;
+            letter-spacing: 0.03em;
+        }
+
+        .auth-header h2 {
+            margin-top: 16px;
+            font-size: 1.9rem;
+            color: var(--text-dark);
+        }
+
+        .auth-header p {
+            color: var(--text-light);
+            margin-top: 12px;
         }
 
         .form-group {
@@ -890,6 +963,13 @@
             display: block;
         }
 
+        .success-message {
+            color: #15803d;
+            font-size: 0.9rem;
+            margin-top: 10px;
+            display: none;
+        }
+
         .note {
             background: #fffbeb;
             border: 1px solid #fde68a;
@@ -913,8 +993,21 @@
                 font-size: 0.9rem;
             }
 
+            .account-button {
+                padding: 6px 12px;
+                gap: 8px;
+            }
+
+            .account-name-wrap {
+                display: none;
+            }
+
             .hero h1 {
                 font-size: 2rem;
+            }
+
+            .modal-content.auth-modal {
+                padding: 36px 24px;
             }
 
             .products-grid {
@@ -1304,14 +1397,19 @@
 
     <!-- Login/Register Modal -->
     <div id="loginModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content auth-modal">
             <button class="modal-close" onclick="closeLoginModal()">&times;</button>
-            <h2 style="color: var(--brand-color); margin-bottom: 20px;">Login / Register</h2>
-            
+
+            <div class="auth-header">
+                <span class="auth-pill">Dynapharm Portal Network</span>
+                <h2>Sign in to Dynapharm</h2>
+                <p>Choose how you would like to access the system. One account unlocks every portal.</p>
+            </div>
+
             <div class="modal-tabs">
-                <button class="modal-tab active" onclick="switchModalTab('distributor')">Distributor</button>
-                <button class="modal-tab" onclick="switchModalTab('staff')">Staff Login</button>
-                <button class="modal-tab" onclick="switchModalTab('admin')">Admin Portal</button>
+                <button class="modal-tab active" onclick="switchModalTab('distributor', event)">🧑‍🤝‍🧑 Distributor / Member</button>
+                <button class="modal-tab" onclick="switchModalTab('staff', event)">👩‍💼 Team Login</button>
+                <button class="modal-tab" onclick="switchModalTab('admin', event)">🛡️ Administrators</button>
             </div>
 
             <!-- Distributor Login/Register Form -->
@@ -1334,12 +1432,12 @@
                 </div>
                 <div id="distributorLoginActions">
                     <button class="btn-submit" id="distributorLoginButton" onclick="handleDistributorLogin()">Continue</button>
-                    <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
+                    <p class="auth-footnote">
                         New distributors must be registered by a branch manager. Contact your branch for registration.
                     </p>
                 </div>
 
-                <div id="distributorPasswordSection" style="display: none; margin-top: 20px; padding: 20px; background: var(--bg-light); border-radius: 10px;">
+                <div id="distributorPasswordSection" class="auth-card" style="display: none;">
                     <h4 id="distributorPasswordHeading" style="color: var(--brand-color); margin-bottom: 10px;">Enter Password</h4>
                     <p id="distributorPasswordSubtext" style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 15px;">Please enter your distributor portal password.</p>
 
@@ -1385,7 +1483,7 @@
                     <div class="error-message" id="staffPasswordError"></div>
                 </div>
                 <button class="btn-submit" onclick="handleStaffLogin()">Login to System</button>
-                <div style="margin-top: 15px; padding: 12px; background: var(--bg-light); border-radius: 8px; font-size: 0.85rem;">
+                <div class="auth-card" style="font-size: 0.85rem;">
                     <strong style="color: var(--brand-color);">Available Portals:</strong>
                     <ul style="margin: 8px 0 0 20px; color: var(--text-light); line-height: 1.6;">
                         <li>👨‍⚕️ Consultant Portal</li>
@@ -1418,7 +1516,7 @@
                     <div class="error-message" id="adminPasswordError"></div>
                 </div>
                 <button class="btn-submit" onclick="handleAdminLogin()">Login to Admin Portal</button>
-                <div style="margin-top: 15px; padding: 12px; background: #fff3cd; border-left: 4px solid #f39c12; border-radius: 8px; font-size: 0.85rem;">
+                <div class="auth-card warning" style="font-size: 0.85rem;">
                     <strong style="color: #856404;">Account Access</strong>
                     <p style="margin: 8px 0; color: #856404;">
                         Use the credentials issued by the Dynapharm administrator.
@@ -1427,7 +1525,7 @@
                         ⚠️ If you need help, contact IT support to reset your password.
                     </p>
                 </div>
-                <div style="margin-top: 15px; padding: 12px; background: var(--bg-light); border-radius: 8px; font-size: 0.85rem;">
+                <div class="auth-card" style="font-size: 0.85rem;">
                     <strong style="color: var(--brand-color);">Admin Portal Features:</strong>
                     <ul style="margin: 8px 0 0 20px; color: var(--text-light); line-height: 1.6;">
                         <li>👥 User Management (Create/Edit/Delete users)</li>
@@ -1546,8 +1644,10 @@
             </form>
         </div>
     </div>
-          </div>
-          
+    </div>
+
+    <div class="toast" id="globalToast" role="status" aria-live="polite"></div>
+
     <script>
         // Global state
         let allProducts = [];
@@ -1732,6 +1832,16 @@
             return parts.map(part => part.charAt(0).toUpperCase()).join('') || cleaned.charAt(0).toUpperCase();
         }
 
+        function toTitleCase(value) {
+            if (!value) return '';
+            return value
+                .replace(/[-_]+/g, ' ')
+                .split(' ')
+                .filter(Boolean)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+
         function setHeroAction(button, label, handler) {
             if (!button) return;
             button.textContent = label;
@@ -1746,7 +1856,7 @@
                 heroBadgeEl.textContent = '👋 Welcome back';
                 heroTitleHighlightEl.textContent = user.fullName || user.username || 'Dynapharm Team';
                 const roleLabel = (user.role || '').toLowerCase();
-                const friendlyRole = roleLabel ? roleLabel.replace(/_/g, ' ') : 'team member';
+                const friendlyRole = roleLabel ? toTitleCase(roleLabel) : 'team member';
                 heroSubtitleEl.textContent = `You’re signed in as ${friendlyRole}. Jump back into your portal or explore the latest wellness insights.`;
                 setHeroAction(heroPrimaryButton, '🚀 Enter my portal', () => navigateToRolePortal());
                 setHeroAction(heroSecondaryButton, '📊 View reports', () => {
@@ -1800,6 +1910,7 @@
                 return;
             }
 
+            closeAccountMenu();
             const targetUrl = getRoleRedirect((currentAccountUser.role || '').toLowerCase());
             window.location.href = targetUrl;
         }
@@ -1886,17 +1997,16 @@
             currentAccountUser = user;
 
             if (user) {
-                loginNavItem?.classList.add('hidden');
                 if (loginNavItem) loginNavItem.style.display = 'none';
-                accountNavItem?.style.setProperty('display', 'block');
+                if (accountNavItem) accountNavItem.style.display = 'flex';
 
                 const initials = getInitials(user.fullName || user.username);
                 if (accountInitialsEl) accountInitialsEl.textContent = initials;
                 if (accountNameEl) accountNameEl.textContent = user.fullName || user.username || 'Dynapharm Team';
                 if (accountMenuInitials) accountMenuInitials.textContent = initials;
                 if (accountMenuName) accountMenuName.textContent = user.fullName || user.username || 'Dynapharm Team';
-                if (accountMenuRole) accountMenuRole.textContent = (user.role || 'team member').replace(/_/g, ' ');
-                if (accountMenuBranch) accountMenuBranch.textContent = user.branch ? `Primary branch • ${user.branch}` : '';
+                if (accountMenuRole) accountMenuRole.textContent = toTitleCase(user.role || 'team member');
+                if (accountMenuBranch) accountMenuBranch.textContent = user.branch ? `Primary branch • ${toTitleCase(user.branch)}` : '';
 
                 renderHeroState(user);
 
@@ -1906,9 +2016,8 @@
                 const normalizedRole = (user.role || '').toLowerCase();
                 toggleLandingEditorButton(normalizedRole === 'admin');
             } else {
-                loginNavItem?.classList.remove('hidden');
-                if (loginNavItem) loginNavItem.style.display = 'list-item';
-                accountNavItem?.style.setProperty('display', 'none');
+                if (loginNavItem) loginNavItem.style.display = 'flex';
+                if (accountNavItem) accountNavItem.style.display = 'none';
                 closeAccountMenu();
                 renderHeroState(null);
 
@@ -1919,35 +2028,36 @@
             }
         }
 
-        function getRoleRedirect(role) {
+        function getRoleRedirect(role, overridePortal) {
             const normalizedRole = (role || '').toLowerCase();
-            switch (normalizedRole) {
-                case 'admin':
-                    return 'dynapharm-complete-system.html#admin';
-                case 'consultant':
-                    return 'dynapharm-complete-system.html#consultant';
-                case 'dispenser':
-                    return 'dynapharm-complete-system.html#dispenser';
-                case 'finance':
-                case 'finance_manager':
-                    return 'dynapharm-complete-system.html#finance';
-                case 'hr':
-                case 'hr_manager':
-                    return 'hr-portal.html';
-                case 'mis':
-                    return 'mis-portal.html';
-                case 'gm':
-                case 'general_manager':
-                    return 'gm-portal.html';
-                case 'director':
-                    return 'director-portal.html';
-                case 'stock_manager':
-                case 'warehouse':
-                case 'stock':
-                    return 'stock-management-portal.html';
-                default:
-                    return 'dynapharm-complete-system.html';
-            }
+            const portalMap = {
+                admin: 'admin',
+                consultant: 'consultant',
+                sales_staff: 'consultant',
+                dispenser: 'dispenser',
+                finance: 'finance',
+                finance_manager: 'finance',
+                hr: 'hr-portal',
+                hr_manager: 'hr-portal',
+                hr_admin: 'hr-portal',
+                mis: 'mis',
+                gm: 'gm',
+                general_manager: 'gm',
+                director: 'director',
+                stock_manager: 'stock',
+                warehouse: 'stock',
+                stock: 'stock'
+            };
+
+            const requestedPortal = (overridePortal || '').toLowerCase();
+            const defaultPortal = portalMap[normalizedRole] || 'client';
+            const targetPortal = requestedPortal && portalMap[normalizedRole]
+                ? requestedPortal
+                : (requestedPortal || defaultPortal);
+
+            const url = new URL('dynapharm-complete-system.html', window.location.origin);
+            url.searchParams.set('portal', targetPortal);
+            return url.pathname + url.search;
         }
 
         function finalizeUserSession(user, options = {}) {
@@ -1976,7 +2086,8 @@
 
             showToast(`Welcome back, ${normalized.fullName || normalized.username}!`, 'success');
 
-            const redirectUrl = getRoleRedirect(normalized.role);
+            const redirectPortal = new URLSearchParams(window.location.search).get('redirectPortal');
+            const redirectUrl = getRoleRedirect(normalized.role, redirectPortal);
             window.location.href = redirectUrl;
         }
 
@@ -2001,11 +2112,14 @@
         // Modal Functions
         function openLoginModal() {
             document.getElementById('loginModal').classList.add('active');
+            document.body.classList.add('modal-open');
+            closeAccountMenu();
             loadDistributorsForLogin();
         }
 
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('active');
+            document.body.classList.remove('modal-open');
             // Reset forms
             document.getElementById('distributorSelect').value = '';
             document.getElementById('distributorDOB').value = '';
@@ -2020,10 +2134,11 @@
             resetDistributorAuthFlow(true);
         }
 
-        function switchModalTab(tab) {
-            // Update tab buttons
+        function switchModalTab(tab, evt) {
+            const triggerEvent = evt || window.event;
+
             document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            triggerEvent?.target?.classList?.add('active');
             
             // Update forms
             document.querySelectorAll('.modal-form').forEach(form => form.classList.remove('active'));
@@ -3526,16 +3641,24 @@
             openLandingPageEditor();
         }
         
-        function logout() {
+        async function logout() {
+            closeAccountMenu();
+
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+            } catch (error) {
+                console.warn('Logout request failed (continuing with client-side sign-out).', error);
+            }
+
             localStorage.removeItem('currentUser');
             localStorage.removeItem('currentUserRole');
-            document.getElementById('portalTabs').style.display = 'none';
-            document.getElementById('distributorSubTabs').style.display = 'none';
-            document.getElementById('adminNavItem').style.display = 'none';
-            toggleLandingEditorButton(false);
-            document.getElementById('logoutNavItem').style.display = 'none';
-            document.getElementById('loginNavItem').style.display = 'block';
-            window.location.reload();
+
+            renderAuthState(null);
+            showToast('Signed out successfully.', 'info');
+            showSection('shop');
         }
         
         // Testimonials Functions
@@ -3784,23 +3907,35 @@
                 openLoginModal();
             }
             
-            // Check if user is logged in
-            const currentUser = localStorage.getItem('currentUser');
-            if (currentUser) {
+            // Set initial auth state
+            const storedUser = localStorage.getItem('currentUser');
+            if (storedUser) {
                 try {
-                    const user = JSON.parse(currentUser);
-            document.getElementById('adminNavItem').style.display = 'block';
-            document.getElementById('logoutNavItem').style.display = 'block';
-            document.getElementById('loginNavItem').style.display = 'none';
-            document.getElementById('adminNavName').textContent = user.username || 'admin';
-            const userRole = user.role || localStorage.getItem('currentUserRole') || '';
-            if (userRole === 'admin') {
-                toggleLandingEditorButton(true);
+                    const parsed = JSON.parse(storedUser);
+                    renderAuthState(parsed);
+                } catch (error) {
+                    console.warn('Failed to parse stored user state. Resetting session.', error);
+                    renderAuthState(null);
+                }
+            } else {
+                renderAuthState(null);
             }
-            document.getElementById('portalTabs').style.display = 'block';
-            document.getElementById('distributorSubTabs').style.display = 'block';
-                } catch(e) {}
-            }
+
+            document.addEventListener('click', (event) => {
+                if (!accountMenu || !accountNavItem) return;
+                if (!accountNavItem.contains(event.target)) {
+                    closeAccountMenu();
+                }
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeAccountMenu();
+                    if (document.getElementById('loginModal')?.classList.contains('active')) {
+                        closeLoginModal();
+                    }
+                }
+            });
             
             // Consultation booking form
             const consultForm = document.getElementById('consultation-booking-form');
