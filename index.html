@@ -3136,6 +3136,67 @@
             loadShopProducts();
             loadLandingPageContent();
             toggleLandingEditorButton(false);
+
+            const url = new URL(window.location.href);
+            const requestedSection = url.searchParams.get('section');
+            const requestedTab = url.searchParams.get('tab');
+            const requestedModal = url.searchParams.get('modal');
+            const hash = window.location.hash;
+
+            const activateDistributorButton = (tabName) => {
+                const subTabs = document.getElementById('distributorSubTabs');
+                if (!subTabs) return;
+                const tabButtons = subTabs.querySelectorAll('button.distributor-tab-btn');
+                tabButtons.forEach(btn => {
+                    btn.style.background = 'transparent';
+                    btn.style.color = 'var(--text-dark)';
+                });
+                const targetBtn = Array.from(tabButtons).find(btn => {
+                    const onClick = btn.getAttribute('onclick') || '';
+                    return onClick.includes("'" + tabName + "'");
+                });
+                if (targetBtn) {
+                    targetBtn.style.background = 'var(--brand-color)';
+                    targetBtn.style.color = 'white';
+                }
+            };
+
+            const validSections = ['shop', 'about', 'media'];
+            const sectionToActivate = requestedSection && validSections.includes(requestedSection)
+                ? requestedSection
+                : (hash === '#about-section' ? 'about'
+                    : hash === '#media-section' ? 'media'
+                    : hash === '#shop-section' ? 'shop'
+                    : null);
+
+            if (sectionToActivate) {
+                showSection(sectionToActivate);
+                const targetId = sectionToActivate === 'shop' ? 'shop-section' : `${sectionToActivate}-section`;
+                const targetEl = document.getElementById(targetId);
+                if (targetEl) {
+                    targetEl.classList.add('active');
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+
+            const validTabs = ['shop', 'checkup', 'media', 'testimonials'];
+            const tabToActivate = requestedTab && validTabs.includes(requestedTab)
+                ? requestedTab
+                : (hash === '#checkup' ? 'checkup'
+                    : hash === '#media' ? 'media'
+                    : hash === '#testimonials' ? 'testimonials'
+                    : null);
+
+            if (tabToActivate) {
+                openTab('client');
+                showDistributorTab(tabToActivate);
+                document.getElementById('portalTabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                activateDistributorButton(tabToActivate);
+            }
+
+            if (requestedModal === 'login' || hash === '#loginModal') {
+                openLoginModal();
+            }
             
             // Check if user is logged in
             const currentUser = localStorage.getItem('currentUser');

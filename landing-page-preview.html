@@ -223,6 +223,7 @@
             margin-bottom: 8px;
             background: linear-gradient(135deg, #ffd700, #ffed4e);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
@@ -551,11 +552,11 @@
                 <span>Dynapharm Namibia</span>
             </div>
             <ul class="nav-links">
-                <li><a href="#">Home</a></li>
-                <li><a href="#">Guest Portal</a></li>
-                <li><a href="#">About Us</a></li>
-                <li><a href="#">Media</a></li>
-                <li><button class="btn-login">Login / Register</button></li>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="index.html?tab=shop">Guest Portal</a></li>
+                <li><a href="index.html?section=about">About Us</a></li>
+                <li><a href="index.html?section=media">Media</a></li>
+                <li><button class="btn-login" onclick="window.location.href='index.html?modal=login'">Login / Register</button></li>
             </ul>
         </div>
     </nav>
@@ -576,8 +577,8 @@
                 designed to help you live your healthiest life.
             </p>
             <div class="hero-cta">
-                <button class="btn-primary-large">🛒 Shop Products</button>
-                <button class="btn-secondary-large">🏥 Book Consultation</button>
+                <button class="btn-primary-large" onclick="window.location.href='index.html?tab=shop'">🛒 Shop Products</button>
+                <button class="btn-secondary-large" onclick="window.location.href='index.html?tab=checkup'">🏥 Book Consultation</button>
             </div>
             <div class="hero-stats">
                 <div class="stat-item">
@@ -611,25 +612,25 @@
                 <div class="feature-icon">🩺</div>
                 <h3>Expert Consultations</h3>
                 <p>Book appointments with our experienced health consultants for personalized wellness guidance</p>
-                <a href="#" class="feature-link">Learn More →</a>
+                <a href="index.html?tab=checkup" class="feature-link">Learn More →</a>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">💊</div>
                 <h3>Premium Products</h3>
                 <p>Browse our extensive catalog of 85+ health and wellness products from trusted brands</p>
-                <a href="#" class="feature-link">Shop Now →</a>
+                <a href="index.html?tab=shop" class="feature-link">Shop Now →</a>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">📊</div>
                 <h3>Distributor Program</h3>
                 <p>Join our network and earn while helping others achieve their wellness goals</p>
-                <a href="#" class="feature-link">Get Started →</a>
+                <a href="distributor-portal.html" class="feature-link">Get Started →</a>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🏥</div>
                 <h3>Full Body Check-ups</h3>
                 <p>Comprehensive health assessments available at all our branch locations</p>
-                <a href="#" class="feature-link">Book Now →</a>
+                <a href="index.html?tab=checkup" class="feature-link">Book Now →</a>
             </div>
         </div>
     </section>
@@ -752,17 +753,17 @@
             </div>
             <div class="footer-section">
                 <h3>Quick Links</h3>
-                <a href="#">Shop Products</a>
-                <a href="#">Book Consultation</a>
-                <a href="#">Distributor Portal</a>
-                <a href="#">About Us</a>
+                <a href="index.html?tab=shop">Shop Products</a>
+                <a href="index.html?tab=checkup">Book Consultation</a>
+                <a href="distributor-portal.html">Distributor Portal</a>
+                <a href="index.html?section=about">About Us</a>
             </div>
             <div class="footer-section">
                 <h3>Services</h3>
-                <a href="#">Health Consultations</a>
-                <a href="#">Full Body Check-ups</a>
-                <a href="#">Distributor Program</a>
-                <a href="#">Branch Locations</a>
+                <a href="index.html?tab=checkup">Health Consultations</a>
+                <a href="index.html?tab=checkup">Full Body Check-ups</a>
+                <a href="distributor-portal.html">Distributor Program</a>
+                <a href="index.html?section=about">Branch Locations</a>
             </div>
         </div>
         <div class="footer-bottom">

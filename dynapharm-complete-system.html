@@ -493,6 +493,165 @@
         .order-tab-content.active { display: block; }
         .crm-subtab { padding: 20px; display: none; }
         .crm-subtab.active { display: block; }
+        .deposit-inbox-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .deposit-inbox-summary .badge {
+            background: #eef2f7;
+            color: #334e68;
+        }
+        .deposit-inbox-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .deposit-inbox-tab {
+            background: #ffffff;
+            color: #334e68;
+            border: 2px solid #dce3ef;
+            border-radius: 10px;
+            font-weight: 600;
+            padding: 9px 14px;
+            cursor: pointer;
+            transition: all 0.18s ease-in-out;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .deposit-inbox-tab:hover {
+            border-color: #667eea;
+            color: #4a5fdc;
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.2);
+        }
+        .deposit-inbox-tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-color: #667eea;
+            color: #ffffff;
+            box-shadow: 0 12px 28px rgba(102, 126, 234, 0.25);
+        }
+        .deposit-inbox-count {
+            min-width: 26px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: rgba(103, 126, 234, 0.12);
+            color: inherit;
+        }
+        .deposit-inbox-tab.active .deposit-inbox-count {
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+        }
+        .deposit-inbox-pane { display: none; }
+        .deposit-inbox-pane.active { display: block; }
+        .deposit-pending-pill {
+            display: none;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            background: #fef2f2;
+            color: #c41e3a;
+            border: 1px solid rgba(196, 30, 58, 0.2);
+            align-items: center;
+            justify-content: center;
+        }
+        .deposit-card {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+            border: 1px solid #e3e9f3;
+            border-radius: 12px;
+            background: #ffffff;
+            box-shadow: 0 6px 18px rgba(13, 39, 80, 0.08);
+        }
+        .deposit-card-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .deposit-card-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        .deposit-card-meta div {
+            background: #f6f9ff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #334e68;
+            font-size: 0.92rem;
+        }
+        .deposit-card-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .deposit-card-notes {
+            background: #fef8e7;
+            border-left: 4px solid #f5c26b;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.92rem;
+            color: #8c6224;
+        }
+        .deposit-empty-state {
+            text-align: center;
+            padding: 18px;
+            color: #7f8c8d;
+            border-radius: 10px;
+            border: 1px dashed #d7deee;
+            background: #fcfdff;
+        }
+        .deposit-status {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 4px 10px;
+            border-radius: 999px;
+        }
+        .deposit-status[data-status="pending"] {
+            background: #fff6db;
+            color: #8a6114;
+        }
+        .deposit-status[data-status="processing"] {
+            background: #e1f0ff;
+            color: #0c4a6e;
+        }
+        .deposit-status[data-status="approved"] {
+            background: #e3fcec;
+            color: #1a7f4b;
+        }
+        .deposit-status[data-status="rejected"] {
+            background: #ffe7e7;
+            color: #c0392b;
+        }
+        @media (max-width: 768px) {
+            .deposit-card {
+                padding: 14px;
+            }
+            .deposit-card-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .deposit-card-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .deposit-card-actions .btn,
+            .deposit-inbox-tab {
+                width: 100%;
+                justify-content: center;
+            }
+        }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000; }
         .modal-card { background: white; border-radius: 10px; padding: 20px; width: 90%; max-width: 520px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
         .modal-card h3 { margin-bottom: 10px; }
@@ -8614,12 +8773,43 @@
                     <button class="btn btn-success" onclick="refreshFinancialDashboard()" style="background: white; color: #667eea;">🔄 Refresh</button>
                     <button class="btn btn-primary" onclick="showShiftManager()" style="background: white; color: #667eea;">🕐 Shift Manager</button>
                     <button class="btn" onclick="showRecordPaymentModal()" style="background: white; color: #667eea;">💳 Record Payment</button>
-                    <button class="btn" onclick="showBankDeposit()" style="background: white; color: #667eea;">💰 Bank Deposit</button>
+                    <button class="btn" onclick="showBankDeposit()" style="background: white; color: #667eea; display: inline-flex; align-items: center; gap: 6px;">
+                        💰 Bank Deposit
+                        <span id="depositPendingPill" class="deposit-pending-pill">0</span>
+                    </button>
                     <button class="btn" onclick="showCashBonus()" style="background: white; color: #667eea;">🎁 Cash Bonus</button>
                     <button class="btn" onclick="showBankBonus()" style="background: white; color: #667eea;">🏦 Bank Bonus</button>
                     <button class="btn" onclick="showBonusUpload()" style="background: white; color: #667eea;">📤 Bonus Upload</button>
                     <button class="btn" onclick="generateZReport()" style="background: white; color: #667eea;">📊 Z-Report</button>
                     <button class="btn" onclick="exportFinancialData()" style="background: white; color: #667eea;">📥 Export</button>
+                </div>
+            </div>
+
+            <!-- Bank Deposit Slip Inbox -->
+            <div class="form-section" id="bankDepositInbox">
+                <h3>📥 Bank Deposit Slip Inbox</h3>
+                <p style="color: #7f8c8d; margin-bottom: 15px;">Centralise bank deposit slips sent from branches. Review supporting files, approve compliant deposits, or request corrections immediately.</p>
+                <div class="deposit-inbox-summary">
+                    <span class="badge" id="depositPendingBadge">Pending: 0</span>
+                    <span class="badge" id="depositApprovedBadge">Approved: 0</span>
+                    <span class="badge" id="depositRejectedBadge">Rejected: 0</span>
+                    <button type="button" class="btn btn-info" style="padding: 10px 16px;" onclick="refreshDepositInbox()">🔄 Refresh Inbox</button>
+                </div>
+                <div class="deposit-inbox-tabs" role="tablist" aria-label="Bank deposit slip review">
+                    <button type="button" class="deposit-inbox-tab active" data-scope="pending" aria-selected="true">
+                        <span>Pending Review</span>
+                        <span class="deposit-inbox-count" id="depositTabCount-pending">0</span>
+                    </button>
+                    <button type="button" class="deposit-inbox-tab" data-scope="reviewed" aria-selected="false">
+                        <span>Reviewed History</span>
+                        <span class="deposit-inbox-count" id="depositTabCount-reviewed">0</span>
+                    </button>
+                </div>
+                <div class="deposit-inbox-pane active" data-scope="pending">
+                    <div id="depositList-pending" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                </div>
+                <div class="deposit-inbox-pane" data-scope="reviewed">
+                    <div id="depositList-reviewed" style="display: flex; flex-direction: column; gap: 12px;"></div>
                 </div>
             </div>
 
@@ -33614,6 +33804,41 @@ async function reverseLastPrescriptionPayment(reportId){
             if (legacyBonuses.length > 0 && cashBonuses.length === 0) {
                 cashBonuses = legacyBonuses;
             }
+
+            let depositsMutated = false;
+            bankDeposits = (Array.isArray(bankDeposits) ? bankDeposits : []).map(deposit => {
+                const updated = { ...deposit };
+                if (!updated.status) {
+                    updated.status = 'pending';
+                    depositsMutated = true;
+                }
+                if (typeof updated.decisionNotes !== 'string') {
+                    const note = updated.decisionNotes ? String(updated.decisionNotes) : '';
+                    if (note !== updated.decisionNotes) depositsMutated = true;
+                    updated.decisionNotes = note;
+                }
+                if (updated.slipFile && typeof updated.slipFile === 'string') {
+                    updated.slipFile = {
+                        name: 'deposit-slip',
+                        dataUrl: updated.slipFile,
+                        type: 'application/octet-stream',
+                        size: 0
+                    };
+                    depositsMutated = true;
+                }
+                if (!updated.slipFile || !updated.slipFile.dataUrl) {
+                    updated.slipFile = updated.slipFile && updated.slipFile.dataUrl ? updated.slipFile : null;
+                }
+                return updated;
+            });
+
+            if (depositsMutated) {
+                saveEnhancedFinanceData();
+            }
+
+            try { renderDepositInbox(); } catch (e) {
+                console.debug('Unable to render deposit inbox yet:', e);
+            }
         }
         
         // Save enhanced finance data
@@ -34106,14 +34331,52 @@ async function reverseLastPrescriptionPayment(reportId){
             populateBranchSelects();
             document.getElementById('bankDepositModal').style.display = 'block';
         }
+
+        function readFileAsDataUrl(file) {
+            if (!file) return Promise.resolve(null);
+            return new Promise((resolve, reject) => {
+                try {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(reader.error);
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
         
-        document.getElementById('bankDepositForm')?.addEventListener('submit', function(e) {
+        document.getElementById('bankDepositForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
+            const branch = document.getElementById('depositBranch').value;
+            const date = document.getElementById('depositDate').value;
+            const amount = parseFloat(document.getElementById('depositAmount').value);
+            const depositSlipInput = document.getElementById('depositPhoto');
+            let slipFile = null;
+
+            if (depositSlipInput?.files?.length) {
+                const file = depositSlipInput.files[0];
+                try {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    if (dataUrl) {
+                        slipFile = {
+                            name: file.name,
+                            size: file.size,
+                            type: file.type,
+                            dataUrl
+                        };
+                    }
+                } catch (error) {
+                    console.warn('Unable to read deposit slip file:', error);
+                    alert('⚠️ Could not read the attached deposit slip. Please retry or continue without the file.');
+                }
+            }
+
             const deposit = {
                 id: 'DEP' + Date.now(),
-                branch: document.getElementById('depositBranch').value,
-                date: document.getElementById('depositDate').value,
-                amount: parseFloat(document.getElementById('depositAmount').value),
+                branch,
+                date,
+                amount,
                 slipNo: document.getElementById('depositSlipNo').value,
                 bankName: document.getElementById('depositBank').value,
                 bankBranch: document.getElementById('depositBankBranch').value,
@@ -34122,16 +34385,235 @@ async function reverseLastPrescriptionPayment(reportId){
                 depositedBy: document.getElementById('depositedBy').value,
                 notes: document.getElementById('depositNotes').value,
                 createdAt: new Date().toISOString(),
-                createdBy: currentUser?.username || 'Unknown'
+                createdBy: currentUser?.username || 'Unknown',
+                status: 'pending',
+                slipFile,
+                reviewedBy: null,
+                reviewedAt: null,
+                decisionNotes: ''
             };
             
             bankDeposits.push(deposit);
             saveEnhancedFinanceData();
             closeModal('bankDepositModal');
             refreshFinancialDashboard();
-            alert('Deposit recorded successfully!');
+            renderDepositInbox();
+            alert('Deposit recorded successfully and sent for finance review!');
             this.reset();
+            if (depositSlipInput) depositSlipInput.value = '';
         });
+
+        function formatDepositDate(value) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleString('en-NA', { dateStyle: 'medium', timeStyle: 'short' });
+        }
+
+        function setActiveDepositTab(scope) {
+            const tabs = document.querySelectorAll('.deposit-inbox-tab');
+            const panes = document.querySelectorAll('.deposit-inbox-pane');
+            tabs.forEach(tab => {
+                const isActive = tab.dataset.scope === scope;
+                tab.classList.toggle('active', isActive);
+                tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+            panes.forEach(pane => {
+                const isActive = pane.dataset.scope === scope;
+                pane.classList.toggle('active', isActive);
+            });
+        }
+
+        function initialiseDepositInboxTabs() {
+            document.querySelectorAll('.deposit-inbox-tab').forEach(tab => {
+                if (!tab.dataset.depositListener) {
+                    tab.addEventListener('click', () => setActiveDepositTab(tab.dataset.scope));
+                    tab.dataset.depositListener = 'true';
+                }
+            });
+        }
+
+        function renderDepositInbox() {
+            const pendingContainer = document.getElementById('depositList-pending');
+            const reviewedContainer = document.getElementById('depositList-reviewed');
+            if (!pendingContainer || !reviewedContainer) return;
+
+            initialiseDepositInboxTabs();
+
+            const records = Array.isArray(bankDeposits) ? bankDeposits.map(deposit => ({
+                ...deposit,
+                status: deposit.status || 'pending',
+                decisionNotes: typeof deposit.decisionNotes === 'string' ? deposit.decisionNotes : (deposit.decisionNotes ? String(deposit.decisionNotes) : ''),
+                slipFile: deposit.slipFile && deposit.slipFile.dataUrl ? deposit.slipFile : null
+            })) : [];
+
+            bankDeposits = records;
+
+            const counts = records.reduce((acc, deposit) => {
+                const status = deposit.status || 'pending';
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+            }, {});
+
+            const pending = records.filter(deposit => (deposit.status || 'pending') === 'pending')
+                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            const reviewed = records.filter(deposit => (deposit.status || 'pending') !== 'pending')
+                .sort((a, b) => new Date(b.reviewedAt || b.createdAt || 0) - new Date(a.reviewedAt || a.createdAt || 0));
+
+            const pendingBadge = document.getElementById('depositPendingBadge');
+            const approvedBadge = document.getElementById('depositApprovedBadge');
+            const rejectedBadge = document.getElementById('depositRejectedBadge');
+            const tabPendingCount = document.getElementById('depositTabCount-pending');
+            const tabReviewedCount = document.getElementById('depositTabCount-reviewed');
+
+            if (pendingBadge) pendingBadge.textContent = `Pending: ${counts.pending || 0}`;
+            if (approvedBadge) approvedBadge.textContent = `Approved: ${counts.approved || 0}`;
+            if (rejectedBadge) rejectedBadge.textContent = `Rejected: ${counts.rejected || 0}`;
+            if (tabPendingCount) tabPendingCount.textContent = counts.pending || 0;
+            if (tabReviewedCount) tabReviewedCount.textContent = reviewed.length;
+
+            const makeMetaBlock = (label, value) => `
+                <div><strong>${label}:</strong><br>${value}</div>
+            `;
+
+            const makeSlipButtons = (deposit, inReview) => {
+                const hasSlip = deposit.slipFile && deposit.slipFile.dataUrl;
+                const viewBtn = hasSlip
+                    ? `<button type="button" class="btn btn-secondary" onclick="previewDepositSlip('${deposit.id}')">👀 View Slip</button>`
+                    : `<button type="button" class="btn btn-secondary" disabled>📎 No Slip</button>`;
+                const downloadBtn = hasSlip
+                    ? `<button type="button" class="btn btn-primary" onclick="downloadDepositSlip('${deposit.id}')">⬇️ Download</button>`
+                    : '';
+                const decisionBtns = inReview ? `
+                    <button type="button" class="btn btn-success" onclick="handleDepositDecision('${deposit.id}', 'approved')">✅ Approve</button>
+                    <button type="button" class="btn btn-danger" onclick="handleDepositDecision('${deposit.id}', 'rejected')">⛔ Reject</button>
+                ` : '';
+                return `
+                    <div class="deposit-card-actions">
+                        ${viewBtn}
+                        ${downloadBtn}
+                        ${decisionBtns}
+                    </div>
+                `;
+            };
+
+            const renderCard = (deposit, scope) => {
+                const status = deposit.status || 'pending';
+                const amountDisplay = formatCurrencyNAD ? formatCurrencyNAD(deposit.amount) : `N$ ${(Number(deposit.amount || 0)).toFixed(2)}`;
+                const createdLabel = formatDepositDate(deposit.createdAt);
+                const reviewedLabel = deposit.reviewedAt ? formatDepositDate(deposit.reviewedAt) : 'Awaiting review';
+                const notesSection = deposit.notes
+                    ? `<div class="deposit-card-notes" style="background:#eef2f7; border-left-color:#5c6bc0; color:#2c3e50;">📝 Branch Note: ${escapeHtml(deposit.notes)}</div>`
+                    : '';
+                const reviewNotes = deposit.decisionNotes
+                    ? `<div class="deposit-card-notes">💬 Finance Note: ${escapeHtml(deposit.decisionNotes)}</div>`
+                    : '';
+                const reviewer = deposit.reviewedBy ? `<div style="font-size:0.9rem; color:#5f6c7b;">Reviewed by ${escapeHtml(deposit.reviewedBy)} • ${reviewedLabel}</div>` : '';
+                const statusBadge = `<span class="deposit-status" data-status="${status}">${status.toUpperCase()}</span>`;
+
+                return `
+                    <div class="deposit-card">
+                        <div class="deposit-card-header">
+                            <div>
+                                <div style="font-weight:700; color:#2c3e50; font-size:1.05rem;">${escapeHtml(deposit.bankName || 'Bank Deposit')}</div>
+                                <div style="color:#5f6c7b; font-size:0.9rem; margin-top:4px;">Slip #: ${escapeHtml(deposit.slipNo || '—')} • Submitted ${createdLabel}</div>
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <div class="deposit-card-meta">
+                            ${makeMetaBlock('Branch', escapeHtml(deposit.branch || 'N/A'))}
+                            ${makeMetaBlock('Amount', amountDisplay)}
+                            ${makeMetaBlock('Bank Branch', escapeHtml(deposit.bankBranch || 'N/A'))}
+                            ${makeMetaBlock('Account #', escapeHtml(deposit.accountNumber || 'N/A'))}
+                            ${makeMetaBlock('Account Type', escapeHtml(deposit.accountType || 'N/A'))}
+                            ${makeMetaBlock('Deposited By', escapeHtml(deposit.depositedBy || 'N/A'))}
+                        </div>
+                        ${notesSection}
+                        ${makeSlipButtons(deposit, scope === 'pending')}
+                        ${reviewer}
+                        ${reviewNotes}
+                    </div>
+                `;
+            };
+
+            pendingContainer.innerHTML = pending.length
+                ? pending.map(deposit => renderCard(deposit, 'pending')).join('')
+                : '<div class="deposit-empty-state">No deposit slips pending review.</div>';
+
+            reviewedContainer.innerHTML = reviewed.length
+                ? reviewed.map(deposit => renderCard(deposit, 'reviewed')).join('')
+                : '<div class="deposit-empty-state">No reviewed deposit slips yet. Approved or rejected slips will appear here.</div>';
+
+            const activeTab = document.querySelector('.deposit-inbox-tab.active');
+            const activeScope = activeTab ? activeTab.dataset.scope : 'pending';
+            setActiveDepositTab(activeScope || 'pending');
+        }
+
+        async function refreshDepositInbox() {
+            if (typeof loadEnhancedFinanceData === 'function') {
+                await loadEnhancedFinanceData();
+            }
+            renderDepositInbox();
+        }
+
+        function findDepositById(id) {
+            return (Array.isArray(bankDeposits) ? bankDeposits : []).find(deposit => deposit.id === id);
+        }
+
+        function previewDepositSlip(id) {
+            const deposit = findDepositById(id);
+            if (!deposit || !deposit.slipFile || !deposit.slipFile.dataUrl) {
+                alert('No deposit slip available for this record.');
+                return;
+            }
+            window.open(deposit.slipFile.dataUrl, '_blank', 'noopener');
+        }
+
+        function downloadDepositSlip(id) {
+            const deposit = findDepositById(id);
+            if (!deposit || !deposit.slipFile || !deposit.slipFile.dataUrl) {
+                alert('No deposit slip available for download.');
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = deposit.slipFile.dataUrl;
+            link.download = deposit.slipFile.name || `deposit-slip-${id}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function handleDepositDecision(id, status) {
+            const deposit = findDepositById(id);
+            if (!deposit) {
+                alert('Deposit record not found. Please refresh the inbox.');
+                return;
+            }
+            if (!['approved', 'rejected'].includes(status)) return;
+
+            const statusLabel = status === 'approved' ? 'approval' : 'rejection';
+            const promptMessage = status === 'approved'
+                ? 'Optional: add a note for this approval (press Cancel to keep empty).'
+                : 'Please provide a rejection note so the branch can follow up:';
+            const defaultNote = deposit.decisionNotes || '';
+            let note = window.prompt(promptMessage, defaultNote);
+            if (note === null) {
+                // User cancelled prompt – abort decision to avoid accidental actions
+                return;
+            }
+            note = note.trim();
+
+            deposit.status = status;
+            deposit.reviewedBy = currentUser?.username || 'Finance';
+            deposit.reviewedAt = new Date().toISOString();
+            deposit.decisionNotes = note;
+
+            saveEnhancedFinanceData();
+            renderDepositInbox();
+            refreshFinancialDashboard();
+
+            alert(`Deposit slip ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
+        }
         
         // Cash Bonus Functions
         function showCashBonus() {
