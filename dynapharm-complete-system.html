@@ -5886,6 +5886,16 @@
                     <button id="stockStaffTabBtn" class="btn" onclick="toggleStockView('staff')" style="min-width: 160px;">👤 Staff Services</button>
                 </div>
 
+                <div id="stockWorkflowNav" style="margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
+                    <button class="tab-button" style="justify-content: flex-start;" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
+                </div>
+
                 <div id="stockTabsContainer" style="margin-top:12px;">
                 <!-- Stock Management Tabs - Modern Comprehensive Structure -->
                 <div class="tabs" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 3px solid #c41e3a; padding-bottom: 10px;">
@@ -6348,7 +6358,7 @@
                         <!-- Bulk Import Form -->
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                             <h4 style="margin-bottom: 15px;">📋 Import Stock (Table Format)</h4>
-                            <form id="bulkStockImportForm">
+                            <form id="bulkStockImportForm" class="stock-import-form" onsubmit="handleBulkStockImportSubmit(event)">
                                 <div style="overflow-x: auto;">
                                     <table id="stockImportTable" style="width: 100%; border-collapse: collapse; background: white;">
                                         <thead>
@@ -6362,7 +6372,7 @@
                                                 <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="stockImportTableBody">
+                                        <tbody id="stockImportTableBody" data-stock-import-body="true">
                                             <tr>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
@@ -6506,7 +6516,7 @@
                         <!-- Bulk Import Form -->
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                             <h4 style="margin-bottom: 15px;">📋 Import Stock (Table Format)</h4>
-                            <form id="bulkStockImportForm">
+                            <form id="bulkStockImportFormLegacy" class="stock-import-form" onsubmit="handleBulkStockImportSubmit(event)">
                                 <div style="overflow-x: auto;">
                                     <table id="stockImportTable" style="width: 100%; border-collapse: collapse; background: white;">
                                         <thead>
@@ -6520,7 +6530,7 @@
                                                 <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="stockImportTableBody">
+                                        <tbody id="stockImportTableBodyLegacy" data-stock-import-body="true">
                                             <tr>
                                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                                     <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
@@ -8717,34 +8727,6 @@
                     </div>
                     <div id="inventoryList" style="max-height: 500px; overflow-y: auto;"></div>
                 </div>
-                </div>
-
-                <div id="adminStaffSection" style="display: none;">
-                    <div class="form-section">
-                        <h3>👤 Admin Staff Services</h3>
-                        <p style="color:#64748b; margin-bottom:18px;">Request leave or cash advances while working in the Admin portal.</p>
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
-                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
-                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
-                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Submit your own leave requests and view status.</p>
-                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('admin')">Request Leave</button>
-                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('admin')">My Requests</button>
-                                </div>
-                                <div id="staffLeaveStatus-admin" style="margin-top:15px;"></div>
-                            </div>
-                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
-                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
-                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash or reimbursement for admin operations.</p>
-                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                    <button class="btn btn-success" onclick="openStaffCashRequest('admin')">Request Cash</button>
-                                    <button class="btn btn-info" onclick="viewMyCashRequests('admin')">My Requests</button>
-                                </div>
-                                <div id="staffCashStatus-admin" style="margin-top:15px;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -9100,35 +9082,133 @@
                 </div>
             </div>
 
-            <!-- Bonus Upload Section -->
+            <!-- Bonus Workflow Section -->
             <div class="form-section" id="bonusUploadSection" style="display: none;">
-                <h3>📤 Monthly Bonus CSV Upload</h3>
-                <p style="color: #7f8c8d; margin-bottom: 15px;">Upload monthly bonus CSV files per month. This becomes the source of truth for bonus payments.</p>
-                
-                <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
-                    <label style="font-size: 13px; color: #334e68; font-weight: 600;">Month:</label>
-                    <input id="bonusUploadMonth" type="month" style="padding: 10px 12px; border: 2px solid #e3e7ee; border-radius: 8px; background: #fff;" />
-                    <input id="bonusUploadFile" type="file" accept=".csv" style="padding: 10px 12px; border: 2px solid #e3e7ee; border-radius: 8px; background: #fff;" />
-                    <select id="bonusUploadBranchFilter" style="padding: 10px 12px; border: 2px solid #e3e7ee; border-radius: 8px; background: #fff;">
+                <style>
+                    #bonusUploadSection .bonus-workflow-tabs {
+                        display: flex;
+                        gap: 8px;
+                        flex-wrap: wrap;
+                        margin-bottom: 15px;
+                    }
+                    #bonusUploadSection .bonus-workflow-tab {
+                        border: 2px solid #e3e7ee;
+                        background: #f7f9fc;
+                        color: #334e68;
+                        padding: 10px 16px;
+                        border-radius: 999px;
+                        cursor: pointer;
+                        font-weight: 600;
+                        transition: all 0.2s ease;
+                    }
+                    #bonusUploadSection .bonus-workflow-tab:hover {
+                        background: #eef2ff;
+                        border-color: #cfd6ff;
+                    }
+                    #bonusUploadSection .bonus-workflow-tab.active {
+                        background: #667eea;
+                        color: #fff;
+                        border-color: #667eea;
+                        box-shadow: 0 6px 14px rgba(102, 126, 234, 0.2);
+                    }
+                    #bonusUploadSection .bonus-workflow-pane {
+                        display: none;
+                        gap: 16px;
+                        flex-direction: column;
+                    }
+                    #bonusUploadSection .bonus-workflow-pane.active {
+                        display: flex;
+                    }
+                    #bonusUploadSection .bonus-inline-controls {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 12px;
+                        align-items: flex-end;
+                    }
+                    #bonusUploadSection .bonus-inline-controls label {
+                        display: block;
+                        font-size: 12px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        color: #7f8c8d;
+                        margin-bottom: 4px;
+                    }
+                    #bonusUploadSection .bonus-inline-controls input,
+                    #bonusUploadSection .bonus-inline-controls select,
+                    #bonusUploadSection .bonus-inline-controls textarea {
+                        padding: 10px 12px;
+                        border: 2px solid #e3e7ee;
+                        border-radius: 8px;
+                        background: #fff;
+                        min-width: 200px;
+                    }
+                    #bonusUploadSection .bonus-inline-controls textarea {
+                        min-height: 72px;
+                        resize: vertical;
+                    }
+                    #bonusUploadSection .bonus-pane-actions {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 10px;
+                    }
+                    #bonusUploadSection .bonus-pane-description {
+                        font-size: 13px;
+                        color: #54748b;
+                        background: #f2f5f9;
+                        border-radius: 8px;
+                        padding: 12px 16px;
+                        line-height: 1.5;
+                    }
+                </style>
+
+                <div style="display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
+                    <div>
+                        <h3>📤 Bonus Workflow</h3>
+                        <p style="color: #7f8c8d; max-width: 560px;">Centralise the entire bonus lifecycle: upload distributor CSVs, route them for approval, export bank batches, and reconcile payouts without leaving this screen.</p>
+                    </div>
+                    <div id="bonusUploadSummary" style="min-width: 240px; background: #f7f9fc; border: 2px solid #e3e7ee; border-radius: 12px; padding: 12px 16px; color: #334e68;">
+                        <strong>Workflow status</strong>
+                        <p style="margin: 6px 0 0; font-size: 12px; color: #7f8c8d;">Select a month to begin.</p>
+                    </div>
+                </div>
+
+                <div class="bonus-workflow-tabs" role="tablist" aria-label="Bonus workflow steps">
+                    <button type="button" class="bonus-workflow-tab active" data-bonus-tab="upload" aria-selected="true" onclick="setBonusWorkflowTab('upload')">📤 Upload</button>
+                    <button type="button" class="bonus-workflow-tab" data-bonus-tab="approval" aria-selected="false" onclick="setBonusWorkflowTab('approval')">✅ Approval</button>
+                    <button type="button" class="bonus-workflow-tab" data-bonus-tab="export" aria-selected="false" onclick="setBonusWorkflowTab('export')">🏦 Bank Export</button>
+                    <button type="button" class="bonus-workflow-tab" data-bonus-tab="reconciliation" aria-selected="false" onclick="setBonusWorkflowTab('reconciliation')">🧾 Reconciliation</button>
+                </div>
+
+                <div class="bonus-workflow-pane active" data-bonus-pane="upload">
+                    <div class="bonus-pane-description">
+                        Upload the official bonus CSV provided by Finance. Preview totals before publishing so branches see the exact values that will be paid.
+                    </div>
+                    <div class="bonus-inline-controls">
+                        <div>
+                            <label for="bonusUploadMonth">Month</label>
+                            <input id="bonusUploadMonth" type="month">
+                        </div>
+                        <div>
+                            <label for="bonusUploadFile">Bonus CSV File</label>
+                            <input id="bonusUploadFile" type="file" accept=".csv">
+                        </div>
+                        <div>
+                            <label for="bonusUploadBranchFilter">Filter by Area</label>
+                            <select id="bonusUploadBranchFilter">
                         <option value="">All Branches</option>
                         <option>NB1</option>
                         <option>NB2</option>
                         <option>NB3</option>
                         <option>NB4</option>
                     </select>
+                        </div>
+                    </div>
+                    <div class="bonus-pane-actions">
                     <button class="btn btn-primary" id="bonusUploadBtn" onclick="uploadBonusCsv()" disabled>Upload Monthly Bonus</button>
-                    <button class="btn" id="approveBonusUploadBtn" onclick="approveBonusUpload()">✅ Approve Upload</button>
-                    <button class="btn" id="rejectBonusUploadBtn" onclick="rejectBonusUpload()">⛔ Reject</button>
                     <button class="btn btn-ghost" onclick="clearBonusUpload()">Clear</button>
                     <button class="btn btn-secondary" onclick="downloadBonusTemplate()">Download Template</button>
-                    <button class="btn" onclick="exportBankBatch()">🏦 Export Bank Batch</button>
-                    <button class="btn" onclick="exportPain001()">📄 Export PAIN.001</button>
-                    <button class="btn" onclick="exportCashSheet()">💵 Export Cash Sheet</button>
-                    <button class="btn" onclick="showFinanceReconciliation()">🧾 Reconciliation</button>
                 </div>
-                
-                <div class="totals" id="bonusUploadTotals" style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px;"></div>
-                
+                    <div id="bonusUploadTotals" class="totals" style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px;"></div>
                 <div class="scroll-x" id="bonusUploadTableWrap" style="overflow: auto; border: 1px solid #e3e7ee; border-radius: 8px; display: none; margin-top: 15px;">
                     <table style="width: 100%; border-collapse: collapse; min-width: 920px;">
                         <thead>
@@ -9145,14 +9225,57 @@
                         <tbody id="bonusUploadBody"></tbody>
                     </table>
                 </div>
-                
                 <div style="padding: 16px 0; color: #6b7c93; font-size: 13px;">
-                    Monthly bonus upload saved to <span style="background: #eef2f7; padding: 6px 10px; border-radius: 999px; font-size: 12px; color: #334e68;">/api/bonus</span>. This is the source of truth for bonus payments. Distributors not in this CSV for the selected month cannot be paid.
+                        Monthly bonus upload saved to <span style="background: #eef2f7; padding: 6px 10px; border-radius: 999px; font-size: 12px; color: #334e68;">/api/bonus</span>. Distributors not included in this CSV for the selected month cannot be paid.
                 </div>
             </div>
 
-            <!-- Reconciliation Section -->
-            <div class="form-section" id="financeReconciliation" style="display: none;">
+                <div class="bonus-workflow-pane" data-bonus-pane="approval">
+                    <div class="bonus-pane-description">
+                        Once the preview looks good, submit the file for approval. Rejections capture context for branches or head office to action.
+                    </div>
+                    <div class="bonus-inline-controls">
+                        <div style="flex: 1; min-width: 220px;">
+                            <label for="bonusApprovalMonthDisplay">Selected Month</label>
+                            <input type="text" id="bonusApprovalMonthDisplay" readonly style="background: #eef2f7; cursor: not-allowed;">
+                        </div>
+                        <div style="flex: 1; min-width: 320px;">
+                            <label for="bonusRejectionReason">Rejection Reason (optional)</label>
+                            <textarea id="bonusRejectionReason" rows="2" placeholder="Capture feedback for finance or branches..."></textarea>
+                        </div>
+                    </div>
+                    <div id="bonusApprovalSummary" class="bonus-pane-description" style="background: #fff7e6; color: #7c5000;">
+                        Pick a month to load approval history.
+                    </div>
+                    <div class="bonus-pane-actions">
+                        <button class="btn btn-success" id="approveBonusUploadBtn" onclick="approveBonusUpload()">Approve Upload</button>
+                        <button class="btn btn-danger" id="rejectBonusUploadBtn" onclick="rejectBonusUpload()">Reject Upload</button>
+                        <button class="btn" onclick="refreshBonusWorkflowSummary()">🔄 Refresh Status</button>
+                    </div>
+                </div>
+
+                <div class="bonus-workflow-pane" data-bonus-pane="export">
+                    <div class="bonus-pane-description">
+                        Generate the artefacts required for payment once the month is approved. Files are stamped with the selected month for easy filing.
+                    </div>
+                    <div id="bonusExportSummary" class="bonus-pane-description" style="background: #e6f4ff; color: #0b5394;">
+                        Exports unlock after approval.
+                    </div>
+                    <div class="bonus-pane-actions">
+                        <button class="btn" onclick="exportBankBatch()">🏦 Export Bank Batch</button>
+                        <button class="btn" onclick="exportPain001()">📄 Export PAIN.001</button>
+                        <button class="btn" onclick="exportCashSheet()">💵 Export Cash Sheet</button>
+                    </div>
+                </div>
+
+                <div class="bonus-workflow-pane" data-bonus-pane="reconciliation">
+                    <div class="bonus-pane-description">
+                        Reconcile approved uploads against actual payouts. Approve variances so finance can close the month with confidence.
+                    </div>
+                    <div id="bonusReconciliationSummary" class="bonus-pane-description" style="background: #f2f5f9; color: #334e68;">
+                        Run a reconciliation after exports are processed.
+                    </div>
+                    <div id="financeReconciliation" class="form-section" style="display: none;">
                 <h3>🧾 Monthly Reconciliation</h3>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
                     <input id="reconMonth" type="month" style="padding: 10px 12px; border: 2px solid #e3e7ee; border-radius: 8px; background: #fff;" />
@@ -9174,6 +9297,8 @@
                         </thead>
                         <tbody id="reconBody"></tbody>
                     </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -33246,8 +33371,7 @@ async function reverseLastPrescriptionPayment(reportId){
             console.log('Using fallback localStorage method');
         });
         
-        // Handle bulk stock import submission
-        document.getElementById('bulkStockImportForm')?.addEventListener('submit', async function(e) {
+        async function handleBulkStockImportSubmit(e) {
             e.preventDefault();
             
             const form = e.currentTarget;
@@ -33429,7 +33553,7 @@ async function reverseLastPrescriptionPayment(reportId){
             // Clear form and refresh display
             clearStockImportForm();
             displayCountryStock();
-        });
+        }
         
         // Helper functions
         function clearStockForm() {
@@ -35498,6 +35622,252 @@ async function reverseLastPrescriptionPayment(reportId){
         // Bonus Upload Functions
         let bonusUploadData = [];
         let bonusUploadHeaders = [];
+        const BONUS_STATUS_STORAGE_KEY = 'finance_bonus_statuses';
+        const BONUS_TAB_STORAGE_KEY = 'finance_bonus_last_tab';
+
+        function getStoredBonusStatusMap() {
+            try {
+                const raw = localStorage.getItem(BONUS_STATUS_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch (_) {
+                return {};
+            }
+        }
+
+        function setStoredBonusStatus(month, status, extra = {}) {
+            if (!month) return;
+            const map = getStoredBonusStatusMap();
+            map[month] = Object.assign({
+                month,
+                status,
+                updatedAt: new Date().toISOString(),
+                updatedBy: currentUser?.username || 'system'
+            }, extra);
+            try {
+                localStorage.setItem(BONUS_STATUS_STORAGE_KEY, JSON.stringify(map));
+            } catch (_) {}
+        }
+
+        function getStoredBonusStatus(month) {
+            if (!month) return null;
+            const map = getStoredBonusStatusMap();
+            return map[month] || null;
+        }
+
+        function clearStoredBonusStatus(month) {
+            if (!month) return;
+            const map = getStoredBonusStatusMap();
+            if (map[month]) {
+                delete map[month];
+                try {
+                    localStorage.setItem(BONUS_STATUS_STORAGE_KEY, JSON.stringify(map));
+                } catch (_) {}
+            }
+        }
+
+        function markBonusExported(month, note) {
+            if (!month) return;
+            const existing = getStoredBonusStatus(month);
+            const totalRecords = existing?.totalRecords ?? (bonusUploadData.length || 0);
+            const totalAmount = existing?.totalAmount ?? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            setStoredBonusStatus(month, 'exported', {
+                totalRecords,
+                totalAmount,
+                note: note || 'Exports generated.'
+            });
+        }
+
+        function getLocalBonusSnapshot(month) {
+            try {
+                const raw = JSON.parse(localStorage.getItem('finance_bonus_list') || 'null');
+                if (!raw || !raw.items || !Array.isArray(raw.items)) return null;
+                if (month && raw.month !== month) return null;
+                const totalAmount = raw.items.reduce((sum, item) => sum + (Number(item.amount || item.NAD || 0) || 0), 0);
+                return {
+                    month: raw.month,
+                    count: raw.items.length,
+                    totalAmount,
+                    savedAt: raw.createdAt
+                };
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function formatBonusCurrency(value) {
+            const amount = Number(value || 0);
+            return `N$ ${amount.toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function formatBonusDate(value) {
+            if (!value) return '';
+            try {
+                return new Date(value).toLocaleString();
+            } catch (_) {
+                return value;
+            }
+        }
+
+        function describeBonusStatus(statusObj) {
+            if (!statusObj) return { label: 'Not submitted', detail: 'No workflow activity captured yet.' };
+            const map = {
+                'draft': 'Draft (not uploaded)',
+                'pending-approval': 'Uploaded – awaiting approval',
+                'uploaded': 'Uploaded – awaiting approval',
+                'approved': 'Approved',
+                'rejected': 'Rejected',
+                'draft-offline': 'Saved locally (offline)',
+                'exported': 'Exports generated'
+            };
+            const label = map[statusObj.status] || statusObj.status;
+            let detail = `Updated ${formatBonusDate(statusObj.updatedAt)} by ${statusObj.updatedBy || 'system'}`;
+            if (statusObj.totalRecords != null && statusObj.totalAmount != null) {
+                detail += `<br>Records: ${statusObj.totalRecords} • Total: ${formatBonusCurrency(statusObj.totalAmount)}`;
+            }
+            if (statusObj.note) detail += `<br>${statusObj.note}`;
+            if (statusObj.reason) detail += `<br>Reason: ${statusObj.reason}`;
+            return { label, detail };
+        }
+
+        function refreshBonusWorkflowSummary() {
+            const monthInput = document.getElementById('bonusUploadMonth');
+            const month = monthInput?.value || '';
+            const summaryEl = document.getElementById('bonusUploadSummary');
+            const approvalSummaryEl = document.getElementById('bonusApprovalSummary');
+            const exportSummaryEl = document.getElementById('bonusExportSummary');
+            const reconciliationSummaryEl = document.getElementById('bonusReconciliationSummary');
+            const approvalMonthDisplay = document.getElementById('bonusApprovalMonthDisplay');
+
+            if (approvalMonthDisplay) {
+                approvalMonthDisplay.value = month ? month : 'No month selected';
+            }
+
+            const localSnapshot = month ? getLocalBonusSnapshot(month) : null;
+            const statusObj = month ? getStoredBonusStatus(month) : null;
+            const statusDesc = describeBonusStatus(statusObj);
+
+            if (summaryEl) {
+                if (!month) {
+                    summaryEl.innerHTML = '<strong>Workflow status</strong><p style="margin:6px 0 0; font-size:12px; color:#7f8c8d;">Select a month to begin.</p>';
+                } else {
+                    const localLine = localSnapshot ? `Draft: ${localSnapshot.count} records • ${formatBonusCurrency(localSnapshot.totalAmount)} (saved ${formatBonusDate(localSnapshot.savedAt)})` : 'No local draft captured.';
+                    summaryEl.innerHTML = `
+                        <strong>${month}</strong>
+                        <div style="font-size:12px; margin-top:6px; color:#4a6075;">${localLine}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#4a6075;">Status: ${statusDesc.label}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#7f8c8d;">${statusDesc.detail}</div>
+                    `;
+                }
+            }
+
+            if (approvalSummaryEl) {
+                if (!month) {
+                    approvalSummaryEl.innerHTML = 'Pick a month to load approval history.';
+                } else {
+                    const note = statusObj?.status === 'approved' ? 'This month is approved. You can proceed to exports or reconciliation.' : 'Approve once totals are verified. Rejections will capture the reason entered below.';
+                    approvalSummaryEl.innerHTML = `
+                        <strong>${month}</strong><br>
+                        Status: ${statusDesc.label}<br>
+                        <span style="font-size:12px; color:#7f8c8d;">${statusDesc.detail}</span><br>
+                        <span style="font-size:12px; color:#7c5000;">${note}</span>
+                    `;
+                }
+            }
+
+            if (exportSummaryEl) {
+                if (!month) {
+                    exportSummaryEl.innerHTML = 'Select a month above to enable exports.';
+                } else {
+                    const ready = statusObj?.status === 'approved' || statusObj?.status === 'exported';
+                    const totalRecords = statusObj?.totalRecords ?? (localSnapshot?.count || 0);
+                    const totalAmountValue = statusObj?.totalAmount ?? (localSnapshot?.totalAmount || 0);
+                    exportSummaryEl.innerHTML = ready
+                        ? `Ready for export • ${totalRecords} records • ${formatBonusCurrency(totalAmountValue)}`
+                        : `Exports unlock after approval. Current status: ${statusDesc.label}.`;
+                }
+            }
+
+            if (reconciliationSummaryEl) {
+                if (!month) {
+                    reconciliationSummaryEl.innerHTML = 'Run a reconciliation after exports are processed.';
+                } else {
+                    reconciliationSummaryEl.innerHTML = `Focused on ${month}. Use refresh to pull latest payouts once payments clear.`;
+                }
+            }
+        }
+
+        function setBonusWorkflowTab(tab) {
+            const section = document.getElementById('bonusUploadSection');
+            if (!section) return;
+            const tabs = section.querySelectorAll('.bonus-workflow-tab');
+            const panes = section.querySelectorAll('.bonus-workflow-pane');
+            tabs.forEach(btn => {
+                const active = btn.dataset.bonusTab === tab;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            panes.forEach(pane => {
+                const active = pane.dataset.bonusPane === tab;
+                pane.classList.toggle('active', active);
+                pane.style.display = active ? 'flex' : 'none';
+            });
+            try { localStorage.setItem(BONUS_TAB_STORAGE_KEY, tab); } catch (_) {}
+            refreshBonusWorkflowSummary();
+
+            if (tab === 'reconciliation') {
+                const reconSection = document.getElementById('financeReconciliation');
+                if (reconSection) reconSection.style.display = 'block';
+                const bonusMonth = document.getElementById('bonusUploadMonth')?.value;
+                const reconMonth = document.getElementById('reconMonth');
+                if (reconMonth && bonusMonth && !reconMonth.value) {
+                    reconMonth.value = bonusMonth;
+                }
+                if (reconMonth && reconMonth.value) {
+                    loadReconciliation();
+                }
+            } else {
+                const reconSection = document.getElementById('financeReconciliation');
+                if (reconSection) reconSection.style.display = 'none';
+            }
+        }
+
+        function initializeBonusWorkflow() {
+            const section = document.getElementById('bonusUploadSection');
+            if (!section || section.dataset.initialized === 'true') {
+                refreshBonusWorkflowSummary();
+                return;
+            }
+            section.dataset.initialized = 'true';
+
+            const monthInput = document.getElementById('bonusUploadMonth');
+            if (monthInput && !monthInput.dataset.bound) {
+                monthInput.addEventListener('change', () => {
+                    try { localStorage.setItem('finance_bonus_month', monthInput.value || ''); } catch (_) {}
+                    refreshBonusWorkflowSummary();
+                    renderBonusUploadTable();
+                    const reconMonth = document.getElementById('reconMonth');
+                    if (reconMonth && monthInput.value) {
+                        reconMonth.value = monthInput.value;
+                    }
+                });
+                monthInput.dataset.bound = 'true';
+            }
+
+            section.querySelectorAll('.bonus-workflow-tab').forEach(btn => {
+                if (!btn.dataset.bound) {
+                    btn.addEventListener('click', () => setBonusWorkflowTab(btn.dataset.bonusTab));
+                    btn.dataset.bound = 'true';
+                }
+            });
+
+            refreshBonusWorkflowSummary();
+            const savedTab = (() => {
+                try { return localStorage.getItem(BONUS_TAB_STORAGE_KEY); } catch (_) { return null; }
+            })();
+            if (savedTab) {
+                setBonusWorkflowTab(savedTab);
+            }
+        }
         
         // Initialize bonus upload section
         function showBonusUpload() {
@@ -35507,11 +35877,17 @@ async function reverseLastPrescriptionPayment(reportId){
                 section.scrollIntoView({ behavior: 'smooth' });
             }
             
-            // Set default month to current month
-            const today = new Date();
             const monthInput = document.getElementById('bonusUploadMonth');
             if (monthInput) {
+                const storedMonth = (() => {
+                    try { return localStorage.getItem('finance_bonus_month'); } catch (_) { return null; }
+                })();
+                if (storedMonth) {
+                    monthInput.value = storedMonth;
+                } else if (!monthInput.value) {
+                    const today = new Date();
                 monthInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                }
             }
             
             // Set up file input listener (remove old listener first to prevent duplicates)
@@ -35521,6 +35897,12 @@ async function reverseLastPrescriptionPayment(reportId){
                 const newFileInput = fileInput.cloneNode(true);
                 fileInput.parentNode.replaceChild(newFileInput, fileInput);
                 newFileInput.addEventListener('change', handleBonusFileUpload);
+                const storedMonth = (() => {
+                    try { return localStorage.getItem('finance_bonus_month'); } catch (_) { return null; }
+                })();
+                if (storedMonth && monthInput && !monthInput.value) {
+                    monthInput.value = storedMonth;
+                }
             }
             
             // Set up branch filter listener (remove old listener first to prevent duplicates)
@@ -35530,7 +35912,17 @@ async function reverseLastPrescriptionPayment(reportId){
                 const newBranchFilter = branchFilter.cloneNode(true);
                 branchFilter.parentNode.replaceChild(newBranchFilter, branchFilter);
                 newBranchFilter.addEventListener('change', renderBonusUploadTable);
+                try {
+                    const storedBranch = localStorage.getItem('finance_bonus_branch');
+                    if (storedBranch !== null) newBranchFilter.value = storedBranch;
+                } catch (_) {}
             }
+
+            initializeBonusWorkflow();
+            const savedTab = (() => {
+                try { return localStorage.getItem(BONUS_TAB_STORAGE_KEY); } catch (_) { return null; }
+            })();
+            setBonusWorkflowTab(savedTab || 'upload');
         }
         
         // CSV parsing function
@@ -35616,6 +36008,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 }
             }
             bonusUploadData = data;
+            const totalAmount = data.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
             renderBonusUploadTable();
             if (errors.length) {
                 const errHtml = errors.slice(0, 10).map(e => `<div style='color:#c41e3a;'>Row ${e.row}: ${e.message}</div>`).join('');
@@ -35629,6 +36022,14 @@ async function reverseLastPrescriptionPayment(reportId){
             const branchFilter = document.getElementById('bonusUploadBranchFilter');
             localStorage.setItem('finance_bonus_month', monthInput?.value || '');
             localStorage.setItem('finance_bonus_branch', branchFilter?.value || '');
+            if (monthInput && monthInput.value) {
+                setStoredBonusStatus(monthInput.value, 'draft', {
+                    totalRecords: bonusUploadData.length,
+                    totalAmount,
+                    note: 'CSV parsed locally and ready for upload.'
+                });
+            }
+            refreshBonusWorkflowSummary();
         }
         
         // Render bonus upload table
@@ -35679,6 +36080,7 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             const month = monthInput.value; // Format: YYYY-MM
+            const totalAmount = bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
             // Compute integrity hash (SHA-256) client-side
             async function sha256Hex(str){
                 const enc = new TextEncoder();
@@ -35710,18 +36112,34 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (res.ok) {
                     const result = await res.json();
                     message = `✅ Monthly bonus uploaded successfully for ${month}.\n\nRecords: ${result.totalRecords}\nTotal Amount: N$${result.totalAmount.toLocaleString('en-NA', {minimumFractionDigits:2, maximumFractionDigits:2})}\n\n⚠️ IMPORTANT: Only distributors in this CSV can be paid for ${month}.`;
+                    setStoredBonusStatus(month, 'pending-approval', {
+                        totalRecords: result.totalRecords ?? bonusUploadData.length,
+                        totalAmount: result.totalAmount ?? totalAmount,
+                        note: 'Awaiting approval from finance.'
+                    });
                 } else {
                     const error = await res.json();
                     message = `❌ Error: ${error.error || 'Failed to upload bonus data'}`;
+                    setStoredBonusStatus(month, 'draft', {
+                        totalRecords: bonusUploadData.length,
+                        totalAmount,
+                        note: 'Upload failed. Resolve error and retry.'
+                    });
                 }
             } catch(e) {
                 message = `⚠️ API not reachable. Data saved locally. Please try again when online.\n\nMonth: ${month}\nRecords: ${bonusUploadData.length}`;
+                setStoredBonusStatus(month, 'draft-offline', {
+                    totalRecords: bonusUploadData.length,
+                    totalAmount,
+                    note: 'Upload stored locally. Run upload once back online.'
+                });
             }
             alert(message);
             // Save last settings
             localStorage.setItem('finance_bonus_month', month);
             const branchFilter = document.getElementById('bonusUploadBranchFilter');
             localStorage.setItem('finance_bonus_branch', branchFilter?.value || '');
+            refreshBonusWorkflowSummary();
         }
 
         // Approve/Reject monthly upload
@@ -35746,6 +36164,17 @@ async function reverseLastPrescriptionPayment(reportId){
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to approve');
                 alert('✅ Upload approved successfully');
+                const existing = getStoredBonusStatus(month);
+                const totalRecords = existing?.totalRecords ?? (bonusUploadData.length || 0);
+                const totalAmount = existing?.totalAmount ?? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                setStoredBonusStatus(month, 'approved', {
+                    totalRecords,
+                    totalAmount,
+                    note: 'Approved for payment.'
+                });
+                const reasonInput = document.getElementById('bonusRejectionReason');
+                if (reasonInput) reasonInput.value = '';
+                refreshBonusWorkflowSummary();
             } catch (e) { 
                 alert(`❌ Approval failed: ${e.message}`); 
                 console.error('Approve error:', e);
@@ -35758,7 +36187,10 @@ async function reverseLastPrescriptionPayment(reportId){
                     alert('⚠️ Please select a month first. Click the month selector and choose a month.'); 
                     return; 
                 }
-                const reason = prompt('Reason for rejection?') || '';
+                let reason = document.getElementById('bonusRejectionReason')?.value.trim() || '';
+                if (!reason) {
+                    reason = prompt('Reason for rejection?') || '';
+                }
                 const base = typeof getApiBase === 'function' ? getApiBase() : (location.hostname.includes('railway.app') ? `${location.protocol}//${location.hostname}/api` : (location.hostname.includes('vercel.app') ? '/api' : 'http://localhost:8001/api'));
                 const headers = { 'Content-Type': 'application/json' };
                 if (typeof currentUser !== 'undefined' && currentUser) {
@@ -35773,6 +36205,18 @@ async function reverseLastPrescriptionPayment(reportId){
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to reject');
                 alert('⛔ Upload rejected');
+                const existing = getStoredBonusStatus(month);
+                const totalRecords = existing?.totalRecords ?? (bonusUploadData.length || 0);
+                const totalAmount = existing?.totalAmount ?? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                setStoredBonusStatus(month, 'rejected', {
+                    totalRecords,
+                    totalAmount,
+                    reason: reason || 'No reason provided',
+                    note: 'Rejection recorded.'
+                });
+                const reasonInput = document.getElementById('bonusRejectionReason');
+                if (reasonInput) reasonInput.value = reason;
+                refreshBonusWorkflowSummary();
             } catch (e) { 
                 alert(`❌ Rejection failed: ${e.message}`); 
                 console.error('Reject error:', e);
@@ -35792,6 +36236,8 @@ async function reverseLastPrescriptionPayment(reportId){
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob); a.download = `bank_batch_${month}.csv`; a.click();
                 URL.revokeObjectURL(a.href);
+                markBonusExported(month, `Bank batch exported ${new Date().toLocaleString()}.`);
+                refreshBonusWorkflowSummary();
             } catch (e) { alert(`❌ ${e.message}`); }
         }
         async function exportCashSheet() {
@@ -35806,6 +36252,8 @@ async function reverseLastPrescriptionPayment(reportId){
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob); a.download = `cash_sheet_${month}.csv`; a.click();
                 URL.revokeObjectURL(a.href);
+                markBonusExported(month, `Cash sheet exported ${new Date().toLocaleString()}.`);
+                refreshBonusWorkflowSummary();
             } catch (e) { alert(`❌ ${e.message}`); }
         }
 
@@ -35821,21 +36269,21 @@ async function reverseLastPrescriptionPayment(reportId){
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob); a.download = `bank_batch_${month}.pain.001.xml`; a.click();
                 URL.revokeObjectURL(a.href);
+                markBonusExported(month, `PAIN.001 exported ${new Date().toLocaleString()}.`);
+                refreshBonusWorkflowSummary();
             } catch (e) { alert(`❌ ${e.message}`); }
         }
 
         // Reconciliation view
         function showFinanceReconciliation() {
-            const section = document.getElementById('financeReconciliation');
-            if (!section) return;
+            showBonusUpload();
             const monthInput = document.getElementById('reconMonth');
             const bonusMonth = document.getElementById('bonusUploadMonth')?.value;
             if (monthInput && !monthInput.value) {
                 const today = new Date();
                 monthInput.value = bonusMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
             }
-            section.style.display = 'block';
-            loadReconciliation();
+            setBonusWorkflowTab('reconciliation');
         }
         async function loadReconciliation() {
             const month = document.getElementById('reconMonth')?.value;
@@ -35877,6 +36325,12 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (summary) {
                     summary.innerHTML = `Uploaded: N$ ${totalUpload.toLocaleString('en-NA',{minimumFractionDigits:2, maximumFractionDigits:2})} · Paid: N$ ${totalPaid.toLocaleString('en-NA',{minimumFractionDigits:2, maximumFractionDigits:2})} · Variance: N$ ${(totalPaid-totalUpload).toLocaleString('en-NA',{minimumFractionDigits:2, maximumFractionDigits:2})} · Duplicates: ${data.duplicateKeys?.length || 0} · Outliers: ${outliers} (tol N$ ${tol})`;
                 }
+                const reconHighlight = document.getElementById('bonusReconciliationSummary');
+                if (reconHighlight) {
+                    reconHighlight.innerHTML = `
+                        ${month} • Uploaded ${formatBonusCurrency(totalUpload)} • Paid ${formatBonusCurrency(totalPaid)} • Variance ${formatBonusCurrency(totalPaid - totalUpload)} • Outliers ${outliers}
+                    `;
+                }
             } catch (e) { alert(`❌ ${e.message}`); }
         }
 
@@ -35909,6 +36363,15 @@ async function reverseLastPrescriptionPayment(reportId){
             if (wrap) wrap.style.display = 'none';
             if (file) file.value = '';
             if (uploadBtn) uploadBtn.disabled = true;
+            try { localStorage.removeItem('finance_bonus_list'); } catch (_) {}
+            const month = document.getElementById('bonusUploadMonth')?.value;
+            if (month) {
+                const existingStatus = getStoredBonusStatus(month);
+                if (!existingStatus || existingStatus.status === 'draft' || existingStatus.status === 'draft-offline') {
+                    clearStoredBonusStatus(month);
+                }
+            }
+            refreshBonusWorkflowSummary();
         }
         
         // Download template
@@ -37202,6 +37665,14 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 alert('Performance review saved!');
             }
         });
+
+        document.querySelectorAll('form.stock-import-form').forEach(form => {
+            form.addEventListener('submit', handleBulkStockImportSubmit);
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStockWorkflowNavActive('overview');
+        });
         
         // Search handlers
         document.addEventListener('keyup', function(e) {
@@ -37448,7 +37919,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             populateProductDropdowns();
             // Populate initial import row product dropdown
             try {
-                const firstRow = document.querySelector('#stockImportTableBody tr');
+                const firstRow = document.querySelector('[data-stock-import-body="true"] tr');
                 if (firstRow) populateImportRowProductDropdown(firstRow);
             } catch (e) { console.warn('initial import row populate error', e); }
             updatePriceBadges();

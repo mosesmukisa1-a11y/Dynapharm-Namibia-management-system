@@ -52,6 +52,13 @@
         .col-6 { grid-column: span 12; }
         @media(min-width: 980px){ .col-6 { grid-column: span 6; } .split-6-6 { grid-column: span 12; } }
         .footer { color: var(--muted); font-size: 12px; padding: 16px; text-align:center; }
+        .workflow-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+        .workflow-tab { background:#0e162b; border:1px solid #223154; border-radius:999px; padding:8px 14px; color:var(--muted); font-weight:600; cursor:pointer; transition:background .2s ease, border-color .2s ease, color .2s ease; }
+        .workflow-tab:hover { border-color: var(--accent); color: var(--text); }
+        .workflow-tab.active { background: var(--accent); border-color: var(--accent); color:#04121b; }
+        .workflow-section { display:none; }
+        .workflow-section.active { display:block; }
+        .workflow-section > *:last-child { margin-bottom:0 !important; }
         
         /* Mobile Responsive Styles */
         @media (max-width: 768px) {
@@ -144,22 +151,64 @@
     </header>
 
     <main class="container" style="padding-top: 18px;">
-        <section class="kpis" style="margin-bottom: 14px;">
-            <div class="kpi"><div class="label">Total Stock Value</div><div id="kpiTotalValue" class="value">—</div></div>
-            <div class="kpi"><div class="label">Pending Transfers</div><div id="kpiPendingTransfers" class="value">—</div></div>
-            <div class="kpi"><div class="label">Low Stock Items</div><div id="kpiLowStock" class="value">—</div></div>
-            <div class="kpi"><div class="label">Alerts Today</div><div id="kpiAlerts" class="value">—</div></div>
-        </section>
+        <nav class="workflow-tabs" aria-label="Stock workflow navigation">
+            <button class="workflow-tab active" data-workflow-target="workflow-overview">📊 Overview</button>
+            <button class="workflow-tab" data-workflow-target="workflow-country-import">📥 Country Import</button>
+            <button class="workflow-tab" data-workflow-target="workflow-warehouse-distribution">🏢 Warehouse Distribution</button>
+            <button class="workflow-tab" data-workflow-target="workflow-branch-distribution">🏬 Branch Distribution</button>
+            <button class="workflow-tab" data-workflow-target="workflow-transfers">🔄 Transfers</button>
+            <button class="workflow-tab" data-workflow-target="workflow-sharing">🤝 Sharing</button>
+            <button class="workflow-tab" data-workflow-target="workflow-orders">📋 Orders</button>
+            <button class="workflow-tab" data-workflow-target="workflow-invoices">🧾 Invoices</button>
+            <button class="workflow-tab" data-workflow-target="workflow-country-inventory">🌍 Country Inventory</button>
+            <button class="workflow-tab" data-workflow-target="workflow-realtime">⚡ Real-time</button>
+        </nav>
 
-        <section class="grid" style="margin-bottom: 14px;">
-            <div class="card" style="grid-column: span 12;">
-                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Real-time Stock Movements <button class="btn" data-help="dashboard">Help</button></h3>
-                <div id="movementsList" class="list"></div>
-            </div>
-        </section>
+        <div class="workflow-section active" id="workflow-overview">
+            <section class="kpis" style="margin-bottom: 14px;">
+                <div class="kpi"><div class="label">Total Stock Value</div><div id="kpiTotalValue" class="value">—</div></div>
+                <div class="kpi"><div class="label">Pending Transfers</div><div id="kpiPendingTransfers" class="value">—</div></div>
+                <div class="kpi"><div class="label">Low Stock Items</div><div id="kpiLowStock" class="value">—</div></div>
+                <div class="kpi"><div class="label">Alerts Today</div><div id="kpiAlerts" class="value">—</div></div>
+            </section>
 
-        <section class="split-6-6" style="margin-bottom: 14px;">
-            <div class="card col-6">
+            <section class="grid" style="margin-bottom: 14px;">
+                <div class="card" style="grid-column: span 12;">
+                    <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Real-time Stock Movements <button class="btn" data-help="dashboard">Help</button></h3>
+                    <div id="movementsList" class="list"></div>
+                </div>
+            </section>
+
+            <section class="card" style="margin-bottom: 14px;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Alerts & Notifications <button class="btn" data-help="dashboard">Help</button></h3>
+                <div id="alertsList" class="list"></div>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-country-import">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Quick Actions <button class="btn" data-help="requests">Help</button></h3>
+                <div class="row">
+                    <button class="btn primary" id="qaNewRequest">➕ New Stock Request</button>
+                    <button class="btn" id="qaImportBarcode">📥 Import Barcode Stock (CSV)</button>
+                    <button class="btn" id="qaViewAudit">🧾 View Audit Log</button>
+                </div>
+            </section>
+
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Country Stock Import Workflow</h3>
+                <p class="muted">Import batches with FEFO enforcement and barcode tracking. Load cartons from CSV, validate expiries, and refresh to see totals update instantly.</p>
+                <div class="row">
+                    <button class="btn primary" id="countryImportLaunchBtn">📥 Launch CSV Import</button>
+                    <button class="btn" id="countryImportTemplateBtn">⬇️ Download CSV Template</button>
+                    <button class="btn" id="countryImportGuideBtn">📘 Import Guide</button>
+                </div>
+                <div class="muted" style="font-size:12px; margin-top:8px;">Headers accepted: cartonNo, description, batchNo, expiryDate, quantity, totalCtns (aliases allowed). Expiry formats like "Aug-2027" are supported.</div>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-warehouse-distribution">
+            <section class="card" style="margin-bottom: 14px;">
                 <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Pending Stock Requests <button class="btn" data-help="roles">Help</button></h3>
                 <table class="table">
                     <thead>
@@ -173,8 +222,51 @@
                     </thead>
                     <tbody id="pendingRequests"></tbody>
                 </table>
-            </div>
-            <div class="card col-6">
+            </section>
+
+            <section class="card" style="margin-bottom: 14px;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Warehouse & Country Stock Snapshot <button class="btn" data-help="warehouse">Help</button></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Location</th>
+                            <th>Product</th>
+                            <th>Total Qty</th>
+                            <th>Available to Move</th>
+                            <th>Reserved</th>
+                            <th>Batch Info</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="warehouseSnapshot"></tbody>
+                </table>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-branch-distribution">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Daily Stock Movements by Branch <button class="btn" data-help="dashboard">Help</button></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Stock In</th>
+                            <th>Stock Out</th>
+                            <th>Invoices</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyByBranch"></tbody>
+                </table>
+            </section>
+
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Distribution Playbook</h3>
+                <p class="muted">Monitor daily in/out volumes, align dispatches with branch requests, and confirm FEFO compliance before releasing stock to coaches and consultants.</p>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-transfers">
+            <section class="card" style="margin-bottom: 14px;">
                 <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Active Transfers <button class="btn" data-help="transfers">Help</button></h3>
                 <table class="table">
                     <thead>
@@ -189,70 +281,57 @@
                     </thead>
                     <tbody id="activeTransfers"></tbody>
                 </table>
-            </div>
-        </section>
+            </section>
+        </div>
 
-        <section class="split-6-6" style="margin-bottom: 14px;">
-            <div class="card col-6">
-                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Daily Stock Movements by Branch <button class="btn" data-help="dashboard">Help</button></h3>
+        <div class="workflow-section" id="workflow-sharing">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Shop & Warehouse Sharing</h3>
+                <p class="muted">Coordinate shared stock pools between retail outlets and warehouses. This dashboard will surface allocation requests and approvals once the sharing workflow is finalised.</p>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-orders">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Orders (Auto & Manual)</h3>
+                <p class="muted">Auto-generated purchase orders and manual supplier requests will display here. Use the country import workflow to seed stock while integrations are being connected.</p>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-invoices">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Invoices</h3>
+                <p class="muted">Invoice tracking ties into stock releases and deliveries. Export the latest snapshot or integrate with ERP to keep accounts reconciled.</p>
+            </section>
+        </div>
+
+        <div class="workflow-section" id="workflow-country-inventory">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Workflow Status <button class="btn" data-help="roles">Help</button></h3>
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Branch</th>
-                            <th>Stock In</th>
-                            <th>Stock Out</th>
-                            <th>Invoices</th>
+                            <th>Component</th>
+                            <th>Status</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
-                    <tbody id="dailyByBranch"></tbody>
+                    <tbody id="workflowStatus"></tbody>
                 </table>
-            </div>
-            <div class="card col-6">
-                <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Alerts & Notifications <button class="btn" data-help="dashboard">Help</button></h3>
-                <div id="alertsList" class="list"></div>
-            </div>
-        </section>
+            </section>
+        </div>
 
-        <section class="card" style="margin-bottom: 14px;">
-            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Quick Actions <button class="btn" data-help="requests">Help</button></h3>
-            <div class="row">
-                <button class="btn primary" id="qaNewRequest">➕ New Stock Request</button>
-                <button class="btn" id="qaImportBarcode">📥 Import Barcode Stock (CSV)</button>
-                <button class="btn" id="qaViewAudit">🧾 View Audit Log</button>
-            </div>
-        </section>
-
-        <section class="card" style="margin-bottom: 14px;">
-            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Workflow Status <button class="btn" data-help="roles">Help</button></h3>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Component</th>
-                        <th>Status</th>
-                        <th>Details</th>
-                    </tr>
-                </thead>
-                <tbody id="workflowStatus"></tbody>
-            </table>
-        </section>
-
-        <section class="card" style="margin-bottom: 14px;">
-            <h3 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">Warehouse & Country Stock Snapshot <button class="btn" data-help="warehouse">Help</button></h3>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Location</th>
-                        <th>Product</th>
-                        <th>Total Qty</th>
-                        <th>Available to Move</th>
-                        <th>Reserved</th>
-                        <th>Batch Info</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="warehouseSnapshot"></tbody>
-            </table>
-        </section>
+        <div class="workflow-section" id="workflow-realtime">
+            <section class="card" style="margin-bottom: 14px;">
+                <h3>Real-time Sync & Controls</h3>
+                <p class="muted">Data auto-refreshes every 20 seconds. Use the manual controls below if you need to force updates, export a snapshot, or review workflow guidance.</p>
+                <div class="row">
+                    <button class="btn" id="workflowRefreshBtn">🔄 Refresh Data</button>
+                    <button class="btn" id="workflowExportBtn">📤 Export CSV</button>
+                    <button class="btn" id="workflowHelpBtn">❓ Workflow Help</button>
+                </div>
+            </section>
+        </div>
     </main>
 
     <div class="footer">Dynapharm Namibia • Stock Management • v1</div>
@@ -367,6 +446,7 @@
         let products = [];
         let movements = [];
         let alerts = [];
+        let csvParsedRows = [];
 
         async function loadBranches() {
             const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
@@ -1103,6 +1183,22 @@
             }));
         }
 
+        function openCsvImportModal() {
+            const preview = document.getElementById('csvPreview');
+            if (preview) {
+                preview.style.display = 'none';
+                preview.textContent = '';
+            }
+            const fileInput = document.getElementById('csvFileInput');
+            if (fileInput) fileInput.value = '';
+            const locationSelect = document.getElementById('csvImportLocation');
+            if (locationSelect) locationSelect.value = 'country_stock';
+            if (csvImportBtn) csvImportBtn.disabled = true;
+            csvParsedRows = [];
+            const modal = document.getElementById('csvModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
         // Quick actions (lightweight wired)
         const qaNewRequest = document.getElementById('qaNewRequest');
         if (qaNewRequest) qaNewRequest.addEventListener('click', () => {
@@ -1115,19 +1211,72 @@
             document.getElementById('requestModal').style.display = 'flex';
         });
         const qaImportBarcode = document.getElementById('qaImportBarcode');
-        if (qaImportBarcode) qaImportBarcode.addEventListener('click', () => {
-            // reset modal state
-            const preview = document.getElementById('csvPreview');
-            preview.style.display = 'none';
-            preview.textContent = '';
-            document.getElementById('csvFileInput').value = '';
-            document.getElementById('csvImportLocation').value = 'country_stock';
-            document.getElementById('csvImportBtn').disabled = true;
-            csvParsedRows = [];
-            document.getElementById('csvModal').style.display = 'flex';
-        });
+        if (qaImportBarcode) qaImportBarcode.addEventListener('click', openCsvImportModal);
         const qaViewAudit = document.getElementById('qaViewAudit');
         if (qaViewAudit) qaViewAudit.addEventListener('click', () => openHelp('roles'));
+
+        const countryImportLaunchBtn = document.getElementById('countryImportLaunchBtn');
+        if (countryImportLaunchBtn) countryImportLaunchBtn.addEventListener('click', openCsvImportModal);
+
+        const countryImportTemplateBtn = document.getElementById('countryImportTemplateBtn');
+        if (countryImportTemplateBtn) countryImportTemplateBtn.addEventListener('click', () => {
+            const template = [
+                'Carton No.,Description,Batch No.,Expiry Date,Quantity,Total (CTNS)',
+                'A1-001,Spirulina 500mg,SP500-2301,2027-08,120,10',
+                'A1-002,Omega 3 Premium,OM3-2402,2028-02,60,5'
+            ].join('\n');
+            const blob = new Blob([template], { type: 'text/csv' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'dynapharm-stock-import-template.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        const countryImportGuideBtn = document.getElementById('countryImportGuideBtn');
+        if (countryImportGuideBtn) countryImportGuideBtn.addEventListener('click', () => {
+            const guideUrl = new URL('./LOCAL_STOCK_UPLOAD_GUIDE.md', window.location.href);
+            window.open(guideUrl.toString(), '_blank', 'noopener');
+        });
+
+        const workflowTabs = Array.from(document.querySelectorAll('.workflow-tab'));
+        const workflowSections = Array.from(document.querySelectorAll('.workflow-section'));
+
+        function activateWorkflow(targetId) {
+            if (!targetId) return;
+            workflowTabs.forEach(tab => {
+                const isTarget = tab.getAttribute('data-workflow-target') === targetId;
+                tab.classList.toggle('active', isTarget);
+                tab.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+            });
+            workflowSections.forEach(section => {
+                section.classList.toggle('active', section.id === targetId);
+            });
+        }
+
+        workflowTabs.forEach(tab => {
+            tab.setAttribute('role', 'button');
+            tab.setAttribute('aria-pressed', tab.classList.contains('active') ? 'true' : 'false');
+            tab.setAttribute('tabindex', '0');
+            const target = tab.getAttribute('data-workflow-target');
+            tab.addEventListener('click', () => activateWorkflow(target));
+            tab.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    activateWorkflow(target);
+                }
+            });
+        });
+
+        const workflowRefreshBtn = document.getElementById('workflowRefreshBtn');
+        if (workflowRefreshBtn) workflowRefreshBtn.addEventListener('click', () => refreshData());
+
+        const workflowExportBtn = document.getElementById('workflowExportBtn');
+        if (workflowExportBtn) workflowExportBtn.addEventListener('click', () => exportCSV());
+
+        const workflowHelpBtn = document.getElementById('workflowHelpBtn');
+        if (workflowHelpBtn) workflowHelpBtn.addEventListener('click', () => openHelp('dashboard'));
 
         // Modal close handlers
         const dispatchCloseBtn = document.getElementById('dispatchCloseBtn');
@@ -1169,7 +1318,6 @@
         const csvFileInput = document.getElementById('csvFileInput');
         const csvImportBtn = document.getElementById('csvImportBtn');
         const csvPreview = document.getElementById('csvPreview');
-        let csvParsedRows = [];
 
         function parseCSV(text){
             // Robust comma-delimited parser with RFC4180-style quoted fields
