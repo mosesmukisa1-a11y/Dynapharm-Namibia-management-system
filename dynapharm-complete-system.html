@@ -11158,6 +11158,31 @@
         // API Configuration
         // IMPORTANT: Set your actual Railway/backend URL here
         // For now, this is commented out. Uncomment and update when you have a deployed backend.
+        function normaliseApiBase(input) {
+            if (!input) return null;
+            let base = String(input).trim();
+            if (!base) return null;
+            if (base.startsWith('http://') || base.startsWith('https://')) {
+                return base.replace(/\/+$/, '');
+            }
+            if (base.startsWith('//')) {
+                const protocol = window.location?.protocol || 'https:';
+                return `${protocol}${base}`.replace(/\/+$/, '');
+            }
+            if (base.startsWith('/')) {
+                if (window.location?.origin && window.location.origin !== 'null') {
+                    return `${window.location.origin}${base}`.replace(/\/+$/, '');
+                }
+                return `http://localhost:8001${base}`.replace(/\/+$/, '');
+            }
+            try {
+                const url = new URL(base);
+                return url.origin.replace(/\/+$/, '') + url.pathname.replace(/\/+$/, '');
+            } catch (_) {
+                return null;
+            }
+        }
+
         function resolveApiBase() {
             const candidates = [];
             const metaTag = document.querySelector('meta[name="api-base"]');
@@ -11172,39 +11197,26 @@
             }
             candidates.push('https://dynapharm-backend-production.up.railway.app/api');
             candidates.push('http://localhost:8001/api');
-            const normalise = (input) => {
-                if (!input) return null;
-                let base = String(input).trim();
-                if (!base) return null;
-                if (base.startsWith('http://') || base.startsWith('https://')) {
-                    return base.replace(/\/+$/, '');
-                }
-                if (base.startsWith('//')) {
-                    const protocol = window.location?.protocol || 'https:';
-                    return `${protocol}${base}`.replace(/\/+$/, '');
-                }
-                if (base.startsWith('/')) {
-                    if (window.location?.origin && window.location.origin !== 'null') {
-                        return `${window.location.origin}${base}`.replace(/\/+$/, '');
-                    }
-                    return `http://localhost:8001${base}`.replace(/\/+$/, '');
-                }
-                try {
-                    const url = new URL(base);
-                    return url.origin.replace(/\/+$/, '') + url.pathname.replace(/\/+$/, '');
-                } catch (_) {
-                    return null;
-                }
-            };
             for (const candidate of candidates) {
-                const resolved = normalise(candidate);
+                const resolved = normaliseApiBase(candidate);
                 if (resolved) return resolved;
             }
             return '/api';
         }
 
         const API_BASE = resolveApiBase();
-        const API_BASE_LOCAL = API_BASE;
+        const API_BASE_LOCAL = (() => {
+            const overrides = [
+                window.API_BASE_LOCAL_OVERRIDE,
+                (() => { try { return localStorage.getItem('dynapharm_api_base_local'); } catch (_) { return null; } })(),
+                API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1') ? API_BASE : 'http://localhost:8001/api'
+            ];
+            for (const candidate of overrides) {
+                const resolved = normaliseApiBase(candidate);
+                if (resolved) return resolved;
+            }
+            return API_BASE;
+        })();
         const USE_OFFLINE_MODE = false; // Prefer online API; only fallback if truly offline
 
         // Safe JSON parse with default fallback
@@ -37172,6 +37184,8 @@ async function reverseLastPrescriptionPayment(reportId){
                 'approved': 'Approved',
                 'rejected': 'Rejected',
                 'draft-offline': 'Saved locally (offline)',
+                'pending-approval-offline': 'Approval pending sync',
+                'rejected-offline': 'Rejection pending sync',
                 'exported': 'Exports generated'
             };
             const label = map[statusObj.status] || statusObj.status;
@@ -37732,7 +37746,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 URL.revokeObjectURL(a.href);
                 markBonusExported(month, `Cash sheet exported ${new Date().toLocaleString()}.`);
                 refreshBonusWorkflowSummary();
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    alert('⚠️ Offline mode: cash sheet export will be available once the finance server can be reached.');
+                } else {
+                    alert(`❌ ${e.message}`);
+                }
+            }
         }
 
         async function exportPain001() {
@@ -37749,7 +37769,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 URL.revokeObjectURL(a.href);
                 markBonusExported(month, `PAIN.001 exported ${new Date().toLocaleString()}.`);
                 refreshBonusWorkflowSummary();
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    alert('⚠️ Offline mode: PAIN.001 export requires an active finance server connection.');
+                } else {
+                    alert(`❌ ${e.message}`);
+                }
+            }
         }
 
         // Reconciliation view
@@ -37809,7 +37835,15 @@ async function reverseLastPrescriptionPayment(reportId){
                         ${month} • Uploaded ${formatBonusCurrency(totalUpload)} • Paid ${formatBonusCurrency(totalPaid)} • Variance ${formatBonusCurrency(totalPaid - totalUpload)} • Outliers ${outliers}
                     `;
                 }
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    const snapshot = loadOfflineBonusSnapshot(month);
+                    renderOfflineReconciliationView(snapshot, month);
+                    alert('⚠️ Finance server unreachable. Showing offline bonus data snapshot (if available).');
+                } else {
+                    alert(`❌ ${e.message}`);
+                }
+            }
         }
 
         async function approveVariance(month, drn) {
@@ -37823,7 +37857,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to approve variance');
                 loadReconciliation();
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    alert('⚠️ Offline mode: variance approval requires a live finance server connection.');
+                } else {
+                    alert(`❌ ${e.message}`);
+                }
+            }
         }
         
         // Clear bonus upload

@@ -4,6 +4,11 @@ const WAREHOUSE_KEY = 'dyna_warehouse_stock';
 const BRANCH_STOCK_KEY = 'dyna_branch_stock';
 const DISPATCH_NOTES_KEY = 'dyna_dispatch_notes';
 const LAST_EVENT_KEY = 'dyna_last_stock_event';
+const REQUESTS_TS_KEY = 'dyna_stock_requests_lastUpdated';
+const TRANSFERS_TS_KEY = 'dyna_stock_transfers_lastUpdated';
+const WAREHOUSE_TS_KEY = 'dyna_warehouse_stock_lastUpdated';
+const BRANCH_TS_KEY = 'dyna_branch_stock_lastUpdated';
+const DISPATCH_TS_KEY = 'dyna_dispatch_notes_lastUpdated';
 
 function ensureLocalStorage() {
     if (typeof window === 'undefined' || !window.localStorage) {
@@ -43,6 +48,14 @@ function broadcast(change = {}) {
     }
 }
 
+function touchTimestamp(key) {
+    try {
+        ensureLocalStorage().setItem(key, String(Date.now()));
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 function loadDispatchNotes() {
     const notes = readJson(DISPATCH_NOTES_KEY, []);
     return Array.isArray(notes) ? notes : [];
@@ -50,6 +63,7 @@ function loadDispatchNotes() {
 
 function saveDispatchNotes(notes) {
     writeJson(DISPATCH_NOTES_KEY, notes);
+    touchTimestamp(DISPATCH_TS_KEY);
     broadcast({ scope: 'dispatch-notes' });
 }
 
@@ -138,6 +152,7 @@ function loadRequests() {
 
 function saveRequests(requests) {
     writeJson(REQUESTS_KEY, requests);
+    touchTimestamp(REQUESTS_TS_KEY);
     broadcast({ scope: 'requests' });
 }
 
@@ -148,6 +163,7 @@ function loadTransfers() {
 
 function saveTransfers(transfers) {
     writeJson(TRANSFERS_KEY, transfers);
+    touchTimestamp(TRANSFERS_TS_KEY);
     broadcast({ scope: 'transfers' });
 }
 
@@ -158,6 +174,7 @@ function loadWarehouses() {
 
 function saveWarehouses(warehouses) {
     writeJson(WAREHOUSE_KEY, warehouses);
+    touchTimestamp(WAREHOUSE_TS_KEY);
     broadcast({ scope: 'warehouse' });
 }
 
@@ -168,6 +185,7 @@ function loadBranchStock() {
 
 function saveBranchStock(branchStock) {
     writeJson(BRANCH_STOCK_KEY, branchStock);
+    touchTimestamp(BRANCH_TS_KEY);
     broadcast({ scope: 'branch-stock' });
 }
 

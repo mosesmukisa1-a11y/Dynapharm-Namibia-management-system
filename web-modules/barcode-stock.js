@@ -2,6 +2,7 @@ const STORAGE_KEY = 'dyna_barcode_stock';
 const IMPORTS_KEY = 'dyna_country_imports';
 const INVENTORY_KEY = 'dyna_barcode_inventory';
 const LAST_EVENT_KEY = 'dyna_last_stock_event';
+const LAST_UPDATED_KEY = 'dyna_barcode_stock_lastUpdated';
 
 function nowIso() {
     return new Date().toISOString();
@@ -27,6 +28,14 @@ function readJson(key, fallback) {
 function writeJson(key, value) {
     const storage = ensureLocalStorage();
     storage.setItem(key, JSON.stringify(value));
+}
+
+function touchTimestamp(key) {
+    try {
+        ensureLocalStorage().setItem(key, String(Date.now()));
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 function broadcastStockUpdate(detail = {}) {
@@ -169,6 +178,7 @@ function persistInventoryAggregate(batches) {
 
 function saveBatches(batches) {
     writeJson(STORAGE_KEY, batches);
+    touchTimestamp(LAST_UPDATED_KEY);
     persistInventoryAggregate(batches);
     broadcastStockUpdate({ scope: 'barcode-stock' });
 }
@@ -377,6 +387,7 @@ export function removeStockBatch(barcodeOrId) {
 
 export function resetBarcodeStock() {
     writeJson(STORAGE_KEY, []);
+    touchTimestamp(LAST_UPDATED_KEY);
     writeJson(INVENTORY_KEY, []);
     broadcastStockUpdate({ scope: 'barcode-stock', op: 'reset' });
     return { success: true };
