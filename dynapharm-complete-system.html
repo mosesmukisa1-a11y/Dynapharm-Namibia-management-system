@@ -26241,39 +26241,106 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Load distributors from IndexedDB
-        async function loadDistributors() {
-            try {
-                if (!db) await initDistributorsDB();
-                
-                // Verify store exists before creating transaction
-                if (!db.objectStoreNames.contains(storeName)) {
-                    console.error('Distributors store does not exist, reinitializing...');
-                    db.close();
-                    db = null;
-                    await initDistributorsDB();
-                    // Double-check after reinit
-                    if (!db.objectStoreNames.contains(storeName)) {
-                        throw new Error('Failed to create distributors store');
+        async function loadDistributors(options = {}) {
+            const { skipBackend = false, forceRefresh = false } = options || {};
+            let loaded = [];
+            let source = 'indexedDB';
+
+            if (!skipBackend) {
+                try {
+                    const apiUrl = forceRefresh ? `/api/distributors?ts=${Date.now()}` : '/api/distributors';
+                    const response = await fetch(apiUrl);
+                    if (response.ok) {
+                        const payload = await response.json();
+                        if (Array.isArray(payload) && payload.length > 0) {
+                            loaded = payload.map(mapDistributorFromApi);
+                            source = 'api';
+                            console.log(`loadDistributors: loaded ${loaded.length} distributor(s) from backend API`);
+                        } else {
+                            console.log('loadDistributors: backend API returned no distributors, falling back to cached data');
+                        }
+                    } else {
+                        console.warn(`loadDistributors: backend API responded with status ${response.status}`);
                     }
+                } catch (apiError) {
+                    console.debug('loadDistributors: backend API unavailable, falling back to cached data', apiError);
                 }
-                
-                const transaction = db.transaction([storeName], 'readonly');
-                const store = transaction.objectStore(storeName);
-                const request = store.getAll();
-                
-                return new Promise((resolve, reject) => {
-                    request.onsuccess = () => {
-                        distributors = request.result || [];
-                        console.log(`Loaded ${distributors.length} distributors from IndexedDB`);
-                        resolve(distributors);
-                    };
-                    request.onerror = () => reject(request.error);
-                });
-            } catch (error) {
-                console.error('Error loading distributors:', error);
-                distributors = [];
-                return distributors;
             }
+
+            if (loaded.length === 0) {
+                try {
+                    if (!db) await initDistributorsDB();
+
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        console.error('Distributors store does not exist, reinitializing...');
+                        db.close();
+                        db = null;
+                        await initDistributorsDB();
+                        if (!db.objectStoreNames.contains(storeName)) {
+                            throw new Error('Failed to create distributors store');
+                        }
+                    }
+
+                    const transaction = db.transaction([storeName], 'readonly');
+                    const store = transaction.objectStore(storeName);
+                    const request = store.getAll();
+
+                    loaded = await new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result || []);
+                        request.onerror = () => reject(request.error);
+                    });
+
+                    if (loaded.length > 0) {
+                        source = 'indexedDB';
+                        console.log(`loadDistributors: loaded ${loaded.length} distributor(s) from IndexedDB`);
+                    }
+                } catch (indexedDbError) {
+                    console.error('loadDistributors: failed to load distributors from IndexedDB', indexedDbError);
+                    loaded = [];
+                }
+            }
+
+            if (loaded.length === 0) {
+                try {
+                    const stored = localStorage.getItem('dyna_distributors');
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            loaded = parsed;
+                            source = 'localStorage';
+                            console.log(`loadDistributors: loaded ${loaded.length} distributor(s) from localStorage`);
+                        }
+                    }
+
+                    if (loaded.length === 0) {
+                        const cached = localStorage.getItem('dyna_distributors_cache');
+                        if (cached) {
+                            const parsedCache = JSON.parse(cached);
+                            const cacheList = Array.isArray(parsedCache) ? parsedCache : parsedCache?.data;
+                            if (Array.isArray(cacheList) && cacheList.length > 0) {
+                                loaded = cacheList;
+                                source = 'localStorage';
+                                console.log(`loadDistributors: loaded ${loaded.length} distributor(s) from cached localStorage`);
+                            }
+                        }
+                    }
+                } catch (storageError) {
+                    console.debug('loadDistributors: localStorage fallback failed', storageError);
+                }
+            }
+
+            distributors = normalizeDistributors(loaded);
+
+            if (source === 'api') {
+                try {
+                    await saveDistributors();
+                } catch (persistError) {
+                    console.warn('loadDistributors: failed to persist API distributors to IndexedDB', persistError);
+                }
+                persistDistributorsToLocalStorage(distributors);
+            }
+
+            return distributors;
         }
         
         // Save distributors to IndexedDB
@@ -26369,6 +26436,123 @@ async function reverseLastPrescriptionPayment(reportId){
             });
             if (changed) console.log('normalizeDistributors: populated required fields for one or more records');
             return normalized;
+        }
+
+        function parseDistributorAgreement(value) {
+            if (!value) return {};
+            if (typeof value === 'string') {
+                try {
+                    return JSON.parse(value);
+                } catch (error) {
+                    console.debug('parseDistributorAgreement: failed to parse JSON payload', error);
+                    return { _raw: value };
+                }
+            }
+            return value;
+        }
+
+        function buildOriginalColumns(dist) {
+            return {
+                'NB NUMBER': dist.distributorCode || dist.code || '',
+                'NAME': dist.distributorName || dist.name || '',
+                'MOBILE': dist.mobileNo || dist.mobile || '',
+                'STATUS': dist.status || '',
+                'BRANCH': dist.branch || ''
+            };
+        }
+
+        function mapDistributorFromApi(raw) {
+            const agreement = parseDistributorAgreement(raw?.agreement_data || raw?.agreementData);
+            const normalized = {
+                id: raw?.id || raw?.distributor_id || raw?.uuid || `DIST-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+                distributorCode: raw?.distributor_code || raw?.distributorCode || raw?.code || '',
+                distributorName: raw?.distributor_name || raw?.distributorName || raw?.name || '',
+                mobileNo: raw?.mobile_no || raw?.mobileNo || raw?.mobile || agreement?.mobileNo || agreement?.mobile || '',
+                mobile: raw?.mobile_no || raw?.mobileNo || raw?.mobile || agreement?.mobileNo || agreement?.mobile || '',
+                email: raw?.email || agreement?.email || '',
+                commissionRate: raw?.commission_rate != null ? Number(raw.commission_rate) : (agreement?.commissionRate != null ? Number(agreement.commissionRate) : 0),
+                status: raw?.status || agreement?.status || 'active',
+                branch: raw?.branch || agreement?.branch || null,
+                createdAt: raw?.created_at || raw?.createdAt || null,
+                updatedAt: raw?.updated_at || raw?.updatedAt || null,
+                agreementData: agreement && Object.keys(agreement).length > 0 ? agreement : null,
+                _source: 'api'
+            };
+
+            const detailFields = [
+                'birthdate', 'birth_date', 'age', 'sex', 'gender', 'nationality', 'residencePhone', 'residence_phone',
+                'officePhone', 'office_phone', 'address1', 'address', 'city', 'zipCode', 'zip_code', 'taxId', 'tax_id',
+                'sssNo', 'sss_no', 'beneficiary', 'uplineName', 'upline_name', 'uplineIdNo', 'upline_id_no',
+                'uplineAddress', 'upline_address', 'uplineCity', 'upline_city', 'uplineMobile', 'upline_mobile',
+                'uplineZipCode', 'upline_zip_code', 'sponsorName', 'sponsor_name', 'sponsorIdNo', 'sponsor_id_no',
+                'agreementDate', 'agreement_date', 'applicantSignature', 'applicant_signature', 'dateReceived',
+                'date_received', 'receivedBy', 'received_by', 'processedBy', 'processed_by', 'materials'
+            ];
+
+            const fieldAliasMap = {
+                birth_date: 'birthdate',
+                gender: 'sex',
+                residence_phone: 'residencePhone',
+                office_phone: 'officePhone',
+                address: 'address1',
+                zip_code: 'zipCode',
+                tax_id: 'taxId',
+                sss_no: 'sssNo',
+                upline_name: 'uplineName',
+                upline_id_no: 'uplineIdNo',
+                upline_address: 'uplineAddress',
+                upline_city: 'uplineCity',
+                upline_mobile: 'uplineMobile',
+                upline_zip_code: 'uplineZipCode',
+                sponsor_name: 'sponsorName',
+                sponsor_id_no: 'sponsorIdNo',
+                agreement_date: 'agreementDate',
+                applicant_signature: 'applicantSignature',
+                date_received: 'dateReceived',
+                received_by: 'receivedBy',
+                processed_by: 'processedBy'
+            };
+
+            detailFields.forEach((key) => {
+                if (!agreement || agreement[key] === undefined) {
+                    return;
+                }
+
+                const alias = fieldAliasMap[key];
+                const targetKey = alias || (key.includes('_') ? key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()) : key);
+
+                if (normalized[targetKey] === undefined) {
+                    normalized[targetKey] = agreement[key];
+                }
+
+                if (targetKey !== key && normalized[key] === undefined) {
+                    normalized[key] = agreement[key];
+                }
+
+                if (alias && normalized[alias] === undefined) {
+                    normalized[alias] = agreement[key];
+                }
+            });
+
+            if (!normalized._originalColumns) {
+                const agreementColumns = agreement?.originalColumns;
+                if (agreementColumns && typeof agreementColumns === 'object') {
+                    normalized._originalColumns = agreementColumns;
+                } else {
+                    normalized._originalColumns = buildOriginalColumns(normalized);
+                }
+            }
+
+            return normalized;
+        }
+
+        function persistDistributorsToLocalStorage(list) {
+            try {
+                localStorage.setItem('dyna_distributors', JSON.stringify(list));
+                localStorage.setItem('dyna_distributors_cache', JSON.stringify({ data: list, timestamp: Date.now() }));
+            } catch (error) {
+                console.debug('persistDistributorsToLocalStorage: unable to cache distributors', error);
+            }
         }
 
         function showWalkInSaleModal(customerType) {
@@ -28364,8 +28548,12 @@ async function reverseLastPrescriptionPayment(reportId){
             
             // Get headers from first distributor's _originalColumns (in original CSV order)
             let headers = [];
-            if (distributors[0] && distributors[0]._originalColumns) {
+            if (distributors[0] && distributors[0]._originalColumns && Object.keys(distributors[0]._originalColumns).length > 0) {
                 headers = Object.keys(distributors[0]._originalColumns);
+            }
+
+            if (headers.length === 0) {
+                headers = ['NB NUMBER', 'NAME', 'MOBILE', 'STATUS', 'BRANCH'];
             }
             
             // Build table
@@ -28379,11 +28567,17 @@ async function reverseLastPrescriptionPayment(reportId){
                     <tbody>
             `;
             
-            distributors.forEach((dist, index) => {
+            distributors.forEach((dist) => {
+                const columnSource = dist._originalColumns && Object.keys(dist._originalColumns).length > 0
+                    ? dist._originalColumns
+                    : buildOriginalColumns(dist);
+
                 html += `
                     <tr style="border-bottom: 1px solid #ddd;">
                         ${headers.map(h => {
-                            const value = dist._originalColumns && dist._originalColumns[h] ? dist._originalColumns[h] : 'N/A';
+                            const value = columnSource && columnSource[h] !== undefined && columnSource[h] !== null && columnSource[h] !== ''
+                                ? columnSource[h]
+                                : 'N/A';
                             return `<td style="padding: 8px; border: 1px solid #ddd;">${value}</td>`;
                         }).join('')}
                     </tr>
@@ -32003,90 +32197,120 @@ async function reverseLastPrescriptionPayment(reportId){
         // CSV Import Function
         function importFromCSV() {
             try {
-                // Create file input element
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
                 fileInput.accept = '.csv';
                 fileInput.style.display = 'none';
-                
+
                 fileInput.addEventListener('change', async function(e) {
                     const file = e.target.files[0];
-                    if (!file) return;
-                    
+                    if (!file) {
+                        if (fileInput.parentNode) document.body.removeChild(fileInput);
+                        return;
+                    }
+
                     try {
                         const text = await file.text();
-                        const lines = text.split('\n').filter(line => line.trim());
-                        
+                        const lines = text.split(/\r?\n/).filter(line => line.trim());
+
                         if (lines.length < 2) {
                             alert('CSV file must have at least a header row and one data row');
                             return;
                         }
-                        
-                        // Detect delimiter
+
                         const firstLine = lines[0];
                         let delimiter = ',';
                         if (firstLine.includes('\t')) delimiter = '\t';
                         else if (firstLine.includes(';')) delimiter = ';';
-                        
-                        // Parse headers (case-insensitive)
+
                         const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, '').toLowerCase());
-                        
-                        // Find column indices
+
                         const cartonIdx = headers.findIndex(h => h.includes('carton') || h.includes('ctn'));
                         const descIdx = headers.findIndex(h => h.includes('description') || h.includes('product') || h.includes('name'));
                         const batchIdx = headers.findIndex(h => h.includes('batch'));
                         const expiryIdx = headers.findIndex(h => h.includes('expiry') || h.includes('exp'));
                         const qtyIdx = headers.findIndex(h => h.includes('quantity') || h.includes('qty') || h.includes('qnt'));
-                        const totalCtnsIdx = headers.findIndex(h => h.includes('total') && (h.includes('carton') || h.includes('ctn'))) || 
-                                           headers.findIndex(h => h.includes('total') && !h.includes('value') && !h.includes('amount'));
-                        
-                        if (descIdx === -1 || qtyIdx === -1) {
-                            alert('CSV must contain at least Description and Quantity columns');
+                        const totalCtnsIdx = headers.findIndex(h => h.includes('total') && (h.includes('carton') || h.includes('ctn')))
+                            || headers.findIndex(h => h.includes('total') && !h.includes('value') && !h.includes('amount'));
+
+                        if (descIdx === -1 || qtyIdx === -1 || batchIdx === -1 || expiryIdx === -1) {
+                            alert('CSV must include Description, Quantity, Batch and Expiry columns to satisfy FEFO requirements.');
                             return;
                         }
-                        
-                        // Clear existing rows (keep first empty row)
+
                         const tbody = document.getElementById('stockImportTableBody');
-                        const firstRow = tbody.querySelector('tr');
+                        if (!tbody) {
+                            alert('Stock import table not found in the portal.');
+                            return;
+                        }
                         tbody.innerHTML = '';
-                        if (firstRow) tbody.appendChild(firstRow);
-                        
-                        // Parse and add rows
+
                         let successCount = 0;
                         let errorCount = 0;
-                        
+                        const errorMessages = [];
+
                         for (let i = 1; i < lines.length; i++) {
-                            const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
-                            if (values.length < Math.max(descIdx, qtyIdx) + 1) continue;
-                            
-                            const description = values[descIdx] || '';
-                            const quantity = values[qtyIdx] || '';
-                            
-                            if (!description || !quantity) {
+                            const rawLine = lines[i].trim();
+                            if (!rawLine) continue;
+
+                            const values = rawLine.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+                            if (values.length < Math.max(descIdx, qtyIdx, batchIdx, expiryIdx) + 1) {
                                 errorCount++;
+                                errorMessages.push(`Row ${i + 1}: not enough column values`);
                                 continue;
                             }
-                            
-                            // Add row to table
+
+                            const description = (values[descIdx] || '').trim();
+                            const batchNo = (values[batchIdx] || '').trim();
+                            const expiryRaw = values[expiryIdx] || '';
+                            const normalizedExpiry = normalizeExpiryInput(expiryRaw);
+                            const quantity = parsePositiveInteger(values[qtyIdx]);
+
+                            if (!description) {
+                                errorCount++;
+                                errorMessages.push(`Row ${i + 1}: missing description`);
+                                continue;
+                            }
+                            if (!batchNo) {
+                                errorCount++;
+                                errorMessages.push(`Row ${i + 1}: missing batch number`);
+                                continue;
+                            }
+                            if (!normalizedExpiry) {
+                                errorCount++;
+                                errorMessages.push(`Row ${i + 1}: invalid expiry date`);
+                                continue;
+                            }
+                            if (!quantity) {
+                                errorCount++;
+                                errorMessages.push(`Row ${i + 1}: invalid quantity`);
+                                continue;
+                            }
+
+                            const totalCtnsValue = totalCtnsIdx >= 0 ? values[totalCtnsIdx] : null;
+                            const totalCtns = parsePositiveInteger(totalCtnsValue) || quantity;
+                            const cartonValue = cartonIdx >= 0 ? values[cartonIdx] : '';
+                            const cartonNo = (cartonValue && cartonValue.trim()) ? cartonValue.trim() : generateAutoCartonCode(i + 1);
+
                             const newRow = document.createElement('tr');
                             newRow.innerHTML = `
                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" value="${cartonIdx >= 0 ? (values[cartonIdx] || '') : ''}" placeholder="A1-98">
+                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" value="${escapeHtml(cartonNo)}" placeholder="A1-98">
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                    <input type="text" class="stock-description" style="width: 100%; padding: 8px;" value="${description}" required>
+                                    <input type="text" class="stock-description" style="width: 100%; padding: 8px;" value="${escapeHtml(description)}" required>
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                    <input type="text" class="stock-batch-no" style="width: 100%; padding: 8px;" value="${batchIdx >= 0 ? (values[batchIdx] || '') : ''}" placeholder="DP24265">
+                                    <input type="text" class="stock-batch-no" style="width: 100%; padding: 8px;" value="${escapeHtml(batchNo)}" placeholder="DP24265" required>
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                    <input type="month" class="stock-expiry-date" style="width: 100%; padding: 8px;" value="${expiryIdx >= 0 ? (values[expiryIdx] || '').substring(0, 7) : ''}" placeholder="YYYY-MM">
+                                    <input type="month" class="stock-expiry-date" style="width: 100%; padding: 8px;" value="${escapeHtml(normalizedExpiry)}" placeholder="YYYY-MM" required>
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                     <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" value="${quantity}" min="1" required>
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
-                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" value="${totalCtnsIdx >= 0 ? (values[totalCtnsIdx] || quantity) : quantity}" min="1" required>
+                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" value="${totalCtns}" min="1">
                                 </td>
                                 <td style="padding: 10px; border: 1px solid #ddd;">
                                     <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
@@ -32095,28 +32319,38 @@ async function reverseLastPrescriptionPayment(reportId){
                             tbody.appendChild(newRow);
                             successCount++;
                         }
-                        
-                        // Clean up
-                        document.body.removeChild(fileInput);
-                        
-                        // Show result
-                        if (successCount > 0) {
-                            alert(`✅ CSV imported successfully!\n${successCount} row(s) added${errorCount > 0 ? `\n${errorCount} row(s) skipped (missing data)` : ''}`);
-                        } else {
+
+                        if (successCount === 0) {
+                            if (tbody.children.length === 0) addStockImportRow();
                             alert('❌ No valid rows found in CSV file');
+                            if (errorMessages.length) {
+                                console.warn('CSV import skipped rows:', errorMessages);
+                            }
+                            return;
                         }
-                        
+
+                        let message = `✅ CSV imported successfully!\n${successCount} row(s) added.`;
+                        if (errorCount > 0) {
+                            const detailPreview = errorMessages.slice(0, 3).map(msg => `• ${msg}`).join('\n');
+                            message += `\n⚠️ ${errorCount} row(s) skipped.${detailPreview ? `\n${detailPreview}` : ''}`;
+                            if (errorMessages.length > 3) {
+                                message += '\n(See console for full list)';
+                                console.warn('CSV import skipped rows:', errorMessages);
+                            }
+                        }
+                        alert(message);
                     } catch (error) {
                         console.error('CSV import error:', error);
                         alert('❌ Error importing CSV: ' + error.message);
-                        document.body.removeChild(fileInput);
+                    } finally {
+                        if (fileInput.parentNode) {
+                            document.body.removeChild(fileInput);
+                        }
                     }
                 });
-                
-                // Trigger file picker
+
                 document.body.appendChild(fileInput);
                 fileInput.click();
-                
             } catch (error) {
                 console.error('Error setting up CSV import:', error);
                 alert('❌ Error: ' + error.message);
@@ -32168,21 +32402,48 @@ async function reverseLastPrescriptionPayment(reportId){
             const rows = document.querySelectorAll('#stockImportTableBody tr');
             const items = [];
             
-            // Validate and collect data
-            for (let row of rows) {
-                const cartonNo = row.querySelector('.stock-carton-no')?.value;
-                const description = row.querySelector('.stock-description')?.value;
-                const batchNo = row.querySelector('.stock-batch-no')?.value;
-                const expiryDate = row.querySelector('.stock-expiry-date')?.value;
-                const quantity = row.querySelector('.stock-quantity')?.value;
-                const totalCtns = row.querySelector('.stock-total-ctns')?.value;
-                
-                if (!cartonNo || !description || !batchNo || !expiryDate || !quantity || !totalCtns) {
-                    alert('Please fill all fields in every row');
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const rowNumber = i + 1;
+
+                const cartonInput = row.querySelector('.stock-carton-no');
+                const descriptionInput = row.querySelector('.stock-description');
+                const batchInput = row.querySelector('.stock-batch-no');
+                const expiryInput = row.querySelector('.stock-expiry-date');
+                const quantityInput = row.querySelector('.stock-quantity');
+                const totalCtnsInput = row.querySelector('.stock-total-ctns');
+
+                const description = (descriptionInput?.value || '').trim();
+                const batchNo = (batchInput?.value || '').trim();
+                const expiryRaw = expiryInput?.value || '';
+                const normalizedExpiry = normalizeExpiryInput(expiryRaw);
+                const quantity = parsePositiveInteger(quantityInput?.value);
+                let totalCtns = parsePositiveInteger(totalCtnsInput?.value);
+                let cartonNo = (cartonInput?.value || '').trim();
+
+                if (!description || !batchNo || !normalizedExpiry || !quantity) {
+                    alert(`Please provide Description, Batch, Expiry and Quantity for row ${rowNumber}.`);
                     return;
                 }
-                
-                items.push({ cartonNo, description, batchNo, expiryDate, quantity, totalCtns });
+
+                if (!cartonNo) {
+                    cartonNo = generateAutoCartonCode(rowNumber);
+                    if (cartonInput) cartonInput.value = cartonNo;
+                }
+
+                if (!totalCtns) {
+                    totalCtns = quantity;
+                    if (totalCtnsInput) totalCtnsInput.value = totalCtns;
+                }
+
+                if (expiryInput && expiryInput.value !== normalizedExpiry) {
+                    expiryInput.value = normalizedExpiry;
+                }
+                if (quantityInput && Number(quantityInput.value) !== quantity) {
+                    quantityInput.value = quantity;
+                }
+
+                items.push({ cartonNo, description, batchNo, expiryDate: normalizedExpiry, quantity, totalCtns });
             }
             
             // Import each item with barcode generation
