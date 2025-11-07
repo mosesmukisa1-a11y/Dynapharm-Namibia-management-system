@@ -85,7 +85,8 @@ async function main() {
     // List of migrations in order
     const migrations = [
       '001_add_agreement_data.sql',
-      '002_create_shared_tables.sql'
+      '002_create_shared_tables.sql',
+      '003_create_file_uploads_table.sql'
     ];
     
     for (const migration of migrations) {

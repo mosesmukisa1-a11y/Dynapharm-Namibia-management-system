@@ -737,9 +737,6 @@
                 <li id="adminNavItem" style="display: none;">
                     <a href="#" onclick="openTab('admin', event); return false;">Administrator (<span id="adminNavName">admin</span>)</a>
                 </li>
-                <li id="landingEditorNavItem" style="display: none;">
-                    <a href="#" onclick="openLandingPageEditor(); return false;" style="color: var(--brand-color); font-weight: 600;">✏️ Edit Landing Page</a>
-                </li>
                 <li id="logoutNavItem" style="display: none;"><a href="#" onclick="logout(); return false;">Logout</a></li>
                 <li id="loginNavItem"><button class="btn-login" onclick="openLoginModal()">Login / Register</button></li>
             </ul>
@@ -843,6 +840,7 @@
                 <button class="distributor-tab-btn" onclick="showDistributorTab('checkup')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">🏥 Full Body Check Up</button>
                 <button class="distributor-tab-btn" onclick="showDistributorTab('media')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">📰 Media & News</button>
                 <button class="distributor-tab-btn" onclick="showDistributorTab('testimonials')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">💬 Testimonials</button>
+                <button class="distributor-tab-btn" id="landingEditorButton" style="display: none; background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;" onclick="openLandingEditorFromButton(event)">✏️ Edit Landing Page</button>
                 <a href="distributor-portal.html" target="_blank" class="distributor-tab-btn" style="text-decoration: none; display: inline-block; background: var(--brand-color); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">📊 Distributor Dashboard</a>
             </div>
         </div>
@@ -1071,6 +1069,10 @@
             <!-- Distributor Login/Register Form -->
             <div id="distributor-form" class="modal-form active">
                 <div class="form-group">
+                    <label>Search Distributor</label>
+                    <input type="text" id="distributorSearch" placeholder="Type name, code or branch" oninput="filterDistributorOptions(this.value)">
+                </div>
+                <div class="form-group">
                     <label>Select Distributor Account *</label>
                     <select id="distributorSelect" required>
                         <option value="">-- Select your distributor --</option>
@@ -1082,10 +1084,44 @@
                     <input type="date" id="distributorDOB" required>
                     <div class="error-message" id="distributorDOBError"></div>
                 </div>
-                <button class="btn-submit" onclick="handleDistributorLogin()">Login / Register</button>
-                <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
-                    New distributors must be registered by a branch manager. Contact your branch for registration.
-                </p>
+                <div id="distributorLoginActions">
+                    <button class="btn-submit" id="distributorLoginButton" onclick="handleDistributorLogin()">Continue</button>
+                    <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-light); text-align: center;">
+                        New distributors must be registered by a branch manager. Contact your branch for registration.
+                    </p>
+                </div>
+
+                <div id="distributorPasswordSection" style="display: none; margin-top: 20px; padding: 20px; background: var(--bg-light); border-radius: 10px;">
+                    <h4 id="distributorPasswordHeading" style="color: var(--brand-color); margin-bottom: 10px;">Enter Password</h4>
+                    <p id="distributorPasswordSubtext" style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 15px;">Please enter your distributor portal password.</p>
+
+                    <div id="distributorLoginFields">
+                        <div class="form-group">
+                            <label>Password *</label>
+                            <input type="password" id="distributorPassword" placeholder="Enter your password">
+                        </div>
+                    </div>
+
+                    <div id="distributorSetupFields" style="display: none;">
+                        <div class="form-group">
+                            <label>Create Password *</label>
+                            <input type="password" id="distributorNewPassword" placeholder="Create a strong password (min 8 characters)">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirm Password *</label>
+                            <input type="password" id="distributorConfirmPassword" placeholder="Re-enter password">
+                        </div>
+                    </div>
+
+                    <div class="error-message" id="distributorPasswordError"></div>
+                    <div class="success-message" id="distributorPasswordSuccess" style="display:none;">Password updated successfully. Redirecting you now...</div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                        <button class="btn-submit" id="distributorPasswordSubmit" onclick="submitDistributorPassword()">Continue</button>
+                        <button type="button" class="btn-submit" style="background: var(--border); color: var(--text-dark);" onclick="resetDistributorAuthFlow()">Back</button>
+                        <button type="button" class="btn-submit" style="background: transparent; color: var(--brand-color);" onclick="showDistributorResetInfo()">Forgot password?</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Staff Login Form -->
@@ -1269,6 +1305,10 @@
         // Global state
         let allProducts = [];
         let allDistributors = [];
+        let filteredDistributors = [];
+        let distributorIndex = {};
+        let currentDistributorSelection = null;
+        let distributorAuthMode = 'login';
         let users = [];
 
         // Section Navigation
@@ -1300,12 +1340,15 @@
             // Reset forms
             document.getElementById('distributorSelect').value = '';
             document.getElementById('distributorDOB').value = '';
+            const searchInput = document.getElementById('distributorSearch');
+            if (searchInput) searchInput.value = '';
             document.getElementById('staffUsername').value = '';
             document.getElementById('staffPassword').value = '';
             document.getElementById('adminUsername').value = '';
             document.getElementById('adminPassword').value = '';
             // Clear errors
             document.querySelectorAll('.error-message').forEach(el => el.classList.remove('show'));
+            resetDistributorAuthFlow(true);
         }
 
         function switchModalTab(tab) {
@@ -1319,69 +1362,386 @@
         }
 
         // Load distributors for login dropdown
-        async function loadDistributorsForLogin() {
+        async function loadDistributorsForLogin(forceRefresh = false) {
             const select = document.getElementById('distributorSelect');
-            select.innerHTML = '<option value="">Loading distributors...</option>';
-            
-            try {
-                // Try database API first (primary source)
-                const response = await fetch('/api/distributors');
-                if (response.ok) {
-                    allDistributors = await response.json();
-                    console.log(`Loaded ${allDistributors.length} distributors from database`);
-                } else {
-                    // Fallback 1: localStorage cache
-                    const cached = localStorage.getItem('dyna_distributors_cache');
-                    if (cached) {
-                        const parsed = JSON.parse(cached);
-                        const age = Date.now() - (parsed.timestamp || 0);
-                        if (age < 3600000 && parsed.data && parsed.data.length > 0) { // 1 hour cache
-                            allDistributors = parsed.data;
-                            console.log(`Loaded ${allDistributors.length} distributors from cache`);
-                        }
-                    }
-                    
-                    // Fallback 2: localStorage direct
-                    if (allDistributors.length === 0) {
-                        const stored = localStorage.getItem('dyna_distributors');
-                        if (stored) {
-                            allDistributors = JSON.parse(stored);
-                            console.log(`Loaded ${allDistributors.length} distributors from localStorage`);
-                        }
-                    }
-                }
-                
-                // Populate dropdown
-                select.innerHTML = '<option value="">-- Select your distributor --</option>';
-                
-                if (allDistributors.length === 0) {
-                    select.innerHTML += '<option value="" disabled>No distributors found. Please contact your branch manager for registration.</option>';
-                    return;
-                }
-                
-                // Sort by name for easier selection
-                const sorted = [...allDistributors].sort((a, b) => {
-                    const nameA = (a.distributor_name || a.distributorName || a.name || '').toLowerCase();
-                    const nameB = (b.distributor_name || b.distributorName || b.name || '').toLowerCase();
-                    return nameA.localeCompare(nameB);
-                });
-                
-                sorted.forEach(dist => {
-                    const code = (dist.distributor_code || dist.distributorCode || dist.code || '').toString().toUpperCase().trim();
-                    const name = (dist.distributor_name || dist.distributorName || dist.name || '').trim();
-                    if (code && name) {
-                        const option = document.createElement('option');
-                        option.value = code;
-                        option.textContent = `${code} - ${name}`;
-                        option.dataset.distributorId = dist.id;
-                        option.dataset.dob = dist.birthdate || dist.birth_date || '';
-                        select.appendChild(option);
-                    }
-                });
-            } catch (error) {
-                console.error('Error loading distributors:', error);
-                select.innerHTML = '<option value="">Error loading distributors. Please refresh and try again.</option>';
+            const searchInput = document.getElementById('distributorSearch');
+            if (!select) return;
+
+            if (!forceRefresh && allDistributors.length > 0) {
+                if (searchInput) searchInput.value = '';
+                filteredDistributors = [...allDistributors];
+                renderDistributorOptions(filteredDistributors);
+                return;
             }
+
+            select.innerHTML = '<option value="">Loading distributors...</option>';
+
+            let distributors = [];
+            let apiError = null;
+
+            try {
+                const response = await fetch('/api/distributors?status=active');
+                if (!response.ok) {
+                    throw new Error(`API responded with ${response.status}`);
+                }
+
+                const payload = await response.json();
+                distributors = normalizeDistributorPayload(payload);
+                localStorage.setItem('dyna_distributors_cache', JSON.stringify({
+                    timestamp: Date.now(),
+                    data: distributors
+                }));
+                console.log(`Loaded ${distributors.length} distributors from API`);
+            } catch (error) {
+                apiError = error;
+                console.warn('Distributor API unavailable, using cached data if available', error);
+
+                const cached = localStorage.getItem('dyna_distributors_cache');
+                if (cached) {
+                    try {
+                        const parsed = JSON.parse(cached);
+                        if (parsed && Array.isArray(parsed.data)) {
+                            distributors = normalizeDistributorPayload(parsed.data);
+                            console.log(`Loaded ${distributors.length} distributors from cache`);
+                        }
+                    } catch (cacheError) {
+                        console.error('Error parsing distributor cache', cacheError);
+                    }
+                }
+
+                if (distributors.length === 0) {
+                    const stored = localStorage.getItem('dyna_distributors');
+                    if (stored) {
+                        try {
+                            const parsedStored = JSON.parse(stored);
+                            distributors = normalizeDistributorPayload(parsedStored);
+                            console.log(`Loaded ${distributors.length} distributors from localStorage fallback`);
+                        } catch (storedError) {
+                            console.error('Error parsing distributor localStorage fallback', storedError);
+                        }
+                    }
+                }
+            }
+
+            allDistributors = distributors;
+            filteredDistributors = [...allDistributors];
+            buildDistributorIndex(allDistributors);
+
+            if (searchInput) searchInput.value = '';
+
+            if (allDistributors.length === 0) {
+                select.innerHTML = apiError
+                    ? '<option value="" disabled>Unable to load distributors. Please contact support.</option>'
+                    : '<option value="" disabled>No distributors found. Please contact your branch manager for registration.</option>';
+                return;
+            }
+
+            renderDistributorOptions(filteredDistributors);
+        }
+
+        function normalizeDistributorPayload(payload) {
+            const list = Array.isArray(payload)
+                ? payload
+                : Array.isArray(payload?.data)
+                    ? payload.data
+                    : Array.isArray(payload?.distributors)
+                        ? payload.distributors
+                        : [];
+
+            return list
+                .map(normalizeDistributorRecord)
+                .filter(Boolean);
+        }
+
+        function normalizeDistributorRecord(raw) {
+            if (!raw) return null;
+
+            const code = (raw.distributor_code || raw.distributorCode || raw.code || raw.memberCode || raw.member_code || '')
+                .toString()
+                .toUpperCase()
+                .trim();
+            const name = (raw.distributor_name || raw.distributorName || raw.name || raw.fullName || raw.full_name || '').trim();
+
+            if (!code || !name) return null;
+
+            const dobRaw = raw.birthdate || raw.birth_date || raw.dob || raw.dateOfBirth || '';
+            const dob = dobRaw ? new Date(dobRaw).toISOString().split('T')[0] : '';
+
+            return {
+                id: raw.id || raw._id || raw.distributorId || raw.uuid || code,
+                code,
+                name,
+                branch: raw.branch || raw.branchName || raw.branch_name || raw.location || '',
+                dob,
+                phone: raw.phone || raw.contact || raw.phoneNumber || raw.contact_number || '',
+                email: raw.email || raw.contactEmail || '',
+                hasPassword: Boolean(raw.hasPassword ?? raw.passwordSet ?? raw.password_hash ?? raw.passwordHash)
+            };
+        }
+
+        function buildDistributorIndex(list) {
+            distributorIndex = {};
+            list.forEach(item => {
+                distributorIndex[item.code] = item;
+            });
+        }
+
+        function renderDistributorOptions(list) {
+            const select = document.getElementById('distributorSelect');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">-- Select your distributor --</option>';
+
+            const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
+
+            sorted.forEach(dist => {
+                const option = document.createElement('option');
+                option.value = dist.code;
+                option.textContent = dist.branch
+                    ? `${dist.code} - ${dist.name} (${dist.branch})`
+                    : `${dist.code} - ${dist.name}`;
+                option.dataset.distributorId = dist.id;
+                option.dataset.dob = dist.dob || '';
+                option.dataset.hasPassword = dist.hasPassword ? 'true' : 'false';
+                option.dataset.branch = dist.branch || '';
+                select.appendChild(option);
+            });
+
+            if (sorted.length === 0) {
+                select.innerHTML = '<option value="" disabled>No distributors match your search.</option>';
+            }
+        }
+
+        function filterDistributorOptions(searchTerm = '') {
+            const term = (searchTerm || '').toLowerCase().trim();
+            if (!term) {
+                filteredDistributors = [...allDistributors];
+            } else {
+                filteredDistributors = allDistributors.filter(dist => {
+                    return (
+                        dist.code.toLowerCase().includes(term) ||
+                        dist.name.toLowerCase().includes(term) ||
+                        dist.branch.toLowerCase().includes(term)
+                    );
+                });
+            }
+
+            renderDistributorOptions(filteredDistributors);
+        }
+
+        function showDistributorPasswordForm(mode = 'login') {
+            distributorAuthMode = mode;
+            const passwordSection = document.getElementById('distributorPasswordSection');
+            const loginActions = document.getElementById('distributorLoginActions');
+            const heading = document.getElementById('distributorPasswordHeading');
+            const subtext = document.getElementById('distributorPasswordSubtext');
+            const loginFields = document.getElementById('distributorLoginFields');
+            const setupFields = document.getElementById('distributorSetupFields');
+            const errorDiv = document.getElementById('distributorPasswordError');
+            const successDiv = document.getElementById('distributorPasswordSuccess');
+            const submitButton = document.getElementById('distributorPasswordSubmit');
+
+            if (!passwordSection) return;
+
+            if (loginActions) loginActions.style.display = 'none';
+            passwordSection.style.display = 'block';
+            if (errorDiv) {
+                errorDiv.textContent = '';
+                errorDiv.classList.remove('show');
+            }
+            if (successDiv) successDiv.style.display = 'none';
+
+            const distributorName = currentDistributorSelection?.name || 'Distributor';
+
+            if (mode === 'setup') {
+                if (heading) heading.textContent = `Create a Password (${distributorName})`;
+                if (subtext) subtext.textContent = 'Create a strong password to access the distributor portal. Minimum 8 characters.';
+                if (loginFields) loginFields.style.display = 'none';
+                if (setupFields) setupFields.style.display = 'block';
+                if (submitButton) submitButton.textContent = 'Save Password & Continue';
+            } else {
+                if (heading) heading.textContent = `Enter Password (${distributorName})`;
+                if (subtext) subtext.textContent = 'Enter your distributor portal password to continue.';
+                if (loginFields) loginFields.style.display = 'block';
+                if (setupFields) setupFields.style.display = 'none';
+                if (submitButton) submitButton.textContent = 'Login';
+            }
+
+            const passwordInput = document.getElementById('distributorPassword');
+            const newPasswordInput = document.getElementById('distributorNewPassword');
+            const confirmPasswordInput = document.getElementById('distributorConfirmPassword');
+            if (passwordInput) passwordInput.value = '';
+            if (newPasswordInput) newPasswordInput.value = '';
+            if (confirmPasswordInput) confirmPasswordInput.value = '';
+
+            if (mode === 'login' && passwordInput) passwordInput.focus();
+            if (mode === 'setup' && newPasswordInput) newPasswordInput.focus();
+        }
+
+        function resetDistributorAuthFlow(resetSelection = false) {
+            const passwordSection = document.getElementById('distributorPasswordSection');
+            const loginActions = document.getElementById('distributorLoginActions');
+            const passwordInput = document.getElementById('distributorPassword');
+            const newPasswordInput = document.getElementById('distributorNewPassword');
+            const confirmPasswordInput = document.getElementById('distributorConfirmPassword');
+            const errorDiv = document.getElementById('distributorPasswordError');
+            const successDiv = document.getElementById('distributorPasswordSuccess');
+
+            if (passwordSection) passwordSection.style.display = 'none';
+            if (loginActions) loginActions.style.display = 'block';
+            if (passwordInput) passwordInput.value = '';
+            if (newPasswordInput) newPasswordInput.value = '';
+            if (confirmPasswordInput) confirmPasswordInput.value = '';
+            if (errorDiv) {
+                errorDiv.textContent = '';
+                errorDiv.classList.remove('show');
+            }
+            if (successDiv) successDiv.style.display = 'none';
+
+            if (resetSelection) {
+                currentDistributorSelection = null;
+                distributorAuthMode = 'login';
+                const select = document.getElementById('distributorSelect');
+                if (select) select.selectedIndex = 0;
+                const dobInput = document.getElementById('distributorDOB');
+                if (dobInput) dobInput.value = '';
+            }
+        }
+
+        async function submitDistributorPassword() {
+            if (!currentDistributorSelection) {
+                alert('Please select your distributor account first.');
+                resetDistributorAuthFlow(true);
+                return;
+            }
+
+            const errorDiv = document.getElementById('distributorPasswordError');
+            const successDiv = document.getElementById('distributorPasswordSuccess');
+            if (errorDiv) {
+                errorDiv.textContent = '';
+                errorDiv.classList.remove('show');
+            }
+            if (successDiv) successDiv.style.display = 'none';
+
+            const submitButton = document.getElementById('distributorPasswordSubmit');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = distributorAuthMode === 'setup' ? 'Saving...' : 'Signing in...';
+            }
+
+            try {
+                if (distributorAuthMode === 'setup') {
+                    const newPassword = (document.getElementById('distributorNewPassword')?.value || '').trim();
+                    const confirmPassword = (document.getElementById('distributorConfirmPassword')?.value || '').trim();
+
+                    if (!newPassword || !confirmPassword) {
+                        throw new Error('Please enter and confirm your new password.');
+                    }
+                    if (newPassword.length < 8) {
+                        throw new Error('Password must be at least 8 characters long.');
+                    }
+                    if (newPassword !== confirmPassword) {
+                        throw new Error('Passwords do not match. Please re-enter.');
+                    }
+
+                    const response = await fetch(`/api/distributors/${encodeURIComponent(currentDistributorSelection.id)}/set-password`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            password: newPassword,
+                            distributorCode: currentDistributorSelection.code
+                        })
+                    });
+
+                    if (!response.ok) {
+                        let message = 'Failed to save password. Please try again.';
+                        try {
+                            const payload = await response.json();
+                            if (payload?.message) message = payload.message;
+                        } catch {}
+                        throw new Error(message);
+                    }
+
+                    if (successDiv) {
+                        successDiv.textContent = 'Password created successfully. Logging you in...';
+                        successDiv.style.display = 'block';
+                    }
+
+                    currentDistributorSelection.hasPassword = true;
+                    if (distributorIndex[currentDistributorSelection.code]) {
+                        distributorIndex[currentDistributorSelection.code].hasPassword = true;
+                    }
+                    distributorAuthMode = 'login';
+                    setTimeout(() => {
+                        completeDistributorLogin(newPassword);
+                    }, 1000);
+                } else {
+                    const password = (document.getElementById('distributorPassword')?.value || '').trim();
+                    if (!password) {
+                        throw new Error('Please enter your password.');
+                    }
+
+                    await completeDistributorLogin(password);
+                }
+            } catch (error) {
+                console.error('Distributor password submission error:', error);
+                if (errorDiv) {
+                    errorDiv.textContent = error.message || 'Authentication failed. Please try again.';
+                    errorDiv.classList.add('show');
+                }
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = distributorAuthMode === 'setup' ? 'Save Password & Continue' : 'Login';
+                }
+            }
+        }
+
+        async function completeDistributorLogin(password) {
+            const errorDiv = document.getElementById('distributorPasswordError');
+
+            const response = await fetch('/api/distributor-login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    distributorCode: currentDistributorSelection.code,
+                    password
+                })
+            });
+
+            if (!response.ok) {
+                let message = 'Invalid credentials. Please try again or contact support.';
+                try {
+                    const payload = await response.json();
+                    if (payload?.message) message = payload.message;
+                } catch {}
+                throw new Error(message);
+            }
+
+            try {
+                const session = await response.json();
+                localStorage.setItem('dyna_distributor_session', JSON.stringify({
+                    distributorCode: currentDistributorSelection.code,
+                    distributorId: currentDistributorSelection.id,
+                    name: currentDistributorSelection.name,
+                    branch: currentDistributorSelection.branch,
+                    token: session?.token || null,
+                    expiresAt: session?.expiresAt || null
+                }));
+            } catch (sessionError) {
+                console.warn('Could not parse distributor session payload', sessionError);
+            }
+
+            closeLoginModal();
+            window.location.href = `distributor-portal.html?nb=${encodeURIComponent(currentDistributorSelection.code)}`;
+        }
+
+        function showDistributorResetInfo() {
+            alert('Please contact your branch administrator or system admin to reset your distributor portal password.');
         }
 
         // Handle Distributor Login
@@ -1395,7 +1755,7 @@
             errorDiv.classList.remove('show');
             dobErrorDiv.classList.remove('show');
             
-            const selectedCode = select.value;
+            const selectedCode = select.value.toUpperCase();
             const dob = dobInput.value;
             
             if (!selectedCode) {
@@ -1410,21 +1770,25 @@
                 return;
             }
             
-            // Find selected distributor
-            const selectedOption = select.options[select.selectedIndex];
-            const storedDOB = selectedOption.dataset.dob;
-            
-            if (storedDOB) {
-                const storedDate = new Date(storedDOB).toISOString().split('T')[0];
-                if (storedDate !== dob) {
-                    dobErrorDiv.textContent = 'Date of birth does not match. Please check and try again.';
+            const selectedDistributor = distributorIndex[selectedCode];
+            if (!selectedDistributor) {
+                errorDiv.textContent = 'Distributor not found. Please refresh and try again.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            if (selectedDistributor.dob) {
+                if (dob !== selectedDistributor.dob) {
+                    dobErrorDiv.textContent = 'Date of birth does not match our records. Please double-check and try again.';
                     dobErrorDiv.classList.add('show');
                     return;
                 }
             }
-            
-            // Redirect to distributor portal
-            window.location.href = `distributor-portal.html?nb=${encodeURIComponent(selectedCode)}&dob=${encodeURIComponent(dob)}`;
+
+            currentDistributorSelection = selectedDistributor;
+
+            const hasPassword = Boolean(selectedDistributor.hasPassword);
+            showDistributorPasswordForm(hasPassword ? 'login' : 'setup');
         }
 
         // Handle Staff Login
@@ -1495,7 +1859,7 @@
                 
                 // Show landing page editor for admin users
                 if (role === 'admin') {
-                    document.getElementById('landingEditorNavItem').style.display = 'block';
+                    toggleLandingEditorButton(true);
                 }
                 
                 document.getElementById('portalTabs').style.display = 'block';
@@ -1590,7 +1954,7 @@
                 document.getElementById('logoutNavItem').style.display = 'block';
                 document.getElementById('loginNavItem').style.display = 'none';
                 document.getElementById('adminNavName').textContent = user.username || 'admin';
-                document.getElementById('landingEditorNavItem').style.display = 'block';
+                toggleLandingEditorButton(true);
                 document.getElementById('portalTabs').style.display = 'block';
                 
                 // Redirect to admin portal
@@ -2561,6 +2925,20 @@
                 event.target.style.color = 'white';
             }
         }
+
+        function toggleLandingEditorButton(visible) {
+            const button = document.getElementById('landingEditorButton');
+            if (!button) return;
+            button.style.display = visible ? 'inline-block' : 'none';
+        }
+
+        function openLandingEditorFromButton(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            openLandingPageEditor();
+        }
         
         function logout() {
             localStorage.removeItem('currentUser');
@@ -2568,7 +2946,7 @@
             document.getElementById('portalTabs').style.display = 'none';
             document.getElementById('distributorSubTabs').style.display = 'none';
             document.getElementById('adminNavItem').style.display = 'none';
-            document.getElementById('landingEditorNavItem').style.display = 'none';
+            toggleLandingEditorButton(false);
             document.getElementById('logoutNavItem').style.display = 'none';
             document.getElementById('loginNavItem').style.display = 'block';
             window.location.reload();
@@ -2757,6 +3135,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadShopProducts();
             loadLandingPageContent();
+            toggleLandingEditorButton(false);
             
             // Check if user is logged in
             const currentUser = localStorage.getItem('currentUser');
@@ -2769,7 +3148,7 @@
             document.getElementById('adminNavName').textContent = user.username || 'admin';
             const userRole = user.role || localStorage.getItem('currentUserRole') || '';
             if (userRole === 'admin') {
-                document.getElementById('landingEditorNavItem').style.display = 'block';
+                toggleLandingEditorButton(true);
             }
             document.getElementById('portalTabs').style.display = 'block';
             document.getElementById('distributorSubTabs').style.display = 'block';
