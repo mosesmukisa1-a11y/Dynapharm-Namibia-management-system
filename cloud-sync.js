@@ -37,51 +37,56 @@ class CloudStorage {
             const prev = (typeof localStorage !== 'undefined') ? (localStorage.getItem(this.lastCloudSyncKey) || '') : '';
             const incomingLastSync = cloudData.lastSync || '';
             const hasChange = !prev || (incomingLastSync && incomingLastSync !== prev);
-            // Merge cloud data with local data, keeping newer versions
-            // Merge cloud data with local data, keeping newer versions
-            if (cloudData.clients) {
-                localStorage.setItem('dyna_clients', JSON.stringify(cloudData.clients));
+
+            if (hasChange) {
+                // Merge cloud data with local data, keeping newer versions
+                if (cloudData.clients) {
+                    localStorage.setItem('dyna_clients', JSON.stringify(cloudData.clients));
+                }
+                if (cloudData.reports) {
+                    localStorage.setItem('dyna_reports', JSON.stringify(cloudData.reports));
+                }
+                if (cloudData.users) {
+                    localStorage.setItem('dyna_users', JSON.stringify(cloudData.users));
+                }
+                if (cloudData.branches) {
+                    localStorage.setItem('dyna_branches', JSON.stringify(cloudData.branches));
+                }
+                if (cloudData.barcodeStock) {
+                    localStorage.setItem('dyna_barcode_stock', JSON.stringify(cloudData.barcodeStock));
+                }
+                if (cloudData.purchaseOrders) {
+                    localStorage.setItem('dyna_purchase_orders', JSON.stringify(cloudData.purchaseOrders));
+                }
+                if (cloudData.walkInSales) {
+                    localStorage.setItem('dyna_walkin_sales', JSON.stringify(cloudData.walkInSales));
+                }
+                if (cloudData.cashDrawer) {
+                    localStorage.setItem('dyna_cash_drawer', JSON.stringify(cloudData.cashDrawer));
+                }
+                if (cloudData.onlineOrders) {
+                    localStorage.setItem('dyna_online_orders', JSON.stringify(cloudData.onlineOrders));
+                }
+                if (cloudData.productPhotos) {
+                    localStorage.setItem('dyna_product_photos', JSON.stringify(cloudData.productPhotos));
+                }
+                if (cloudData.branchStock) {
+                    localStorage.setItem('dyna_branch_stock', JSON.stringify(cloudData.branchStock));
+                }
+                if (cloudData.scanAdjustments) {
+                    localStorage.setItem('dyna_scan_adjustments', JSON.stringify(cloudData.scanAdjustments));
+                }
+                if (cloudData.appointments) {
+                    localStorage.setItem('dyna_consult_appointments', JSON.stringify(cloudData.appointments));
+                }
+                if (incomingLastSync) {
+                    try { localStorage.setItem(this.lastCloudSyncKey, incomingLastSync); } catch(_) {}
+                }
+                console.log('✅ Synced cloud data to local storage');
+            } else {
+                console.log('⏭️ Cloud data unchanged; keeping local stock state.');
             }
-            if (cloudData.reports) {
-                localStorage.setItem('dyna_reports', JSON.stringify(cloudData.reports));
-            }
-            if (cloudData.users) {
-                localStorage.setItem('dyna_users', JSON.stringify(cloudData.users));
-            }
-            if (cloudData.branches) {
-                localStorage.setItem('dyna_branches', JSON.stringify(cloudData.branches));
-            }
-            if (cloudData.barcodeStock) {
-                localStorage.setItem('dyna_barcode_stock', JSON.stringify(cloudData.barcodeStock));
-            }
-            if (cloudData.purchaseOrders) {
-                localStorage.setItem('dyna_purchase_orders', JSON.stringify(cloudData.purchaseOrders));
-            }
-            if (cloudData.walkInSales) {
-                localStorage.setItem('dyna_walkin_sales', JSON.stringify(cloudData.walkInSales));
-            }
-            if (cloudData.cashDrawer) {
-                localStorage.setItem('dyna_cash_drawer', JSON.stringify(cloudData.cashDrawer));
-            }
-            if (cloudData.onlineOrders) {
-                localStorage.setItem('dyna_online_orders', JSON.stringify(cloudData.onlineOrders));
-            }
-            if (cloudData.productPhotos) {
-                localStorage.setItem('dyna_product_photos', JSON.stringify(cloudData.productPhotos));
-            }
-            if (cloudData.branchStock) {
-                localStorage.setItem('dyna_branch_stock', JSON.stringify(cloudData.branchStock));
-            }
-            if (cloudData.scanAdjustments) {
-                localStorage.setItem('dyna_scan_adjustments', JSON.stringify(cloudData.scanAdjustments));
-            }
-            if (cloudData.appointments) {
-                localStorage.setItem('dyna_consult_appointments', JSON.stringify(cloudData.appointments));
-            }
-            if (incomingLastSync) {
-                try { localStorage.setItem(this.lastCloudSyncKey, incomingLastSync); } catch(_) {}
-            }
-            console.log('✅ Synced cloud data to local storage');
+
             try {
                 if (hasChange && typeof window !== 'undefined') {
                     const evt = new CustomEvent('cloud-sync:updated', { detail: { lastSync: incomingLastSync } });

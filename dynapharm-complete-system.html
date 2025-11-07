@@ -4439,6 +4439,33 @@
                     </form>
                 </div>
             </div>
+
+            <div id="frontdeskStaffServices" class="order-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>👤 Staff Services</h3>
+                    <p style="color:#64748b; margin-bottom:18px;">Submit your own leave and cash requests directly from the front desk portal.</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        <div style="background: #e8f5e9; padding: 20px; border-radius: 12px; border: 2px solid #4caf50;">
+                            <h4 style="color: #2e7d32; margin-bottom: 12px;">📅 Leave Management</h4>
+                            <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Request time off and track approvals.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffLeaveRequest('frontdesk')">Request Leave</button>
+                                <button class="btn btn-info" onclick="viewMyLeaveRequests('frontdesk')">My Requests</button>
+                            </div>
+                            <div id="staffLeaveStatus-frontdesk" style="margin-top: 15px;"></div>
+                        </div>
+                        <div style="background: #e3f2fd; padding: 20px; border-radius: 12px; border: 2px solid #2196f3;">
+                            <h4 style="color: #1565c0; margin-bottom: 12px;">💵 Cash Support</h4>
+                            <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash or reimbursements.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffCashRequest('frontdesk')">Request Cash</button>
+                                <button class="btn btn-info" onclick="viewMyCashRequests('frontdesk')">My Requests</button>
+                            </div>
+                            <div id="staffCashStatus-frontdesk" style="margin-top: 15px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <!-- Processing Orders Tab -->
             <div id="processingOrders" class="order-tab-content" style="display: none;">
@@ -4666,9 +4693,15 @@
                 </div>
             </div>
             <div id="consultantContent" style="display: none;">
-                <div class="user-profile" id="consultantProfile"></div>
-                
-                <div class="portal-header">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                    <button id="consultantMainTabBtn" class="btn btn-primary" onclick="toggleConsultantView('main')" style="min-width: 150px;">🗂️ Portal Tools</button>
+                    <button id="consultantStaffTabBtn" class="btn" onclick="toggleConsultantView('staff')" style="min-width: 150px;">👤 Staff Services</button>
+                </div>
+
+                <div id="consultantMainSection">
+                    <div class="user-profile" id="consultantProfile"></div>
+                    
+                    <div class="portal-header">
                     <h2>👨‍⚕️ Consultant Portal - Client Management</h2>
                     <p>Review client information and create medical reports</p>
                 </div>
@@ -4744,6 +4777,34 @@
                     <h3>🔗 Client Booking Page</h3>
                     <button class="btn btn-success" onclick="showClientBookingPage()">🌐 Open Client Booking Page</button>
                     <button class="btn btn-info" onclick="copyBookingLink()">📋 Copy Booking Link</button>
+                </div>
+                </div>
+
+                <div id="consultantStaffSection" style="display: none;">
+                    <div class="form-section">
+                        <h3>👤 Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Consultants can request leave or cash advances without leaving the portal.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Book time off and check approval status.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('consultant')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('consultant')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-consultant" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request petty cash or reimbursements.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('consultant')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('consultant')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-consultant" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -7232,6 +7293,7 @@
                 <button class="hr-tab-btn" onclick="showHRSubTab('performance')">📊 Performance Review</button>
                 <button class="hr-tab-btn" onclick="showHRSubTab('hr-communication')">💬 Staff Communication</button>
                 <button class="hr-tab-btn" onclick="showHRSubTab('data-collection')">📋 Data Collection</button>
+                <button class="hr-tab-btn" onclick="showHRSubTab('staff-self-service')">👤 Staff Services</button>
             </div>
 
             <!-- Employee Management Tab -->
@@ -8707,6 +8769,13 @@
         <div id="finance" class="tab-content">
             <h2>💰 Finance Portal</h2>
             
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                <button id="financeMainTabBtn" class="btn btn-primary" onclick="toggleFinanceView('main')" style="min-width: 180px;">📊 Finance Dashboard</button>
+                <button id="financeStaffTabBtn" class="btn" onclick="toggleFinanceView('staff')" style="min-width: 180px;">👤 Staff Services</button>
+            </div>
+
+            <div id="financeMainSection">
+            
             <!-- Branch Selector -->
             <div class="form-section" style="background: #f8f9fa; padding: 15px; margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 10px; font-weight: bold;">Select Branch:</label>
@@ -9091,6 +9160,34 @@
                     <p style="text-align: center; color: #7f8c8d;">Select a report to view</p>
                 </div>
             </div>
+            </div>
+
+            <div id="financeStaffSection" style="display: none;">
+                <div class="form-section">
+                    <h3>👤 Finance Team Self-Service</h3>
+                    <p style="color:#64748b; margin-bottom:18px;">Finance users can request leave or cash while staying in this portal.</p>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                            <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                            <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Schedule time off and monitor approval status.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffLeaveRequest('finance')">Request Leave</button>
+                                <button class="btn btn-info" onclick="viewMyLeaveRequests('finance')">My Requests</button>
+                            </div>
+                            <div id="staffLeaveStatus-finance" style="margin-top:15px;"></div>
+                        </div>
+                        <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                            <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                            <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request cash advances or reimbursements as needed.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffCashRequest('finance')">Request Cash</button>
+                                <button class="btn btn-info" onclick="viewMyCashRequests('finance')">My Requests</button>
+                            </div>
+                            <div id="staffCashStatus-finance" style="margin-top:15px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- MIS Portal -->
@@ -9320,6 +9417,33 @@
             </form>
         </div>
     </div>
+
+            <div id="staff-self-service" class="hr-tab-content" style="display: none;">
+                <div class="form-section">
+                    <h3>👤 Staff Self-Service</h3>
+                    <p style="color:#64748b; margin-bottom:18px;">HR team members can still submit their own leave and cash requests here.</p>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                            <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                            <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Send a personal leave request for approval.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffLeaveRequest('hr')">Request Leave</button>
+                                <button class="btn btn-info" onclick="viewMyLeaveRequests('hr')">My Requests</button>
+                            </div>
+                            <div id="staffLeaveStatus-hr" style="margin-top:15px;"></div>
+                        </div>
+                        <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                            <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                            <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request HR petty cash or reimbursements.</p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn btn-success" onclick="openStaffCashRequest('hr')">Request Cash</button>
+                                <button class="btn btn-info" onclick="viewMyCashRequests('hr')">My Requests</button>
+                            </div>
+                            <div id="staffCashStatus-hr" style="margin-top:15px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
     <!-- Walk-in Sale Confirmation Modal -->
     <div class="modal" id="walkInSaleConfirmationModal">
@@ -15111,6 +15235,32 @@ async function logout() {
             if (branchFilter) branchFilter.value = '';
             displayClients();
         }
+
+        function toggleConsultantView(view) {
+            const mainSection = document.getElementById('consultantMainSection');
+            const staffSection = document.getElementById('consultantStaffSection');
+            const mainBtn = document.getElementById('consultantMainTabBtn');
+            const staffBtn = document.getElementById('consultantStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('consultant');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        registerStaffServicesContext('consultant', {
+            leaveStatusId: 'staffLeaveStatus-consultant',
+            cashStatusId: 'staffCashStatus-consultant'
+        });
 
         async function refreshConsultantData() {
             await loadData();
@@ -35554,8 +35704,15 @@ async function reverseLastPrescriptionPayment(reportId){
                     const hrField = document.getElementById('dcHROfficer');
                     if(hrField) hrField.value = currentUser.fullName || currentUser.username || '';
                 }
+            } else if (tabName === 'staff-self-service') {
+                refreshStaffServices('hr');
             }
         }
+
+        registerStaffServicesContext('hr', {
+            leaveStatusId: 'staffLeaveStatus-hr',
+            cashStatusId: 'staffCashStatus-hr'
+        });
 
         // Data Collection Functions
         async function submitDataCollection(event) {
@@ -38754,7 +38911,8 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 'crm': 'frontdeskCRM',
                 'documents': 'frontdeskDocuments',
                 'notifications': 'frontdeskNotifications',
-                'staffComm': 'frontdeskStaffCommunication'
+                'staffComm': 'frontdeskStaffCommunication',
+                'staffServices': 'frontdeskStaffServices'
             };
             
             const tabElement = document.getElementById(tabMap[tabName]);
@@ -38806,8 +38964,15 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 try { renderNotifications(); } catch(_) {}
             } else if (tabName === 'staffComm') {
                 renderPortalCommunications('frontdesk');
+            } else if (tabName === 'staffServices') {
+                refreshStaffServices('frontdesk');
             }
         }
+
+        registerStaffServicesContext('frontdesk', {
+            leaveStatusId: 'staffLeaveStatus-frontdesk',
+            cashStatusId: 'staffCashStatus-frontdesk'
+        });
         
         function refreshFrontdeskAppointments() {
             const listDiv = document.getElementById('frontdeskAppointmentsList');
