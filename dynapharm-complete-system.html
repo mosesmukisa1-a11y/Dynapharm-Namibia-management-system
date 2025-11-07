@@ -8040,9 +8040,15 @@
                 </div>
             </div>
             <div id="gmContent" style="display: none;">
-                <div class="user-profile" id="gmProfile"></div>
-                
-                <div class="portal-header">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                    <button id="gmMainTabBtn" class="btn btn-primary" onclick="toggleGMView('main')" style="min-width: 170px;">📊 GM Dashboard</button>
+                    <button id="gmStaffTabBtn" class="btn" onclick="toggleGMView('staff')" style="min-width: 170px;">👤 Staff Services</button>
+                </div>
+
+                <div id="gmMainSection">
+                    <div class="user-profile" id="gmProfile"></div>
+                    
+                    <div class="portal-header">
                     <h2>👔 GM Portal - Country Overview</h2>
                     <p>Monitor KPIs, Approve Special Sales, Oversee Operations</p>
                     <button class="btn btn-primary" onclick="refreshGMData()">🔄 Refresh Data</button>
@@ -8302,6 +8308,34 @@
                 <div class="form-section" style="margin-top: 30px;">
                     <h3>📦 Branch Inventory Breakdown</h3>
                     <div id="gmInventoryBreakdown" class="scroll-x" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;"></div>
+                </div>
+                </div>
+
+                <div id="gmStaffSection" style="display: none;">
+                    <div class="form-section">
+                        <h3>👤 GM Staff Services</h3>
+                        <p style="color:#64748b; margin-bottom:18px;">Submit executive leave or cash requests directly from the GM portal.</p>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                            <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
+                                <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
+                                <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Plan personal leave while keeping leadership informed.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffLeaveRequest('gm')">Request Leave</button>
+                                    <button class="btn btn-info" onclick="viewMyLeaveRequests('gm')">My Requests</button>
+                                </div>
+                                <div id="staffLeaveStatus-gm" style="margin-top:15px;"></div>
+                            </div>
+                            <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
+                                <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
+                                <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request executive cash advances or reimbursements.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-success" onclick="openStaffCashRequest('gm')">Request Cash</button>
+                                    <button class="btn btn-info" onclick="viewMyCashRequests('gm')">My Requests</button>
+                                </div>
+                                <div id="staffCashStatus-gm" style="margin-top:15px;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -34353,6 +34387,32 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Refresh financial dashboard with live data
+        function toggleFinanceView(view) {
+            const mainSection = document.getElementById('financeMainSection');
+            const staffSection = document.getElementById('financeStaffSection');
+            const mainBtn = document.getElementById('financeMainTabBtn');
+            const staffBtn = document.getElementById('financeStaffTabBtn');
+            if (!mainSection || !staffSection || !mainBtn || !staffBtn) return;
+
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                staffBtn.classList.add('btn-primary');
+                mainBtn.classList.remove('btn-primary');
+                refreshStaffServices('finance');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                mainBtn.classList.add('btn-primary');
+                staffBtn.classList.remove('btn-primary');
+            }
+        }
+
+        registerStaffServicesContext('finance', {
+            leaveStatusId: 'staffLeaveStatus-finance',
+            cashStatusId: 'staffCashStatus-finance'
+        });
+
         async function refreshFinancialDashboard() {
             // Ensure data is loaded first
             if (typeof loadEnhancedFinanceData === 'function') {
