@@ -42,7 +42,10 @@
     </style>
     <script defer src="./cloud-sync.js"></script>
     <script defer src="./auto-cloud-sync.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script type="module">
+        import { getDispatchNotes, updateDispatchNoteStatus, updateTransferStatus } from './web-modules/stock-requests.js';
+
         // Try to import transactions, but handle gracefully if missing
         let getTransactions;
         
@@ -108,6 +111,9 @@
         })();
 
         let branches = [];
+        let incomingDispatchNotes = [];
+        const branchUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName: 'Branch User', branch: null };
+        let latestBranchDispatchNote = null;
 
         async function loadBranches() {
             const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
@@ -139,6 +145,9 @@
                 const opt = document.createElement('option');
                 opt.value = b.id; opt.textContent = b.name || b.id; sel.appendChild(opt);
             });
+            if (branchUser.branch && sel.querySelector(`option[value="${branchUser.branch}"]`)) {
+                sel.value = branchUser.branch;
+            }
         }
 
         function switchTab(name){
@@ -147,6 +156,10 @@
                 .forEach(v => v.style.display = (v.dataset.view===name) ? 'block' : 'none');
             if (name === 'sales') renderSales();
             if (name === 'invoices') renderInvoices();
+            if (name === 'inventory') {
+                setIframe();
+                loadIncomingDispatches();
+            }
         }
 
         function applyFilters(){
@@ -350,6 +363,7 @@
         function onFiltersChanged(){
             const active = document.querySelector('.tab.active')?.dataset.tab || 'inventory';
             if (active === 'inventory') setIframe();
+            if (active === 'inventory') loadIncomingDispatches();
             if (active === 'sales') renderSales();
             if (active === 'invoices') renderInvoices();
         }
@@ -410,6 +424,289 @@
             // Prevent default browser error handling
             event.preventDefault();
         });
+
+        function buildDispatchNoteHtml(note) {
+            if (!note) return '<div>No dispatch information available.</div>';
+            const created = new Date(note.createdAt || Date.now()).toLocaleString();
+            const expected = note.expectedArrival ? new Date(note.expectedArrival).toLocaleDateString() : '—';
+            const totalQty = (note.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            const barcodeId = `branch-dispatch-barcode-${note.id}`;
+            const rows = (note.items || []).length
+                ? note.items.map(item => `
+                    <tr>
+                        <td>${(item.description || item.productId || 'Item').toString()}</td>
+                        <td style="text-align:center;">${Number(item.quantity || 0)}</td>
+                        <td style="text-align:center;">${item.uom || 'units'}</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="3" style="text-align:center; color:#64748b;">No items listed</td></tr>';
+
+            return `
+                <div style="font-family: 'Inter', Arial, sans-serif; color:#1e293b;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+                        <div>
+                            <h1 style="margin:0; font-size:20px; letter-spacing:0.4px;">Dynapharm Dispatch Note</h1>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Generated: ${created}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:2px;">Note ID: ${note.id}</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <svg id="${barcodeId}" width="220" height="70"></svg>
+                            <div style="font-size:11px; letter-spacing:2px; color:#0f172a; margin-top:6px;">${note.barcode}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:18px; display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">From</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.fromWarehouse || '—'}</div>
+                        </div>
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">Destination</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.toBranch || '—'}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Expected: ${expected}</div>
+                        </div>
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">Reference</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.requestNumber || '—'}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Dispatched by: ${note.dispatchedBy || '—'}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:22px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#1d4ed8; color:#f8fafc;">
+                                    <th style="padding:10px; text-align:left;">Product</th>
+                                    <th style="padding:10px; text-align:center; width:90px;">Qty</th>
+                                    <th style="padding:10px; text-align:center; width:90px;">UoM</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                                <tr style="background:#f1f5f9; font-weight:600;">
+                                    <td style="padding:10px;">Total</td>
+                                    <td style="padding:10px; text-align:center;">${totalQty}</td>
+                                    <td style="padding:10px; text-align:center;">items</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:20px; display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:#475569;">
+                        <div style="flex:1; min-width:220px;">
+                            <div style="font-weight:600; color:#0f172a;">Dispatch Notes</div>
+                            <div style="margin-top:6px; background:#f8fafc; border:1px dashed #cbd5f5; padding:12px; border-radius:10px; min-height:58px;">${note.dispatchNotes || 'None recorded'}</div>
+                        </div>
+                        <div style="flex:1; min-width:220px;">
+                            <div style="font-weight:600; color:#0f172a;">Receiving Checklist</div>
+                            <ul style="margin:8px 0 0 18px; padding:0;">
+                                <li>Inspect cartons / seals before signing.</li>
+                                <li>Verify quantities and batch numbers.</li>
+                                <li>Report discrepancies before approval.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div style="margin-top:24px; display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:#475569;">
+                        <div style="flex:1; min-width:220px;">
+                            <div style="border-bottom:1px solid #94a3b8; padding-bottom:34px;"></div>
+                            <div style="margin-top:8px;">Warehouse Signature</div>
+                        </div>
+                        <div style="flex:1; min-width:220px;">
+                            <div style="border-bottom:1px solid #94a3b8; padding-bottom:34px;"></div>
+                            <div style="margin-top:8px;">Branch Verification</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openBranchDispatchNote(note) {
+            const modal = document.getElementById('branchDispatchNoteModal');
+            const content = document.getElementById('branchDispatchNoteContent');
+            if (!modal || !content || !note) return;
+            latestBranchDispatchNote = note;
+            content.innerHTML = buildDispatchNoteHtml(note);
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                const svgId = `#branch-dispatch-barcode-${note.id}`;
+                if (window.JsBarcode && document.querySelector(svgId)) {
+                    try {
+                        window.JsBarcode(svgId, note.barcode, { width:2, height:60, displayValue:false, margin:0 });
+                    } catch (err) {
+                        console.warn('Branch barcode render failed', err);
+                    }
+                }
+            }, 0);
+        }
+
+        function closeBranchDispatchNote() {
+            const modal = document.getElementById('branchDispatchNoteModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function printBranchDispatchNote() {
+            const content = document.getElementById('branchDispatchNoteContent');
+            if (!content) return;
+            const printWindow = window.open('', '_blank', 'width=900,height=1000');
+            if (!printWindow) return;
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Dispatch Note</title><style>
+                body{font-family: 'Inter', Arial, sans-serif; color:#1e293b; margin:24px;}
+                table{width:100%; border-collapse:collapse; margin-top:18px;}
+                th,td{border:1px solid #cbd5f5; padding:8px 10px; text-align:left; font-size:13px;}
+                th{background:#1d4ed8; color:#f8fafc;}
+                h1{font-size:20px; margin:0;}
+                ul{margin:8px 0 0 18px;}
+                </style></head><body>${content.innerHTML}</body></html>`);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 300);
+        }
+
+        function showDispatchToast(message, variant = 'info') {
+            const section = document.getElementById('incomingDispatchSection');
+            if (!section) return;
+            const colors = {
+                success: { bg: '#d1fae5', border: '#10b981', text: '#065f46' },
+                warning: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
+                error: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' },
+                info: { bg: '#e0e7ff', border: '#3b82f6', text: '#1e3a8a' }
+            };
+            const tone = colors[variant] || colors.info;
+            const banner = document.createElement('div');
+            banner.style.background = tone.bg;
+            banner.style.border = `1px solid ${tone.border}`;
+            banner.style.color = tone.text;
+            banner.style.padding = '10px 12px';
+            banner.style.borderRadius = '8px';
+            banner.style.fontSize = '12px';
+            banner.style.marginBottom = '12px';
+            banner.textContent = message;
+            section.insertBefore(banner, section.children[1] || null);
+            setTimeout(() => {
+                banner.style.opacity = '0';
+                banner.style.transition = 'opacity .3s ease';
+                setTimeout(() => banner.remove(), 320);
+            }, 2200);
+        }
+
+        function renderIncomingDispatches(branchIdOverride) {
+            const list = document.getElementById('incomingDispatchList');
+            if (!list) return;
+            const branchId = branchIdOverride || branchUser.branch || (document.getElementById('branchFilter')?.value || null);
+
+            if (!branchId || branchId === 'all') {
+                list.innerHTML = '<div class="muted">Select a branch or ensure your profile is linked to a branch to view incoming dispatches.</div>';
+                return;
+            }
+
+            if (!incomingDispatchNotes.length) {
+                list.innerHTML = '<div class="muted">No dispatches awaiting confirmation for this branch.</div>';
+                return;
+            }
+
+            list.innerHTML = incomingDispatchNotes.map(note => {
+                const created = new Date(note.createdAt || Date.now()).toLocaleString();
+                const totalQty = (note.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+                return `
+                    <div style="background:#0f1830; border:1px solid #1e2a44; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                            <div>
+                                <div style="font-weight:600;">${note.requestNumber || note.transferId}</div>
+                                <div class="muted" style="font-size:12px;">Dispatched ${created}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="muted" style="font-size:12px;">Barcode</div>
+                                <div style="font-family:monospace; letter-spacing:1px;">${note.barcode}</div>
+                            </div>
+                        </div>
+                        <div class="muted" style="font-size:12px;">Items: ${(note.items || []).length} • Total Qty: ${totalQty}</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="btn" data-dispatch-action="view" data-dispatch-id="${note.id}">View Note</button>
+                            <button class="btn primary" data-dispatch-action="confirm" data-dispatch-id="${note.id}">Confirm & Receive</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function loadIncomingDispatches() {
+            const branchFilter = document.getElementById('branchFilter');
+            const branchId = (branchUser.branch && branchUser.branch !== 'all') ? branchUser.branch : (branchFilter ? branchFilter.value : null);
+            if (!branchId || branchId === 'all') {
+                incomingDispatchNotes = [];
+                renderIncomingDispatches(branchId);
+                return;
+            }
+            try {
+                const res = getDispatchNotes({ toBranch: branchId, status: 'in_transit' }) || { data: [] };
+                incomingDispatchNotes = Array.isArray(res.data) ? res.data : [];
+            } catch (err) {
+                console.error('Failed to load dispatch notes:', err);
+                incomingDispatchNotes = [];
+            }
+            renderIncomingDispatches(branchId);
+        }
+
+        async function confirmDispatch(noteId) {
+            const note = incomingDispatchNotes.find(n => n.id === noteId);
+            if (!note) {
+                showDispatchToast('Dispatch note not found','error');
+                return;
+            }
+            const receiver = branchUser.fullName || 'Branch User';
+            try {
+                const updateRes = updateDispatchNoteStatus(note.id, { status: 'received', receivedBy: receiver }, { by: 'id' });
+                if (!updateRes || updateRes.success === false) {
+                    showDispatchToast('Failed to update dispatch note','error');
+                    return;
+                }
+                const transferRes = updateTransferStatus(note.transferId, 'received', { user: receiver });
+                if (!transferRes || transferRes.success === false) {
+                    showDispatchToast('Transfer update failed','error');
+                    return;
+                }
+                showDispatchToast('Dispatch confirmed and stock received','success');
+            } catch (error) {
+                console.error('Error confirming dispatch:', error);
+                showDispatchToast('Error confirming dispatch','error');
+            } finally {
+                loadIncomingDispatches();
+            }
+        }
+
+        const incomingList = document.getElementById('incomingDispatchList');
+        if (incomingList) {
+            incomingList.addEventListener('click', (event) => {
+                const actionBtn = event.target.closest('[data-dispatch-action]');
+                if (!actionBtn) return;
+                const action = actionBtn.getAttribute('data-dispatch-action');
+                const noteId = actionBtn.getAttribute('data-dispatch-id');
+                if (!noteId) return;
+                if (action === 'view') {
+                    const note = incomingDispatchNotes.find(n => n.id === noteId);
+                    if (note) openBranchDispatchNote(note);
+                } else if (action === 'confirm') {
+                    if (confirm('Confirm receipt of this dispatch? Stock will be added to your branch inventory.')) {
+                        confirmDispatch(noteId);
+                    }
+                }
+            });
+        }
+
+        const branchDispatchCloseBtn = document.getElementById('branchDispatchCloseBtn');
+        if (branchDispatchCloseBtn) branchDispatchCloseBtn.addEventListener('click', closeBranchDispatchNote);
+        const branchDispatchModal = document.getElementById('branchDispatchNoteModal');
+        if (branchDispatchModal) branchDispatchModal.addEventListener('click', (event) => {
+            if (event.target && event.target.id === 'branchDispatchNoteModal') closeBranchDispatchNote();
+        });
+        const branchDispatchPrintBtn = document.getElementById('branchDispatchPrintBtn');
+        if (branchDispatchPrintBtn) branchDispatchPrintBtn.addEventListener('click', printBranchDispatchNote);
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'dyna_dispatch_notes' || event.key === 'dyna_last_stock_event') {
+                loadIncomingDispatches();
+            }
+        });
+        window.addEventListener('stock-updated', () => loadIncomingDispatches());
     </script>
 </head>
 <body>
@@ -445,6 +742,14 @@
         <section class="section card" data-view="inventory">
             <div class="muted" style="margin-bottom:8px;">Embedded stock dashboard with movements, requests, transfers and warehouse snapshot.</div>
             <iframe id="invFrame" title="Stock Management"></iframe>
+        </section>
+
+        <section class="section card" data-view="inventory" id="incomingDispatchSection" style="margin-top:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <h3 style="margin:0; font-size:16px;">Incoming Dispatch Notes</h3>
+                <span class="muted" style="font-size:12px;">Review and confirm deliveries before stock is released for sales</span>
+            </div>
+            <div id="incomingDispatchList" style="margin-top:14px; display:grid; gap:12px;"></div>
         </section>
 
         <section class="section card" data-view="sales" style="display:none;">
@@ -484,6 +789,19 @@
             </div>
         </section>
     </main>
+
+    <div id="branchDispatchNoteModal" style="position:fixed; inset:0; background: rgba(8,15,30,0.7); display:none; align-items:center; justify-content:center; z-index:70;">
+        <div style="width:min(820px,94vw); max-height:88vh; overflow:auto; background:#f8fafc; color:#1e293b; border-radius:12px; border:1px solid #cbd5f5; box-shadow:0 20px 45px rgba(15,23,42,0.35);">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #cbd5f5; background:#e0e7ff;">
+                <div style="font-weight:700; font-size:18px;">Dispatch Note</div>
+                <div style="display:flex; gap:8px;">
+                    <button id="branchDispatchPrintBtn" class="btn" style="background:#1e293b; color:#f8fafc; border:none;">Print</button>
+                    <button id="branchDispatchCloseBtn" class="btn">Close</button>
+                </div>
+            </div>
+            <div id="branchDispatchNoteContent" style="padding:20px; font-size:14px; line-height:1.6; background:#ffffff;"></div>
+        </div>
+    </div>
 </body>
 </html>
 

@@ -10733,6 +10733,10 @@
             drops: [],
             expenses: []
         };
+		let crmPortalInteractions = [];
+		let crmPortalWorkflows = [];
+		let crmPortalWorkflowLog = [];
+		let crmLoyaltyMembers = [];
         
         // Inventory tracking
         let inventory = {};
@@ -11131,6 +11135,17 @@
             morning: { start: '08:00', end: '12:00', interval: 30 },
             afternoon: { start: '13:00', end: '17:00', interval: 30 }
         };
+		(function restoreTimeSlotsFromStorage() {
+			try {
+				const saved = JSON.parse(localStorage.getItem('dyna_time_slots') || 'null');
+				if (saved && typeof saved === 'object') {
+					timeSlots = {
+						morning: { ...timeSlots.morning, ...(saved.morning || {}) },
+						afternoon: { ...timeSlots.afternoon, ...(saved.afternoon || {}) }
+					};
+				}
+			} catch (_) {}
+		})();
         
         // Resources (consultants, dispensers, rooms)
         let resources = [];
@@ -11143,9 +11158,53 @@
         // API Configuration
         // IMPORTANT: Set your actual Railway/backend URL here
         // For now, this is commented out. Uncomment and update when you have a deployed backend.
-        // const API_BASE = 'https://dynapharm-backend-production.up.railway.app/api';
-        const API_BASE = '/api'; // Use Vercel serverless functions in production
-        const API_BASE_LOCAL = '/api';
+        function resolveApiBase() {
+            const candidates = [];
+            const metaTag = document.querySelector('meta[name="api-base"]');
+            if (metaTag?.content) candidates.push(metaTag.content);
+            if (window.API_BASE_OVERRIDE) candidates.push(window.API_BASE_OVERRIDE);
+            try {
+                const stored = localStorage.getItem('dynapharm_api_base');
+                if (stored) candidates.push(stored);
+            } catch (_) {}
+            if (window.location?.origin && window.location.origin !== 'null') {
+                candidates.push(`${window.location.origin.replace(/\/$/, '')}/api`);
+            }
+            candidates.push('https://dynapharm-backend-production.up.railway.app/api');
+            candidates.push('http://localhost:8001/api');
+            const normalise = (input) => {
+                if (!input) return null;
+                let base = String(input).trim();
+                if (!base) return null;
+                if (base.startsWith('http://') || base.startsWith('https://')) {
+                    return base.replace(/\/+$/, '');
+                }
+                if (base.startsWith('//')) {
+                    const protocol = window.location?.protocol || 'https:';
+                    return `${protocol}${base}`.replace(/\/+$/, '');
+                }
+                if (base.startsWith('/')) {
+                    if (window.location?.origin && window.location.origin !== 'null') {
+                        return `${window.location.origin}${base}`.replace(/\/+$/, '');
+                    }
+                    return `http://localhost:8001${base}`.replace(/\/+$/, '');
+                }
+                try {
+                    const url = new URL(base);
+                    return url.origin.replace(/\/+$/, '') + url.pathname.replace(/\/+$/, '');
+                } catch (_) {
+                    return null;
+                }
+            };
+            for (const candidate of candidates) {
+                const resolved = normalise(candidate);
+                if (resolved) return resolved;
+            }
+            return '/api';
+        }
+
+        const API_BASE = resolveApiBase();
+        const API_BASE_LOCAL = API_BASE;
         const USE_OFFLINE_MODE = false; // Prefer online API; only fallback if truly offline
 
         // Safe JSON parse with default fallback
@@ -11160,6 +11219,24 @@
                 return JSON.parse(defaultJsonString);
             }
         }
+
+		const CRM_STORAGE_KEYS = {
+			interactions: 'crm_portal_interactions',
+			workflows: 'crm_portal_workflows',
+			workflowLog: 'crm_portal_workflow_log',
+			loyalty: 'crm_portal_loyalty'
+		};
+
+		(function bootstrapCRMPortalData() {
+			crmPortalInteractions = safeParseFromStorage(CRM_STORAGE_KEYS.interactions, '[]');
+			if (!Array.isArray(crmPortalInteractions)) crmPortalInteractions = [];
+			crmPortalWorkflows = safeParseFromStorage(CRM_STORAGE_KEYS.workflows, '[]');
+			if (!Array.isArray(crmPortalWorkflows)) crmPortalWorkflows = [];
+			crmPortalWorkflowLog = safeParseFromStorage(CRM_STORAGE_KEYS.workflowLog, '[]');
+			if (!Array.isArray(crmPortalWorkflowLog)) crmPortalWorkflowLog = [];
+			crmLoyaltyMembers = safeParseFromStorage(CRM_STORAGE_KEYS.loyalty, '[]');
+			if (!Array.isArray(crmLoyaltyMembers)) crmLoyaltyMembers = [];
+		})();
 
         // Unified storage adapter (IndexedDB-first with localStorage fallback)
         const DYN_DB_NAME = 'DynapharmDB';
@@ -16047,6 +16124,1046 @@ async function logout() {
                 </div>
             `;
         }
+
+		function initFullCalendar() {
+			const calendar = document.getElementById('appointmentCalendar');
+			if (!calendar) return;
+			calendar.style.display = 'block';
+			renderCalendar(window.currentCalendarDate || new Date());
+			try { calendar.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+		}
+
+		function showAppointmentBookingModal() {
+			if (typeof openClientReg === 'function') {
+				openClientReg('appointment');
+			} else {
+				bookAppointment();
+			}
+		}
+
+		const GM_INVENTORY_TAB_MAP = {
+			overview: 'Overview',
+			expected: 'Expected',
+			losses: 'Losses',
+			manipulations: 'Manipulations',
+			approvals: 'Approvals',
+			allbranches: 'AllBranches'
+		};
+
+		function getGMBranches() {
+			try {
+				const list = (Array.isArray(branches) && branches.length)
+					? branches
+					: safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON);
+				return (Array.isArray(list) ? list : []).map(entry => {
+					if (typeof entry === 'string') {
+						return { id: entry.toLowerCase(), name: entry };
+					}
+					return {
+						id: (entry.id || entry.branch || entry.name || '').toLowerCase() || `branch-${Math.random().toString(36).slice(2, 7)}`,
+						name: entry.name || entry.branch || entry.id || 'Branch'
+					};
+				});
+			} catch (_) {
+				return [];
+			}
+		}
+
+		function populateSelectWithBranches(selectOrId) {
+			const select = typeof selectOrId === 'string' ? document.getElementById(selectOrId) : selectOrId;
+			if (!select) return;
+			const existing = Array.from(select.options).map(opt => opt.value);
+			getGMBranches().forEach(branch => {
+				if (!branch || !branch.id || existing.includes(branch.id)) return;
+				const option = document.createElement('option');
+				option.value = branch.id;
+				option.textContent = branch.name;
+				select.appendChild(option);
+			});
+		}
+
+		function refreshGMInventoryData() {
+			loadStockData();
+			calculateGMMetrics();
+			renderPlanInsights();
+			displayGMInventoryBreakdown();
+			loadGMExpectedStock();
+			loadGMStockLosses();
+			loadGMStockManipulations();
+			loadGMPendingInventoryApprovals();
+			loadGMAllBranchInventory();
+		}
+
+		function switchGMInventoryTab(view) {
+			const key = (view || 'overview').toLowerCase();
+			const suffix = GM_INVENTORY_TAB_MAP[key] || GM_INVENTORY_TAB_MAP.overview;
+			const tabs = document.querySelectorAll('#gmInventoryContent .gm-inv-tab-content');
+			tabs.forEach(tab => {
+				tab.style.display = 'none';
+				tab.classList.remove('active');
+			});
+			const buttons = document.querySelectorAll('#gm .form-section .tabs .tab-button');
+			buttons.forEach(btn => {
+				if (btn.id && btn.id.startsWith('gmInvTab')) {
+					btn.classList.remove('active');
+				}
+			});
+			const target = document.getElementById(`gmInv${suffix}`);
+			const button = document.getElementById(`gmInvTab${suffix}`);
+			if (target) {
+				target.style.display = 'block';
+				target.classList.add('active');
+			}
+			if (button) button.classList.add('active');
+			switch (key) {
+				case 'expected':
+					loadGMExpectedStock();
+					break;
+				case 'losses':
+					loadGMStockLosses();
+					break;
+				case 'manipulations':
+					loadGMStockManipulations();
+					break;
+				case 'approvals':
+					loadGMPendingInventoryApprovals();
+					break;
+				case 'allbranches':
+					loadGMAllBranchInventory();
+					break;
+				default:
+					displayGMInventoryBreakdown();
+			}
+		}
+
+		function loadGMExpectedStock() {
+			const listEl = document.getElementById('gmExpectedStockList');
+			if (!listEl) return;
+			const branchSelect = document.getElementById('gmExpectedBranchFilter');
+			populateSelectWithBranches(branchSelect);
+			const statusSelect = document.getElementById('gmExpectedStatusFilter');
+			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+			const statusFilter = (statusSelect?.value || 'pending').toLowerCase();
+			let requests = safeParseFromStorage('dyna_stock_requests', '[]');
+			if (!Array.isArray(requests)) requests = [];
+			const filtered = requests.filter(req => {
+				const status = (req.status || '').toLowerCase();
+				const branch = (req.branch || req.branchId || '').toLowerCase();
+				const matchesBranch = branchFilter === 'all' || branch === branchFilter;
+				const matchesStatus = statusFilter === 'all'
+					|| (statusFilter === 'pending' && (status === 'pending' || status === 'pending_gm'))
+					|| status === statusFilter;
+				return matchesBranch && matchesStatus;
+			}).sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0));
+			const pendingCount = requests.filter(req => {
+				const status = (req.status || '').toLowerCase();
+				return status === 'pending' || status === 'pending_gm';
+			}).length;
+			const badge = document.getElementById('gmPendingExpectedStock');
+			if (badge) badge.textContent = `${pendingCount}`;
+			if (!filtered.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No expected stock requests found for the selected filters.</p>';
+				return;
+			}
+			listEl.innerHTML = filtered.slice(0, 20).map(req => {
+				const status = (req.status || 'Pending').toUpperCase();
+				const created = new Date(req.createdAt || req.date || Date.now()).toLocaleString();
+				const itemSummary = formatPurchaseOrderItemSummary(req.items || [], 4);
+				return `
+					<div class="client-card" style="border-left:4px solid #2980b9;">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+							<div>
+								<div style="font-weight:700; color:#2c3e50;">${req.branch || 'Unknown Branch'}</div>
+								<div style="font-size:.8rem; color:#999;">${req.reference || req.id || ''}</div>
+							</div>
+							<div style="text-align:right;">
+								<span style="display:inline-block; padding:4px 8px; border-radius:10px; background:#f0f4ff; color:#1f2937; font-size:.75rem;">${status}</span>
+								<div style="font-size:.75rem; color:#999; margin-top:4px;">${created}</div>
+							</div>
+						</div>
+						${itemSummary ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemSummary}${Array.isArray(req.items) && req.items.length > 4 ? '…' : ''}</div>` : ''}
+						${req.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${req.notes}</p>` : ''}
+					</div>
+				`;
+			}).join('');
+		}
+
+		function loadGMStockLosses() {
+			const listEl = document.getElementById('gmStockLossesList');
+			if (!listEl) return;
+			const branchSelect = document.getElementById('gmLossesBranchFilter');
+			populateSelectWithBranches(branchSelect);
+			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+			const from = document.getElementById('gmLossesDateFrom')?.value;
+			const to = document.getElementById('gmLossesDateTo')?.value;
+			const startDate = from ? new Date(from) : null;
+			const endDate = to ? new Date(to + 'T23:59:59') : null;
+			let records = [];
+			const damages = safeParseFromStorage('dyna_stock_damages', '[]');
+			if (Array.isArray(damages)) {
+				damages.forEach(entry => records.push({
+					branch: (entry.branch || entry.location || '').toLowerCase(),
+					product: entry.product || entry.description || 'Item',
+					quantity: Number(entry.quantity || entry.qty || 0),
+					reason: entry.reason || entry.notes || 'Damage',
+					createdAt: entry.createdAt || entry.date || entry.timestamp,
+					source: 'Damage Report'
+				}));
+			}
+			if (Array.isArray(returnsLog) && returnsLog.length) {
+				returnsLog.filter(ret => (ret.disposition || '').toLowerCase() !== 'released').forEach(ret => {
+					records.push({
+						branch: (ret.branch || ret.location || '').toLowerCase(),
+						product: ret.product || ret.description || 'Item',
+						quantity: Number(ret.quantity || 0),
+						reason: ret.disposition || ret.reason || 'Disposition',
+						createdAt: ret.createdAt || ret.timestamp,
+						source: 'Return'
+					});
+				});
+			}
+			records = records.filter(record => {
+				const branch = record.branch || 'all';
+				if (branchFilter !== 'all' && branch !== branchFilter) return false;
+				if (startDate || endDate) {
+					const created = record.createdAt ? new Date(record.createdAt) : null;
+					if (startDate && created && created < startDate) return false;
+					if (endDate && created && created > endDate) return false;
+				}
+				return true;
+			}).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+			const lossQuantity = records.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
+			const metric = document.getElementById('gmStockLosses');
+			if (metric) metric.textContent = `${lossQuantity} units`;
+			if (!records.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock losses recorded for the selected filters.</p>';
+				return;
+			}
+			listEl.innerHTML = records.slice(0, 20).map(record => `
+				<div class="client-card" style="border-left:4px solid #e74c3c;">
+					<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+						<div>
+							<div style="font-weight:700; color:#2c3e50;">${record.product}</div>
+							<div style="font-size:.8rem; color:#999;">${record.source}</div>
+						</div>
+						<div style="text-align:right;">
+							<div style="font-weight:700; color:#c41e3a;">-${Number(record.quantity || 0)}</div>
+							<div style="font-size:.75rem; color:#999;">${record.createdAt ? new Date(record.createdAt).toLocaleString() : ''}</div>
+						</div>
+					</div>
+					${record.reason ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${record.reason}</p>` : ''}
+				</div>
+			`).join('');
+		}
+
+		function loadGMStockManipulations() {
+			const listEl = document.getElementById('gmStockManipulationsList');
+			if (!listEl) return;
+			const branchSelect = document.getElementById('gmManipBranchFilter');
+			populateSelectWithBranches(branchSelect);
+			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+			const typeFilter = (document.getElementById('gmManipTypeFilter')?.value || 'all').toLowerCase();
+			const search = (document.getElementById('gmManipSearch')?.value || '').toLowerCase();
+			let audit = [];
+			try {
+				audit = JSON.parse(localStorage.getItem('dyna_stock_audit') || '[]');
+			} catch (_) {
+				audit = [];
+			}
+			if (!Array.isArray(audit)) audit = [];
+			const filtered = audit.filter(entry => {
+				const action = (entry.action || '').toLowerCase();
+				const details = entry.details || {};
+				const branch = (details.branch || details.branchId || '').toLowerCase();
+				if (branchFilter !== 'all' && branch !== branchFilter) return false;
+				if (typeFilter !== 'all') {
+					if (typeFilter === 'adjustment' && !action.includes('adjust')) return false;
+					if (typeFilter === 'loss' && !(action.includes('loss') || action.includes('damage'))) return false;
+					if (typeFilter === 'transfer' && !action.includes('transfer')) return false;
+					if (typeFilter === 'receive' && !(action.includes('receive') || action.includes('distribution'))) return false;
+				}
+				if (search && !JSON.stringify(entry).toLowerCase().includes(search)) return false;
+				return true;
+			}).sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
+			if (!filtered.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock manipulation records found.</p>';
+				return;
+			}
+			listEl.innerHTML = filtered.slice(0, 25).map(entry => {
+				const details = entry.details || {};
+				const product = details.product || details.description || 'Item';
+				const quantity = Number(details.quantity || details.qty || 0);
+				const branch = details.branch || details.branchId || 'Unknown';
+				const user = details.user || entry.user || 'System';
+				return `
+					<div class="client-card" style="border-left:4px solid #5c6bc0;">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+							<div>
+								<div style="font-weight:700; color:#2c3e50;">${product}</div>
+								<div style="font-size:.8rem; color:#999;">${branch}</div>
+							</div>
+							<div style="text-align:right;">
+								<div style="font-weight:700; color:#1f2937;">${entry.action || 'Action'}</div>
+								<div style="font-size:.75rem; color:#999;">${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+							</div>
+						</div>
+						<div style="font-size:.8rem; color:#555; margin-top:6px;">Quantity: ${quantity}</div>
+						<div style="font-size:.75rem; color:#999;">By: ${user}</div>
+					</div>
+				`;
+			}).join('');
+		}
+
+		function loadGMPendingInventoryApprovals() {
+			const listEl = document.getElementById('gmPendingInventoryApprovalsList');
+			if (!listEl) return;
+			let requests = safeParseFromStorage('dyna_stock_requests', '[]');
+			if (!Array.isArray(requests)) requests = [];
+			const pending = requests.filter(req => {
+				const status = (req.status || '').toLowerCase();
+				return status === 'pending_gm' || status === 'pending';
+			}).sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0));
+			if (!pending.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending inventory approvals.</p>';
+				return;
+			}
+			listEl.innerHTML = pending.slice(0, 20).map(req => {
+				const created = new Date(req.createdAt || req.date || Date.now()).toLocaleString();
+				const itemSummary = formatPurchaseOrderItemSummary(req.items || [], 4);
+				return `
+					<div class="client-card" style="border-left:4px solid #27ae60;">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+							<div>
+								<div style="font-weight:700; color:#2c3e50;">${req.branch || 'Unknown Branch'}</div>
+								<div style="font-size:.8rem; color:#999;">${req.reference || req.id || ''}</div>
+							</div>
+							<div style="text-align:right;">
+								<div style="font-size:.75rem; color:#999;">${created}</div>
+							</div>
+						</div>
+						${itemSummary ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemSummary}${Array.isArray(req.items) && req.items.length > 4 ? '…' : ''}</div>` : ''}
+						${req.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${req.notes}</p>` : ''}
+					</div>
+				`;
+			}).join('');
+		}
+
+		function normaliseBranchInventoryData(data) {
+			if (Array.isArray(data)) {
+				return data.reduce((acc, item) => {
+					const branch = (item.branch || item.branchId || 'unknown').toLowerCase();
+					acc[branch] = acc[branch] || [];
+					acc[branch].push(item);
+					return acc;
+				}, {});
+			}
+			if (data && typeof data === 'object') return data;
+			return {};
+		}
+
+		function loadGMAllBranchInventory() {
+			const listEl = document.getElementById('gmAllBranchInventoryList');
+			if (!listEl) return;
+			const branchSelect = document.getElementById('gmAllBranchesBranchFilter');
+			populateSelectWithBranches(branchSelect);
+			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+			let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
+			if (!Object.keys(branchStock).length) {
+				const legacy = safeParseFromStorage('branchInventory', '[]');
+				branchStock = normaliseBranchInventoryData(legacy);
+			}
+			const entries = Object.entries(branchStock).filter(([branch]) => branchFilter === 'all' || branch === branchFilter);
+			if (!entries.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No branch inventory data available.</p>';
+				return;
+			}
+			listEl.innerHTML = entries.map(([branch, items]) => {
+				const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
+				const totalQty = safeItems.reduce((sum, item) => sum + Number(item.quantity || item.currentStock || 0), 0);
+				const lowStock = safeItems.filter(item => Number(item.quantity || item.currentStock || 0) <= Number(item.reorderLevel || 5)).length;
+				const branchName = (getGMBranches().find(b => b.id === branch)?.name) || branch;
+				return `
+					<div class="client-card" style="border-left:4px solid #009688;">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+							<div>
+								<div style="font-weight:700; color:#2c3e50;">${branchName}</div>
+								<div style="font-size:.8rem; color:#999;">Total Items: ${safeItems.length}</div>
+							</div>
+							<div style="text-align:right;">
+								<div style="font-weight:700; color:#27ae60;">${totalQty} units</div>
+								<div style="font-size:.75rem; color:#999;">Low stock: ${lowStock}</div>
+							</div>
+						</div>
+						${safeItems.slice(0, 5).map(item => {
+							const name = item.description || item.product || 'Item';
+							const qty = Number(item.quantity || item.currentStock || 0);
+							return `<div style="display:flex; justify-content:space-between; font-size:.8rem; color:#555; margin-top:6px;">
+								<span>${name}</span>
+								<span>${qty}</span>
+							</div>`;
+						}).join('')}
+						${safeItems.length > 5 ? '<div style="font-size:.75rem; color:#999; margin-top:6px;">… more items</div>' : ''}
+					</div>
+				`;
+			}).join('');
+		}
+
+		function exportGMInventoryReport() {
+			let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
+			if (!Object.keys(branchStock).length) {
+				const legacy = safeParseFromStorage('branchInventory', '[]');
+				branchStock = normaliseBranchInventoryData(legacy);
+			}
+			const entries = Object.entries(branchStock);
+			if (!entries.length) {
+				alert('No branch inventory data available to export.');
+				return;
+			}
+			const rows = [['Branch', 'Product', 'Quantity', 'Reorder Level']];
+			entries.forEach(([branch, items]) => {
+				const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
+				safeItems.forEach(item => {
+					rows.push([
+						branch,
+						item.description || item.product || 'Item',
+						Number(item.quantity || item.currentStock || 0),
+						Number(item.reorderLevel || 0)
+					]);
+				});
+			});
+			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+			const blob = new Blob([csv], { type: 'text/csv' });
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(blob);
+			link.download = 'gm-branch-inventory.csv';
+			link.click();
+			URL.revokeObjectURL(link.href);
+		}
+
+		function exportCountryStock() {
+			loadStockData();
+			const data = Array.isArray(countryStock) ? countryStock : [];
+			if (!data.length) {
+				alert('No country stock data available to export.');
+				return;
+			}
+			const rows = [['Carton', 'Description', 'Batch', 'Expiry', 'Quantity']];
+			data.forEach(item => {
+				rows.push([
+					item.carton || item.cartonNo || item.cartons || '',
+					item.description || item.product || 'Item',
+					item.batch || item.batchNo || '',
+					item.expiry || item.expiryDate || '',
+					Number(item.quantity || item.totalCtns || item.count || 0)
+				]);
+			});
+			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+			const blob = new Blob([csv], { type: 'text/csv' });
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(blob);
+			link.download = 'country-stock.csv';
+			link.click();
+			URL.revokeObjectURL(link.href);
+		}
+
+		const CRM_TAB_KEYS = {
+			communication: 'communication',
+			segmentation: 'segmentation',
+			workflows: 'workflows',
+			loyalty: 'loyalty'
+		};
+
+		function showCRMTab(tabName) {
+			const key = (tabName || 'communication').toLowerCase();
+			document.querySelectorAll('#crm .crm-subtab').forEach(subtab => {
+				subtab.style.display = 'none';
+				subtab.classList.remove('active');
+			});
+			document.querySelectorAll('#crm .tabs .tab-button').forEach(button => {
+				if (!button) return;
+				const label = (button.textContent || '').toLowerCase();
+				if (label.includes(key)) {
+					button.classList.add('active');
+				} else {
+					button.classList.remove('active');
+				}
+			});
+			const target = document.getElementById(`crm-${CRM_TAB_KEYS[key] || 'communication'}`);
+			if (target) {
+				target.style.display = 'block';
+				target.classList.add('active');
+			}
+			switch (key) {
+				case 'segmentation':
+					refreshSegmentation();
+					break;
+				case 'workflows':
+					refreshWorkflows();
+					break;
+				case 'loyalty':
+					refreshLoyaltyData();
+					break;
+				default:
+					refreshCRMCommunication();
+			}
+		}
+
+		function persistCRMData(key, value) {
+			try {
+				localStorage.setItem(key, JSON.stringify(value));
+			} catch (_) {}
+		}
+
+		function getCRMClientsList() {
+			let list = (Array.isArray(clients) && clients.length) ? clients : safeParseFromStorage('dyna_clients', '[]');
+			if (!Array.isArray(list)) list = [];
+			return list.map(client => {
+				const identifier = (client.referenceNumber || client.id || client.nbNumber || client.fullName || '').toString();
+				return {
+					id: identifier || `client-${Math.random().toString(36).slice(2, 8)}`,
+					referenceNumber: client.referenceNumber || client.id || '',
+					fullName: client.fullName || client.name || 'Client',
+					phone: client.phone || '',
+					email: client.email || '',
+					membershipStatus: client.membershipStatus || 'referred',
+					createdAt: client.createdAt || client.timestamp || client.firstVisit || null,
+					dateOfBirth: client.dateOfBirth || client.dob || null
+				};
+			});
+		}
+
+		function populateCRMClientSelect(force = false) {
+			const select = document.getElementById('crmClientSelect');
+			if (!select) return;
+			if (!force && select.dataset.populated === 'true') return;
+			const currentValue = select.value;
+			select.innerHTML = '<option value="">Select Client...</option>';
+			const clients = getCRMClientsList().sort((a, b) => a.fullName.localeCompare(b.fullName));
+			clients.forEach(client => {
+				const option = document.createElement('option');
+				option.value = client.id;
+				option.textContent = client.fullName;
+				option.dataset.reference = client.referenceNumber || '';
+				select.appendChild(option);
+			});
+			if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+				select.value = currentValue;
+			}
+			select.dataset.populated = 'true';
+		}
+
+		function buildCRMCustomerInsights() {
+			const insights = new Map();
+			const clientList = getCRMClientsList();
+			clientList.forEach(client => {
+				insights.set(client.id, {
+					client,
+					totalSpent: 0,
+					purchaseCount: 0,
+					lastPurchase: null,
+					createdAt: client.createdAt
+				});
+			});
+			const reportList = Array.isArray(reports) ? reports : [];
+			reportList.forEach(report => {
+				const reference = report.clientId || report.clientReferenceNumber || report.referenceNumber || (report.clientInfo && report.clientInfo.referenceNumber);
+				if (!reference) return;
+				let key = reference;
+				if (!insights.has(key)) {
+					const matchingClient = clientList.find(c => c.referenceNumber === reference || c.fullName === (report.clientName || report.clientInfo?.fullName));
+					if (matchingClient) key = matchingClient.id;
+				}
+				const bucket = insights.get(key);
+				if (!bucket) return;
+				const total = typeof calculateReportTotal === 'function' ? calculateReportTotal(report) : Number(report.total || 0);
+				bucket.totalSpent += Number(total || 0);
+				bucket.purchaseCount += 1;
+				const purchaseDate = report.date || report.createdAt || report.timestamp;
+				if (purchaseDate) {
+					const date = new Date(purchaseDate);
+					if (!bucket.lastPurchase || date > new Date(bucket.lastPurchase)) {
+						bucket.lastPurchase = date.toISOString();
+					}
+				}
+			});
+			return insights;
+		}
+
+		function loadClientCommunication(clientId) {
+			populateCRMClientSelect();
+			const select = document.getElementById('crmClientSelect');
+			const targetId = clientId || select?.value || '';
+			if (select && targetId && select.value !== targetId) {
+				select.value = targetId;
+			}
+			const overview = document.getElementById('crmClientOverview');
+			const timeline = document.getElementById('crmInteractionTimeline');
+			if (!targetId) {
+				if (overview) overview.style.display = 'none';
+				if (timeline) timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">Select a client to view communication history</p>';
+				return;
+			}
+			const clientList = getCRMClientsList();
+			const client = clientList.find(c => c.id === targetId) || clientList.find(c => c.referenceNumber === targetId);
+			const insights = buildCRMCustomerInsights();
+			const insight = insights.get(targetId) || { totalSpent: 0, purchaseCount: 0, lastPurchase: null, client: client || {} };
+			const interactions = crmPortalInteractions
+				.filter(interaction => interaction.clientId === targetId)
+				.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+			if (overview) {
+				overview.style.display = 'block';
+				const nameEl = document.getElementById('crmClientName');
+				if (nameEl) nameEl.textContent = (client && client.fullName) || 'Client';
+				const totalInteractionsEl = document.getElementById('crmTotalInteractions');
+				if (totalInteractionsEl) totalInteractionsEl.textContent = interactions.length.toString();
+				const lastContactEl = document.getElementById('crmLastContact');
+				if (lastContactEl) lastContactEl.textContent = interactions.length ? new Date(interactions[0].createdAt).toLocaleString() : 'Never';
+				const purchaseCountEl = document.getElementById('crmPurchaseCount');
+				if (purchaseCountEl) purchaseCountEl.textContent = (insight.purchaseCount || 0).toString();
+				const totalSpentEl = document.getElementById('crmTotalSpent');
+				if (totalSpentEl) totalSpentEl.textContent = `N$ ${(insight.totalSpent || 0).toFixed(2)}`;
+			}
+			if (timeline) {
+				if (!interactions.length) {
+					timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No interactions logged yet.</p>';
+				} else {
+					timeline.innerHTML = interactions.map(interaction => `
+						<div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px;">
+							<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+								<div>
+									<strong>${(interaction.channel || 'interaction').toUpperCase()}</strong>
+									<p style="margin:6px 0;color:#555;">${interaction.notes || ''}</p>
+								</div>
+								<div style="text-align:right; font-size:0.8rem; color:#999;">
+									<div>${interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : ''}</div>
+									<div>${interaction.createdBy || 'CRM Portal'}</div>
+								</div>
+							</div>
+						</div>
+					`).join('');
+				}
+			}
+		}
+
+		function refreshCRMCommunication(force = false) {
+			populateCRMClientSelect(force);
+			const select = document.getElementById('crmClientSelect');
+			const targetId = select?.value || '';
+			loadClientCommunication(targetId);
+		}
+
+		function addClientInteraction() {
+			populateCRMClientSelect(true);
+			const select = document.getElementById('crmClientSelect');
+			if (!select || !select.value) {
+				alert('Please select a client before logging an interaction.');
+				return;
+			}
+			const channel = prompt('Interaction channel (call/email/whatsapp/visit)', 'call');
+			if (channel === null) return;
+			const notes = prompt('Interaction summary / notes:');
+			if (!notes) return;
+			const interaction = {
+				id: 'CRM-INT-' + Date.now(),
+				clientId: select.value,
+				clientName: select.options[select.selectedIndex]?.textContent || 'Client',
+				channel: (channel || 'call').toLowerCase(),
+				notes: notes.trim(),
+				createdAt: new Date().toISOString(),
+				createdBy: currentUser?.fullName || 'CRM Portal'
+			};
+			crmPortalInteractions.push(interaction);
+			persistCRMData(CRM_STORAGE_KEYS.interactions, crmPortalInteractions);
+			logCRMWorkflowEvent('interaction_logged', { clientId: interaction.clientId, channel: interaction.channel });
+			loadClientCommunication(interaction.clientId);
+			refreshWorkflows();
+		}
+
+		function exportClientHistory() {
+			const select = document.getElementById('crmClientSelect');
+			const targetId = select?.value || '';
+			const interactions = targetId
+				? crmPortalInteractions.filter(interaction => interaction.clientId === targetId)
+				: crmPortalInteractions;
+			if (!interactions.length) {
+				alert('No client interactions available to export.');
+				return;
+			}
+			const rows = [['Client', 'Channel', 'Notes', 'Created', 'Logged By']];
+			interactions.forEach(interaction => {
+				rows.push([
+					interaction.clientName || 'Client',
+					interaction.channel || 'interaction',
+					interaction.notes || '',
+					interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : '',
+					interaction.createdBy || 'CRM Portal'
+				]);
+			});
+			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+			const blob = new Blob([csv], { type: 'text/csv' });
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(blob);
+			link.download = targetId ? `client-${targetId}-history.csv` : 'crm-client-history.csv';
+			link.click();
+			URL.revokeObjectURL(link.href);
+		}
+
+		function renderSegmentList(elementId, members, emptyMessage) {
+			const container = document.getElementById(elementId);
+			if (!container) return;
+			if (!members.length) {
+				container.innerHTML = `<p style="text-align: center; color: #7f8c8d; padding: 20px;">${emptyMessage}</p>`;
+				return;
+			}
+			container.innerHTML = members.slice(0, 30).map(member => {
+				const lastPurchase = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
+				return `
+					<div class="client-card">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+							<div>
+								<strong>${member.client.fullName}</strong>
+								<div style="font-size:0.85rem; color:#666;">Spent N$ ${(member.totalSpent || 0).toFixed(2)}</div>
+							</div>
+							<div style="text-align:right; font-size:0.75rem; color:#999;">Last purchase: ${lastPurchase}</div>
+						</div>
+					</div>
+				`;
+			}).join('');
+		}
+
+		function refreshSegmentation() {
+			const insights = Array.from(buildCRMCustomerInsights().values());
+			const vip = insights.filter(item => item.totalSpent >= 10000);
+			const atRisk = insights.filter(item => {
+				if (!item.lastPurchase) return false;
+				const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
+				return days > 90;
+			});
+			const active = insights.filter(item => {
+				if (!item.lastPurchase) return false;
+				const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
+				return days <= 30;
+			});
+			const newClients = insights.filter(item => {
+				if (!item.createdAt) return false;
+				const days = (Date.now() - new Date(item.createdAt).getTime()) / 86400000;
+				return days <= 30;
+			});
+			const setText = (id, value) => {
+				const el = document.getElementById(id);
+				if (el) el.textContent = value.toString();
+			};
+			setText('vipClientCount', vip.length);
+			setText('atRiskClientCount', atRisk.length);
+			setText('activeClientCount', active.length);
+			setText('newClientCount', newClients.length);
+			renderSegmentList('vipClientsList', vip, 'No VIP clients identified yet.');
+			renderSegmentList('atRiskClientsList', atRisk, 'No at-risk clients at the moment.');
+			renderSegmentList('activeClientsList', active, 'No active clients in the last 30 days.');
+			renderSegmentList('purchaseBehaviorAnalysis', insights.slice(0, 20), 'No purchase behavior data yet.');
+		}
+
+		function exportSegmentationReport() {
+			const insights = Array.from(buildCRMCustomerInsights().values());
+			if (!insights.length) {
+				alert('No segmentation data available to export.');
+				return;
+			}
+			const rows = [['Client', 'Total Spent', 'Purchase Count', 'Last Purchase']];
+			insights.forEach(item => {
+				rows.push([
+					item.client.fullName,
+					item.totalSpent.toFixed(2),
+					item.purchaseCount,
+					item.lastPurchase ? new Date(item.lastPurchase).toLocaleDateString() : 'N/A'
+				]);
+			});
+			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+			const blob = new Blob([csv], { type: 'text/csv' });
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(blob);
+			link.download = 'crm-segmentation-report.csv';
+			link.click();
+			URL.revokeObjectURL(link.href);
+		}
+
+		function logCRMWorkflowEvent(type, context = {}) {
+			const entry = {
+				id: 'CRM-WF-LOG-' + Date.now(),
+				type,
+				context,
+				createdAt: new Date().toISOString(),
+				runBy: currentUser?.fullName || 'CRM Portal'
+			};
+			crmPortalWorkflowLog.push(entry);
+			persistCRMData(CRM_STORAGE_KEYS.workflowLog, crmPortalWorkflowLog.slice(-200));
+		}
+
+		function createWorkflow() {
+			const type = prompt('Workflow type (welcome_email/birthday/reorder/followup)', 'welcome_email');
+			if (!type) return;
+			const description = prompt('Workflow description or target audience:', 'Automated workflow');
+			const workflow = {
+				id: 'CRM-WF-' + Date.now(),
+				type: type.toLowerCase(),
+				description: description || '',
+				active: true,
+				createdAt: new Date().toISOString()
+			};
+			crmPortalWorkflows.push(workflow);
+			persistCRMData(CRM_STORAGE_KEYS.workflows, crmPortalWorkflows);
+			logCRMWorkflowEvent('workflow_created', { type: workflow.type });
+			refreshWorkflows();
+			alert('✅ Workflow created. Configure channel-specific settings via the buttons below.');
+		}
+
+		function refreshWorkflows() {
+			const interactions = crmPortalInteractions || [];
+			const todayIso = new Date().toISOString().split('T')[0];
+			const emailsToday = interactions.filter(i => i.channel === 'email' && i.createdAt?.startsWith(todayIso)).length;
+			const emailsTotal = interactions.filter(i => i.channel === 'email').length;
+			const clients = getCRMClientsList();
+			const today = new Date();
+			const birthdayCount = clients.filter(client => {
+				if (!client.dateOfBirth) return false;
+				const dob = new Date(client.dateOfBirth);
+				return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+			}).length;
+			const birthdayGreetingsToday = interactions.filter(i => i.notes && /birthday/i.test(i.notes) && i.createdAt?.startsWith(todayIso)).length;
+			const reorderRemindersToday = interactions.filter(i => i.channel === 'whatsapp' && /reorder/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
+			const reorderWorkflows = crmPortalWorkflows.filter(w => w.type === 'reorder' && w.active).length;
+			const followupsToday = interactions.filter(i => i.channel === 'call' && /follow/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
+			const followupWorkflows = crmPortalWorkflows.filter(w => w.type === 'followup' && w.active).length;
+			const setText = (id, value) => {
+				const el = document.getElementById(id);
+				if (el) el.textContent = value.toString();
+			};
+			setText('welcomeEmailsToday', emailsToday);
+			setText('welcomeEmailsTotal', emailsTotal);
+			setText('birthdaysToday', birthdayCount);
+			setText('birthdayGreetingsToday', birthdayGreetingsToday);
+			setText('reorderRemindersToday', reorderRemindersToday);
+			setText('activeReminders', reorderWorkflows);
+			setText('followupsToday', followupsToday);
+			setText('pendingFollowups', followupWorkflows);
+			const logContainer = document.getElementById('workflowLog');
+			if (logContainer) {
+				if (!crmPortalWorkflowLog.length) {
+					logContainer.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No workflow executions yet</p>';
+				} else {
+					logContainer.innerHTML = crmPortalWorkflowLog.slice(-25).reverse().map(entry => `
+						<div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px; margin-bottom:8px;">
+							<div style="font-weight:600; color:#1f2937;">${entry.type}</div>
+							<div style="font-size:0.8rem; color:#666;">${entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''} • ${entry.runBy || 'CRM Portal'}</div>
+							${entry.context && Object.keys(entry.context).length ? `<pre style="background:#f9fafb; padding:6px; border-radius:4px; font-size:0.75rem; color:#4b5563;">${JSON.stringify(entry.context, null, 2)}</pre>` : ''}
+						</div>
+					`).join('');
+				}
+			}
+		}
+
+		function configureWelcomeEmails() {
+			const message = prompt('Enter welcome email message template:', 'Welcome to Dynapharm Namibia!');
+			if (message === null) return;
+			logCRMWorkflowEvent('configure_welcome_email', { message });
+			alert('✅ Welcome email settings saved locally.');
+		}
+
+		function configureBirthdayGreetings() {
+			const template = prompt('Enter birthday greeting template:', 'Happy Birthday from Dynapharm Namibia!');
+			if (template === null) return;
+			logCRMWorkflowEvent('configure_birthday_greeting', { template });
+			alert('✅ Birthday greeting configuration saved locally.');
+		}
+
+		function configureReorderReminders() {
+			const cadence = prompt('How many days after purchase should reorder reminders be sent?', '30');
+			if (cadence === null) return;
+			logCRMWorkflowEvent('configure_reorder_reminder', { cadence });
+			alert('✅ Reorder reminder cadence saved locally.');
+		}
+
+		function configureFollowups() {
+			const message = prompt('Enter follow-up prompt template:', 'Checking in after your recent consultation.');
+			if (message === null) return;
+			logCRMWorkflowEvent('configure_followup', { message });
+			alert('✅ Follow-up configuration saved locally.');
+		}
+
+		function determineLoyaltyTier(totalSpent) {
+			const value = Number(totalSpent || 0);
+			if (value >= 25000) return 'Platinum';
+			if (value >= 10000) return 'Gold';
+			if (value >= 2500) return 'Silver';
+			if (value > 0) return 'Bronze';
+			return 'Visitor';
+		}
+
+		function ensureLoyaltyMembersSeeded() {
+			if (Array.isArray(crmLoyaltyMembers) && crmLoyaltyMembers.length) return;
+			const insights = Array.from(buildCRMCustomerInsights().values()).filter(item => item.totalSpent > 0);
+			crmLoyaltyMembers = insights
+				.map(item => ({
+					id: item.client.id,
+					clientId: item.client.id,
+					name: item.client.fullName,
+					totalSpent: item.totalSpent,
+					lastPurchase: item.lastPurchase,
+					tier: determineLoyaltyTier(item.totalSpent)
+				}))
+				.sort((a, b) => b.totalSpent - a.totalSpent);
+			persistCRMData(CRM_STORAGE_KEYS.loyalty, crmLoyaltyMembers);
+		}
+
+		function renderLoyaltyMembersList(members) {
+			const listEl = document.getElementById('loyaltyMembersList');
+			if (!listEl) return;
+			if (!members.length) {
+				listEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No loyalty members yet.</p>';
+				return;
+			}
+			listEl.innerHTML = members.slice(0, 100).map(member => {
+				const last = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
+				return `
+					<div class="client-card">
+						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
+							<div>
+								<strong>${member.name}</strong>
+								<div style="font-size:0.8rem; color:#999;">Tier: ${member.tier}</div>
+							</div>
+							<div style="text-align:right;">
+								<div style="font-weight:600; color:#27ae60;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</div>
+								<div style="font-size:0.75rem; color:#999;">Last purchase: ${last}</div>
+							</div>
+						</div>
+					</div>
+				`;
+			}).join('');
+		}
+
+		function refreshLoyaltyData() {
+			ensureLoyaltyMembersSeeded();
+			const tierCounts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
+			crmLoyaltyMembers.forEach(member => {
+				const tier = determineLoyaltyTier(member.totalSpent);
+				member.tier = tier;
+				if (tierCounts[tier] !== undefined) tierCounts[tier] += 1;
+			});
+			const setText = (id, value) => {
+				const el = document.getElementById(id);
+				if (el) el.textContent = value.toString();
+			};
+			setText('bronzeCount', tierCounts.Bronze);
+			setText('silverCount', tierCounts.Silver);
+			setText('goldCount', tierCounts.Gold);
+			setText('platinumCount', tierCounts.Platinum);
+			renderLoyaltyMembersList(crmLoyaltyMembers);
+		}
+
+		function showLoyaltyConfig() {
+			alert('Configure loyalty program tiers and rewards via the CRM portal configuration. Current thresholds: Bronze 0-2,499, Silver 2,500-9,999, Gold 10,000-24,999, Platinum 25,000+. Update "crm_portal_loyalty" in localStorage to persist custom tiers.');
+		}
+
+		function viewLoyaltyReport() {
+			ensureLoyaltyMembersSeeded();
+			const rows = crmLoyaltyMembers.slice(0, 50).map(member => `
+				<tr>
+					<td style="padding:6px; border:1px solid #e5e7eb;">${member.name}</td>
+					<td style="padding:6px; border:1px solid #e5e7eb;">${member.tier}</td>
+					<td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</td>
+					<td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">${member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A'}</td>
+				</tr>
+			`).join('');
+			openPrintWindow('Loyalty Program Report', `
+				<h1 style="margin-bottom:16px;">Loyalty Program Report</h1>
+				<table style="width:100%; border-collapse:collapse; font-size:12px;">
+					<thead>
+						<tr style="background:#f3f4f6;">
+							<th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Member</th>
+							<th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Tier</th>
+							<th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Total Spent</th>
+							<th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Last Purchase</th>
+						</tr>
+					</thead>
+					<tbody>${rows}</tbody>
+				</table>
+			`, { pageSize: 'A4', fontSize: '11pt' });
+		}
+
+		function filterLoyaltyMembers() {
+			const query = document.getElementById('loyaltySearch')?.value?.toLowerCase() || '';
+			if (!Array.isArray(crmLoyaltyMembers)) return;
+			if (!query) {
+				renderLoyaltyMembersList(crmLoyaltyMembers);
+				return;
+			}
+			const filtered = crmLoyaltyMembers.filter(member => {
+				const name = (member.name || '').toLowerCase();
+				const tier = (member.tier || '').toLowerCase();
+				return name.includes(query) || tier.includes(query);
+			});
+			renderLoyaltyMembersList(filtered);
+		}
+
+		function showTimeSlotManagement() {
+			const currentMorning = timeSlots.morning || {};
+			const currentAfternoon = timeSlots.afternoon || {};
+			const morningStart = prompt('Morning session start (HH:MM)', currentMorning.start || '08:00');
+			if (!morningStart) return;
+			const morningEnd = prompt('Morning session end (HH:MM)', currentMorning.end || '12:00') || currentMorning.end || '12:00';
+			const morningInterval = parseInt(prompt('Morning interval (minutes)', String(currentMorning.interval || 30)), 10) || 30;
+			const afternoonStart = prompt('Afternoon session start (HH:MM)', currentAfternoon.start || '13:00') || currentAfternoon.start || '13:00';
+			const afternoonEnd = prompt('Afternoon session end (HH:MM)', currentAfternoon.end || '17:00') || currentAfternoon.end || '17:00';
+			const afternoonInterval = parseInt(prompt('Afternoon interval (minutes)', String(currentAfternoon.interval || 30)), 10) || 30;
+			timeSlots = {
+				morning: { start: morningStart, end: morningEnd, interval: morningInterval },
+				afternoon: { start: afternoonStart, end: afternoonEnd, interval: afternoonInterval }
+			};
+			try { localStorage.setItem('dyna_time_slots', JSON.stringify(timeSlots)); } catch (_) {}
+			const calendar = document.getElementById('appointmentCalendar');
+			if (calendar && calendar.style.display !== 'none') {
+				renderCalendar(window.currentCalendarDate || new Date());
+			}
+			alert('✅ Time slots updated for consultants.');
+		}
+
+		function showAppointmentAnalytics() {
+			const timeframe = document.getElementById('analyticsTimeframe')?.value || 'month';
+			const stats = calculateConsultantAnalytics(timeframe);
+			const message = [
+				`📊 Appointment Analytics (${timeframe})`,
+				`Total Clients: ${stats.totalClients}`,
+				`Reports Created: ${stats.totalReports}`,
+				`Member Clients: ${stats.memberClients} (${stats.memberPercentage}% of clients)`,
+				`Referred Clients: ${stats.referredClients} (${stats.referredPercentage}% of clients)`,
+				`Follow-ups Due: ${stats.followUpsDue}`,
+				`Completed Follow-ups: ${stats.completedFollowUps}`,
+				`Conversion Rate: ${stats.conversionRate}%`
+			].join('\n');
+			alert(message);
+		}
+
+		function showClientBookingPage() {
+			const bookingUrl = (location && location.origin && location.origin !== 'null')
+				? `${location.origin}/landing-page-preview.html#booking`
+				: 'landing-page-preview.html#booking';
+			window.open(bookingUrl, '_blank', 'noopener');
+		}
+
+		function copyBookingLink() {
+			const bookingUrl = (location && location.origin && location.origin !== 'null')
+				? `${location.origin}/landing-page-preview.html#booking`
+				: 'landing-page-preview.html#booking';
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(bookingUrl).then(() => {
+					alert('✅ Booking link copied to clipboard.');
+				}).catch(() => {
+					prompt('Copy booking link:', bookingUrl);
+				});
+			} else {
+				prompt('Copy booking link:', bookingUrl);
+			}
+		}
 
         function bookAppointment() {
             const date = prompt('Enter appointment date (YYYY-MM-DD or leave blank for today):');
@@ -28290,70 +29407,126 @@ async function reverseLastPrescriptionPayment(reportId){
             updateWalkInCart();
         }
 
-        function showWalkInSaleConfirmation() {
-            const customerName = document.getElementById('walkInCustomerName').value.trim();
-            const phone = document.getElementById('walkInPhone').value.trim();
-            const email = document.getElementById('walkInEmail').value.trim();
-            const customerType = document.getElementById('walkInCustomerType').value;
-            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
-            
-            // Validation
-            if (!customerName || walkInCart.length === 0) {
-                alert('Please fill in customer name and add products to cart');
-                return;
-            }
-            
-            // Check distributor referral for customers
-            if (customerType === 'customer') {
-                const distributorCode = document.getElementById('distributorReferralValue').value;
-                if (!distributorCode) {
-                    alert('⚠️ Required: Please search and select a referred distributor');
-                    return;
-                }
-            }
-            
-            // Calculate totals
-            const pricePerUnit = customerType === 'distributor' ? 'dp' : 'cp';
-            const subtotal = walkInCart.reduce((sum, item) => {
-                return sum + (item[pricePerUnit] * item.quantity);
-            }, 0);
-            
-            const totalBV = walkInCart.reduce((sum, item) => {
-                return sum + (item.bv * item.quantity);
-            }, 0);
-            
-            // Build confirmation message
-            const paymentMethodLabels = {
-                'cash': '💵 Cash',
-                'card': '💳 Card',
-                'mobile': '📱 Mobile Money',
-                'bank': '🏦 Bank Transfer'
-            };
-            const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
-            
-            let confirmationMessage = '📋 REVIEW & CONFIRM SALE\n\n';
-            confirmationMessage += `Customer: ${customerName}\n`;
-            if (phone) confirmationMessage += `Phone: ${phone}\n`;
-            if (email) confirmationMessage += `Email: ${email}\n`;
-            confirmationMessage += `Type: ${customerType === 'distributor' ? 'Distributor' : 'Customer'}\n`;
-            confirmationMessage += `Payment Method: ${paymentLabel}\n\n`;
-            confirmationMessage += 'Products:\n';
-            walkInCart.forEach((item, idx) => {
-                const price = customerType === 'distributor' ? item.dp : item.cp;
-                const total = price * item.quantity;
-                confirmationMessage += `  ${idx + 1}. ${item.name} x${item.quantity} = N$ ${total.toFixed(2)}\n`;
-            });
-            confirmationMessage += `\nSubtotal: N$ ${subtotal.toFixed(2)}\n`;
-            confirmationMessage += `Total BV: ${totalBV.toFixed(0)}\n`;
-            confirmationMessage += `Grand Total: N$ ${subtotal.toFixed(2)}\n\n`;
-            confirmationMessage += 'Confirm this sale?';
-            
-            if (confirm(confirmationMessage)) {
-                processWalkInPayment();
-            }
-        }
+		function showWalkInSaleConfirmation() {
+			const customerName = document.getElementById('walkInCustomerName').value.trim();
+			const phone = document.getElementById('walkInPhone').value.trim();
+			const email = document.getElementById('walkInEmail').value.trim();
+			const customerType = document.getElementById('walkInCustomerType').value;
+			const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
 
-        async function processWalkInPayment() {
+			if (!customerName || walkInCart.length === 0) {
+				alert('Please fill in customer name and add products to cart');
+				return;
+			}
+
+			if (customerType === 'customer') {
+				const distributorCode = document.getElementById('distributorReferralValue').value;
+				if (!distributorCode) {
+					alert('⚠️ Required: Please search and select a referred distributor');
+					return;
+				}
+			}
+
+			const pricingKey = customerType === 'distributor' ? 'dp' : 'cp';
+			const subtotal = walkInCart.reduce((sum, item) => sum + (item[pricingKey] * item.quantity), 0);
+			const totalBV = walkInCart.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
+
+			const paymentMethodLabels = {
+				cash: '💵 Cash',
+				card: '💳 Card',
+				mobile: '📱 Mobile Money',
+				bank: '🏦 Bank Transfer'
+			};
+			const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
+
+			const confirmationModal = document.getElementById('walkInSaleConfirmationModal');
+			if (!confirmationModal) {
+				let confirmationMessage = '📋 REVIEW & CONFIRM SALE\n\n';
+				confirmationMessage += `Customer: ${customerName}\n`;
+				if (phone) confirmationMessage += `Phone: ${phone}\n`;
+				if (email) confirmationMessage += `Email: ${email}\n`;
+				confirmationMessage += `Type: ${customerType === 'distributor' ? 'Distributor' : 'Customer'}\n`;
+				confirmationMessage += `Payment Method: ${paymentLabel}\n\n`;
+				confirmationMessage += 'Products:\n';
+				walkInCart.forEach((item, idx) => {
+					const price = customerType === 'distributor' ? item.dp : item.cp;
+					const total = price * item.quantity;
+					confirmationMessage += `  ${idx + 1}. ${item.name} x${item.quantity} = N$ ${total.toFixed(2)}\n`;
+				});
+				confirmationMessage += `\nSubtotal: N$ ${subtotal.toFixed(2)}\n`;
+				confirmationMessage += `Total BV: ${totalBV.toFixed(0)}\n`;
+				confirmationMessage += `Grand Total: N$ ${subtotal.toFixed(2)}\n\n`;
+				confirmationMessage += 'Confirm this sale?';
+				if (confirm(confirmationMessage)) {
+					processWalkInPayment();
+				}
+				return;
+			}
+
+			const confirmName = document.getElementById('confirmCustomerName');
+			if (confirmName) confirmName.textContent = customerName || 'Walk-in';
+			const confirmType = document.getElementById('confirmCustomerType');
+			if (confirmType) confirmType.textContent = customerType === 'distributor' ? 'Distributor' : 'Customer';
+			const confirmPhone = document.getElementById('confirmPhone');
+			if (confirmPhone) confirmPhone.textContent = phone || '—';
+			const confirmEmail = document.getElementById('confirmEmail');
+			if (confirmEmail) confirmEmail.textContent = email || '—';
+			const confirmPayment = document.getElementById('confirmPaymentMethod');
+			if (confirmPayment) confirmPayment.textContent = paymentLabel;
+
+			const referralInfo = document.getElementById('confirmReferralInfo');
+			if (customerType === 'customer') {
+				const referralName =
+					document.getElementById('distributorReferralSearch')?.value ||
+					document.getElementById('selectedDistributorName')?.textContent ||
+					'';
+				if (referralInfo) referralInfo.style.display = referralName ? 'block' : 'none';
+				const referralEl = document.getElementById('confirmReferral');
+				if (referralEl) referralEl.textContent = referralName || 'Not selected';
+			} else if (referralInfo) {
+				referralInfo.style.display = 'none';
+			}
+
+			const itemsContainer = document.getElementById('confirmProductsList');
+			if (itemsContainer) {
+				const itemsHtml = walkInCart.map((item, idx) => {
+					const unitPrice = item[pricingKey];
+					const lineTotal = unitPrice * item.quantity;
+					const lineBV = item.bv * item.quantity;
+					return `
+						<div style="display:flex; justify-content:space-between; align-items:flex-start; padding:10px; border-bottom:1px solid #eee;">
+							<div style="flex:1;">
+								<div style="font-weight:600;">${idx + 1}. ${item.name}</div>
+								<div style="font-size:0.85rem; color:#666;">Quantity: ${item.quantity}</div>
+							</div>
+							<div style="text-align:right;">
+								<div style="font-weight:600;">N$ ${lineTotal.toFixed(2)}</div>
+								<div style="font-size:0.8rem; color:#c41e3a;">BV: ${lineBV.toFixed(0)}</div>
+							</div>
+						</div>
+					`;
+				}).join('');
+				itemsContainer.innerHTML = itemsHtml || '<p style="text-align:center; color:#7f8c8d;">No items in cart</p>';
+			}
+
+			const subtotalEl = document.getElementById('confirmSubtotal');
+			if (subtotalEl) subtotalEl.textContent = `N$ ${subtotal.toFixed(2)}`;
+			const totalEl = document.getElementById('confirmGrandTotal');
+			if (totalEl) totalEl.textContent = `N$ ${subtotal.toFixed(2)}`;
+			const bvEl = document.getElementById('confirmTotalBV');
+			if (bvEl) bvEl.textContent = totalBV.toFixed(0);
+
+			confirmationModal.style.display = 'block';
+		}
+
+		function confirmWalkInSale() {
+			const outcome = processWalkInPayment();
+			if (outcome && typeof outcome.catch === 'function') {
+				outcome.catch(err => console.error('Walk-in sale processing failed', err));
+			}
+		}
+
+		async function processWalkInPayment() {
             const customerName = document.getElementById('walkInCustomerName').value.trim();
             const phone = document.getElementById('walkInPhone').value.trim();
             const email = document.getElementById('walkInEmail').value.trim();
@@ -28362,7 +29535,7 @@ async function reverseLastPrescriptionPayment(reportId){
             // Validation
             if (!customerName || walkInCart.length === 0) {
                 alert('Please fill in customer name and add products to cart');
-                return;
+				return false;
             }
             
             // Handle distributor referral based on customer type
@@ -28375,7 +29548,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 
                 if (!distributorCode) {
                     alert('⚠️ Required: Please search and select a referred distributor');
-                    return;
+					return false;
                 }
                 
                 // Find distributor details
@@ -28385,7 +29558,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 
                 if (!selectedDistributor) {
                     alert('⚠️ Error: Selected distributor not found');
-                    return;
+					return false;
                 }
                 
                 referralName = selectedDistributor.distributorName || selectedDistributor.name;
@@ -28609,8 +29782,10 @@ async function reverseLastPrescriptionPayment(reportId){
             alert(successMessage);
             
             // Close modal and reset
+			try { closeModal('walkInSaleConfirmationModal'); } catch (_) {}
             closeModal('walkInSaleModal');
             refreshWalkInSalesList();
+			return true;
         }
 
         function refreshWalkInSalesList() {
@@ -29953,6 +31128,145 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
+		function collectPurchaseOrderItems() {
+			const rows = Array.from(document.querySelectorAll('#purchaseOrderTableBody tr'));
+			return rows.map(row => {
+				const getValue = selector => {
+					const input = row.querySelector(selector);
+					return input ? input.value.trim() : '';
+				};
+				return {
+					carton: getValue('.po-carton-no'),
+					description: getValue('.po-description'),
+					batch: getValue('.po-batch-no'),
+					expiry: getValue('.po-expiry-date'),
+					quantity: Number(row.querySelector('.po-quantity')?.value || 0),
+					totalCtns: Number(row.querySelector('.po-total-ctns')?.value || 0)
+				};
+			}).filter(item => item.description || item.carton || item.batch);
+		}
+
+		function addPurchaseOrderRow() {
+			const tbody = document.getElementById('purchaseOrderTableBody');
+			if (!tbody) return;
+			const template = tbody.querySelector('tr');
+			if (!template) return;
+			const clone = template.cloneNode(true);
+			clone.querySelectorAll('input').forEach(input => { input.value = ''; });
+			tbody.appendChild(clone);
+		}
+
+		function removePurchaseOrderRow(trigger) {
+			const tbody = document.getElementById('purchaseOrderTableBody');
+			if (!tbody) return;
+			const rows = Array.from(tbody.querySelectorAll('tr'));
+			const row = trigger && trigger.closest ? trigger.closest('tr') : null;
+			if (!row) return;
+			if (rows.length <= 1) {
+				row.querySelectorAll('input').forEach(input => { input.value = ''; });
+				return;
+			}
+			row.remove();
+		}
+
+		function resetPurchaseOrderTableRows() {
+			const tbody = document.getElementById('purchaseOrderTableBody');
+			if (!tbody) return;
+			const rows = Array.from(tbody.querySelectorAll('tr'));
+			rows.slice(1).forEach(row => row.remove());
+			if (rows[0]) {
+				rows[0].querySelectorAll('input').forEach(input => { input.value = ''; });
+			}
+		}
+
+		function clearPurchaseOrderForm() {
+			const form = document.getElementById('purchaseOrderForm');
+			if (form) form.reset();
+			resetPurchaseOrderTableRows();
+		}
+
+		function formatPurchaseOrderItemSummary(items, limit = 3) {
+			if (!Array.isArray(items) || items.length === 0) return '';
+			return items.slice(0, limit).map(item => {
+				if (typeof item === 'string') return item;
+				if (!item || typeof item !== 'object') return '';
+				const name = item.description || item.product || 'Item';
+				const qty = item.quantity || item.totalCtns;
+				return qty ? `${name} x${qty}` : name;
+			}).filter(Boolean).join(', ');
+		}
+
+		function serializePurchaseOrderItems(items) {
+			if (!Array.isArray(items)) return '';
+			return items.map(item => {
+				if (typeof item === 'string') return item;
+				if (!item || typeof item !== 'object') return '';
+				const parts = [];
+				if (item.description || item.product) parts.push(item.description || item.product);
+				if (item.quantity || item.totalCtns) parts.push(`x${item.quantity || item.totalCtns}`);
+				if (item.batch) parts.push(`Batch ${item.batch}`);
+				return parts.join(' ').trim();
+			}).filter(Boolean).join(' | ');
+		}
+
+		function autoGeneratePurchaseOrdersFromMovements() {
+			loadStockData();
+			let suggestions = null;
+			try {
+				suggestions = JSON.parse(localStorage.getItem('dyna_po_suggestions') || 'null');
+			} catch (_) {
+				suggestions = null;
+			}
+			if (!suggestions || !Array.isArray(suggestions.products) || suggestions.products.length === 0) {
+				if (Array.isArray(replenishmentSuggestionCache) && replenishmentSuggestionCache.length) {
+					suggestions = { products: replenishmentSuggestionCache };
+				}
+			}
+			if (!suggestions || !Array.isArray(suggestions.products) || suggestions.products.length === 0) {
+				alert('No stock movement suggestions available. Capture branch replenishment requests first.');
+				return;
+			}
+			const tbody = document.getElementById('purchaseOrderTableBody');
+			if (!tbody) return;
+			resetPurchaseOrderTableRows();
+			const rowsNeeded = Math.min(suggestions.products.length, 10);
+			for (let i = 0; i < rowsNeeded; i++) {
+				if (i > 0) addPurchaseOrderRow();
+				const row = tbody.querySelectorAll('tr')[i];
+				const item = suggestions.products[i];
+				if (!row || !item) continue;
+				const assign = (selector, value) => {
+					const input = row.querySelector(selector);
+					if (input !== null && input !== undefined) {
+						input.value = value ?? '';
+					}
+				};
+				assign('.po-carton-no', item.carton || item.cartonNo || '');
+				assign('.po-description', item.product || item.description || '');
+				assign('.po-batch-no', item.batch || item.batchNo || '');
+				assign('.po-expiry-date', item.expiry || item.expiryDate || '');
+				assign('.po-quantity', item.quantity || item.requested || 0);
+				assign('.po-total-ctns', item.totalCtns || item.cartons || item.quantity || 0);
+			}
+			if (suggestions.supplier) {
+				const supplierInput = document.getElementById('poSupplier');
+				if (supplierInput && !supplierInput.value) supplierInput.value = suggestions.supplier;
+			}
+			if (suggestions.currency) {
+				const currencyInput = document.getElementById('poCurrency');
+				if (currencyInput) currencyInput.value = suggestions.currency;
+			}
+			if (suggestions.eta) {
+				const etaInput = document.getElementById('poEta');
+				if (etaInput) etaInput.value = suggestions.eta;
+			}
+			const notesInput = document.getElementById('poNotes');
+			if (notesInput) {
+				notesInput.value = suggestions.note || notesInput.value || 'Auto-generated from recent stock movement analysis.';
+			}
+			alert('✅ Purchase order lines populated from stock movement suggestions. Please review and adjust totals before submitting.');
+		}
+
             const supplierMap = new Map();
             purchaseOrdersDetailed.forEach(po => {
                 const supplier = (po.supplier || 'Unknown Supplier').trim();
@@ -30064,7 +31378,13 @@ async function reverseLastPrescriptionPayment(reportId){
         function handlePurchaseOrderSubmit(event) {
             event.preventDefault();
             const supplier = (document.getElementById('poSupplier')?.value || '').trim();
-            if (!supplier) return;
+			if (!supplier) return;
+			const lineItems = collectPurchaseOrderItems();
+			if (lineItems.length === 0) {
+				alert('Add at least one line item before submitting the purchase order.');
+				return;
+			}
+			const totalCartons = lineItems.reduce((sum, item) => sum + Number(item.totalCtns || item.quantity || 0), 0);
             const po = {
                 id: 'PO-' + Date.now(),
                 supplier,
@@ -30072,16 +31392,19 @@ async function reverseLastPrescriptionPayment(reportId){
                 eta: document.getElementById('poEta')?.value || '',
                 value: Number(document.getElementById('poValue')?.value || 0),
                 currency: document.getElementById('poCurrency')?.value || 'NAD',
-                items: (document.getElementById('poItems')?.value || '').split(/\n|;/).map(i => i.trim()).filter(Boolean),
+				items: lineItems,
                 linked: document.getElementById('poLinked')?.value || '',
                 status: document.getElementById('poStatus')?.value || 'Open',
-                notes: document.getElementById('poNotes')?.value || '',
+				notes: document.getElementById('poNotes')?.value || '',
+				totalCartons,
+				itemSummary: formatPurchaseOrderItemSummary(lineItems, 5),
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
             purchaseOrdersDetailed.unshift(po);
             persistPurchaseOrders();
             event.target.reset();
+			resetPurchaseOrderTableRows();
             renderPurchaseOrders();
             renderSupplierScorecard();
             renderPlanInsights();
@@ -30097,7 +31420,10 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
-            container.innerHTML = purchaseOrdersDetailed.slice(0, 6).map(po => `
+			container.innerHTML = purchaseOrdersDetailed.slice(0, 6).map(po => {
+				const itemPreview = formatPurchaseOrderItemSummary(po.items, 3);
+				const extraCount = Array.isArray(po.items) && po.items.length > 3;
+				return `
                 <div class="client-card">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
                         <div>
@@ -30110,15 +31436,15 @@ async function reverseLastPrescriptionPayment(reportId){
                             <div style="font-size:1.1rem; font-weight:700; color:#27ae60; margin-top:6px;">${po.currency || 'NAD'} ${Number(po.value || 0).toFixed(2)}</div>
                         </div>
                     </div>
-                    ${po.items && po.items.length ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${po.items.slice(0, 3).join(', ')}${po.items.length > 3 ? '…' : ''}</div>` : ''}
+					${itemPreview ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemPreview}${extraCount ? '…' : ''}</div>` : ''}
                     ${po.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${po.notes}</p>` : ''}
                     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
                         <button class="btn btn-success" style="flex:1; min-width:120px;" onclick="updatePurchaseOrderStatus('${po.id}', 'Delivered')">Mark Delivered</button>
                         <button class="btn btn-info" style="flex:1; min-width:120px;" onclick="updatePurchaseOrderStatus('${po.id}', 'In Transit')">In Transit</button>
                         <button class="btn" style="flex:1; min-width:120px;" onclick="updatePurchaseOrderStatus('${po.id}', 'Open')">Reopen</button>
                     </div>
-                </div>
-            `).join('');
+				</div>`;
+			}).join('');
         }
 
         function updatePurchaseOrderStatus(poId, status) {
@@ -30139,15 +31465,15 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             const rows = ['PO Number,Supplier,Status,ETA,Value,Currency,Items'];
             purchaseOrdersDetailed.forEach(po => {
-                rows.push([
-                    po.number,
-                    po.supplier,
-                    po.status,
-                    po.eta || '',
-                    Number(po.value || 0).toFixed(2),
-                    po.currency || 'NAD',
-                    (po.items || []).join(' | ')
-                ].map(v => String(v).replace(/,/g, ' ')).join(','));
+			rows.push([
+				po.number,
+				po.supplier,
+				po.status,
+				po.eta || '',
+				Number(po.value || 0).toFixed(2),
+				po.currency || 'NAD',
+				serializePurchaseOrderItems(po.items)
+			].map(v => String(v).replace(/,/g, ' ')).join(','));
             });
             const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
             const link = document.createElement('a');
@@ -33582,6 +34908,11 @@ async function reverseLastPrescriptionPayment(reportId){
             
             // Broadcast stock update event for real-time sync
             if (successCount > 0) {
+                const stockUpdateTs = Date.now();
+                try { localStorage.setItem('dyna_barcode_stock_lastUpdated', String(stockUpdateTs)); } catch (_) {}
+                if (typeof window !== 'undefined') {
+                    window._stockJustImported = stockUpdateTs;
+                }
                 try {
                     const products = items.filter((_, idx) => idx < successCount).map(item => ({ 
                         name: item.description || item.productName || 'Unknown', 
@@ -34569,12 +35900,7 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // Get API base URL
         function getApiBase() {
-            const metaTag = document.querySelector('meta[name="api-base"]');
-            if (metaTag && metaTag.content) {
-                return metaTag.content;
-            }
-            // Default to relative path
-            return '/api';
+            return resolveApiBase();
         }
         
         // Load enhanced finance data with API integration
@@ -35680,6 +37006,80 @@ async function reverseLastPrescriptionPayment(reportId){
         const BONUS_STATUS_STORAGE_KEY = 'finance_bonus_statuses';
         const BONUS_TAB_STORAGE_KEY = 'finance_bonus_last_tab';
 
+        function isOfflineFinanceError(error) {
+            if (!error) return false;
+            if (error.offline === true) return true;
+            const message = String(error.message || error || '').toLowerCase();
+            if (!message) return !navigator.onLine;
+            return (
+                message.includes('failed to fetch') ||
+                message.includes('networkerror') ||
+                message.includes('load failed') ||
+                message.includes('network request failed') ||
+                (!navigator.onLine && message.includes('typeerror'))
+            );
+        }
+
+        function getBonusMonthTotals(month) {
+            const existing = month ? getStoredBonusStatus(month) : null;
+            const fallbackRecords = Array.isArray(bonusUploadData) ? bonusUploadData.length : 0;
+            const fallbackAmount = Array.isArray(bonusUploadData)
+                ? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+                : 0;
+            return {
+                totalRecords: existing?.totalRecords ?? fallbackRecords,
+                totalAmount: existing?.totalAmount ?? fallbackAmount
+            };
+        }
+
+        function loadOfflineBonusSnapshot(month) {
+            try {
+                const raw = localStorage.getItem('finance_bonus_list');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || (month && parsed.month !== month)) return null;
+                return parsed;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function renderOfflineReconciliationView(snapshot, month) {
+            const body = document.getElementById('reconBody');
+            const summary = document.getElementById('reconSummary');
+            const reconHighlight = document.getElementById('bonusReconciliationSummary');
+            const activeMonth = month || snapshot?.month || '';
+            if (!snapshot || !Array.isArray(snapshot.items) || snapshot.items.length === 0) {
+                if (body) {
+                    body.innerHTML = `<tr><td colspan="7" style="padding:12px; text-align:center; color:#5f6c7b;">Offline bonus data not available for ${activeMonth || 'the selected month'}.</td></tr>`;
+                }
+                if (summary) summary.textContent = '';
+                if (reconHighlight) reconHighlight.textContent = '';
+                return;
+            }
+            const items = snapshot.items;
+            if (body) {
+                body.innerHTML = items.map(item => `
+                    <tr>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">${escapeHtml(item.drn || '')}</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">${escapeHtml(item.name || '')}</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">${formatBonusCurrency(Number(item.amount) || 0)}</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">—</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">${escapeHtml(item.method || item.signature || 'Offline')}</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7;">Pending Sync</td>
+                        <td style="padding:10px;border-bottom:1px solid #eef2f7; color:#5f6c7b;">—</td>
+                    </tr>
+                `).join('');
+            }
+            const totalUpload = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            if (summary) {
+                summary.textContent = `Offline mode • Records: ${items.length} • Uploaded NAD: ${formatBonusCurrency(totalUpload)} • Paid data unavailable`;
+            }
+            if (reconHighlight) {
+                reconHighlight.textContent = `${activeMonth || snapshot.month} • Offline upload ${formatBonusCurrency(totalUpload)} • Awaiting sync`;
+            }
+        }
+
         function getStoredBonusStatusMap() {
             try {
                 const raw = localStorage.getItem(BONUS_STATUS_STORAGE_KEY);
@@ -36199,8 +37599,8 @@ async function reverseLastPrescriptionPayment(reportId){
 
         // Approve/Reject monthly upload
         async function approveBonusUpload() {
+            let month = document.getElementById('bonusUploadMonth')?.value || '';
             try {
-                const month = document.getElementById('bonusUploadMonth')?.value;
                 if (!month) { 
                     alert('⚠️ Please select a month first. Click the month selector and choose a month.'); 
                     return; 
@@ -36219,9 +37619,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to approve');
                 alert('✅ Upload approved successfully');
-                const existing = getStoredBonusStatus(month);
-                const totalRecords = existing?.totalRecords ?? (bonusUploadData.length || 0);
-                const totalAmount = existing?.totalAmount ?? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                const { totalRecords, totalAmount } = getBonusMonthTotals(month);
                 setStoredBonusStatus(month, 'approved', {
                     totalRecords,
                     totalAmount,
@@ -36230,19 +37628,29 @@ async function reverseLastPrescriptionPayment(reportId){
                 const reasonInput = document.getElementById('bonusRejectionReason');
                 if (reasonInput) reasonInput.value = '';
                 refreshBonusWorkflowSummary();
-            } catch (e) { 
-                alert(`❌ Approval failed: ${e.message}`); 
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    const { totalRecords, totalAmount } = getBonusMonthTotals(month);
+                    setStoredBonusStatus(month, 'pending-approval-offline', {
+                        totalRecords,
+                        totalAmount,
+                        note: 'Approval captured offline. Sync with finance API when back online.'
+                    });
+                    alert('⚠️ Unable to reach finance server. Approval saved locally and will require syncing when back online.');
+                } else {
+                    alert(`❌ Approval failed: ${e.message}`);
+                }
                 console.error('Approve error:', e);
             }
         }
         async function rejectBonusUpload() {
+            let month = document.getElementById('bonusUploadMonth')?.value || '';
+            let reason = document.getElementById('bonusRejectionReason')?.value.trim() || '';
             try {
-                const month = document.getElementById('bonusUploadMonth')?.value;
                 if (!month) { 
                     alert('⚠️ Please select a month first. Click the month selector and choose a month.'); 
                     return; 
                 }
-                let reason = document.getElementById('bonusRejectionReason')?.value.trim() || '';
                 if (!reason) {
                     reason = prompt('Reason for rejection?') || '';
                 }
@@ -36260,9 +37668,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to reject');
                 alert('⛔ Upload rejected');
-                const existing = getStoredBonusStatus(month);
-                const totalRecords = existing?.totalRecords ?? (bonusUploadData.length || 0);
-                const totalAmount = existing?.totalAmount ?? bonusUploadData.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                const { totalRecords, totalAmount } = getBonusMonthTotals(month);
                 setStoredBonusStatus(month, 'rejected', {
                     totalRecords,
                     totalAmount,
@@ -36272,8 +37678,19 @@ async function reverseLastPrescriptionPayment(reportId){
                 const reasonInput = document.getElementById('bonusRejectionReason');
                 if (reasonInput) reasonInput.value = reason;
                 refreshBonusWorkflowSummary();
-            } catch (e) { 
-                alert(`❌ Rejection failed: ${e.message}`); 
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    const { totalRecords, totalAmount } = getBonusMonthTotals(month);
+                    setStoredBonusStatus(month, 'rejected-offline', {
+                        totalRecords,
+                        totalAmount,
+                        reason: (typeof reason !== 'undefined' && reason) ? reason : 'Offline rejection',
+                        note: 'Rejection captured offline. Sync with finance API when back online.'
+                    });
+                    alert('⚠️ Unable to reach finance server. Rejection stored locally and will need to be synced when online.');
+                } else {
+                    alert(`❌ Rejection failed: ${e.message}`);
+                }
                 console.error('Reject error:', e);
             }
         }
@@ -36293,7 +37710,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 URL.revokeObjectURL(a.href);
                 markBonusExported(month, `Bank batch exported ${new Date().toLocaleString()}.`);
                 refreshBonusWorkflowSummary();
-            } catch (e) { alert(`❌ ${e.message}`); }
+            } catch (e) {
+                if (isOfflineFinanceError(e)) {
+                    alert('⚠️ Offline mode: unable to export bank batch until the finance server is reachable.');
+                } else {
+                    alert(`❌ ${e.message}`);
+                }
+            }
         }
         async function exportCashSheet() {
             const month = document.getElementById('bonusUploadMonth')?.value;
@@ -37549,9 +38972,15 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                         return;
                     }
                     
+                    const nowTs = Date.now();
+                    try {
+                        localStorage.setItem('hr_employees_lastUpdated', String(nowTs));
+                        localStorage.setItem('dyna_employees_lastUpdated', String(nowTs));
+                    } catch (_) {}
+                    
                     // Set a flag to prevent cloud-sync from overwriting for the next few seconds
                     if (typeof window !== 'undefined') {
-                        window._employeeJustSaved = Date.now();
+                        window._employeeJustSaved = nowTs;
                         console.log('🛡️ Set protection flag against cloud-sync overwrite');
                     }
                     

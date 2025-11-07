@@ -207,6 +207,53 @@
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
+        .gm-request-card {
+            background: #f8f9ff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .gm-request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .gm-request-meta {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .gm-request-items {
+            margin-top: 12px;
+            font-size: 0.95em;
+            color: #4b5563;
+        }
+        .gm-request-items ul {
+            margin: 8px 0 0 18px;
+        }
+        .gm-request-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+        }
+        .btn-approve {
+            background: #10b981;
+            color: #fff;
+        }
+        .btn-approve:hover {
+            background: #0b9a6f;
+        }
+        .btn-reject {
+            background: #ef4444;
+            color: #fff;
+        }
+        .btn-reject:hover {
+            background: #c53030;
+        }
         
         .recent-activity {
             max-height: 400px;
@@ -280,6 +327,7 @@
             thead { display: table-header-group; }
             tbody { display: table-row-group; }
             thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+            .gm-request-card { padding: 14px !important; }
         }
         
         @media (max-width: 480px) {
@@ -291,6 +339,7 @@
                 padding: 8px 4px !important;
                 font-size: 0.75rem !important;
             }
+            .gm-request-card { padding: 12px !important; }
         }
         
         /* Touch-friendly */
@@ -400,7 +449,13 @@
                     <div class="no-data">Loading activity...</div>
                 </div>
             </div>
-            
+            <div class="card" style="grid-column: span 2;">
+                <h2>Stock Requests Awaiting GM Approval</h2>
+                <div id="gmStockRequests" class="gm-requests-container">
+                    <div class="no-data">Loading stock requests...</div>
+                </div>
+            </div>
+
             <div class="card">
                 <h2>Branch Performance</h2>
                 <div style="overflow-x: auto;">
@@ -425,11 +480,14 @@
         </div>
     </div>
     
-    <script>
+    <script type="module">
+        import { getStockRequests, approveStockRequest } from './web-modules/stock-requests.js';
         // Sample data storage (in production, this would come from API)
         let allTransactions = [];
         let allClients = [];
         let allBranches = [];
+        let gmPendingRequests = [];
+        const gmUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName: 'General Manager', role: 'general_manager' };
         
         // Initialize the portal
         async function initializePortal() {
@@ -438,6 +496,7 @@
                 updateDashboard();
                 loadTransactionsTable();
                 loadRecentActivity();
+                loadGmStockRequests();
                 
                 // Auto-refresh every 30 seconds
                 setInterval(() => {
@@ -726,6 +785,88 @@
                 </div>
             `).join('');
         }
+
+        function loadGmStockRequests() {
+            try {
+                const result = getStockRequests({ status: 'all' }) || { data: [] };
+                const requests = Array.isArray(result.data) ? result.data : [];
+                gmPendingRequests = requests
+                    .filter(req => req.status === 'pending_gm')
+                    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+                    .slice(0, 20);
+                renderGmStockRequests();
+            } catch (error) {
+                console.error('Failed to load GM stock requests:', error);
+                gmPendingRequests = [];
+                renderGmStockRequests();
+            }
+        }
+
+        function renderGmStockRequests() {
+            const container = document.getElementById('gmStockRequests');
+            if (!container) return;
+
+            if (!gmPendingRequests.length) {
+                container.innerHTML = '<div class="no-data">No stock requests are waiting for GM approval.</div>';
+                return;
+            }
+
+            container.innerHTML = gmPendingRequests.map(req => {
+                const items = Array.isArray(req.items) ? req.items : [];
+                const formattedDate = req.returnDate ? new Date(req.returnDate).toLocaleDateString() : '—';
+                const notes = req.notes && req.notes.trim() ? req.notes : 'No additional notes';
+                const listItems = items.length
+                    ? `<ul>${items.map(item => `<li>${(item.description || item.productId || 'Item').toString()} — <strong>${Number(item.quantity || 0)}</strong> ${item.uom || 'units'}</li>`).join('')}</ul>`
+                    : '<div>No line items captured.</div>';
+                return `
+                    <div class="gm-request-card" data-request-id="${req.id}">
+                        <div class="gm-request-header">
+                            <div><strong>${req.requestNumber || req.id}</strong> • ${req.requestingBranch || 'Unknown branch'}</div>
+                            <div class="gm-request-meta">Return by: ${formattedDate}</div>
+                        </div>
+                        <div class="gm-request-meta">Priority: ${(req.priority || 'normal').toUpperCase()}</div>
+                        <div class="gm-request-items">
+                            <div><strong>Items</strong></div>
+                            ${listItems}
+                        </div>
+                        <div class="gm-request-meta" style="margin-top:10px;">Notes: ${notes}</div>
+                        <div class="gm-request-actions">
+                            <button class="btn btn-reject" data-gm-action="reject" data-request-id="${req.id}">Reject</button>
+                            <button class="btn btn-approve" data-gm-action="approve" data-request-id="${req.id}">Approve</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showGmFeedback(message, variant = 'info') {
+            const container = document.getElementById('gmStockRequests');
+            if (!container) {
+                alert(message);
+                return;
+            }
+            const colors = {
+                success: { bg: '#d1fae5', text: '#065f46' },
+                warning: { bg: '#fef3c7', text: '#92400e' },
+                error: { bg: '#fee2e2', text: '#991b1b' },
+                info: { bg: '#e0e7ff', text: '#3730a3' }
+            };
+            const tone = colors[variant] || colors.info;
+            const banner = document.createElement('div');
+            banner.style.background = tone.bg;
+            banner.style.color = tone.text;
+            banner.style.padding = '10px 12px';
+            banner.style.borderRadius = '8px';
+            banner.style.marginBottom = '12px';
+            banner.style.fontSize = '0.9em';
+            banner.textContent = message;
+            container.prepend(banner);
+            setTimeout(() => {
+                banner.style.opacity = '0';
+                banner.style.transition = 'opacity .3s ease';
+                setTimeout(() => banner.remove(), 320);
+            }, 2000);
+        }
         
         // Format date for display
         function formatDate(dateString) {
@@ -744,6 +885,7 @@
                 updateDashboard();
                 loadTransactionsTable();
                 loadRecentActivity();
+                loadGmStockRequests();
                 loadBranchPerformance();
                 
                 // Show success indicator
@@ -783,6 +925,40 @@
             updateDashboard();
         });
         
+        const gmRequestsContainer = document.getElementById('gmStockRequests');
+        if (gmRequestsContainer) {
+            gmRequestsContainer.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-gm-action]');
+                if (!button) return;
+                const action = button.getAttribute('data-gm-action');
+                const requestId = button.getAttribute('data-request-id');
+                if (!requestId) return;
+                if (action === 'reject' && !confirm('Reject this stock request?')) {
+                    return;
+                }
+                try {
+                    approveStockRequest(requestId, {
+                        approverRole: 'general_manager',
+                        approvedBy: gmUser.fullName || 'General Manager',
+                        approved: action === 'approve',
+                        notes: ''
+                    });
+                    showGmFeedback(action === 'approve' ? 'Request forwarded to warehouse.' : 'Request rejected.', action === 'approve' ? 'success' : 'warning');
+                    loadGmStockRequests();
+                } catch (error) {
+                    console.error('GM approval error:', error);
+                    showGmFeedback('Failed to update request. Please try again.', 'error');
+                }
+            });
+        }
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'dyna_stock_requests') {
+                loadGmStockRequests();
+            }
+        });
+        window.addEventListener('stock-updated', () => loadGmStockRequests());
+
         // Initialize when page loads
         initializePortal();
 
@@ -802,17 +978,16 @@
                 t.date,
                 t.status
             ]);
-            const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
+            const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
-            link.href = url;
-            link.download = `gm-transactions-${new Date().toISOString().slice(0,10)}.csv`;
-            document.body.appendChild(link);
+            link.href = URL.createObjectURL(blob);
+            link.download = `gm-transactions-${new Date().toISOString().split('T')[0]}.csv`;
             link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
         }
+
+        window.refreshData = refreshData;
+        window.exportCSV = exportCSV;
 
         // Load branch performance using API helper
         async function loadBranchPerformance() {

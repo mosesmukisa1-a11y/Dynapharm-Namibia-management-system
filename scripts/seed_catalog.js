@@ -94,6 +94,7 @@ function extractDistributors() {
   const mobileIndex = headerValues.indexOf('MOBILE_TELE');
   const emailIndex = headerValues.indexOf('EMAIL');
   const cityIndex = headerValues.indexOf('CITY');
+  const statusIndex = headerValues.indexOf('STATUS');
 
   if (codeIndex === -1 || nameIndex === -1) {
     throw new Error('Distributor CSV is missing required DRN or NAME columns.');
@@ -118,7 +119,8 @@ function extractDistributors() {
       name,
       mobile: mobileIndex !== -1 ? (parts[mobileIndex] || '') : '',
       email: emailIndex !== -1 ? (parts[emailIndex] || '') : '',
-      city: cityIndex !== -1 ? (parts[cityIndex] || '') : ''
+      city: cityIndex !== -1 ? (parts[cityIndex] || '') : '',
+      status: statusIndex !== -1 ? (parts[statusIndex] || '') : ''
     });
   }
 
@@ -166,22 +168,6 @@ function createProductPlaceholder(name) {
     height: 512,
     fileSize: buffer.length,
     filename: `${slugify(name) || 'product'}-placeholder.svg`
-  };
-}
-
-function createDistributorPlaceholder(name, code) {
-  const displayName = name.length > 24 ? `${name.slice(0, 21)}…` : name;
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320">
-  <rect width="320" height="320" fill="#2C3E50" rx="24"/>
-  <text x="50%" y="46%" font-family="'Segoe UI', Arial, sans-serif" font-size="28" font-weight="600" fill="#ECF0F1" text-anchor="middle">${displayName.replace(/&/g, '&amp;')}</text>
-  <text x="50%" y="65%" font-family="'Segoe UI', Arial, sans-serif" font-size="18" fill="#F1C40F" text-anchor="middle">${code.replace(/&/g, '&amp;')}</text>
-</svg>`;
-  const buffer = Buffer.from(svg, 'utf8');
-  return {
-    dataUrl: `data:image/svg+xml;base64,${buffer.toString('base64')}`,
-    filename: `${slugify(code || name) || 'distributor'}-profile.svg`,
-    fileSize: buffer.length
   };
 }
 
@@ -297,52 +283,50 @@ async function seedDistributors(pool, distributors) {
 
   await pool.query('DELETE FROM distributors');
 
+  const chunkSize = Number(process.env.DISTRIBUTOR_CHUNK_SIZE || '500');
+  const totalChunks = Math.ceil(distributors.length / chunkSize);
+
   const insertDistributorText = `
-    INSERT INTO distributors (id, distributor_code, distributor_name, mobile_no, email, commission_rate, status, branch, created_at, updated_at, agreement_data, photo_url, photo_filename, photo_updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$9)
-    ON CONFLICT (id)
+    INSERT INTO distributors (drn, name, mobile_tele, email, city, status)
+    VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (drn)
     DO UPDATE SET
-      distributor_code = EXCLUDED.distributor_code,
-      distributor_name = EXCLUDED.distributor_name,
-      mobile_no = EXCLUDED.mobile_no,
+      name = EXCLUDED.name,
+      mobile_tele = EXCLUDED.mobile_tele,
       email = EXCLUDED.email,
-      commission_rate = EXCLUDED.commission_rate,
+      city = EXCLUDED.city,
       status = EXCLUDED.status,
-      branch = EXCLUDED.branch,
-      agreement_data = EXCLUDED.agreement_data,
-      photo_url = EXCLUDED.photo_url,
-      photo_filename = EXCLUDED.photo_filename,
-      photo_updated_at = EXCLUDED.photo_updated_at,
-      updated_at = EXCLUDED.updated_at
+      modifydate = NOW()
   `;
 
-  for (const record of distributors) {
-    const id = hashedId('DIST', `${record.code}-${record.name}`);
-    const placeholder = createDistributorPlaceholder(record.name, record.code);
-    const mobile = record.mobile ? record.mobile.replace(/\s+/g, '') : null;
-    const email = record.email && record.email.includes('@') ? record.email : null;
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+    const start = chunkIndex * chunkSize;
+    const end = Math.min(start + chunkSize, distributors.length);
+    const chunk = distributors.slice(start, end);
 
-    const agreementData = {
-      city: record.city || undefined,
-      mobile: mobile || undefined,
-      email: email || undefined,
-      source: 'full_roster_seed'
-    };
+    await pool.query('BEGIN');
 
-    await pool.query(insertDistributorText, [
-      id,
-      record.code,
-      record.name,
-      mobile,
-      email,
-      0,
-      'active',
-      null,
-      now,
-      JSON.stringify(agreementData),
-      placeholder.dataUrl,
-      placeholder.filename
-    ]);
+    try {
+      for (const record of chunk) {
+        const mobile = record.mobile ? record.mobile.replace(/\s+/g, '') : null;
+        const email = record.email && record.email.includes('@') ? record.email : null;
+
+        await pool.query(insertDistributorText, [
+          record.code,
+          record.name,
+          mobile,
+          email,
+          record.city || null,
+          record.status || 'active'
+        ]);
+      }
+
+      await pool.query('COMMIT');
+      console.log(`   • Chunk ${chunkIndex + 1}/${totalChunks} inserted (${end}/${distributors.length} total)`);
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
+    }
   }
 
   console.log(`✅ Seeded ${distributors.length} distributors.`);
@@ -362,13 +346,10 @@ async function main() {
   });
 
   try {
-    await pool.query('BEGIN');
     await seedProducts(pool, products);
     await seedDistributors(pool, distributors);
-    await pool.query('COMMIT');
     console.log('🎉 Catalog seeding completed successfully.');
   } catch (error) {
-    await pool.query('ROLLBACK');
     console.error('❌ Catalog seeding failed:', error);
     process.exitCode = 1;
   } finally {

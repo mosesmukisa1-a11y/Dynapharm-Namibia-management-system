@@ -9,6 +9,20 @@ class CloudStorage {
         this.tokenStorageKey = 'dyna_github_token';
         this.lastCloudSyncKey = 'dyna_cloud_lastSync';
         this.pollIntervalMs = 20000; // 20s light polling for near real-time
+        this.localOverrideWindowMs = 5 * 60 * 1000; // protect local edits for 5 minutes
+    }
+
+    _hasRecentLocalUpdate(key, windowMs = this.localOverrideWindowMs) {
+        if (typeof localStorage === 'undefined') return false;
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return false;
+            const ts = Number(raw);
+            if (!Number.isFinite(ts)) return false;
+            return (Date.now() - ts) < windowMs;
+        } catch (_) {
+            return false;
+        }
     }
 
     async loadFromCloud() {
@@ -53,7 +67,11 @@ class CloudStorage {
                     localStorage.setItem('dyna_branches', JSON.stringify(cloudData.branches));
                 }
                 if (cloudData.barcodeStock) {
-                    localStorage.setItem('dyna_barcode_stock', JSON.stringify(cloudData.barcodeStock));
+                    if (this._hasRecentLocalUpdate('dyna_barcode_stock_lastUpdated')) {
+                        console.log('⏭️ Skipping barcode stock overwrite (recent local import detected)');
+                    } else {
+                        localStorage.setItem('dyna_barcode_stock', JSON.stringify(cloudData.barcodeStock));
+                    }
                 }
                 if (cloudData.purchaseOrders) {
                     localStorage.setItem('dyna_purchase_orders', JSON.stringify(cloudData.purchaseOrders));
@@ -107,9 +125,27 @@ class CloudStorage {
                     if (!r.ok) continue;
                     const list = await r.json();
                     
-                    // Check if employee was just saved locally (within last 10 seconds)
+                    // Check if employee was just saved locally (guard for recent edits)
                     const justSaved = typeof window !== 'undefined' && window._employeeJustSaved && 
-                                      (Date.now() - window._employeeJustSaved) < 10000;
+                                      (Date.now() - window._employeeJustSaved) < this.localOverrideWindowMs;
+                    const recentLocalUpdate = this._hasRecentLocalUpdate('dyna_employees_lastUpdated');
+                    
+                    if (justSaved || recentLocalUpdate) {
+                        let sourceTimestamp = Date.now();
+                        if (justSaved) {
+                            sourceTimestamp = window._employeeJustSaved;
+                        } else {
+                            try {
+                                const storedTs = Number(localStorage.getItem('dyna_employees_lastUpdated'));
+                                if (Number.isFinite(storedTs)) {
+                                    sourceTimestamp = storedTs;
+                                }
+                            } catch(_) {}
+                        }
+                        const secondsAgo = Math.max(0, Math.round((Date.now() - sourceTimestamp) / 1000));
+                        console.log(`🛡️ Skipping cloud-sync overwrite (local employee changes ${secondsAgo}s ago)`);
+                        break;
+                    }
                     
                     if (Array.isArray(list) && list.length > 0) {
                         // Only overwrite if we didn't just save locally, or if cloud has more employees

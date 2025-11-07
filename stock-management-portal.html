@@ -116,6 +116,7 @@
     </style>
     <script defer src="./cloud-sync.js"></script>
     <script defer src="./auto-cloud-sync.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
     <header>
@@ -216,6 +217,7 @@
                             <th>Request #</th>
                             <th>Branch</th>
                             <th>Status</th>
+                            <th>Return Date</th>
                             <th>Age</th>
                             <th></th>
                         </tr>
@@ -370,6 +372,20 @@
         </div>
     </div>
 
+    <!-- Dispatch Note Modal -->
+    <div id="dispatchNoteModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.65); display:none; align-items:center; justify-content:center; z-index:58;">
+        <div style="width:min(820px,94vw); max-height:88vh; overflow:auto; background:#f8fafc; color:#1e293b; border-radius:12px; border:1px solid #cbd5f5; box-shadow:0 20px 45px rgba(15,23,42,0.35);">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #cbd5f5; background:#e0e7ff;">
+                <div style="font-weight:700; font-size:18px;">Dispatch Note</div>
+                <div style="display:flex; gap:8px;">
+                    <button id="dispatchNotePrintBtn" class="btn" style="background:#0f172a; color:#f8fafc; border:none;">Print</button>
+                    <button id="dispatchNoteCloseBtn" class="btn">Close</button>
+                </div>
+            </div>
+            <div id="dispatchNoteContent" style="padding:20px; font-size:14px; line-height:1.6; background:#ffffff;"></div>
+        </div>
+    </div>
+
     <!-- Create Request Modal -->
     <div id="requestModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:56;">
         <div style="width:min(680px,94vw); background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
@@ -392,6 +408,12 @@
                 <div class="row">
                     <input id="reqProduct" class="input" placeholder="Product (name or ID)" />
                     <input id="reqQty" type="number" class="input" placeholder="Qty" />
+                </div>
+                <div class="row">
+                    <label style="display:flex; flex-direction:column; gap:6px; flex:1; font-size:12px; color:var(--muted);">
+                        Return / Required By Date
+                        <input id="reqReturnDate" type="date" class="input" />
+                    </label>
                 </div>
                 <textarea id="reqNotes" class="input" placeholder="Notes" style="min-height:80px;"></textarea>
                 <div style="text-align:right;">
@@ -425,11 +447,44 @@
         </div>
     </div>
 
+    <!-- Review Request Modal -->
+    <div id="reviewModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:57;">
+        <div style="width:min(760px,94vw); max-height:86vh; overflow:auto; background: var(--card); border:1px solid #1e2a44; border-radius:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #1e2a44;">
+                <div style="font-weight:700;">Review Stock Request</div>
+                <div><button id="reviewCloseBtn" class="btn">Close</button></div>
+            </div>
+            <div style="padding:12px 14px; display:grid; gap:12px;">
+                <div class="muted" style="font-size:12px;">Stock manager can adjust items before forwarding to GM for approval.</div>
+                <div id="reviewMeta" class="muted" style="font-size:12px;"></div>
+                <div style="overflow:auto;">
+                    <table class="table" style="width:100%; min-width:520px;">
+                        <thead>
+                            <tr>
+                                <th style="width:45%;">Product</th>
+                                <th style="width:20%;">Qty</th>
+                                <th style="width:20%;">Unit</th>
+                                <th style="width:15%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="reviewItemsBody"></tbody>
+                    </table>
+                </div>
+                <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <button id="reviewAddItemBtn" class="btn">Add Item</button>
+                    <div style="display:flex; gap:8px;">
+                        <button id="reviewSaveBtn" class="btn primary">Save Changes</button>
+                        <button id="reviewForwardBtn" class="btn" style="border-color:#0e7d5c;">Forward to GM</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
-        import { getStockRequests, getStockTransfers, getWarehouseStock, updateWarehouseStock, getStockStatistics, approveStockRequest, updateTransferStatus, createStockRequest } from './api/stock-requests.js';
-        import { importStockWithBarcode } from './api/barcode-stock.js';
-        import { getBarcodeStockStatistics } from './api/barcode-stock.js';
-        import { getProducts } from './api/products.js';
+        import { getStockRequests, getStockTransfers, getWarehouseStock, updateWarehouseStock, getStockStatistics, approveStockRequest, updateTransferStatus, createStockRequest, updateStockRequest, forwardStockRequestToGM, getDispatchNotes } from './web-modules/stock-requests.js';
+        import { importStockWithBarcode, getBarcodeStockStatistics } from './web-modules/barcode-stock.js';
+        import { getProducts } from './web-modules/products.js';
 
         // Simple invoice number generator SRQ already exists; we add INV
         function generateInvoiceNumber(branchId) {
@@ -447,6 +502,9 @@
         let movements = [];
         let alerts = [];
         let csvParsedRows = [];
+        let latestDispatchNote = null;
+        const currentUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : null;
+        const currentRole = (currentUser && currentUser.role) ? currentUser.role.toLowerCase() : '';
 
         async function loadBranches() {
             const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
@@ -602,15 +660,19 @@
                                 product: pid,
                                 totalQty: 0,
                                 availableQty: 0,
-                                reservedQty: s.reservedQuantity || 0,
+                                reservedQty: 0,
                                 reorderLevel: s.reorderLevel || 10,
                                 batchInfo: '',
                                 isBarcode: false
                             });
                         }
                         const entry = stockMap.get(key);
-                        entry.totalQty += (s.quantity || 0);
-                        entry.availableQty += (s.quantity || 0) - (s.reservedQuantity || 0);
+                        const quantity = Number(s.quantity || 0);
+                        const reserved = Number(s.reservedQuantity || 0);
+                        const available = s.availableQuantity !== undefined ? Number(s.availableQuantity || 0) : Math.max(0, quantity - reserved);
+                        entry.totalQty += quantity;
+                        entry.availableQty += available;
+                        entry.reservedQty += reserved;
                     });
                 }
             });
@@ -701,6 +763,7 @@
                         const existing = stockMap.get(key);
                         existing.totalQty += entry.totalQty;
                         existing.availableQty += entry.availableQty;
+                        existing.reservedQty += entry.reservedQty;
                         if (entry.batches.length > 0) {
                             existing.batches = (existing.batches || []).concat(entry.batches);
                             existing.batchInfo = `${existing.batches.length} batch${existing.batches.length > 1 ? 'es' : ''}`;
@@ -1081,14 +1144,15 @@
 
         function formatAge(ts){ const secs = Math.floor((Date.now() - new Date(ts).getTime())/1000); if (secs<60) return secs+'s'; const mins=Math.floor(secs/60); if(mins<60) return mins+'m'; const hrs=Math.floor(mins/60); if(hrs<48) return hrs+'h'; const days=Math.floor(hrs/24); return days+'d'; }
 
-        function makeStatusPill(status){ const map={ pending:'warn', pending_gm:'warn', pending_warehouse:'warn', approved:'good', fulfilled:'good', rejected:'bad', dispatched:'warn', delivered:'warn', received:'good' }; const cls=map[status]||''; return `<span class="pill ${cls}">${(status||'').toUpperCase()}</span>`; }
+        function makeStatusPill(status){ const map={ pending:'warn', pending_stock_review:'warn', pending_gm:'warn', pending_warehouse:'warn', approved:'good', fulfilled:'good', rejected:'bad', dispatched:'warn', delivered:'warn', received:'good' }; const cls=map[status]||''; return `<span class="pill ${cls}">${(status||'').toUpperCase()}</span>`; }
 
         function renderPendingRequestsTable() {
             const tbody = document.getElementById('pendingRequests');
             if (!tbody) return;
             tbody.innerHTML = '';
             const { data: all = [] } = getStockRequests({ status: 'all' }) || { data: [] };
-            const pending = all.filter(r => ['pending','pending_gm','pending_warehouse'].includes(r.status)).slice(0, 12);
+            const relevantStatuses = ['pending_stock_review','pending_gm','pending_warehouse'];
+            const pending = all.filter(r => relevantStatuses.includes(r.status)).slice(0, 20);
             pending.forEach(r => {
                 const tr = document.createElement('tr');
                 const overdue = (Date.now() - new Date(r.createdAt).getTime()) > 48*3600*1000;
@@ -1096,14 +1160,19 @@
                     <td>${r.requestNumber}</td>
                     <td>${r.requestingBranch}</td>
                     <td>${makeStatusPill(r.status)}</td>
+                    <td>${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '—'}</td>
                     <td>${overdue?`<span class="pill warn">${formatAge(r.createdAt)}</span>`:formatAge(r.createdAt)}</td>
                     <td style="text-align:right;">
-                        <button class="btn" data-approve="${r.id}">Approve</button>
-                        <button class="btn" data-reject="${r.id}">Reject</button>
+                        ${currentRole==='stock_manager' && r.status==='pending_stock_review' ? `<button class="btn" data-review="${r.id}">Review</button>`:''}
+                        <button class="btn" data-approve="${r.id}" ${r.status==='pending_stock_review'?'disabled':''}>Approve</button>
+                        <button class="btn" data-reject="${r.id}" ${r.status==='pending_stock_review'?'disabled':''}>Reject</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
+            if (currentRole==='stock_manager') {
+                tbody.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => openReviewModal(btn.getAttribute('data-review'))));
+            }
             tbody.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-approve');
                 const who = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'Approver';
@@ -1152,17 +1221,38 @@
                 `;
                 tbody.appendChild(tr);
             });
-            tbody.querySelectorAll('[data-tstatus]').forEach(btn => btn.addEventListener('click', () => {
+            tbody.querySelectorAll('[data-tstatus]').forEach(btn => btn.addEventListener('click', async () => {
                 const status = btn.getAttribute('data-tstatus');
                 const id = btn.getAttribute('data-id');
                 const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'User';
-                updateTransferStatus(id, status, { user });
-                showToast('Transfer updated: ' + status, 'success');
-                // Immediately refresh to show updated quantities
-                setTimeout(() => {
-                    refreshData();
-                    renderWarehouseSnapshot();
-                }, 100);
+                try {
+                    const res = updateTransferStatus(id, status, { user });
+                    if (!res || res.success === false) {
+                        showToast('Failed to update transfer','error');
+                        return;
+                    }
+                    showToast('Transfer updated: ' + status, 'success');
+                    if (status === 'dispatched') {
+                        let note = res.note;
+                        if (!note) {
+                            const lookup = getDispatchNotes({ transferId: id });
+                            if (lookup && lookup.success && Array.isArray(lookup.data) && lookup.data.length) {
+                                note = lookup.data[0];
+                            }
+                        }
+                        if (note) {
+                            openDispatchNoteModal(note);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Transfer update error:', err);
+                    showToast('Transfer update failed','error');
+                } finally {
+                    setTimeout(() => {
+                        refreshData();
+                        renderWarehouseSnapshot();
+                    }, 120);
+                }
             }));
             tbody.querySelectorAll('[data-view-dispatch]').forEach(btn => btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-view-dispatch');
@@ -1302,9 +1392,11 @@
             const product = document.getElementById('reqProduct').value.trim();
             const qty = Number(document.getElementById('reqQty').value);
             const notes = document.getElementById('reqNotes').value.trim();
+            const returnDate = document.getElementById('reqReturnDate').value;
             if (!branch || branch==='all' || !product || !qty || qty<=0) { showToast('Fill branch, product, and quantity','error'); return; }
+            if (!returnDate) { showToast('Select return / required date','error'); return; }
             const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName:'Requestor', role:'dispenser' };
-            const res = createStockRequest({ branch, type, priority, items:[{ productId: product, quantity: qty }], notes, requestedBy: user.fullName, requestedByRole: user.role });
+            const res = createStockRequest({ branch, type, priority, items:[{ productId: product, description: product, quantity: qty }], notes, returnDate, requestedBy: user.fullName, requestedByRole: user.role });
             if (res && res.success) {
                 showToast('Request created: '+res.data.requestNumber,'success');
                 document.getElementById('requestModal').style.display = 'none';
@@ -1485,6 +1577,249 @@
             }
         });
 
+        function renderReviewRows(items) {
+            const tbody = document.getElementById('reviewItemsBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            items.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><input type="text" class="input" data-review-field="description" data-index="${idx}" value="${item.description || ''}" style="width:100%;"></td>
+                    <td><input type="number" class="input" data-review-field="quantity" data-index="${idx}" value="${item.quantity || 0}" style="width:100%;"></td>
+                    <td><input type="text" class="input" data-review-field="uom" data-index="${idx}" value="${item.uom || 'units'}" style="width:100%;"></td>
+                    <td style="text-align:right;"><button class="btn" data-remove-index="${idx}">Remove</button></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        let reviewRequest = null;
+
+        function openReviewModal(requestId) {
+            const all = (getStockRequests({ status: 'all' }) || { data: [] }).data || [];
+            const found = all.find(r => r.id === requestId || r.requestNumber === requestId);
+            if (!found) {
+                showToast('Request not found','error');
+                return;
+            }
+            reviewRequest = JSON.parse(JSON.stringify(found));
+            const meta = document.getElementById('reviewMeta');
+            if (meta) {
+                meta.textContent = `${found.requestNumber} • ${found.requestingBranch || '—'} • Return by ${found.returnDate || '—'}`;
+            }
+            renderReviewRows(reviewRequest.items && reviewRequest.items.length ? reviewRequest.items : [{ description: '', quantity: 0, uom: 'units' }]);
+            reviewModal.style.display = 'flex';
+        }
+
+        function syncReviewItemsFromInputs() {
+            if (!reviewRequest) return;
+            const rows = Array.from(document.querySelectorAll('#reviewItemsBody tr'));
+            const items = rows.map(tr => {
+                const description = tr.querySelector('input[data-review-field="description"]').value.trim();
+                const quantity = Number(tr.querySelector('input[data-review-field="quantity"]').value);
+                const uom = tr.querySelector('input[data-review-field="uom"]').value.trim() || 'units';
+                return { description, productId: description, quantity, uom };
+            }).filter(item => item.description && item.quantity > 0);
+            reviewRequest.items = items;
+        }
+
+        const reviewAddItemBtn = document.getElementById('reviewAddItemBtn');
+        if (reviewAddItemBtn) reviewAddItemBtn.addEventListener('click', () => {
+            if (!reviewRequest) return;
+            reviewRequest.items = reviewRequest.items || [];
+            reviewRequest.items.push({ description: '', quantity: 0, uom: 'units' });
+            renderReviewRows(reviewRequest.items);
+        });
+
+        const reviewItemsBody = document.getElementById('reviewItemsBody');
+        if (reviewItemsBody) reviewItemsBody.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-remove-index]');
+            if (!btn || !reviewRequest) return;
+            const index = Number(btn.getAttribute('data-remove-index'));
+            reviewRequest.items.splice(index, 1);
+            if (reviewRequest.items.length === 0) {
+                reviewRequest.items.push({ description: '', quantity: 0, uom: 'units' });
+            }
+            renderReviewRows(reviewRequest.items);
+        });
+
+        const reviewSaveBtn = document.getElementById('reviewSaveBtn');
+        if (reviewSaveBtn) reviewSaveBtn.addEventListener('click', () => {
+            if (!reviewRequest) return;
+            syncReviewItemsFromInputs();
+            if (!reviewRequest.items || reviewRequest.items.length === 0) {
+                showToast('Add at least one item','error');
+                return;
+            }
+            const reviewer = currentUser ? currentUser.fullName : 'Stock Manager';
+            const res = updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
+            if (res && res.success) {
+                showToast('Changes saved','success');
+                reviewModal.style.display = 'none';
+                refreshData();
+            } else {
+                showToast('Failed to save changes','error');
+            }
+        });
+
+        const reviewForwardBtn = document.getElementById('reviewForwardBtn');
+        if (reviewForwardBtn) reviewForwardBtn.addEventListener('click', () => {
+            if (!reviewRequest) return;
+            syncReviewItemsFromInputs();
+            if (!reviewRequest.items || reviewRequest.items.length === 0) {
+                showToast('Add at least one item','error');
+                return;
+            }
+            const reviewer = currentUser ? currentUser.fullName : 'Stock Manager';
+            const resSave = updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
+            if (!resSave || !resSave.success) {
+                showToast('Save changes before forwarding','error');
+                return;
+            }
+            const resForward = forwardStockRequestToGM(reviewRequest.id, { reviewedBy: reviewer });
+            if (resForward && resForward.success) {
+                showToast('Forwarded to GM','success');
+                reviewModal.style.display = 'none';
+                refreshData();
+            } else {
+                showToast('Forward failed','error');
+            }
+        });
+
+        function buildDispatchNoteHtml(note) {
+            if (!note) return '<div>No dispatch note data available.</div>';
+            const created = new Date(note.createdAt || Date.now()).toLocaleString();
+            const expected = note.expectedArrival ? new Date(note.expectedArrival).toLocaleDateString() : '—';
+            const totalQty = (note.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            const barcodeId = `dispatch-note-barcode-${note.id}`;
+            const rows = (note.items || []).length
+                ? note.items.map(item => `
+                    <tr>
+                        <td>${(item.description || item.productId || 'Item').toString()}</td>
+                        <td style="text-align:center;">${Number(item.quantity || 0)}</td>
+                        <td style="text-align:center;">${item.uom || 'units'}</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="3" style="text-align:center; color:#64748b;">No items listed</td></tr>';
+
+            return `
+                <div style="font-family: 'Inter', Arial, sans-serif; color:#1e293b;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+                        <div>
+                            <h1 style="margin:0; font-size:20px; letter-spacing:0.4px;">Dynapharm Dispatch Note</h1>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Generated: ${created}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:2px;">Note ID: ${note.id}</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <svg id="${barcodeId}" width="220" height="70"></svg>
+                            <div style="font-size:11px; letter-spacing:2px; color:#0f172a; margin-top:6px;">${note.barcode}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:18px; display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">From</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.fromWarehouse || '—'}</div>
+                        </div>
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">Destination</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.toBranch || '—'}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Expected: ${expected}</div>
+                        </div>
+                        <div style="background:#eef2ff; padding:12px; border-radius:10px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#4338ca;">Reference</div>
+                            <div style="font-weight:600; margin-top:6px;">${note.requestNumber || '—'}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:4px;">Dispatched by: ${note.dispatchedBy || '—'}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:22px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#1d4ed8; color:#f8fafc;">
+                                    <th style="padding:10px; text-align:left;">Product</th>
+                                    <th style="padding:10px; text-align:center; width:90px;">Qty</th>
+                                    <th style="padding:10px; text-align:center; width:90px;">UoM</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                                <tr style="background:#f1f5f9; font-weight:600;">
+                                    <td style="padding:10px;">Total</td>
+                                    <td style="padding:10px; text-align:center;">${totalQty}</td>
+                                    <td style="padding:10px; text-align:center;">items</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:24px; display:flex; gap:20px; flex-wrap:wrap; font-size:12px; color:#475569;">
+                        <div style="flex:1; min-width:220px;">
+                            <div style="font-weight:600; color:#0f172a;">Dispatch Notes</div>
+                            <div style="margin-top:6px; background:#f8fafc; border:1px dashed #cbd5f5; padding:12px; border-radius:10px; min-height:58px;">${note.dispatchNotes || 'None recorded'}</div>
+                        </div>
+                        <div style="flex:1; min-width:220px;">
+                            <div style="font-weight:600; color:#0f172a;">Verification Checklist</div>
+                            <ul style="margin:8px 0 0 18px; padding:0;">
+                                <li>Check carton count matches quantities.</li>
+                                <li>Confirm batch & expiry for FEFO compliance.</li>
+                                <li>Sign & upload photo via branch portal if discrepancies.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div style="margin-top:28px; display:flex; gap:28px; flex-wrap:wrap; font-size:12px; color:#475569;">
+                        <div style="flex:1; min-width:220px;">
+                            <div style="border-bottom:1px solid #94a3b8; padding-bottom:36px;"></div>
+                            <div style="margin-top:8px;">Warehouse Signature</div>
+                        </div>
+                        <div style="flex:1; min-width:220px;">
+                            <div style="border-bottom:1px solid #94a3b8; padding-bottom:36px;"></div>
+                            <div style="margin-top:8px;">Branch Verification</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openDispatchNoteModal(note) {
+            const modal = document.getElementById('dispatchNoteModal');
+            const content = document.getElementById('dispatchNoteContent');
+            if (!modal || !content || !note) return;
+            latestDispatchNote = note;
+            content.innerHTML = buildDispatchNoteHtml(note);
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                const svgId = `#dispatch-note-barcode-${note.id}`;
+                if (window.JsBarcode && document.querySelector(svgId)) {
+                    try {
+                        window.JsBarcode(svgId, note.barcode, { width: 2, height: 60, displayValue: false, margin: 0 });
+                    } catch (err) {
+                        console.warn('Barcode render failed', err);
+                    }
+                }
+            }, 0);
+        }
+
+        function closeDispatchNoteModal() {
+            const modal = document.getElementById('dispatchNoteModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function printDispatchNote() {
+            const content = document.getElementById('dispatchNoteContent');
+            if (!content) return;
+            const printWindow = window.open('', '_blank', 'width=900,height=1000');
+            if (!printWindow) return;
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Dispatch Note</title><style>
+                body{font-family: 'Inter', Arial, sans-serif; color:#1e293b; margin:24px;}
+                table{width:100%; border-collapse:collapse; margin-top:18px;}
+                th,td{border:1px solid #cbd5f5; padding:8px 10px; text-align:left; font-size:13px;}
+                th{background:#1d4ed8; color:#f8fafc;}
+                h1{font-size:20px; margin:0;}
+                ul{margin:8px 0 0 18px;}
+                </style></head><body>${content.innerHTML}</body></html>`);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 300);
+        }
 
         (async function init(){
             await loadBranches();

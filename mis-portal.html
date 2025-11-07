@@ -432,8 +432,9 @@
         let catalogs = { products: [], distributors: [] };
         let currentUser = { username: 'mis.officer', fullName: 'MIS Officer', role: 'mis' };
         let draft = { id: '', lines: [] };
-        let currentDailyReceipts = [];
-        let currentStockSold = [];
+		let currentDailyReceipts = [];
+		let currentStockSold = [];
+		let currentAuditLogs = [];
 
         function $(id) { return document.getElementById(id); }
 
@@ -602,11 +603,33 @@
             alert('Report submitted to GM and Director');
         }
 
-        async function loadAuditLogs() {
-            const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
-            const logs = await getAuditLogs({ start, end, branch });
-            $('auditTbody').innerHTML = logs.map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${l.user?.fullName||l.user?.username||''}</td><td>${l.action}</td><td>${l.recordId||''}</td><td>${l.diff||''}</td><td>${l.version||''}</td></tr>`).join('');
-        }
+		async function loadAuditLogs() {
+			const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
+			currentAuditLogs = await getAuditLogs({ start, end, branch });
+			$('auditTbody').innerHTML = currentAuditLogs.length
+				? currentAuditLogs.map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${l.user?.fullName||l.user?.username||''}</td><td>${l.action}</td><td>${l.recordId||''}</td><td>${l.diff||''}</td><td>${l.version||''}</td></tr>`).join('')
+				: '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #999;">No audit log entries found for the selected filters.</td></tr>';
+		}
+
+		window.exportAuditCsv = async function() {
+			if (!currentAuditLogs.length) {
+				await loadAuditLogs();
+			}
+			if (!currentAuditLogs.length) {
+				alert('No audit log entries to export.');
+				return;
+			}
+			const headers = ['Timestamp', 'User', 'Action', 'Record ID', 'Changes', 'Version'];
+			const rows = currentAuditLogs.map(log => [
+				new Date(log.timestamp).toLocaleString(),
+				log.user?.fullName || log.user?.username || '',
+				log.action || '',
+				log.recordId || '',
+				log.diff || '',
+				log.version ?? ''
+			]);
+			exportCsv('mis-audit-log.csv', headers, rows);
+		};
 
         // Daily Receipts Functions
         window.loadDailyReceipts = async function() {

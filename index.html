@@ -77,6 +77,21 @@
             text-decoration: underline;
         }
 
+        .top-link {
+            background: transparent;
+            border: none;
+            color: var(--white);
+            font: inherit;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .top-link:hover {
+            text-decoration: underline;
+        }
+
         body.modal-open {
             overflow: hidden;
         }
@@ -733,6 +748,94 @@
             color: var(--text-light);
             font-size: 0.95rem;
             line-height: 1.6;
+        }
+
+        .distributor-tabs {
+            max-width: 1200px;
+            margin: 0 auto 20px;
+            padding: 0 20px;
+        }
+
+        .distributor-tabs-inner {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .distributor-tab-btn {
+            background: transparent;
+            color: var(--text-dark);
+            padding: 12px 20px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .distributor-tab-btn.active {
+            background: var(--brand-color);
+            color: var(--white);
+        }
+
+        .distributor-tab-btn.btn-portal {
+            background: rgba(183, 28, 28, 0.1);
+            color: var(--brand-dark);
+            border: 1px solid rgba(183, 28, 28, 0.15);
+        }
+
+        .distributor-tab-btn.btn-portal:hover {
+            background: rgba(183, 28, 28, 0.18);
+            color: var(--brand-dark);
+        }
+
+        .distributor-tab-btn:hover {
+            color: var(--brand-color);
+        }
+
+        .distributor-tab-link {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .highlight-section {
+            animation: highlight 1.2s ease;
+        }
+
+        @keyframes highlight {
+            0% { box-shadow: 0 0 0 rgba(183, 28, 28, 0); }
+            50% { box-shadow: 0 0 0 4px rgba(183, 28, 28, 0.15); }
+            100% { box-shadow: 0 0 0 rgba(183, 28, 28, 0); }
+        }
+
+        .portal-content {
+            max-width: 1200px;
+            margin: 60px auto;
+            padding: 0 20px;
+            display: none;
+        }
+
+        .portal-content.active {
+            display: block;
+        }
+
+        .portal-frame-wrap {
+            background: var(--white);
+            border-radius: 20px;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+            border: 1px solid rgba(183, 28, 28, 0.12);
+            overflow: hidden;
+        }
+
+        .portal-frame-wrap iframe {
+            width: 100%;
+            height: 720px;
+            border: none;
+            background: #ffffff;
         }
 
         /* Features Showcase Section */
@@ -1400,6 +1503,14 @@
                 max-width: 100%;
             }
 
+            .distributor-tabs-inner {
+                gap: 6px;
+            }
+
+            .distributor-tab-btn {
+                padding: 10px 16px;
+            }
+
             .categories-intro {
                 grid-template-columns: 1fr;
             }
@@ -1415,6 +1526,10 @@
             .footer-bottom {
                 flex-direction: column;
                 align-items: flex-start;
+            }
+
+            .portal-frame-wrap iframe {
+                height: 540px;
             }
 
             .modal-content.auth-modal {
@@ -1456,12 +1571,12 @@
   <body>
     <div class="top-bar">
         <div class="container">
-            <ul>
-                <li>Distributor Login</li>
-                <li>MLM</li>
-                <li>LRP</li>
+            <ul class="top-links">
+                <li id="loginNavItem"><button type="button" class="top-link" onclick="openDistributorLogin()">Distributor Login</button></li>
+                <li><button type="button" class="top-link" onclick="openDistributorLogin('mlm')">MLM</button></li>
+                <li><button type="button" class="top-link" onclick="openDistributorLogin('lrp')">LRP</button></li>
             </ul>
-            <ul>
+            <ul class="top-actions">
                 <li><a href="tel:+26461300877">📞 061-300877</a></li>
                 <li><a href="mailto:info@dynapharmnamibia.com">✉️ info@dynapharmnamibia.com</a></li>
             </ul>
@@ -1479,7 +1594,6 @@
                 <li><a href="#" onclick="showDistributorTab('shop'); return false;">Guest Portal</a></li>
                 <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
                 <li><a href="#" onclick="showDistributorTab('media'); return false;">Media</a></li>
-                <li id="loginNavItem" class="nav-action"><button class="btn-login" id="openAuthModalButton" onclick="openLoginModal()">Sign In</button></li>
                 <li id="accountNavItem" class="account-nav">
                     <button class="account-button" id="accountButton" onclick="toggleAccountMenu(event)">
                         <span class="account-initials" id="accountInitials">DN</span>
@@ -1686,14 +1800,24 @@
     <!-- Main Content -->
     <div class="main-content">
         <!-- Distributor Portal Sub-tabs (shown when logged in or on Guest Portal) -->
-        <div id="distributorSubTabs" style="display: none; max-width: 1200px; margin: 0 auto 20px; padding: 0 20px;">
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; border-bottom: 2px solid var(--border);">
-                <button class="distributor-tab-btn active" onclick="showDistributorTab('shop')" style="background: var(--brand-color); color: white; padding: 12px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600;">🛒 Shop</button>
-                <button class="distributor-tab-btn" onclick="showDistributorTab('checkup')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">🏥 Full Body Check Up</button>
-                <button class="distributor-tab-btn" onclick="showDistributorTab('media')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">📰 Media & News</button>
-                <button class="distributor-tab-btn" onclick="showDistributorTab('testimonials')" style="background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;">💬 Testimonials</button>
-                <button class="distributor-tab-btn" id="landingEditorButton" style="display: none; background: transparent; color: var(--text-dark); padding: 12px 20px; border: none; cursor: pointer; font-weight: 600;" onclick="openLandingEditorFromButton(event)">✏️ Edit Landing Page</button>
-                <a href="distributor-portal.html" target="_blank" class="distributor-tab-btn" style="text-decoration: none; display: inline-block; background: var(--brand-color); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">📊 Distributor Dashboard</a>
+        <div id="distributorSubTabs" class="distributor-tabs">
+            <div class="distributor-tabs-inner" id="distributorTabContainer">
+                <button class="distributor-tab-btn active" data-tab="shop" onclick="showDistributorTab('shop', event)">🛒 Shop</button>
+                <button class="distributor-tab-btn" data-tab="checkup" onclick="showDistributorTab('checkup', event)">🏥 Full Body Check Up</button>
+                <button class="distributor-tab-btn" data-tab="media" onclick="showDistributorTab('media', event)">📰 Media & News</button>
+                <button class="distributor-tab-btn" data-tab="testimonials" onclick="showDistributorTab('testimonials', event)">💬 Testimonials</button>
+                <button class="distributor-tab-btn" id="landingEditorButton" style="display: none;" onclick="openLandingEditorFromButton(event)">✏️ Edit Landing Page</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="frontdesk" onclick="openTab('frontdesk', event)">🛎️ Front Desk</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="consultant" onclick="openTab('consultant', event)">👩‍⚕️ Consultant</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="dispenser" onclick="openTab('dispenser', event)">💊 Dispenser</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="finance" onclick="openTab('finance', event)">💰 Finance</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="hr" onclick="openTab('hr', event)">👥 HR</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="gm" onclick="openTab('gm', event)">🏢 GM</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="director" onclick="openTab('director', event)">👔 Director</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="mis" onclick="openTab('mis', event)">📊 MIS</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="stock" onclick="openTab('stock', event)">📦 Stock</button>
+                <button class="distributor-tab-btn btn-portal" data-tab="admin" onclick="openTab('admin', event)">🛡️ Admin</button>
+                <a href="distributor-portal.html" target="_blank" class="distributor-tab-btn distributor-tab-link btn-portal">📊 Distributor Dashboard</a>
             </div>
         </div>
         
@@ -1731,7 +1855,7 @@
         </section>
 
         <!-- Guest Portal - Consultation Booking Section -->
-        <section class="shop-section" style="margin-top: 40px;">
+        <section id="checkup-section" class="shop-section" style="margin-top: 40px;">
             <div class="section-header">
                 <h2>🏥 Book a Health Consultation</h2>
             </div>
@@ -1839,7 +1963,7 @@
         </section>
 
         <!-- Testimonials Section -->
-        <section id="distributor-testimonials-tab" class="shop-section" style="display: none; margin-top: 40px;">
+        <section id="testimonials-section" class="shop-section" style="margin-top: 40px;">
             <div class="section-header">
                 <h2>💬 Testimonials</h2>
             </div>
@@ -1872,6 +1996,17 @@
                         <button type="submit" style="background: white; color: #c41e3a; padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Submit Testimonial</button>
                     </div>
                 </form>
+            </div>
+        </section>
+
+        <!-- Portal Content Section -->
+        <section id="portalContentSection" class="portal-content">
+            <div class="section-header" style="margin-bottom: 24px;">
+                <h2 id="portalContentTitle">Portal Access</h2>
+                <p id="portalContentSubtitle" style="color: var(--text-light); margin-top: 8px;">Sign in to load your workspace below.</p>
+            </div>
+            <div class="portal-frame-wrap">
+                <iframe id="portalContentFrame" title="Dynapharm Portal" loading="lazy"></iframe>
             </div>
         </section>
 
@@ -1983,9 +2118,9 @@
             </div>
 
             <div class="modal-tabs">
-                <button class="modal-tab active" onclick="switchModalTab('distributor', event)">🧑‍🤝‍🧑 Distributor / Member</button>
-                <button class="modal-tab" onclick="switchModalTab('staff', event)">👩‍💼 Team Login</button>
-                <button class="modal-tab" onclick="switchModalTab('admin', event)">🛡️ Administrators</button>
+                <button class="modal-tab active" data-modal-tab="distributor" onclick="switchModalTab('distributor', event)">🧑‍🤝‍🧑 Distributor / Member</button>
+                <button class="modal-tab" data-modal-tab="staff" onclick="switchModalTab('staff', event)">👩‍💼 Team Login</button>
+                <button class="modal-tab" data-modal-tab="admin" onclick="switchModalTab('admin', event)">🛡️ Administrators</button>
             </div>
 
             <!-- Distributor Login/Register Form -->
@@ -2368,6 +2503,10 @@
         const accountMenuBranch = document.getElementById('accountMenuBranch');
         const loginNavItem = document.getElementById('loginNavItem');
         const toastEl = document.getElementById('globalToast');
+        const portalContentSection = document.getElementById('portalContentSection');
+        const portalContentFrame = document.getElementById('portalContentFrame');
+        const portalContentTitle = document.getElementById('portalContentTitle');
+        const portalContentSubtitle = document.getElementById('portalContentSubtitle');
 
         const HERO_DEFAULTS = {
             badge: '🏥 Trusted Health Partner Since 2010',
@@ -2378,6 +2517,35 @@
         };
 
         let toastTimeoutId = null;
+
+        const PORTAL_LABELS = {
+            client: 'Distributor',
+            distributor: 'Distributor',
+            frontdesk: 'Front Desk',
+            consultant: 'Consultant',
+            sales_staff: 'Consultant',
+            dispenser: 'Branch',
+            finance: 'Finance',
+            finance_manager: 'Finance',
+            hr: 'HR',
+            hr_portal: 'HR',
+            'hr-portal': 'HR',
+            hr_manager: 'HR',
+            hr_admin: 'HR',
+            mis: 'MIS',
+            gm: 'GM',
+            general_manager: 'GM',
+            director: 'Director',
+            stock: 'Stock Management',
+            stock_manager: 'Stock Management',
+            warehouse: 'Stock Management',
+            admin: 'Admin',
+            reports: 'Reports',
+            mlm: 'MLM',
+            lrp: 'LRP'
+        };
+
+        let pendingPortalOverride = null;
 
         function loadLocalUsers() {
             try {
@@ -2465,6 +2633,76 @@
             }, 3200);
         }
 
+        function getLoginTabForPortal(portalKey) {
+            const normalized = (portalKey || '').toLowerCase();
+            if (normalized === 'admin') return 'admin';
+            if (['client', 'distributor', 'mlm', 'lrp'].includes(normalized)) return 'distributor';
+            return 'staff';
+        }
+
+        function activateModalTab(tabName) {
+            const targetBtn = document.querySelector(`.modal-tab[data-modal-tab="${tabName}"]`);
+            if (targetBtn) {
+                switchModalTab(tabName, { target: targetBtn });
+            } else {
+                switchModalTab(tabName);
+            }
+        }
+
+        function openDistributorLogin(portalOverride = 'client') {
+            if (currentAccountUser) {
+                renderPortalForUser(currentAccountUser, { portalOverride });
+                return;
+            }
+            pendingPortalOverride = portalOverride;
+            openLoginModal();
+            activateModalTab('distributor');
+        }
+
+        function resolvePortalLabel(key) {
+            if (!key) return 'Portal';
+            const normalized = key.toLowerCase();
+            if (PORTAL_LABELS[normalized]) return PORTAL_LABELS[normalized];
+            return toTitleCase(normalized);
+        }
+
+        function renderPortalForUser(user, options = {}) {
+            if (!user || !portalContentSection || !portalContentFrame) return;
+
+            const portalKey = (options.portalOverride || user.role || 'portal').toLowerCase();
+            const portalLabel = resolvePortalLabel(portalKey);
+            const portalUrl = options.url || getRoleRedirect(user.role, options.portalOverride);
+
+            if (portalUrl) {
+                portalContentFrame.src = portalUrl;
+            } else {
+                portalContentFrame.src = 'about:blank';
+            }
+
+            if (portalContentTitle) {
+                portalContentTitle.textContent = `${portalLabel} Portal`;
+            }
+
+            if (portalContentSubtitle) {
+                const name = user.fullName || user.username || portalLabel;
+                portalContentSubtitle.textContent = `You’re viewing the ${portalLabel.toLowerCase()} workspace${name ? ` for ${name}` : ''}.`;
+            }
+
+            portalContentSection.style.display = 'block';
+            portalContentSection.classList.add('active', 'highlight-section');
+            setTimeout(() => portalContentSection.classList.remove('highlight-section'), 1200);
+            portalContentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function clearPortalContent() {
+            if (!portalContentSection) return;
+            portalContentSection.style.display = 'none';
+            portalContentSection.classList.remove('active');
+            if (portalContentFrame) portalContentFrame.src = 'about:blank';
+            if (portalContentTitle) portalContentTitle.textContent = 'Portal Access';
+            if (portalContentSubtitle) portalContentSubtitle.textContent = 'Sign in to load your workspace below.';
+        }
+
         function closeAccountMenu() {
             accountMenu?.classList.remove('active');
         }
@@ -2487,8 +2725,7 @@
             }
 
             closeAccountMenu();
-            const targetUrl = getRoleRedirect((currentAccountUser.role || '').toLowerCase());
-            window.location.href = targetUrl;
+            renderPortalForUser(currentAccountUser);
         }
 
         function findLocalUserByCredentials(username, password) {
@@ -2587,7 +2824,6 @@
                 renderHeroState(user);
 
                 if (portalTabs) portalTabs.style.display = 'block';
-                if (distributorSubTabs) distributorSubTabs.style.display = 'block';
 
                 const normalizedRole = (user.role || '').toLowerCase();
                 toggleLandingEditorButton(normalizedRole === 'admin');
@@ -2598,9 +2834,9 @@
                 renderHeroState(null);
 
                 if (portalTabs) portalTabs.style.display = 'none';
-                if (distributorSubTabs) distributorSubTabs.style.display = 'none';
 
                 toggleLandingEditorButton(false);
+                clearPortalContent();
             }
         }
 
@@ -2622,18 +2858,44 @@
                 director: 'director',
                 stock_manager: 'stock',
                 warehouse: 'stock',
-                stock: 'stock'
+                stock: 'stock',
+                mlm: 'mlm',
+                lrp: 'lrp',
+                frontdesk: 'frontdesk',
+                client: 'client'
             };
 
             const requestedPortal = (overridePortal || '').toLowerCase();
-            const defaultPortal = portalMap[normalizedRole] || 'client';
-            const targetPortal = requestedPortal && portalMap[normalizedRole]
-                ? requestedPortal
-                : (requestedPortal || defaultPortal);
+            const resolvedPortal = requestedPortal || portalMap[normalizedRole] || 'client';
 
-            const url = new URL('dynapharm-complete-system.html', window.location.origin);
-            url.searchParams.set('portal', targetPortal);
-            return url.pathname + url.search;
+            const portalRoutes = {
+                client: 'distributor-portal.html',
+                distributor: 'distributor-portal.html',
+                frontdesk: 'distributor-guest.html',
+                consultant: 'distributor-portal.html?view=consultant',
+                sales_staff: 'distributor-portal.html?view=consultant',
+                dispenser: 'distributor-portal.html?view=dispenser',
+                finance: 'finance-bonus-upload.html',
+                finance_manager: 'finance-bonus-upload.html',
+                hr: 'hr-portal.html',
+                hr_portal: 'hr-portal.html',
+                'hr-portal': 'hr-portal.html',
+                hr_manager: 'hr-portal.html',
+                hr_admin: 'hr-portal.html',
+                mis: 'mis-portal.html',
+                gm: 'gm-portal.html',
+                general_manager: 'gm-portal.html',
+                director: 'director-portal.html',
+                stock: 'stock-management-portal.html',
+                stock_manager: 'stock-management-portal.html',
+                warehouse: 'stock-management-portal.html',
+                admin: 'dynapharm-complete-system.html?portal=admin',
+                reports: 'dynapharm-complete-system.html?portal=reports',
+                mlm: 'distributor-portal.html?view=mlm',
+                lrp: 'distributor-portal.html?view=lrp'
+            };
+
+            return portalRoutes[resolvedPortal] || portalRoutes[normalizedRole] || portalRoutes.client;
         }
 
         function finalizeUserSession(user, options = {}) {
@@ -2663,8 +2925,9 @@
             showToast(`Welcome back, ${normalized.fullName || normalized.username}!`, 'success');
 
             const redirectPortal = new URLSearchParams(window.location.search).get('redirectPortal');
-            const redirectUrl = getRoleRedirect(normalized.role, redirectPortal);
-            window.location.href = redirectUrl;
+            const portalOverride = pendingPortalOverride || redirectPortal;
+            renderPortalForUser(normalized, { portalOverride });
+            pendingPortalOverride = null;
         }
 
         // Section Navigation
@@ -2673,6 +2936,7 @@
                 document.getElementById('shop-section').style.display = 'block';
                 document.getElementById('about-section').classList.remove('active');
                 document.getElementById('media-section').classList.remove('active');
+                showDistributorTab('shop');
                 loadShopProducts();
             } else if (section === 'about') {
                 document.getElementById('shop-section').style.display = 'none';
@@ -2682,6 +2946,7 @@
                 document.getElementById('shop-section').style.display = 'none';
                 document.getElementById('about-section').classList.remove('active');
                 document.getElementById('media-section').classList.add('active');
+                showDistributorTab('media');
             }
         }
 
@@ -2708,6 +2973,7 @@
             // Clear errors
             document.querySelectorAll('.error-message').forEach(el => el.classList.remove('show'));
             resetDistributorAuthFlow(true);
+            pendingPortalOverride = null;
         }
 
         function switchModalTab(tab, evt) {
@@ -3061,6 +3327,7 @@
 
         async function completeDistributorLogin(password) {
             const errorDiv = document.getElementById('distributorPasswordError');
+            const normalizedCode = (currentDistributorSelection.code || '').toString().toUpperCase();
 
             const response = await fetch('/api/distributor-login', {
                 method: 'POST',
@@ -3068,7 +3335,7 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    distributorCode: currentDistributorSelection.code,
+                    distributorCode: normalizedCode,
                     password
                 })
             });
@@ -3085,19 +3352,52 @@
             try {
                 const session = await response.json();
                 localStorage.setItem('dyna_distributor_session', JSON.stringify({
-                    distributorCode: currentDistributorSelection.code,
+                    distributorCode: normalizedCode,
                     distributorId: currentDistributorSelection.id,
                     name: currentDistributorSelection.name,
                     branch: currentDistributorSelection.branch,
                     token: session?.token || null,
                     expiresAt: session?.expiresAt || null
                 }));
+                localStorage.setItem('distributor_portal_session', JSON.stringify({
+                    nbNumber: normalizedCode,
+                    distributorName: currentDistributorSelection.name,
+                    distributorId: currentDistributorSelection.id,
+                    loginTime: new Date().toISOString()
+                }));
             } catch (sessionError) {
                 console.warn('Could not parse distributor session payload', sessionError);
             }
 
+            const distributorUser = {
+                fullName: currentDistributorSelection.name,
+                username: normalizedCode,
+                role: 'client',
+                branch: currentDistributorSelection.branch
+            };
+
+            try {
+                localStorage.setItem('currentUser', JSON.stringify(distributorUser));
+                localStorage.setItem('currentUserRole', 'client');
+            } catch (storageError) {
+                console.warn('Unable to persist distributor session user.', storageError);
+            }
+
             closeLoginModal();
-            window.location.href = `distributor-portal.html?nb=${encodeURIComponent(currentDistributorSelection.code)}`;
+            renderAuthState(distributorUser);
+            showToast(`Welcome back, ${currentDistributorSelection.name}!`, 'success');
+            const portalOverride = pendingPortalOverride || 'client';
+            const targetUrl = getRoleRedirect('client', portalOverride);
+            const needsNb = targetUrl && targetUrl.includes('distributor-portal');
+            const finalUrl = needsNb
+                ? (targetUrl.includes('nb=') ? targetUrl : `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}nb=${encodeURIComponent(normalizedCode)}`)
+                : targetUrl || `distributor-portal.html?nb=${encodeURIComponent(normalizedCode)}`;
+
+            renderPortalForUser(distributorUser, {
+                portalOverride,
+                url: finalUrl
+            });
+            pendingPortalOverride = null;
         }
 
         function showDistributorResetInfo() {
@@ -4148,58 +4448,73 @@
 
         // Tab Management Functions
         function openTab(tabName, event) {
-            // Redirect to main system for portal access
-            if (tabName !== 'client') {
-                window.location.href = `dynapharm-complete-system.html#${tabName}`;
-                return;
-            }
-            
-            // Show portal tabs and distributor sub-tabs for client/distributor portal
-            document.getElementById('portalTabs').style.display = 'block';
-            document.getElementById('distributorSubTabs').style.display = 'block';
-            showDistributorTab('shop');
-            
-            // Update active tab button
+            event?.preventDefault?.();
+
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.style.background = 'transparent';
                 btn.style.color = 'var(--text-dark)';
             });
-            if (event && event.target) {
-                event.target.style.background = 'var(--brand-color)';
-                event.target.style.color = 'white';
+
+            if (event?.currentTarget) {
+                event.currentTarget.style.background = 'var(--brand-color)';
+                event.currentTarget.style.color = 'white';
             }
+
+            if (tabName === 'client') {
+                showDistributorTab('shop');
+                document.getElementById('distributorSubTabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+
+            if (!currentAccountUser) {
+                pendingPortalOverride = tabName;
+                openLoginModal();
+                activateModalTab(getLoginTabForPortal(tabName));
+                return;
+            }
+
+            renderPortalForUser(currentAccountUser, { portalOverride: tabName });
+            pendingPortalOverride = null;
         }
         
-        function showDistributorTab(tabName) {
-            // Hide all distributor tabs
-            document.querySelectorAll('[id^="distributor-"]').forEach(el => {
-                if (el.classList.contains('shop-section') || el.classList.contains('distributor-subtab')) {
-                    el.style.display = 'none';
-                }
-            });
-            
-            // Show selected tab
-            if (tabName === 'shop') {
-                document.getElementById('shop-section').style.display = 'block';
-            } else if (tabName === 'testimonials') {
-                document.getElementById('distributor-testimonials-tab').style.display = 'block';
-                loadTestimonials();
-            } else if (tabName === 'checkup') {
-                // Show consultation booking section
-                document.querySelector('#consult-list-card').parentElement.style.display = 'block';
-            } else if (tabName === 'media') {
-                document.getElementById('media-section').classList.add('active');
+        function showDistributorTab(tabName, evt) {
+            evt?.preventDefault?.();
+
+            const sections = {
+                shop: document.getElementById('shop-section'),
+                checkup: document.getElementById('checkup-section'),
+                media: document.getElementById('media-section'),
+                testimonials: document.getElementById('testimonials-section')
+            };
+
+            document.querySelectorAll('.distributor-tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (evt?.currentTarget) {
+                evt.currentTarget.classList.add('active');
+            } else {
+                document.querySelector(`.distributor-tab-btn[data-tab="${tabName}"]`)?.classList.add('active');
             }
-            
-            // Update active sub-tab button
-            document.querySelectorAll('.distributor-tab-btn').forEach(btn => {
-                btn.style.background = 'transparent';
-                btn.style.color = 'var(--text-dark)';
-            });
-            event?.target?.classList?.add('active');
-            if (event?.target) {
-                event.target.style.background = 'var(--brand-color)';
-                event.target.style.color = 'white';
+
+            if (sections.media) {
+                if (tabName === 'media') {
+                    sections.media.classList.add('active');
+                } else {
+                    sections.media.classList.remove('active');
+                }
+            }
+
+            const targetSection = sections[tabName] || sections.shop;
+            if (targetSection) {
+                targetSection.classList.add('highlight-section');
+                targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                setTimeout(() => targetSection.classList.remove('highlight-section'), 1200);
+            }
+
+            if (tabName === 'testimonials') {
+                loadTestimonials();
+            }
+
+            if (tabName === 'shop') {
+                loadShopProducts();
             }
         }
 
@@ -4418,9 +4733,19 @@
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', function() {
-            loadShopProducts();
             loadLandingPageContent();
             toggleLandingEditorButton(false);
+
+            // Ensure products section is active on load
+            showDistributorTab('shop');
+            const shopSectionEl = document.getElementById('shop-section');
+            if (shopSectionEl) {
+                requestAnimationFrame(() => {
+                    shopSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    shopSectionEl.classList.add('highlight-section');
+                    setTimeout(() => shopSectionEl.classList.remove('highlight-section'), 1200);
+                });
+            }
 
             const url = new URL(window.location.href);
             const requestedSection = url.searchParams.get('section');
