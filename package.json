@@ -12,8 +12,8 @@
     "guard": "node tools/guard-inline-events.js",
     "predeploy": "npm run guard",
     "lint": "eslint assets/js/main.js assets/js/sw-register.js index.html",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "prettier --write index.html assets/js/**/*.js assets/css/**/*.css README.md",
+    "format:check": "prettier --check index.html assets/js/**/*.js assets/css/**/*.css README.md"
   },
   "keywords": [
     "healthcare",

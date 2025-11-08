@@ -8197,6 +8197,22 @@
                     <button class="btn btn-success" onclick="openScheduleModal('gm')" style="margin-left: 10px;">⏱️ Schedule Report</button>
                 </div>
 
+                <div class="form-section" style="margin-top: 25px;">
+                    <div style="display:flex; justify-content: space-between; align-items:flex-start; gap:15px; flex-wrap:wrap;">
+                        <div>
+                            <h3 style="margin:0;">💼 Finance Oversight</h3>
+                            <p style="margin:4px 0 0; color:#64748b; font-size:0.95rem;">
+                                Automatically generated from finance records (deposits, bonuses, expenses). Keep executive visibility over branch cash flow.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn-info" onclick="showGMBonusHistoryModal()">⬇️ Download Bonus History</button>
+                            <button class="btn btn-primary" onclick="refreshGMFinancialReportSection()">🔁 Refresh Finance Report</button>
+                        </div>
+                    </div>
+                    <div id="gmFinancialReportSummary" style="margin-top:18px;"></div>
+                </div>
+
                 <div class="form-section">
                     <h3>💬 Staff Communication Tab</h3>
                     <p class="portal-communication-note">Share announcements with branch staff and keep their responses visible to the GM office.</p>
@@ -10636,6 +10652,46 @@
                 <button class="btn" onclick="closeModal('zReportModal')">Close</button>
             </div>
         </div>
+
+        <!-- GM Bonus History Modal -->
+        <div class="modal" id="gmBonusHistoryModal">
+            <div class="modal-content" style="max-width: 520px;">
+                <span class="close" onclick="closeModal('gmBonusHistoryModal')">&times;</span>
+                <h2>⬇️ Download Individual Bonus History</h2>
+                <p style="color:#64748b; font-size:0.95rem; line-height:1.5;">
+                    Generate a distributor-specific bonus audit trail. GM approval is required before exporting sensitive finance data.
+                </p>
+                <form id="gmBonusHistoryForm" onsubmit="return false;" style="display:grid; gap:15px; margin-top:20px;">
+                    <div class="form-group">
+                        <label class="required">Distributor NB / Name</label>
+                        <input type="text" id="gmBonusHistoryNB" list="gmBonusHistoryDistributorList" placeholder="e.g. NB001234 or distributor name" autocomplete="off" required>
+                        <datalist id="gmBonusHistoryDistributorList"></datalist>
+                    </div>
+                    <div class="form-group" style="display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+                        <div>
+                            <label>Date From</label>
+                            <input type="date" id="gmBonusHistoryFrom">
+                        </div>
+                        <div>
+                            <label>Date To</label>
+                            <input type="date" id="gmBonusHistoryTo">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Purpose / Notes</label>
+                        <textarea id="gmBonusHistoryNote" rows="2" placeholder="Document reason for GM approval (optional)"></textarea>
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="gmBonusHistoryApproval" onchange="handleGMBonusApprovalToggle()">
+                        <label for="gmBonusHistoryApproval" style="margin:0;">I confirm this export is authorised and compliant with GM policy.</label>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-success" id="gmBonusHistoryDownloadBtn" onclick="downloadGMBonusHistory()" disabled>⬇️ Download CSV</button>
+                        <button type="button" class="btn" onclick="closeModal('gmBonusHistoryModal')">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -12635,9 +12691,29 @@
 
         // Global refresh function to update all portals
         // GM Portal data refresh
-        function refreshGMData() {
-            loadData();
-            calculateGMMetrics();
+        async function refreshGMData() {
+            try {
+                await loadData();
+            } catch (e) {
+                console.debug('refreshGMData: loadData error', e);
+            }
+            if (typeof loadEnhancedFinanceData === 'function') {
+                try {
+                    await loadEnhancedFinanceData();
+                } catch (e) {
+                    console.debug('refreshGMData: loadEnhancedFinanceData error', e);
+                }
+            }
+            try {
+                calculateGMMetrics();
+            } catch (e) {
+                console.debug('refreshGMData: calculateGMMetrics error', e);
+            }
+            try {
+                renderGMFinancialReport();
+            } catch (e) {
+                console.debug('refreshGMData: renderGMFinancialReport error', e);
+            }
             refreshAllApprovals();
             loadSpecialSales();
             displayGMInventoryBreakdown();
@@ -12684,6 +12760,451 @@
             document.getElementById('gmTotalBV').textContent = totalBV.toFixed(0);
             document.getElementById('gmCIFDeposits').textContent = `N$ ${totalCIF.toFixed(2)}`;
             document.getElementById('gmGrossMargin').textContent = `N$ ${grossMargin.toFixed(2)}`;
+        }
+
+        function buildBranchDirectoryMap() {
+            ensureBranchDirectory();
+            const directory = {};
+            (Array.isArray(branches) ? branches : []).forEach(branch => {
+                if (!branch) return;
+                const name = branch.name || branch.displayName || branch.id || branch.code || '';
+                const identifiers = [
+                    branch.id,
+                    branch.code,
+                    branch.name,
+                    branch.displayName,
+                    branch.shortcode,
+                    branch.branchCode
+                ];
+                identifiers.forEach(id => {
+                    if (!id) return;
+                    directory[String(id)] = name;
+                    directory[String(id).toLowerCase()] = name;
+                });
+            });
+            return directory;
+        }
+
+        function getBranchNameById(branchId) {
+            if (!branchId) return 'Unassigned / Head Office';
+            const directory = buildBranchDirectoryMap();
+            const exact = directory[String(branchId)];
+            if (exact) return exact;
+            const lowerMatch = directory[String(branchId).toLowerCase()];
+            return lowerMatch || String(branchId);
+        }
+
+        function getAllBonusPayments() {
+            const cash = Array.isArray(cashBonuses) ? cashBonuses : [];
+            const bank = Array.isArray(bankBonuses) ? bankBonuses : [];
+            return [
+                ...cash.map(item => ({ ...item, method: item.method || 'cash' })),
+                ...bank.map(item => ({ ...item, method: item.method || 'bank' }))
+            ];
+        }
+
+        function renderGMFinancialReport() {
+            const container = document.getElementById('gmFinancialReportSummary');
+            if (!container) return;
+            const directory = buildBranchDirectoryMap();
+
+            const deposits = Array.isArray(bankDeposits) ? bankDeposits : [];
+            const allBonuses = getAllBonusPayments();
+            const expenseRecords = Array.isArray(expenses) ? expenses : [];
+
+            const totals = {
+                deposits: 0,
+                cashBonuses: 0,
+                bankBonuses: 0,
+                expenses: 0
+            };
+
+            const branchTotals = {};
+            const ensureBranchBucket = (details) => {
+                const key = (details?.id || details?.name || 'unassigned').toLowerCase();
+                if (!branchTotals[key]) {
+                    branchTotals[key] = {
+                        id: details?.id || null,
+                        name: details?.name || details?.id || 'Unassigned / Head Office',
+                        deposits: 0,
+                        cashBonuses: 0,
+                        bankBonuses: 0,
+                        expenses: 0
+                    };
+                }
+                return branchTotals[key];
+            };
+
+            const addAmount = (bucket, key, amount) => {
+                const value = Number(amount || 0);
+                if (!bucket || !Number.isFinite(value)) return;
+                bucket[key] += value;
+                totals[key] += value;
+            };
+
+            deposits.forEach(entry => {
+                const details = resolveBranchDetails(entry, directory);
+                const bucket = ensureBranchBucket(details);
+                addAmount(bucket, 'deposits', entry.amount);
+            });
+
+            allBonuses.forEach(entry => {
+                const details = resolveBranchDetails(entry, directory);
+                const bucket = ensureBranchBucket(details);
+                const key = (entry.method || '').toLowerCase() === 'bank' ? 'bankBonuses' : 'cashBonuses';
+                addAmount(bucket, key, entry.amount);
+            });
+
+            expenseRecords.forEach(entry => {
+                const details = resolveBranchDetails(entry, directory);
+                const bucket = ensureBranchBucket(details);
+                addAmount(bucket, 'expenses', entry.amount);
+            });
+
+            const netTotal = totals.deposits - totals.cashBonuses - totals.bankBonuses - totals.expenses;
+
+            const branchRows = Object.values(branchTotals).map(row => {
+                const net = row.deposits - row.cashBonuses - row.bankBonuses - row.expenses;
+                return { ...row, net };
+            }).sort((a, b) => b.deposits - a.deposits);
+
+            const auditLog = (() => {
+                try {
+                    const raw = localStorage.getItem('gm_bonus_history_audit');
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    if (Array.isArray(parsed)) {
+                        return parsed.sort((a, b) => new Date(b.approvedAt || 0) - new Date(a.approvedAt || 0));
+                    }
+                    return [];
+                } catch (_) {
+                    return [];
+                }
+            })();
+
+            const metricsHtml = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;">
+                    <div style="background:#0c4a6e;color:white;padding:18px;border-radius:12px;">
+                        <div style="opacity:0.8;font-size:0.85rem;">Total Deposits</div>
+                        <div style="font-size:1.6rem;font-weight:700;margin-top:6px;">${formatCurrencyNAD(totals.deposits)}</div>
+                    </div>
+                    <div style="background:#155e75;color:white;padding:18px;border-radius:12px;">
+                        <div style="opacity:0.8;font-size:0.85rem;">Cash Bonuses</div>
+                        <div style="font-size:1.6rem;font-weight:700;margin-top:6px;">${formatCurrencyNAD(totals.cashBonuses)}</div>
+                    </div>
+                    <div style="background:#1d4ed8;color:white;padding:18px;border-radius:12px;">
+                        <div style="opacity:0.8;font-size:0.85rem;">Bank Bonuses</div>
+                        <div style="font-size:1.6rem;font-weight:700;margin-top:6px;">${formatCurrencyNAD(totals.bankBonuses)}</div>
+                    </div>
+                    <div style="background:#7c2d12;color:white;padding:18px;border-radius:12px;">
+                        <div style="opacity:0.8;font-size:0.85rem;">Recorded Expenses</div>
+                        <div style="font-size:1.6rem;font-weight:700;margin-top:6px;">${formatCurrencyNAD(totals.expenses)}</div>
+                    </div>
+                    <div style="background:${netTotal >= 0 ? '#166534' : '#b91c1c'};color:white;padding:18px;border-radius:12px;">
+                        <div style="opacity:0.8;font-size:0.85rem;">Net Position</div>
+                        <div style="font-size:1.6rem;font-weight:700;margin-top:6px;">${formatCurrencyNAD(netTotal)}</div>
+                    </div>
+                </div>
+            `;
+
+            const branchTableHtml = branchRows.length === 0
+                ? '<p style="text-align:center;color:#64748b;padding:20px;">No finance activity recorded yet.</p>'
+                : `
+                    <div style="margin-top:20px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;">
+                        <table style="width:100%;border-collapse:collapse;min-width:620px;">
+                            <thead>
+                                <tr style="background:#f1f5f9;color:#1e293b;">
+                                    <th style="padding:12px;text-align:left;">Branch</th>
+                                    <th style="padding:12px;text-align:right;">Deposits</th>
+                                    <th style="padding:12px;text-align:right;">Cash Bonuses</th>
+                                    <th style="padding:12px;text-align:right;">Bank Bonuses</th>
+                                    <th style="padding:12px;text-align:right;">Expenses</th>
+                                    <th style="padding:12px;text-align:right;">Net</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${branchRows.map(row => `
+                                    <tr>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;">${row.name}</td>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;">${formatCurrencyNAD(row.deposits)}</td>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;">${formatCurrencyNAD(row.cashBonuses)}</td>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;">${formatCurrencyNAD(row.bankBonuses)}</td>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;">${formatCurrencyNAD(row.expenses)}</td>
+                                        <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;font-weight:600;color:${row.net >= 0 ? '#166534' : '#b91c1c'};">${formatCurrencyNAD(row.net)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+            const auditHtml = auditLog.length === 0
+                ? ''
+                : `
+                    <div style="margin-top:25px;">
+                        <h4 style="margin:0 0 10px 0;color:#1e293b;">Recent Bonus History Downloads</h4>
+                        <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                            <table style="width:100%;border-collapse:collapse;min-width:520px;">
+                                <thead style="background:#f8fafc;color:#475569;">
+                                    <tr>
+                                        <th style="padding:10px;text-align:left;">Distributor</th>
+                                        <th style="padding:10px;text-align:left;">Approved By</th>
+                                        <th style="padding:10px;text-align:left;">Date Range</th>
+                                        <th style="padding:10px;text-align:right;">Records</th>
+                                        <th style="padding:10px;text-align:left;">Approved At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${auditLog.slice(0, 6).map(entry => `
+                                        <tr>
+                                            <td style="padding:10px;border-top:1px solid #e2e8f0;">${(entry.distributorName ? `${entry.distributorName} (${entry.distributor || entry.distributorNB})` : (entry.distributor || entry.distributorNB || 'N/A'))}</td>
+                                            <td style="padding:10px;border-top:1px solid #e2e8f0;">${entry.approvedBy || 'GM'}</td>
+                                            <td style="padding:10px;border-top:1px solid #e2e8f0;">${entry.fromDate || entry.toDate ? `${entry.fromDate || 'Start'} → ${entry.toDate || 'Current'}` : 'All time'}</td>
+                                            <td style="padding:10px;border-top:1px solid #e2e8f0;text-align:right;">${entry.recordCount || 0}</td>
+                                            <td style="padding:10px;border-top:1px solid #e2e8f0;">${entry.approvedAt ? new Date(entry.approvedAt).toLocaleString() : ''}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+            container.innerHTML = `
+                ${metricsHtml}
+                ${branchTableHtml}
+                ${auditHtml}
+                <p style="margin-top:15px;color:#94a3b8;font-size:12px;">Report refreshed ${new Date().toLocaleString()}.</p>
+            `;
+        }
+
+        async function refreshGMFinancialReportSection() {
+            if (typeof loadEnhancedFinanceData === 'function') {
+                try {
+                    await loadEnhancedFinanceData();
+                } catch (e) {
+                    console.debug('refreshGMFinancialReportSection: loadEnhancedFinanceData error', e);
+                }
+            }
+            renderGMFinancialReport();
+        }
+
+        function populateGMBonusHistoryDistributorList() {
+            const dataList = document.getElementById('gmBonusHistoryDistributorList');
+            if (!dataList) return;
+            const unique = new Map();
+
+            const sourceDistributors = Array.isArray(distributors) ? distributors : [];
+            sourceDistributors.forEach(dist => {
+                if (!dist) return;
+                const nb = (dist.distributorNB || dist.distributorCode || dist.code || dist.referenceNumber || '').toString().trim().toUpperCase();
+                const name = (dist.distributorName || dist.name || dist.fullName || '').toString().trim();
+                const key = nb || name;
+                if (!key || unique.has(key)) return;
+                unique.set(key, { nb, name });
+            });
+
+            getAllBonusPayments().forEach(entry => {
+                if (!entry) return;
+                const nb = (entry.distributorNB || entry.distributor || entry.drn || entry.code || '').toString().trim().toUpperCase();
+                const name = (entry.name || entry.distributorName || entry.stockist || '').toString().trim();
+                const key = nb || name;
+                if (!key || unique.has(key)) return;
+                unique.set(key, { nb, name });
+            });
+
+            dataList.innerHTML = '';
+            unique.forEach(({ nb, name }, key) => {
+                const option = document.createElement('option');
+                option.value = nb || key;
+                if (name && nb) {
+                    option.label = `${name} (${nb})`;
+                } else if (name) {
+                    option.label = name;
+                }
+                dataList.appendChild(option);
+            });
+        }
+
+        async function showGMBonusHistoryModal() {
+            if (typeof loadDistributors === 'function') {
+                try {
+                    await loadDistributors({ skipBackend: true });
+                } catch (e) {
+                    console.debug('showGMBonusHistoryModal: loadDistributors error', e);
+                }
+            }
+            populateGMBonusHistoryDistributorList();
+            const modal = document.getElementById('gmBonusHistoryModal');
+            if (!modal) return;
+            const nbInput = document.getElementById('gmBonusHistoryNB');
+            const fromInput = document.getElementById('gmBonusHistoryFrom');
+            const toInput = document.getElementById('gmBonusHistoryTo');
+            const noteInput = document.getElementById('gmBonusHistoryNote');
+            const approval = document.getElementById('gmBonusHistoryApproval');
+            const downloadBtn = document.getElementById('gmBonusHistoryDownloadBtn');
+
+            if (nbInput) nbInput.value = '';
+            if (fromInput) fromInput.value = '';
+            if (toInput) toInput.value = '';
+            if (noteInput) noteInput.value = '';
+            if (approval) {
+                approval.checked = false;
+            }
+            if (downloadBtn) downloadBtn.disabled = true;
+
+            modal.style.display = 'block';
+            setTimeout(() => {
+                if (nbInput) nbInput.focus();
+            }, 100);
+        }
+
+        function handleGMBonusApprovalToggle() {
+            const approval = document.getElementById('gmBonusHistoryApproval');
+            const downloadBtn = document.getElementById('gmBonusHistoryDownloadBtn');
+            if (downloadBtn) {
+                downloadBtn.disabled = !(approval && approval.checked);
+            }
+        }
+
+        function csvEscape(value) {
+            if (value == null) return '';
+            const str = String(value).replace(/\r?\n|\r/g, ' ');
+            if (/[",]/.test(str)) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        }
+
+        function compileGMBonusHistoryRow(entry) {
+            const branchName = getBranchNameById(entry.branch || entry.branchId || entry.branch_code || entry.branchName);
+            const method = (entry.method || (entry.bankName ? 'bank' : 'cash')).toUpperCase();
+            const reason = entry.reason || entry.notes || entry.note || '';
+            const approvedBy = entry.approvedBy || entry.approved || entry.approved_user || '';
+            const createdBy = entry.createdBy || entry.generatedBy || entry.recordedBy || '';
+            const amount = Number(entry.amount || entry.total || 0);
+            const rawDate = entry.date || entry.createdAt || entry.approvedAt || entry.timestamp;
+            const formattedDate = rawDate ? new Date(rawDate).toLocaleString() : '';
+            const distributorNB = (entry.distributorNB || entry.distributor || entry.drn || entry.code || '').toString().toUpperCase();
+            const distributorName = entry.name || entry.distributorName || entry.stockist || '';
+            return {
+                formattedDate,
+                distributorNB,
+                distributorName,
+                branchName,
+                amount,
+                method,
+                reason,
+                approvedBy,
+                createdBy
+            };
+        }
+
+        function matchesBonusHistorySearch(entry, identifier) {
+            const normalized = identifier.trim();
+            if (!normalized) return false;
+            const upperId = normalized.toUpperCase();
+            const lowerId = normalized.toLowerCase();
+            const entryNB = (entry.distributorNB || entry.distributor || entry.drn || entry.code || '').toString().trim().toUpperCase();
+            const entryName = (entry.name || entry.distributorName || entry.stockist || '').toString().trim().toLowerCase();
+            return (entryNB && entryNB === upperId) || (entryName && entryName.includes(lowerId));
+        }
+
+        function downloadGMBonusHistory() {
+            const approval = document.getElementById('gmBonusHistoryApproval');
+            if (!(approval && approval.checked)) {
+                alert('Please confirm GM approval before exporting bonus history.');
+                return;
+            }
+
+            const identifierInput = document.getElementById('gmBonusHistoryNB');
+            const fromInput = document.getElementById('gmBonusHistoryFrom');
+            const toInput = document.getElementById('gmBonusHistoryTo');
+            const noteInput = document.getElementById('gmBonusHistoryNote');
+
+            const identifierRaw = identifierInput ? identifierInput.value.trim() : '';
+            if (!identifierRaw) {
+                alert('Enter a distributor NB or name.');
+                return;
+            }
+
+            const fromDateValue = fromInput && fromInput.value ? new Date(`${fromInput.value}T00:00:00`) : null;
+            const toDateValue = toInput && toInput.value ? new Date(`${toInput.value}T23:59:59`) : null;
+            if (fromDateValue && toDateValue && fromDateValue > toDateValue) {
+                alert('The "Date From" must be earlier than "Date To".');
+                return;
+            }
+
+            const allBonuses = getAllBonusPayments();
+            const filtered = allBonuses.filter(entry => {
+                if (!matchesBonusHistorySearch(entry, identifierRaw)) return false;
+                if (!fromDateValue && !toDateValue) return true;
+                const rawDate = entry.date || entry.createdAt || entry.approvedAt || entry.timestamp;
+                const entryDate = rawDate ? new Date(rawDate) : null;
+                if (!entryDate || Number.isNaN(entryDate.getTime())) return false;
+                if (fromDateValue && entryDate < fromDateValue) return false;
+                if (toDateValue && entryDate > toDateValue) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                alert('No bonus records found for the supplied filters.');
+                return;
+            }
+
+            const rows = [['Date', 'Distributor NB', 'Distributor Name', 'Branch', 'Amount (N$)', 'Method', 'Reason', 'Approved By', 'Created By']];
+            const compiled = filtered.map(compileGMBonusHistoryRow);
+            compiled.forEach(row => {
+                rows.push([
+                    row.formattedDate,
+                    row.distributorNB,
+                    row.distributorName,
+                    row.branchName,
+                    Number(row.amount || 0).toFixed(2),
+                    row.method,
+                    row.reason || '',
+                    row.approvedBy || '',
+                    row.createdBy || ''
+                ]);
+            });
+
+            const csv = rows.map(line => line.map(csvEscape).join(',')).join('\n');
+            const filename = `bonus_history_${identifierRaw.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}.csv`;
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(link.href), 500);
+
+            const auditEntry = {
+                id: `GMBD-${Date.now()}`,
+                distributor: compiled[0]?.distributorNB || identifierRaw.toUpperCase(),
+                distributorName: compiled[0]?.distributorName || '',
+                fromDate: fromInput && fromInput.value ? fromInput.value : null,
+                toDate: toInput && toInput.value ? toInput.value : null,
+                recordCount: compiled.length,
+                note: noteInput ? noteInput.value.trim() : '',
+                approvedBy: currentUser?.username || 'gm',
+                approvedAt: new Date().toISOString()
+            };
+            try {
+                const auditLog = JSON.parse(localStorage.getItem('gm_bonus_history_audit') || '[]');
+                if (Array.isArray(auditLog)) {
+                    auditLog.push(auditEntry);
+                    while (auditLog.length > 250) auditLog.shift();
+                    localStorage.setItem('gm_bonus_history_audit', JSON.stringify(auditLog));
+                } else {
+                    localStorage.setItem('gm_bonus_history_audit', JSON.stringify([auditEntry]));
+                }
+            } catch (_) {
+                localStorage.setItem('gm_bonus_history_audit', JSON.stringify([auditEntry]));
+            }
+
+            closeModal('gmBonusHistoryModal');
+            renderGMFinancialReport();
+            alert(`Bonus history export generated (${compiled.length} record${compiled.length === 1 ? '' : 's'}).`);
         }
         
         // Calculate Director metrics
