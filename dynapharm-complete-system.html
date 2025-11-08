@@ -28538,8 +28538,13 @@ async function reverseLastPrescriptionPayment(reportId){
         let selectedPreferredDate = null;
 
         // Walk-in Sales State
-        var walkInCart = window.walkInCart || [];
-        window.walkInCart = walkInCart;
+        window.walkInCart = Array.isArray(window.walkInCart) ? window.walkInCart : [];
+        function getWalkInCart() {
+            if (!Array.isArray(window.walkInCart)) {
+                window.walkInCart = [];
+            }
+            return window.walkInCart;
+        }
         const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
 
         function initializeAppointmentPreferences() {
@@ -29265,7 +29270,8 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             if (typeof form.reset === 'function') form.reset();
-            walkInCart = [];
+            const cart = getWalkInCart();
+            cart.length = 0;
             customerTypeSelect.value = customerType || 'customer';
             
             // Clear distributor search fields and checkbox
@@ -29938,14 +29944,15 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function addToWalkInCart(productName, cp, dp, bv) {
-            const existingItem = walkInCart.find(item => item.name === productName);
+            const cart = getWalkInCart();
+            const existingItem = cart.find(item => item.name === productName);
             
             const customerType = document.getElementById('walkInCustomerType').value;
             
             if (existingItem) {
                 existingItem.quantity += 1;
             } else {
-                walkInCart.push({
+                cart.push({
                     name: productName,
                     cp: cp,
                     dp: dp,
@@ -29958,22 +29965,24 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function removeFromWalkInCart(index) {
-            walkInCart.splice(index, 1);
+            const cart = getWalkInCart();
+            cart.splice(index, 1);
             updateWalkInCart();
         }
 
         function updateWalkInCart() {
+            const cart = getWalkInCart();
             const cartList = document.getElementById('walkInCartList');
             const customerType = document.getElementById('walkInCustomerType').value;
             
-            if (walkInCart.length === 0) {
+            if (cart.length === 0) {
                 cartList.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">Cart is empty</p>';
                 updateWalkInTotals();
                 return;
             }
             
             // Use DP for distributors, CP for customers
-            cartList.innerHTML = walkInCart.map((item, index) => {
+            cartList.innerHTML = cart.map((item, index) => {
                 const pricePerUnit = customerType === 'distributor' ? item.dp : item.cp;
                 const priceLabel = customerType === 'distributor' ? 'DP' : 'CP';
                 const totalPrice = pricePerUnit * item.quantity;
@@ -30011,15 +30020,16 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function updateWalkInTotals() {
+            const cart = getWalkInCart();
             const customerType = document.getElementById('walkInCustomerType').value;
             
             // Use DP for distributors, CP for customers
-            const subtotal = walkInCart.reduce((sum, item) => {
+            const subtotal = cart.reduce((sum, item) => {
                 const pricePerUnit = customerType === 'distributor' ? item.dp : item.cp;
                 return sum + (pricePerUnit * item.quantity);
             }, 0);
             
-            const totalBV = walkInCart.reduce((sum, item) => {
+            const totalBV = cart.reduce((sum, item) => {
                 return sum + (item.bv * item.quantity);
             }, 0);
             
@@ -30033,9 +30043,10 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function updateWalkInCartQuantity(index, delta, newValue) {
-            if (index < 0 || index >= walkInCart.length) return;
+            const cart = getWalkInCart();
+            if (index < 0 || index >= cart.length) return;
             
-            const item = walkInCart[index];
+            const item = cart[index];
             
             if (newValue !== undefined && newValue !== null) {
                 // Direct value update from input field
@@ -30057,13 +30068,14 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
 		function showWalkInSaleConfirmation() {
+            const cart = getWalkInCart();
 			const customerName = document.getElementById('walkInCustomerName').value.trim();
 			const phone = document.getElementById('walkInPhone').value.trim();
 			const email = document.getElementById('walkInEmail').value.trim();
 			const customerType = document.getElementById('walkInCustomerType').value;
 			const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
 
-			if (!customerName || walkInCart.length === 0) {
+			if (!customerName || cart.length === 0) {
 				alert('Please fill in customer name and add products to cart');
 				return;
 			}
@@ -30077,8 +30089,8 @@ async function reverseLastPrescriptionPayment(reportId){
 			}
 
 			const pricingKey = customerType === 'distributor' ? 'dp' : 'cp';
-			const subtotal = walkInCart.reduce((sum, item) => sum + (item[pricingKey] * item.quantity), 0);
-			const totalBV = walkInCart.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
+			const subtotal = cart.reduce((sum, item) => sum + (item[pricingKey] * item.quantity), 0);
+			const totalBV = cart.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
 
 			const paymentMethodLabels = {
 				cash: '💵 Cash',
@@ -30097,7 +30109,7 @@ async function reverseLastPrescriptionPayment(reportId){
 				confirmationMessage += `Type: ${customerType === 'distributor' ? 'Distributor' : 'Customer'}\n`;
 				confirmationMessage += `Payment Method: ${paymentLabel}\n\n`;
 				confirmationMessage += 'Products:\n';
-				walkInCart.forEach((item, idx) => {
+				cart.forEach((item, idx) => {
 					const price = customerType === 'distributor' ? item.dp : item.cp;
 					const total = price * item.quantity;
 					confirmationMessage += `  ${idx + 1}. ${item.name} x${item.quantity} = N$ ${total.toFixed(2)}\n`;
@@ -30138,7 +30150,7 @@ async function reverseLastPrescriptionPayment(reportId){
 
 			const itemsContainer = document.getElementById('confirmProductsList');
 			if (itemsContainer) {
-				const itemsHtml = walkInCart.map((item, idx) => {
+				const itemsHtml = cart.map((item, idx) => {
 					const unitPrice = item[pricingKey];
 					const lineTotal = unitPrice * item.quantity;
 					const lineBV = item.bv * item.quantity;
@@ -30176,13 +30188,14 @@ async function reverseLastPrescriptionPayment(reportId){
 		}
 
 		async function processWalkInPayment() {
+            const cart = getWalkInCart();
             const customerName = document.getElementById('walkInCustomerName').value.trim();
             const phone = document.getElementById('walkInPhone').value.trim();
             const email = document.getElementById('walkInEmail').value.trim();
             const customerType = document.getElementById('walkInCustomerType').value;
             
             // Validation
-            if (!customerName || walkInCart.length === 0) {
+            if (!customerName || cart.length === 0) {
                 alert('Please fill in customer name and add products to cart');
 				return false;
             }
@@ -30295,12 +30308,12 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             // Use DP for distributors, CP for customers
-            const subtotal = walkInCart.reduce((sum, item) => {
+            const subtotal = cart.reduce((sum, item) => {
                 const pricePerUnit = customerType === 'distributor' ? item.dp : item.cp;
                 return sum + (pricePerUnit * item.quantity);
             }, 0);
             
-            const totalBV = walkInCart.reduce((sum, item) => {
+            const totalBV = cart.reduce((sum, item) => {
                 return sum + (item.bv * item.quantity);
             }, 0);
             
@@ -30325,7 +30338,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     name: referralName,
                     id: referralId
                 },
-                products: walkInCart,
+                products: cart,
                 subtotal: subtotal,
                 tax: 0,
                 total: grandTotal,
@@ -30342,18 +30355,18 @@ async function reverseLastPrescriptionPayment(reportId){
             try {
                 const branchId = (currentUser && currentUser.branch) || 'unknown_branch';
                 const userName = (currentUser && currentUser.fullName) || 'system';
-                const fefo = await fefoDispenseProducts(walkInCart.map(i=>({ name:i.name, quantity:i.quantity||1 })), branchId, userName, sale.id);
+                const fefo = await fefoDispenseProducts(cart.map(i=>({ name:i.name, quantity:i.quantity||1 })), branchId, userName, sale.id);
                 if (!fefo.success) {
                     alert('⚠️ FEFO stock issues:\n' + fefo.errors.join('\n'));
                 }
                 // Update legacy counters for dashboards
-                const invReduction = reduceInventoryForProducts(walkInCart, userName, sale.id);
+                const invReduction = reduceInventoryForProducts(cart, userName, sale.id);
                 if (!invReduction.success && fefo.success) {
                     console.warn('Legacy counter update reported issues but FEFO deduction succeeded.');
                 }
             } catch (e) {
                 console.warn('FEFO dispense failed, falling back to simple counters:', e);
-                const invReduction = reduceInventoryForProducts(walkInCart, (currentUser && currentUser.fullName) || 'system', sale.id);
+                const invReduction = reduceInventoryForProducts(cart, (currentUser && currentUser.fullName) || 'system', sale.id);
                 if (!invReduction.success) {
                     alert('⚠️ Stock deduction issues:\n' + invReduction.errors.join('\n'));
                 }
@@ -30366,7 +30379,7 @@ async function reverseLastPrescriptionPayment(reportId){
             try {
                 const branchId = (currentUser && currentUser.branch) || 'unknown';
                 window.dispatchEvent(new CustomEvent('stock:updated', { 
-                    detail: { branch: branchId, products: walkInCart, user: (currentUser && currentUser.fullName) || 'system', reference: sale.id } 
+                    detail: { branch: branchId, products: cart, user: (currentUser && currentUser.fullName) || 'system', reference: sale.id } 
                 }));
                 // Also broadcast sale event for Finance/MIS portals
                 window.dispatchEvent(new CustomEvent('sale:updated', { detail: { sale, type: 'walkin' } }));
@@ -30376,7 +30389,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (rtBase) {
                     fetch(rtBase.replace(/\/$/, '') + '/publish', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ event: { type: 'stock:updated', branch: branchId, products: walkInCart, sale: sale.id, ts: Date.now() } })
+                        body: JSON.stringify({ event: { type: 'stock:updated', branch: branchId, products: cart, sale: sale.id, ts: Date.now() } })
                     }).catch(_ => {});
                     fetch(rtBase.replace(/\/$/, '') + '/publish', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -30386,7 +30399,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 // Publish to Vercel SSE
                 fetch('/api/realtime_publish', { 
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ channel: 'stock', event: { branch: branchId, products: walkInCart, ts: Date.now() } }) 
+                    body: JSON.stringify({ channel: 'stock', event: { branch: branchId, products: cart, ts: Date.now() } }) 
                 }).catch(_ => {});
                 fetch('/api/realtime_publish', { 
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
