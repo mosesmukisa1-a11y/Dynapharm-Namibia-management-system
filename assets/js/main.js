@@ -359,12 +359,31 @@ function resolvePortalLabel(key) {
   return toTitleCase(normalized);
 }
 
+function normalizePortalUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
+      const sameOriginUrl = new URL(
+        `${parsed.pathname}${parsed.search}${parsed.hash}`,
+        window.location.origin
+      );
+      return sameOriginUrl.href;
+    }
+    return parsed.href;
+  } catch (error) {
+    console.warn("Unable to normalize portal URL, using original value.", error);
+    return url;
+  }
+}
+
 function renderPortalForUser(user, options = {}) {
   if (!user || !portalContentSection || !portalContentFrame) return;
 
   const portalKey = (options.portalOverride || user.role || "portal").toLowerCase();
   const portalLabel = resolvePortalLabel(portalKey);
-  const portalUrl = options.url || getRoleRedirect(user.role, options.portalOverride);
+  const rawPortalUrl = options.url || getRoleRedirect(user.role, options.portalOverride);
+  const portalUrl = normalizePortalUrl(rawPortalUrl);
 
   if (portalUrl) {
     portalContentFrame.src = portalUrl;

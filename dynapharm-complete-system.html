@@ -202,7 +202,7 @@
             const isGitHub = location.hostname.endsWith('github.io');
             const meta = document.querySelector('meta[name="api-base"]');
             const configured = meta && meta.content && meta.content.trim();
-            const defaultApiBase = 'https://dynapharm-namibia-health.vercel.app/api';
+            const defaultApiBase = `${location.origin.replace(/\/+$/, '')}/api`;
             const vercelApiBase = (configured || defaultApiBase).replace(/\/+$/, '');
             const originalFetch = window.fetch.bind(window);
             window.fetch = function(input, init){
