@@ -7,6 +7,86 @@ let currentDistributorSelection = null;
 let distributorAuthMode = "login";
 let users = [];
 
+function normaliseApiBase(base) {
+  if (!base || typeof base !== "string") return null;
+  const trimmed = base.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+  if (trimmed.startsWith("//")) {
+    return `${window.location?.protocol || "https:"}${trimmed}`.replace(/\/+$/, "");
+  }
+  if (trimmed.startsWith("/")) {
+    if (window.location?.origin && window.location.origin !== "null") {
+      return `${window.location.origin}${trimmed}`.replace(/\/+$/, "");
+    }
+    return `http://localhost:8001${trimmed}`.replace(/\/+$/, "");
+  }
+  try {
+    const url = new URL(trimmed, window.location?.origin || undefined);
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveApiBaseUrl() {
+  const candidates = [];
+  const metaTag = document.querySelector('meta[name="api-base"]');
+  if (metaTag?.content) candidates.push(metaTag.content);
+  if (window.API_BASE_OVERRIDE) candidates.push(window.API_BASE_OVERRIDE);
+  try {
+    const stored = localStorage.getItem("dynapharm_api_base");
+    if (stored) candidates.push(stored);
+  } catch (_) {}
+  if (window.location?.origin && window.location.origin !== "null") {
+    candidates.push(`${window.location.origin.replace(/\/$/, "")}/api`);
+  }
+  candidates.push("https://dynapharm-backend-production.up.railway.app/api");
+  candidates.push("http://localhost:8001/api");
+  for (const candidate of candidates) {
+    const resolved = normaliseApiBase(candidate);
+    if (resolved) return resolved;
+  }
+  return "/api";
+}
+
+const API_BASE = resolveApiBaseUrl();
+
+(function wrapFetchWithApiBase() {
+  if (typeof window === "undefined") return;
+  if (window.__dynapharmFetchWrapped) return;
+  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (!nativeFetch) return;
+  const normalisedBase = API_BASE ? API_BASE.replace(/\/+$/, "") : "";
+  const toApiUrl = (url) => {
+    if (!url || !normalisedBase) return url;
+    if (typeof url === "string" && url.startsWith("/api")) {
+      return `${normalisedBase}${url.slice(4)}`;
+    }
+    return url;
+  };
+  window.fetch = function (input, init) {
+    try {
+      if (typeof input === "string") {
+        return nativeFetch(toApiUrl(input), init);
+      }
+      if (typeof Request !== "undefined" && input instanceof Request) {
+        const newUrl = toApiUrl(input.url);
+        if (newUrl !== input.url) {
+          const rebuilt = new Request(newUrl, input);
+          return nativeFetch(rebuilt, init);
+        }
+      }
+    } catch (err) {
+      console.warn("API fetch wrapper error", err);
+    }
+    return nativeFetch(input, init);
+  };
+  window.__dynapharmFetchWrapped = true;
+})();
+
 const DEFAULT_USERS = [
   {
     id: "USR001",
@@ -480,9 +560,12 @@ async function authenticateViaApi(username, password) {
       // ignore JSON parse errors
     }
 
+    const transientStatuses = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
     const result = { success: false, message, status: response.status };
-    if (response.status >= 500) {
+    if (response.status >= 500 || transientStatuses.has(response.status)) {
       result.networkError = true;
+      result.message =
+        "Authentication service is unavailable. Trying cached credentials if available.";
     }
     return result;
   } catch (error) {
@@ -685,27 +768,27 @@ function getRoleRedirect(role, overridePortal) {
   const portalRoutes = {
     client: "distributor-portal.html",
     distributor: "distributor-portal.html",
-    frontdesk: "distributor-guest.html",
-    consultant: "distributor-portal.html?view=consultant",
-    sales_staff: "distributor-portal.html?view=consultant",
-    dispenser: "branch-stock-inventory.html",
-    branch_manager: "branch-stock-inventory.html",
-    finance: "finance-bonus-upload.html",
-    finance_manager: "finance-bonus-upload.html",
-    hr: "hr-portal.html",
-    hr_portal: "hr-portal.html",
-    "hr-portal": "hr-portal.html",
-    hr_manager: "hr-portal.html",
-    hr_admin: "hr-portal.html",
-    mis: "mis-portal.html",
-    gm: "gm-portal.html",
-    general_manager: "gm-portal.html",
-    director: "director-portal.html",
-    stock: "stock-management-portal.html",
-    stock_manager: "stock-management-portal.html",
-    warehouse: "stock-management-portal.html",
-    admin: "dynapharm-complete-system.html?portal=admin",
-    reports: "dynapharm-complete-system.html?portal=reports",
+    frontdesk: "dynapharm-complete-system.html",
+    consultant: "dynapharm-complete-system.html",
+    sales_staff: "dynapharm-complete-system.html",
+    dispenser: "dynapharm-complete-system.html",
+    branch_manager: "dynapharm-complete-system.html",
+    finance: "dynapharm-complete-system.html",
+    finance_manager: "dynapharm-complete-system.html",
+    hr: "dynapharm-complete-system.html",
+    hr_portal: "dynapharm-complete-system.html",
+    "hr-portal": "dynapharm-complete-system.html",
+    hr_manager: "dynapharm-complete-system.html",
+    hr_admin: "dynapharm-complete-system.html",
+    mis: "dynapharm-complete-system.html",
+    gm: "dynapharm-complete-system.html",
+    general_manager: "dynapharm-complete-system.html",
+    director: "dynapharm-complete-system.html",
+    stock: "dynapharm-complete-system.html",
+    stock_manager: "dynapharm-complete-system.html",
+    warehouse: "dynapharm-complete-system.html",
+    admin: "dynapharm-complete-system.html",
+    reports: "dynapharm-complete-system.html",
     mlm: "distributor-portal.html?view=mlm",
     lrp: "distributor-portal.html?view=lrp"
   };

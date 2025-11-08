@@ -6,6 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    <meta name="api-base" content="https://dynapharm-backend-production.up.railway.app/api">
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#c41e3a">
     <meta name="mobile-web-app-capable" content="yes">
@@ -1898,18 +1899,18 @@
         
         // Role to Portal Access Mapping
         const ROLE_PORTAL_ACCESS = {
-            'admin': ['client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock', 'admin'],
-            'consultant': ['client', 'frontdesk', 'consultant'],
-            'sales_staff': ['client', 'frontdesk', 'consultant'],
-            'dispenser': ['client', 'dispenser', 'frontdesk'],
-            'branch_manager': ['client', 'dispenser', 'frontdesk', 'mis'],
-            'finance': ['client', 'finance'],
-            'hr_manager': ['client', 'hr-portal'],
-            'hr_admin': ['client', 'hr-portal'],
-            'gm': ['client', 'gm', 'director'],
-            'director': ['client', 'director', 'gm'],
-            'mis': ['client', 'mis'],
-            'stock': ['client', 'stock'],
+            'admin': ['admin', 'client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock'],
+            'consultant': ['consultant', 'frontdesk', 'client'],
+            'sales_staff': ['consultant', 'frontdesk', 'client'],
+            'dispenser': ['dispenser', 'frontdesk', 'client'],
+            'branch_manager': ['dispenser', 'mis', 'frontdesk', 'client'],
+            'finance': ['finance', 'client'],
+            'hr_manager': ['hr-portal', 'client'],
+            'hr_admin': ['hr-portal', 'client'],
+            'gm': ['gm', 'director', 'client'],
+            'director': ['director', 'gm', 'client'],
+            'mis': ['mis', 'client'],
+            'stock': ['stock', 'client'],
             'guest': ['client'] // Guest can only access shop
         };
         
@@ -2144,12 +2145,12 @@
                 userDisplay.textContent = `${currentUser.fullName || currentUser.username} (${role})`;
             }
             
-            // Show first authorized portal by default (always show client portal first if available)
-            if (authorizedPortals.includes('client')) {
-                openTab('client', null);
-            } else if (authorizedPortals.length > 0) {
-                openTab(authorizedPortals[0], null);
-            }
+            // Show first authorized portal by default, preferring role-specific portals over client
+            const defaultPortal =
+                authorizedPortals.find(portal => portal !== 'client') ||
+                authorizedPortals[0] ||
+                'client';
+            openTab(defaultPortal, null);
         }
         
         function logout() {
@@ -11314,6 +11315,39 @@
 
         let dynDb = null;
 
+        (function wrapFetchWithApiBase(){
+            if (typeof window === 'undefined') return;
+            if (window.__dynapharmFetchWrapped) return;
+            const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+            if (!nativeFetch) return;
+            const normalisedBase = API_BASE ? API_BASE.replace(/\/+$/, '') : '';
+            const toApiUrl = (url) => {
+                if (!url || !normalisedBase) return url;
+                if (url.startsWith('/api')) {
+                    return `${normalisedBase}${url.slice(4)}`;
+                }
+                return url;
+            };
+            window.fetch = function(input, init) {
+                try {
+                    if (typeof input === 'string') {
+                        return nativeFetch(toApiUrl(input), init);
+                    }
+                    if (typeof Request !== 'undefined' && input instanceof Request) {
+                        const newUrl = toApiUrl(input.url);
+                        if (newUrl !== input.url) {
+                            const rebuilt = new Request(newUrl, input);
+                            return nativeFetch(rebuilt, init);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('API fetch wrapper error', err);
+                }
+                return nativeFetch(input, init);
+            };
+            window.__dynapharmFetchWrapped = true;
+        })();
+
         function openDynDb() {
             if (dynDb) return Promise.resolve(dynDb);
             return new Promise((resolve, reject) => {
@@ -19470,7 +19504,7 @@ async function logout() {
         }
 
         // DYNAPHARM NAMIBIA SPECIAL PACKAGE 2025 - Official Package Database
-        const PACKAGE_DATABASE = {
+        var PACKAGE_DATABASE = window.PACKAGE_DATABASE || {
             'Gastric Package': {
                 price: { dp: 2054, cp: 2432, bv: 381 },
                 products: [
@@ -19645,7 +19679,8 @@ async function logout() {
             });
             
             grid.innerHTML = html;
-        }
+        };
+        window.PACKAGE_DATABASE = PACKAGE_DATABASE;
 
         function handlePDF(event) {
             const file = event.target.files[0];
@@ -28502,6 +28537,11 @@ async function reverseLastPrescriptionPayment(reportId){
         let preferredCalendarDate = null;
         let selectedPreferredDate = null;
 
+        // Walk-in Sales State
+        var walkInCart = window.walkInCart || [];
+        window.walkInCart = walkInCart;
+        const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+
         function initializeAppointmentPreferences() {
             populatePreferredBranchSelect();
 
@@ -28782,8 +28822,22 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         // Walk-in Sales Functions
-        let walkInCart = [];
-        const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+        function getPriceListData() {
+            try {
+                if (Array.isArray(window.PRICE_LIST)) return window.PRICE_LIST;
+            } catch (_) {}
+            try {
+                if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) return PRICE_LIST;
+            } catch (_) {}
+            try {
+                const stored = localStorage.getItem('dyna_price_list');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) return parsed;
+                }
+            } catch (_) {}
+            return [];
+        }
         
         // Distributors Management with IndexedDB for large datasets
         let distributors = [];
@@ -29198,30 +29252,40 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function showWalkInSaleModal(customerType) {
-            // Reset form
-            document.getElementById('walkInSaleForm').reset();
+            const form = document.getElementById('walkInSaleForm');
+            const customerTypeSelect = document.getElementById('walkInCustomerType');
+            const referralDropdown = document.getElementById('distributorReferralDropdown');
+            const customerDropdown = document.getElementById('customerNameDropdown');
+            const modal = document.getElementById('walkInSaleModal');
+            const titleEl = document.getElementById('walkInSaleTitle');
+            
+            if (!form || !customerTypeSelect || !modal) {
+                console.error('Walk-in sale modal markup missing. Unable to open modal.');
+                return;
+            }
+            
+            if (typeof form.reset === 'function') form.reset();
             walkInCart = [];
-            document.getElementById('walkInCustomerType').value = 'customer';
+            customerTypeSelect.value = customerType || 'customer';
             
             // Clear distributor search fields and checkbox
             clearSelectedReferral();
-            document.getElementById('distributorReferralDropdown').style.display = 'none';
-            document.getElementById('customerNameDropdown').style.display = 'none';
+            if (referralDropdown) referralDropdown.style.display = 'none';
+            if (customerDropdown) customerDropdown.style.display = 'none';
             
             // Reset payment method to cash (default)
             selectWalkInPaymentMethod('cash');
             
-            // Update title
-            document.getElementById('walkInSaleTitle').textContent = '👤 Walk-in Sale';
+            if (titleEl) titleEl.textContent = '👤 Walk-in Sale';
             
-            // Load and display all products with CP pricing
+            // Load and display all products with correct pricing
             loadAllProductsForSale();
             
             // Clear cart display
             updateWalkInCart();
             
             // Show modal
-            document.getElementById('walkInSaleModal').style.display = 'block';
+            modal.style.display = 'block';
         }
         
         function selectWalkInPaymentMethod(method) {
@@ -29671,9 +29735,14 @@ async function reverseLastPrescriptionPayment(reportId){
 
         function displayAllProducts(customerType) {
             const productsList = document.getElementById('walkInProductsList');
+            const priceList = getPriceListData();
+            if (!productsList) {
+                console.warn('walkInProductsList container not found.');
+                return;
+            }
             
             // Filter out registration kits - they can only be sold through distributor agreement form
-            const filteredProducts = PRICE_LIST.filter(product => {
+            const filteredProducts = priceList.filter(product => {
                 const desc = product.description.toLowerCase();
                 return !desc.includes('registration kit');
             });
@@ -29763,6 +29832,11 @@ async function reverseLastPrescriptionPayment(reportId){
         function searchProductsForWalkIn() {
             const searchTerm = document.getElementById('walkInProductSearch').value.toLowerCase();
             const productsList = document.getElementById('walkInProductsList');
+            const priceList = getPriceListData();
+            if (!productsList) {
+                console.warn('walkInProductsList container not found.');
+                return;
+            }
             
             if (!searchTerm) {
                 const customerType = document.getElementById('walkInCustomerType').value;
@@ -29771,7 +29845,7 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             // Filter out registration kits - they can only be sold through distributor agreement form
-            const filteredProducts = PRICE_LIST.filter(p => {
+            const filteredProducts = priceList.filter(p => {
                 const desc = p.description.toLowerCase();
                 return !desc.includes('registration kit') && desc.includes(searchTerm);
             }).slice(0, 50); // Show more results in grid view
@@ -35288,8 +35362,14 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
         
-        function clearStockImportForm() {
-            const tbody = resolveImportTableBody();
+        function clearStockImportForm(formElement = null) {
+            let tbody = null;
+            if (formElement && typeof formElement.querySelector === 'function') {
+                tbody = formElement.querySelector('[data-stock-import-body="true"]') || formElement.querySelector('tbody');
+            }
+            if (!tbody) {
+                tbody = resolveImportTableBody();
+            }
             if (!tbody) return;
             tbody.innerHTML = `
                 <tr>
@@ -35316,6 +35396,9 @@ async function reverseLastPrescriptionPayment(reportId){
                     </td>
                 </tr>
             `;
+            if (formElement && typeof formElement.reset === 'function') {
+                formElement.reset();
+            }
         }
         
         // Import barcode stock API (moved out of /api to avoid Vercel serverless routing)
@@ -35512,7 +35595,7 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             // Clear form and refresh display
-            clearStockImportForm();
+            clearStockImportForm(form);
             displayCountryStock();
         }
         
@@ -37578,8 +37661,10 @@ async function reverseLastPrescriptionPayment(reportId){
         });
         
         // Bonus Upload Functions
-        let bonusUploadData = [];
-        let bonusUploadHeaders = [];
+        var bonusUploadData = window.bonusUploadData || [];
+        window.bonusUploadData = bonusUploadData;
+        var bonusUploadHeaders = window.bonusUploadHeaders || [];
+        window.bonusUploadHeaders = bonusUploadHeaders;
         const BONUS_STATUS_STORAGE_KEY = 'finance_bonus_statuses';
         const BONUS_TAB_STORAGE_KEY = 'finance_bonus_last_tab';
 

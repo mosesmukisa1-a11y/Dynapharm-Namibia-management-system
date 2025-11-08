@@ -1,10 +1,15 @@
 {
   "version": 2,
-  "name": "dynapharm-namibia-health",
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
   "installCommand": "npm install",
   "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://dynapharm-backend-production.up.railway.app/api/$1"
+    }
+  ],
   "redirects": [
     { "source": "/dynapharm-complete-system", "destination": "/dynapharm-complete-system.html", "permanent": false },
     { "source": "/distributor/guest", "destination": "/distributor-guest.html", "permanent": false },
