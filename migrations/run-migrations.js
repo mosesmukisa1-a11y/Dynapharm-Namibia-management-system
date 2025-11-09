@@ -91,7 +91,8 @@ async function main() {
       '004_create_users_table.sql',
       '005_create_reports_table.sql',
       '006_create_employees_table.sql',
-      '007_create_branch_walkin_sales.sql'
+      '007_create_branch_walkin_sales.sql',
+      '008_create_branch_inventory_tables.sql'
     ];
     
     for (const migration of migrations) {

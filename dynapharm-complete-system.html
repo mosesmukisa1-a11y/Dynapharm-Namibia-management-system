@@ -23639,78 +23639,18 @@ async function reverseLastPrescriptionPayment(reportId){
             return ['gm', 'director', 'admin', 'stock'].includes(role.toLowerCase());
         }
 
-        async function refreshBranchInventory() {
-            await loadBranchInventory();
-            await loadBranchStockMovements();
+        async function refreshBranchInventory({ notify = false } = {}) {
+            await loadBranchInventory({ notify });
+            await loadBranchStockMovements({ notify });
             updateBranchInventoryKPIs();
         }
 
-        async function loadBranchInventory() {
-            try {
-                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
-                const tbody = document.getElementById('branchInventoryTableBody');
-                if (!tbody) return;
-
-                // Try to load from API first
-                let inventory = [];
-                try {
-                    const response = await fetch(`/api/branch_stock?branch=${encodeURIComponent(branchId)}`);
-                    if (response.ok) {
-                        inventory = await response.json();
-                    }
-                } catch (e) {
-                    console.debug('API not available, using localStorage');
-                }
-
-                // Fallback to localStorage
-                if (inventory.length === 0) {
-                    const stored = localStorage.getItem(`branch_stock_${branchId}`) || localStorage.getItem('branch_stock');
-                    if (stored) {
-                        inventory = JSON.parse(stored);
-                    } else {
-                        // Initialize from PRICE_LIST if available
-                        if (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) {
-                            inventory = PRICE_LIST.map(p => ({
-                                product: p.description,
-                                batchNo: '',
-                                quantity: 0,
-                                expiryDate: '',
-                                unitPrice: p.cp || p.dp || 0,
-                                totalValue: 0,
-                                status: 'out_of_stock',
-                                branch: branchId
-                            }));
-                        }
-                    }
-                }
-
-                // Apply restrictions: hide expected stock, losses, and sensitive adjustments
-                if (!hasInventoryFullAccess()) {
-                    inventory = inventory.filter(item => {
-                        // Hide items marked as expected stock (requires GM approval)
-                        if (item.isExpectedStock && !item.gmApproved) return false;
-                        // Hide items marked as stock loss
-                        if (item.isStockLoss) return false;
-                        // Hide sensitive adjustments
-                        if (item.isSensitiveAdjustment) return false;
-                        return true;
-                    });
-                }
-
-                branchInventoryData = inventory;
-                filterBranchInventory();
-                
-                // Show restriction notice if needed
-                const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
-                if (noticeEl && !hasInventoryFullAccess()) {
-                    noticeEl.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Error loading branch inventory:', error);
-                const tbody = document.getElementById('branchInventoryTableBody');
-                if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 40px; text-align: center; color: #dc3545;">Error loading inventory. Please try again.</td></tr>';
-                }
+        async function loadBranchInventory({ notify = false } = {}) {
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            await syncBranchInventoryFromApi({ branchId, notify });
+            const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
+            if (noticeEl) {
+                noticeEl.style.display = !hasInventoryFullAccess() ? 'block' : 'none';
             }
         }
 
@@ -23810,41 +23750,63 @@ async function reverseLastPrescriptionPayment(reportId){
             if (outOfStockEl) outOfStockEl.textContent = outOfStock;
         }
 
-        async function loadBranchStockMovements() {
-            try {
-                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
-                const movementsEl = document.getElementById('branchInventoryMovements');
-                if (!movementsEl) return;
+        async function loadBranchStockMovements({ notify = false } = {}) {
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+            await syncBranchMovementsFromApi({ branchId, notify });
 
-                // Load from localStorage
-                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
-                let branchMovements = allMovements.filter(m => m.branch === branchId);
+            const movementsEl = document.getElementById('branchInventoryMovements');
+            if (!movementsEl) return;
 
-                // Apply restrictions: hide sensitive movements
-                if (!hasInventoryFullAccess()) {
-                    branchMovements = branchMovements.filter(m => {
-                        // Hide expected stock movements
-                        if (m.isExpectedStock && !m.gmApproved) return false;
-                        // Hide stock losses
-                        if (m.type === 'loss' || m.isStockLoss) return false;
-                        // Hide sensitive adjustments
-                        if (m.type === 'adjustment' && m.isSensitive) return false;
-                        return true;
-                    });
-                }
+            let branchMovements = [...branchStockMovements];
 
-                branchMovements.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, 50);
-                branchStockMovements = branchMovements;
+            if (!hasInventoryFullAccess()) {
+                branchMovements = branchMovements.filter(m => {
+                    if (m.metadata?.isExpectedStock && !m.metadata?.gmApproved) return false;
+                    if (m.metadata?.isStockLoss || m.type === 'loss') return false;
+                    if (m.metadata?.isSensitive || m.metadata?.sensitive) return false;
+                    return true;
+                });
+            }
 
-                if (branchMovements.length === 0) {
-                    movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
-                    return;
-                }
+            if (branchMovements.length === 0) {
+                movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
+                return;
+            }
 
-                movementsEl.innerHTML = branchMovements.map(movement => {
-                    const actionIcon = movement.type === 'receive' ? '📥' : movement.type === 'transfer_out' ? '📤' : movement.type === 'transfer_in' ? '📥' : movement.type === 'adjustment' ? '✏️' : '📊';
-                    const actionColor = movement.type === 'receive' ? '#27ae60' : movement.type === 'transfer_out' ? '#3498db' : movement.type === 'transfer_in' ? '#27ae60' : movement.type === 'adjustment' ? '#f39c12' : '#7f8c8d';
-                    
+            movementsEl.innerHTML = branchMovements
+                .slice(0, 50)
+                .map(movement => {
+                    const actionIcon =
+                        movement.type === 'receive'
+                            ? '📥'
+                            : movement.type === 'transfer_out'
+                            ? '📤'
+                            : movement.type === 'transfer_in'
+                            ? '📥'
+                            : movement.type === 'adjustment'
+                            ? '✏️'
+                            : '📊';
+                    const actionColor =
+                        movement.type === 'receive'
+                            ? '#27ae60'
+                            : movement.type === 'transfer_out'
+                            ? '#3498db'
+                            : movement.type === 'transfer_in'
+                            ? '#27ae60'
+                            : movement.type === 'adjustment'
+                            ? '#f39c12'
+                            : '#7f8c8d';
+
+                    const movementDate = new Date(movement.timestamp || Date.now());
+                    const expiryText = movement.metadata?.expiryDate || movement.expiryDate;
+                    let expiryDisplay = '';
+                    if (expiryText) {
+                        const expiry = new Date((expiryText.length === 7 ? `${expiryText}-01` : expiryText));
+                        if (!Number.isNaN(expiry.getTime())) {
+                            expiryDisplay = ` | Expiry: ${expiry.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+                        }
+                    }
+
                     return `
                         <div style="display: flex; justify-content: space-between; align-items: start; padding: 12px; border-bottom: 1px solid #eee; gap: 15px;">
                             <div style="flex: 1;">
@@ -23852,29 +23814,23 @@ async function reverseLastPrescriptionPayment(reportId){
                                     <span style="font-size: 1.2rem;">${actionIcon}</span>
                                     <strong>${movement.product || 'N/A'}</strong>
                                     <span style="color: ${actionColor}; font-weight: 600; font-size: 0.85rem; text-transform: uppercase;">${movement.type || 'movement'}</span>
-                                    ${movement.isSensitive || movement.isStockLoss ? '<span style="color: #dc3545; font-size: 0.75rem;">🔒 RESTRICTED</span>' : ''}
+                                    ${(movement.metadata?.isSensitive || movement.metadata?.isStockLoss) ? '<span style="color: #dc3545; font-size: 0.75rem;">🔒 RESTRICTED</span>' : ''}
                                 </div>
                                 <div style="font-size: 0.85rem; color: #666;">
                                     Batch: ${movement.batchNo || 'N/A'} | Qty: ${movement.quantity || 0} ${movement.unit || 'units'}
-                                    ${movement.expiryDate ? ` | Expiry: ${new Date(movement.expiryDate + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}
+                                    ${expiryDisplay}
                                 </div>
                                 ${movement.notes ? `<div style="font-size: 0.8rem; color: #999; margin-top: 3px;">${movement.notes}</div>` : ''}
                             </div>
                             <div style="text-align: right; font-size: 0.85rem; color: #666;">
-                                <div>${new Date(movement.timestamp || Date.now()).toLocaleDateString()}</div>
-                                <div style="font-size: 0.75rem; color: #999;">${new Date(movement.timestamp || Date.now()).toLocaleTimeString()}</div>
+                                <div>${movementDate.toLocaleDateString()}</div>
+                                <div style="font-size: 0.75rem; color: #999;">${movementDate.toLocaleTimeString()}</div>
                                 <div style="font-size: 0.75rem; color: #999; margin-top: 3px;">${movement.user || 'System'}</div>
                             </div>
                         </div>
                     `;
-                }).join('');
-            } catch (error) {
-                console.error('Error loading stock movements:', error);
-                const movementsEl = document.getElementById('branchInventoryMovements');
-                if (movementsEl) {
-                    movementsEl.innerHTML = '<p style="text-align: center; color: #dc3545; padding: 20px;">Error loading movements</p>';
-                }
-            }
+                })
+                .join('');
         }
 
         function openBranchStockReceiveModal() {
@@ -23903,7 +23859,7 @@ async function reverseLastPrescriptionPayment(reportId){
             document.getElementById('branchStockReceiveModal').style.display = 'none';
         }
 
-        function submitBranchStockReceive(event) {
+        async function submitBranchStockReceive(event) {
             event.preventDefault();
             
             const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
@@ -23957,75 +23913,33 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (prod) unitPrice = prod.cp || prod.dp || 0;
             }
 
-            // Check if item already exists
-            const existingIndex = branchInventoryData.findIndex(item => 
-                item.product === product && item.batchNo === batchNo && item.expiryDate === expiryDate && item.branch === branchId
-            );
-
-            if (existingIndex >= 0) {
-                branchInventoryData[existingIndex].quantity += quantity;
-                branchInventoryData[existingIndex].totalValue = branchInventoryData[existingIndex].quantity * unitPrice;
-                branchInventoryData[existingIndex].status = branchInventoryData[existingIndex].quantity > 0 ? 'in_stock' : 'out_of_stock';
-            } else {
-                const newItem = {
-                    id: 'BSI' + Date.now(),
-                    product: product,
-                    batchNo: batchNo,
-                    quantity: quantity,
-                    expiryDate: expiryDate,
-                    unitPrice: unitPrice,
-                    totalValue: quantity * unitPrice,
-                    unit: unit,
-                    branch: branchId,
-                    status: quantity > 0 ? 'in_stock' : 'out_of_stock',
-                    createdAt: new Date().toISOString(),
-                    isExpectedStock: isExpectedStock,
-                    gmApproved: hasInventoryFullAccess() || !isExpectedStock
-                };
-                branchInventoryData.push(newItem);
-            }
-
-            // Record movement
-            const movement = {
-                id: 'BSM' + Date.now(),
-                type: 'receive',
-                product: product,
-                batchNo: batchNo,
-                quantity: quantity,
-                expiryDate: expiryDate,
-                unit: unit,
-                branch: branchId,
-                source: source,
-                notes: notes,
-                timestamp: new Date().toISOString(),
-                user: (window.currentUser && window.currentUser.fullName) || 'System',
-                isExpectedStock: isExpectedStock,
-                gmApproved: hasInventoryFullAccess() || !isExpectedStock
-            };
-
-            // Save to localStorage
             try {
-                localStorage.setItem(`branch_stock_${branchId}`, JSON.stringify(branchInventoryData));
-                
-                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
-                allMovements.push(movement);
-                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
-
-                // Try to save to API
-                try {
-                    fetch('/api/branch_stock', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ branch: branchId, items: branchInventoryData, movement: movement })
-                    }).catch(e => console.debug('API save failed:', e));
-                } catch (e) {}
+                await postBranchInventoryAction('receive', {
+                    branchId,
+                    productName: product,
+                    productCode: null,
+                    batchNo,
+                    expiryDate,
+                    quantity,
+                    unit,
+                    unitPrice,
+                    source,
+                    notes,
+                    metadata: {
+                        unit,
+                        isExpectedStock,
+                        gmApproved: hasInventoryFullAccess() || !isExpectedStock
+                    }
+                });
 
                 alert('✅ Stock received successfully!');
                 closeBranchStockReceiveModal();
-                refreshBranchInventory();
+                filterBranchInventory();
+                updateBranchInventoryKPIs();
+                loadBranchStockMovements();
             } catch (error) {
                 console.error('Error saving stock:', error);
-                alert('❌ Error saving stock. Please try again.');
+                alert(`❌ Error saving stock: ${error.message || error}`);
             }
         }
 
@@ -24074,7 +23988,7 @@ async function reverseLastPrescriptionPayment(reportId){
             document.getElementById('branchStockTransferModal').style.display = 'none';
         }
 
-        function submitBranchStockTransfer(event) {
+        async function submitBranchStockTransfer(event) {
             event.preventDefault();
             
             const fromBranchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
@@ -24089,8 +24003,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
-            // Find source item
-            const sourceItem = branchInventoryData.find(item => 
+            const sourceItem = branchInventoryData.find(item =>
                 item.product === product && item.batchNo === batchNo && item.branch === fromBranchId
             );
 
@@ -24099,60 +24012,36 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
-            // Update source branch inventory
-            sourceItem.quantity -= quantity;
-            sourceItem.totalValue = sourceItem.quantity * (sourceItem.unitPrice || 0);
-            sourceItem.status = sourceItem.quantity > 0 ? 'in_stock' : 'out_of_stock';
+            const expiryDate = sourceItem.expiryDate || null;
+            const unit = sourceItem.unit || 'units';
 
-            // Record movements for both branches
-            const transferOut = {
-                id: 'BSM' + Date.now(),
-                type: 'transfer_out',
-                product: product,
-                batchNo: batchNo,
-                quantity: quantity,
-                expiryDate: sourceItem.expiryDate,
-                unit: sourceItem.unit || 'units',
-                branch: fromBranchId,
-                toBranch: toBranchId,
-                notes: notes,
-                timestamp: new Date().toISOString(),
-                user: (window.currentUser && window.currentUser.fullName) || 'System'
-            };
-
-            const transferIn = {
-                id: 'BSM' + (Date.now() + 1),
-                type: 'transfer_in',
-                product: product,
-                batchNo: batchNo,
-                quantity: quantity,
-                expiryDate: sourceItem.expiryDate,
-                unit: sourceItem.unit || 'units',
-                branch: toBranchId,
-                fromBranch: fromBranchId,
-                notes: notes,
-                timestamp: new Date().toISOString(),
-                user: (window.currentUser && window.currentUser.fullName) || 'System'
-            };
-
-            // Save
             try {
-                localStorage.setItem(`branch_stock_${fromBranchId}`, JSON.stringify(branchInventoryData));
-                
-                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
-                allMovements.push(transferOut, transferIn);
-                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
+                await postBranchInventoryAction('transfer', {
+                    fromBranchId,
+                    toBranchId,
+                    productName: product,
+                    batchNo,
+                    quantity,
+                    unit,
+                    expiryDate,
+                    notes,
+                    metadata: {
+                        initiatedBy: (window.currentUser && window.currentUser.fullName) || 'System'
+                    }
+                });
 
                 alert('✅ Stock transferred successfully!');
                 closeBranchStockTransferModal();
-                refreshBranchInventory();
+                filterBranchInventory();
+                updateBranchInventoryKPIs();
+                loadBranchStockMovements();
             } catch (error) {
                 console.error('Error transferring stock:', error);
-                alert('❌ Error transferring stock. Please try again.');
+                alert(`❌ Error transferring stock: ${error.message || error}`);
             }
         }
 
-        function editBranchInventoryItem(itemId) {
+        async function editBranchInventoryItem(itemId) {
             if (!hasInventoryFullAccess()) {
                 alert('⚠️ Access Denied: Stock adjustments require GM approval. Please contact your General Manager.');
                 return;
@@ -24203,38 +24092,28 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
-            item.quantity = qty;
-            item.totalValue = qty * (item.unitPrice || 0);
-            item.status = qty > 0 ? 'in_stock' : 'out_of_stock';
-
-            // Record adjustment
-            const movement = {
-                id: 'BSM' + Date.now(),
-                type: 'adjustment',
-                product: item.product,
-                batchNo: item.batchNo,
-                quantity: difference,
-                expiryDate: item.expiryDate,
-                unit: item.unit || 'units',
-                branch: item.branch,
-                notes: `Adjustment: ${oldQty} → ${qty}${isLoss ? ' (LOSS)' : ''}`,
-                timestamp: new Date().toISOString(),
-                user: (window.currentUser && window.currentUser.fullName) || 'System',
-                isStockLoss: isLoss,
-                isSensitive: isLoss
-            };
-
             try {
-                localStorage.setItem(`branch_stock_${item.branch}`, JSON.stringify(branchInventoryData));
-                
-                const allMovements = JSON.parse(localStorage.getItem('branch_stock_movements') || '[]');
-                allMovements.push(movement);
-                localStorage.setItem('branch_stock_movements', JSON.stringify(allMovements.length > 1000 ? allMovements.slice(-1000) : allMovements));
+                await postBranchInventoryAction('adjust', {
+                    branchId: item.branch,
+                    productName: item.product,
+                    batchNo: item.batchNo,
+                    expiryDate: item.expiryDate,
+                    quantity: qty,
+                    unit: item.unit || 'units',
+                    notes: `Adjustment: ${oldQty} → ${qty}${isLoss ? ' (LOSS)' : ''}`,
+                    metadata: {
+                        isStockLoss: isLoss,
+                        previousQuantity: oldQty,
+                        adjustedBy: (window.currentUser && window.currentUser.fullName) || 'System'
+                    }
+                });
 
-                refreshBranchInventory();
+                filterBranchInventory();
+                updateBranchInventoryKPIs();
+                loadBranchStockMovements();
             } catch (error) {
                 console.error('Error updating inventory:', error);
-                alert('Error updating inventory');
+                alert(`Error updating inventory: ${error.message || error}`);
             }
         }
 
@@ -30385,7 +30264,7 @@ async function reverseLastPrescriptionPayment(reportId){
 
             // Persist to backend API (fallback to offline cache if needed)
             const savedSale = await createWalkInSaleViaApi(sale);
-
+            
             // Broadcast stock update event for real-time sync
             try {
                 const branchId = savedSale.branch || (currentUser && currentUser.branch) || 'unknown';
@@ -30422,12 +30301,12 @@ async function reverseLastPrescriptionPayment(reportId){
             walkInSales = Array.isArray(walkInSales) ? walkInSales : [];
             walkInSales.push(savedSale);
             saveWalkInSalesCache(walkInSales);
-
+            
             // Also save to the key finance portal expects (for backward compatibility)
             const financeSales = JSON.parse(localStorage.getItem('dynapharm_walkin_sales') || '[]');
             financeSales.push(savedSale);
             localStorage.setItem('dynapharm_walkin_sales', JSON.stringify(financeSales));
-
+            
             // Update cash drawer
             const cashDrawer = JSON.parse(localStorage.getItem('dyna_cash_drawer') || '{}');
             if (!cashDrawer.totalSales) cashDrawer.totalSales = [];
@@ -34317,18 +34196,22 @@ async function reverseLastPrescriptionPayment(reportId){
             const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
             const countryStock = JSON.parse(localStorage.getItem('dyna_country_stock') || '[]');
             const warehouseStock = JSON.parse(localStorage.getItem('dyna_warehouse_stock') || '[]');
-                const branchStockData = JSON.parse(localStorage.getItem('branch_stock') || '[]');
+                const branchStockData = JSON.parse(localStorage.getItem('branch_inventory') || '[]');
                 
                 // Get all branches to aggregate branch stock
                 const allBranches = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
                 let allBranchStock = [];
                 allBranches.forEach(branch => {
                     const branchId = branch.id || branch.name;
-                    const branchStock = JSON.parse(localStorage.getItem(`branch_stock_${branchId}`) || '[]');
-                    allBranchStock = allBranchStock.concat(branchStock);
+                    const branchStock = JSON.parse(localStorage.getItem(`branch_inventory_${branchId}`) || '[]');
+                    if (Array.isArray(branchStock)) {
+                        allBranchStock = allBranchStock.concat(branchStock);
+                    }
                 });
                 // Also include general branch_stock
-                allBranchStock = allBranchStock.concat(branchStockData);
+                if (Array.isArray(branchStockData)) {
+                    allBranchStock = allBranchStock.concat(branchStockData);
+                }
                 
                 // Calculate total stock value - Include ALL sources
             let totalValue = 0;
@@ -34577,7 +34460,14 @@ async function reverseLastPrescriptionPayment(reportId){
             let filtered = barcodeStock;
             if (locationFilter !== 'all') {
                 if (locationFilter === 'branches') {
-                    filtered = JSON.parse(localStorage.getItem('branch_stock') || '[]');
+                    const aggregateRaw = localStorage.getItem('dyna_branch_stock');
+                    const aggregate = aggregateRaw ? JSON.parse(aggregateRaw) : {};
+                    filtered = [];
+                    if (aggregate && typeof aggregate === 'object') {
+                        Object.values(aggregate).forEach(list => {
+                            if (Array.isArray(list)) filtered = filtered.concat(list);
+                        });
+                    }
                 } else {
                     filtered = barcodeStock.filter(b => b.location && b.location.includes(locationFilter));
                 }
@@ -34586,7 +34476,16 @@ async function reverseLastPrescriptionPayment(reportId){
             // Calculate totals
             const countryTotal = barcodeStock.filter(b => b.location === 'country_stock').reduce((sum, b) => sum + ((b.remainingQuantity || 0) * ((typeof PRICE_LIST !== 'undefined' && PRICE_LIST.find(p => p.description === b.description))?.cp || 0)), 0);
             const warehouseTotal = barcodeStock.filter(b => b.location && (b.location.includes('windhoek') || b.location.includes('ondangwa'))).reduce((sum, b) => sum + ((b.remainingQuantity || 0) * ((typeof PRICE_LIST !== 'undefined' && PRICE_LIST.find(p => p.description === b.description))?.cp || 0)), 0);
-            const branchStock = JSON.parse(localStorage.getItem('branch_stock') || '[]');
+            const branchAggregateRaw = localStorage.getItem('dyna_branch_stock');
+            let branchStock = [];
+            if (branchAggregateRaw) {
+                const branchAggregate = JSON.parse(branchAggregateRaw);
+                if (branchAggregate && typeof branchAggregate === 'object') {
+                    Object.values(branchAggregate).forEach(list => {
+                        if (Array.isArray(list)) branchStock = branchStock.concat(list);
+                    });
+                }
+            }
             const branchTotal = branchStock.reduce((sum, b) => sum + ((b.quantity || 0) * (b.unitPrice || 0)), 0);
             
             document.getElementById('countryTotalValue').textContent = `N$${countryTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
@@ -39240,6 +39139,210 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         }
 
         walkInSales = loadWalkInSalesCache();
+        (function initializeBranchCaches() {
+            try {
+                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+                branchInventoryData = loadBranchInventoryCache(branchId);
+                branchStockMovements = loadBranchMovementsCache(branchId);
+            } catch (_) {
+                branchInventoryData = Array.isArray(branchInventoryData) ? branchInventoryData : [];
+                branchStockMovements = Array.isArray(branchStockMovements) ? branchStockMovements : [];
+            }
+        })();
+
+        function loadBranchInventoryCache(branchId) {
+            if (!branchId) return [];
+            try {
+                const raw = localStorage.getItem(`branch_inventory_${branchId}`);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) return parsed;
+                }
+                const aggregateRaw = localStorage.getItem('dyna_branch_stock');
+                if (aggregateRaw) {
+                    const aggregate = JSON.parse(aggregateRaw);
+                    if (aggregate && Array.isArray(aggregate[branchId])) {
+                        return aggregate[branchId];
+                    }
+                }
+            } catch (_) {}
+            return [];
+        }
+
+        function saveBranchInventoryCache(branchId, list) {
+            if (!branchId) return;
+            try {
+                localStorage.setItem(`branch_inventory_${branchId}`, JSON.stringify(list));
+                const aggregateRaw = localStorage.getItem('dyna_branch_stock');
+                const aggregate = aggregateRaw ? JSON.parse(aggregateRaw) : {};
+                if (aggregate && typeof aggregate === 'object') {
+                    aggregate[branchId] = list;
+                    localStorage.setItem('dyna_branch_stock', JSON.stringify(aggregate));
+                }
+            } catch (_) {}
+        }
+
+        function loadBranchMovementsCache(branchId) {
+            if (!branchId) return [];
+            try {
+                const raw = localStorage.getItem(`branch_inventory_movements_${branchId}`);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveBranchMovementsCache(branchId, list) {
+            if (!branchId) return;
+            try { localStorage.setItem(`branch_inventory_movements_${branchId}`, JSON.stringify(list)); } catch (_) {}
+        }
+
+        function normalizeBranchInventoryRecord(record) {
+            if (!record) return null;
+            const quantity = parseFloat(record.quantity ?? record.qty ?? 0) || 0;
+            const unitPrice = record.unitPrice !== undefined ? Number(record.unitPrice) : (record.unit_price !== undefined ? Number(record.unit_price) : 0);
+            const status =
+                record.status ||
+                (quantity <= 0
+                    ? 'out_of_stock'
+                    : quantity <= (record.reorderLevel || 0)
+                    ? 'low_stock'
+                    : 'in_stock');
+            return {
+                id: record.id || `BATCH-${Date.now()}`,
+                branch: record.branchId || record.branch || getBranchId?.() || 'default',
+                product: record.productName || record.product || 'Unknown',
+                productCode: record.productCode || record.product_code || '',
+                batchNo: record.batchNo || record.batch_no || '',
+                quantity,
+                unit: record.unit || 'units',
+                expiryDate: record.expiryDate || record.expiry_date || '',
+                unitPrice,
+                totalValue: quantity * unitPrice,
+                status,
+                metadata: record.metadata || {},
+                createdAt: record.createdAt || record.created_at || new Date().toISOString(),
+                updatedAt: record.updatedAt || record.updated_at || new Date().toISOString()
+            };
+        }
+
+        function normalizeBranchMovementRecord(record) {
+            if (!record) return null;
+            return {
+                id: record.id || `MOVE-${Date.now()}`,
+                branch: record.branchId || record.branch || record.branch_id || getBranchId?.() || 'default',
+                type: record.type || 'movement',
+                product: record.productName || record.product || '',
+                productCode: record.productCode || record.product_code || '',
+                batchNo: record.batchNo || record.batch_no || '',
+                quantity: parseFloat(record.quantity ?? 0) || 0,
+                unit: record.unit || 'units',
+                sourceBranch: record.sourceBranchId || record.source_branch_id || null,
+                destinationBranch: record.destinationBranchId || record.destination_branch_id || null,
+                notes: record.notes || '',
+                metadata: record.metadata || {},
+                timestamp: record.createdAt || record.created_at || record.timestamp || new Date().toISOString(),
+                user: record.createdBy || record.created_by || record.user || 'System'
+            };
+        }
+
+        async function syncBranchInventoryFromApi({ branchId, notify = false, includeMovements = false } = {}) {
+            const effectiveBranchId = branchId || (typeof getBranchId === 'function' ? getBranchId() : (currentUser && currentUser.branch) || 'default');
+            try {
+                const params = new URLSearchParams({ branch: effectiveBranchId });
+                if (includeMovements) params.append('includeMovements', '1');
+                const response = await fetch(`/api/branch/inventory?${params.toString()}`, { credentials: 'include' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                const inventory = Array.isArray(payload.inventory) ? payload.inventory : [];
+                branchInventoryData = inventory.map(normalizeBranchInventoryRecord).filter(Boolean);
+                saveBranchInventoryCache(effectiveBranchId, branchInventoryData);
+                if (Array.isArray(payload.movements)) {
+                    branchStockMovements = payload.movements.map(normalizeBranchMovementRecord).filter(Boolean);
+                    saveBranchMovementsCache(effectiveBranchId, branchStockMovements);
+                }
+                if (notify) showToast(`Inventory synced (${branchInventoryData.length} items)`, 'success');
+                filterBranchInventory();
+                updateBranchInventoryKPIs();
+                return branchInventoryData;
+            } catch (error) {
+                console.warn('Inventory sync failed, using cached data:', error);
+                branchInventoryData = loadBranchInventoryCache(effectiveBranchId);
+                branchStockMovements = loadBranchMovementsCache(effectiveBranchId);
+                if (notify) showToast('Unable to sync branch inventory. Showing cached data.', 'error');
+                filterBranchInventory();
+                updateBranchInventoryKPIs();
+                return branchInventoryData;
+            }
+        }
+
+        async function syncBranchMovementsFromApi({ branchId, notify = false } = {}) {
+            const effectiveBranchId = branchId || (typeof getBranchId === 'function' ? getBranchId() : (currentUser && currentUser.branch) || 'default');
+            try {
+                const response = await fetch(`/api/branch/inventory?branch=${encodeURIComponent(effectiveBranchId)}&includeMovements=1&limit=100`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                if (Array.isArray(payload.movements)) {
+                    branchStockMovements = payload.movements.map(normalizeBranchMovementRecord).filter(Boolean);
+                    saveBranchMovementsCache(effectiveBranchId, branchStockMovements);
+                } else {
+                    branchStockMovements = loadBranchMovementsCache(effectiveBranchId);
+                }
+                if (notify) showToast('Inventory movements synced', 'success');
+                return branchStockMovements;
+            } catch (error) {
+                console.warn('Movement sync failed, using cached data:', error);
+                branchStockMovements = loadBranchMovementsCache(effectiveBranchId);
+                if (notify) showToast('Unable to sync stock movements. Showing cached data.', 'error');
+                return branchStockMovements;
+            }
+        }
+
+        async function postBranchInventoryAction(action, payload) {
+            try {
+                const response = await fetch('/api/branch/inventory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ action, ...payload })
+                });
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`HTTP ${response.status} ${errorText}`);
+                }
+                const result = await response.json();
+                const branchId = payload.branchId || payload.fromBranchId || getBranchId?.() || 'default';
+                if (Array.isArray(result.inventory)) {
+                    branchInventoryData = result.inventory.map(normalizeBranchInventoryRecord).filter(Boolean);
+                    saveBranchInventoryCache(branchId, branchInventoryData);
+                    filterBranchInventory();
+                    updateBranchInventoryKPIs();
+                }
+                if (result.movement) {
+                    const movement = normalizeBranchMovementRecord(result.movement);
+                    if (movement) {
+                        branchStockMovements.unshift(movement);
+                        branchStockMovements = branchStockMovements.slice(0, 100);
+                        saveBranchMovementsCache(branchId, branchStockMovements);
+                    }
+                }
+                if (Array.isArray(result.movements)) {
+                    const branchMovements = result.movements.map(normalizeBranchMovementRecord).filter(Boolean);
+                    if (branchMovements.length) {
+                        branchStockMovements = [...branchMovements, ...branchStockMovements].slice(0, 100);
+                        saveBranchMovementsCache(branchId, branchStockMovements);
+                    }
+                }
+                return result;
+            } catch (error) {
+                console.error('Branch inventory API error:', error);
+                throw error;
+            }
+        }
 
         async function fetchEmployeesFromService() {
             const response = await fetch('/api/employees', { credentials: 'include' });
@@ -39347,14 +39450,14 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     credentials: 'include'
                 });
                 if (!response.ok) throw new Error(`Delete failed with status ${response.status}`);
-                employees = employees.filter(e => e.employeeId !== employeeId);
+            employees = employees.filter(e => e.employeeId !== employeeId);
                 try {
-                    localStorage.setItem('hr_employees', JSON.stringify(employees));
+            localStorage.setItem('hr_employees', JSON.stringify(employees));
                     localStorage.setItem('dyna_employees', JSON.stringify(employees));
                     localStorage.setItem('hr_employees_lastUpdated', String(Date.now()));
                     localStorage.setItem('dyna_employees_lastUpdated', String(Date.now()));
                 } catch(_) {}
-                displayEmployees();
+            displayEmployees();
                 showToast('Employee removed successfully.', 'success');
             } catch (error) {
                 console.error('Error deleting employee:', error);
@@ -39956,7 +40059,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     emergencyContactPhone: document.getElementById('emergencyContactPhone').value,
                     notes: document.getElementById('employeeNotes').value
                 };
-
+                
                 const existingIndex = Array.isArray(employees)
                     ? employees.findIndex(emp => emp.employeeId === formPayload.employeeId)
                     : -1;
@@ -39999,21 +40102,21 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                         const result = await response.json();
                         const saved = mapEmployeeRecord(result.employee || result);
                         if (!Array.isArray(employees)) employees = [];
-                        if (existingIndex >= 0) {
+                if (existingIndex >= 0) {
                             employees[existingIndex] = saved;
-                        } else {
+                } else {
                             employees.push(saved);
-                        }
-                        try {
-                            localStorage.setItem('hr_employees', JSON.stringify(employees));
-                            localStorage.setItem('dyna_employees', JSON.stringify(employees));
+                }
+                try {
+                    localStorage.setItem('hr_employees', JSON.stringify(employees));
+                    localStorage.setItem('dyna_employees', JSON.stringify(employees));
                             localStorage.setItem('hr_employees_lastUpdated', String(Date.now()));
                             localStorage.setItem('dyna_employees_lastUpdated', String(Date.now()));
                         } catch(_) {}
-                        closeModal('addEmployeeModal');
-                        displayEmployees();
+                    closeModal('addEmployeeModal');
+                    displayEmployees();
                         showToast(`Employee ${existingIndex >= 0 ? 'updated' : 'added'} successfully.`, 'success');
-                    } catch (error) {
+                } catch (error) {
                         console.error('Error saving employee:', error);
                         alert('Error saving employee: ' + (error.message || 'Unknown error'));
                     }

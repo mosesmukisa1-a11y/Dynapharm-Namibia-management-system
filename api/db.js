@@ -115,3 +115,23 @@ export async function publishRealtimeEvent(resource, action, data) {
     console.warn('Error publishing realtime event:', error.message);
   }
 }
+
+export async function withTransaction(fn) {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError.message);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
