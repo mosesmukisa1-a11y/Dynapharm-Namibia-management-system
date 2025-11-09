@@ -35416,7 +35416,7 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // Import barcode stock API (moved out of /api to avoid Vercel serverless routing)
         import('./web-modules/barcode-stock.js').then(module => {
-            window.barcodeStockAPI = module;
+            window.barcodeStockAPI = module.default || module;
             console.log('✅ Barcode Stock API loaded successfully');
         }).catch(err => {
             console.error('❌ Barcode Stock API not loaded:', err);

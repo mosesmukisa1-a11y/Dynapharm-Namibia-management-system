@@ -1,5 +1,25 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
+function normalizeInboundPayload(payload) {
+  if (!payload) return null;
+  return {
+    id: payload.id || payload.batchId || null,
+    barcode: payload.barcode || null,
+    cartonNo: payload.cartonNo || payload.carton_no || null,
+    description: payload.description || payload.product || payload.productName || '',
+    batchNo: payload.batchNo || payload.batch_no || null,
+    expiryDate: payload.expiryDate || payload.expiry_date || null,
+    quantity: payload.quantity ?? payload.totalQuantity ?? payload.remainingQuantity ?? 0,
+    totalCtns: payload.totalCtns ?? payload.total_ctns ?? payload.totalQuantity ?? payload.quantity ?? 0,
+    location: payload.location || payload.sourceWarehouseId || payload.warehouseId || payload.warehouse_id || 'country_stock',
+    dispatchedQuantity: payload.dispatchedQuantity ?? payload.dispatched_quantity ?? 0,
+    remainingQuantity: payload.remainingQuantity ?? payload.remaining_quantity ?? payload.quantity ?? 0,
+    status: payload.status || 'available',
+    productId: payload.productId || payload.product_id || null,
+    warehouseId: payload.warehouseId || payload.warehouse_id || payload.sourceWarehouseId || null,
+    metadata: payload.metadata || null
+  };
+}
 
 async function parseRequestBody(req) {
   if (req.body) {
@@ -197,6 +217,8 @@ export default async function handler(req, res) {
       }
 
       const batch = await upsertBatch(body);
+      const input = normalizeInboundPayload(body);
+      const batch = await upsertBatch(input);
       return res.status(201).json({ success: true, batch });
     }
 
