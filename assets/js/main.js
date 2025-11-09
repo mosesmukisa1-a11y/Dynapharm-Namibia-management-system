@@ -252,6 +252,45 @@ function ensureDefaultUsersSeeded() {
 
 ensureDefaultUsersSeeded();
 
+async function syncUsersFromApi() {
+  try {
+    const response = await fetch("/api/users", { credentials: "include" });
+    if (!response.ok) {
+      return;
+    }
+    const remoteUsers = await response.json();
+    if (!Array.isArray(remoteUsers) || remoteUsers.length === 0) {
+      return;
+    }
+    const normalized = remoteUsers
+      .map((user) => ({
+        id: user.id || `USR-${Date.now()}`,
+        username: user.username || "",
+        password: user.password || "",
+        fullName: user.fullName || user.name || user.username || "Dynapharm User",
+        email: user.email || null,
+        phone: user.phone || null,
+        role: user.role || "client",
+        branch: user.branch || null,
+        branches: Array.isArray(user.branches) ? user.branches : [],
+        isActive: user.isActive !== false,
+        createdAt: user.createdAt || user.created_at || new Date().toISOString()
+      }))
+      .filter((user) => user.username);
+
+    if (normalized.length === 0) return;
+
+    localStorage.setItem("dyna_users", JSON.stringify(normalized));
+    users = normalized;
+    window.dispatchEvent(new CustomEvent("users:synced", { detail: { count: normalized.length } }));
+    console.info(`Synced ${normalized.length} users from cloud.`);
+  } catch (error) {
+    console.warn("Unable to sync users from API:", error);
+  }
+}
+
+syncUsersFromApi();
+
 let currentAccountUser = null;
 const heroSection = document.querySelector(".hero");
 const heroBadgeEl = document.getElementById("heroBadge");

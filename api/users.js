@@ -52,6 +52,7 @@ function buildUserResponse(user) {
   if (!sanitized) return null;
   return {
     ...sanitized,
+    password: user.password || null,
     isActive: user.is_active ?? true,
     mustChangePassword: user.must_change_password ?? false,
     metadata: user.metadata || null
