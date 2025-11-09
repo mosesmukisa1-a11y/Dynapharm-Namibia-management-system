@@ -58,6 +58,12 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: 'Internal server error',
+      details:
+        process.env.NODE_ENV === 'production'
+          ? error.message || 'unknown'
+          : error.stack || error.message || 'unknown'
+    });
   }
 }
