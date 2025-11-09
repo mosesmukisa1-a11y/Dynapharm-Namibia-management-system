@@ -361,6 +361,43 @@ function normalizeStockRequestRecord(request) {
   };
 }
 
+function normalizeStockBatchRecord(batch) {
+  if (!batch) return null;
+  const metadata =
+    typeof batch.metadata === "string"
+      ? (() => {
+          try {
+            return JSON.parse(batch.metadata);
+          } catch {
+            return {};
+          }
+        })()
+      : batch.metadata || {};
+
+  return {
+    id: batch.id || `BATCH-${Date.now()}`,
+    barcode: batch.barcode || null,
+    cartonNo: batch.cartonNo || batch.carton_no || null,
+    description: batch.description || metadata.product || "",
+    batchNo: batch.batchNo || batch.batch_no || null,
+    expiryDate: batch.expiryDate || batch.expiry_date || null,
+    expiryTimestamp: batch.expiryDate || batch.expiry_date ? Date.parse(`${batch.expiryDate || batch.expiry_date}-01`) : null,
+    quantity: Number(batch.quantity || metadata.quantity || 0),
+    remainingQuantity:
+      batch.remainingQuantity !== undefined
+        ? Number(batch.remainingQuantity)
+        : batch.remaining_quantity !== undefined
+          ? Number(batch.remaining_quantity)
+          : Number(batch.quantity || metadata.quantity || 0),
+    totalCtns: Number(batch.totalCtns || batch.total_ctns || batch.quantity || metadata.quantity || 0),
+    location: batch.location || batch.warehouseId || batch.warehouse_id || "country_stock",
+    status: batch.status || "available",
+    createdAt: batch.importDate || batch.import_date || batch.createdAt || new Date().toISOString(),
+    updatedAt: batch.updatedAt || batch.updated_at || batch.importDate || null,
+    metadata
+  };
+}
+
 async function syncDataset({ endpoint, storageKey, normalizer, onSync }) {
   try {
     const response = await fetch(endpoint, { credentials: "include" });
@@ -422,6 +459,15 @@ async function syncCloudDatasets() {
       onSync(records) {
         window.dispatchEvent(new CustomEvent("stockRequests:synced", { detail: { count: records.length } }));
         console.info(`Synced ${records.length} stock requests from cloud.`);
+      }
+    }),
+    syncDataset({
+      endpoint: "/api/stock-batches",
+      storageKey: "dyna_barcode_stock",
+      normalizer: normalizeStockBatchRecord,
+      onSync(records) {
+        window.dispatchEvent(new CustomEvent("stockBatches:synced", { detail: { count: records.length } }));
+        console.info(`Synced ${records.length} stock batches from cloud.`);
       }
     })
   ]);

@@ -265,7 +265,58 @@ export function getFEFOStock(description, quantityHint) {
     return { success: true, data: selection };
 }
 
-export function importStockWithBarcode(payload) {
+async function saveBatchToCloud(payload) {
+    try {
+        const response = await fetch('/api/stock-batches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            return null;
+        }
+        const body = await response.json();
+        if (body?.success && body?.batch) {
+            return body.batch;
+        }
+        if (body?.success && Array.isArray(body?.batches) && body.batches.length > 0) {
+            return body.batches[0];
+        }
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function adaptCloudBatch(cloud) {
+    if (!cloud) return null;
+    return {
+        id: cloud.id || `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        cartonNo: cloud.cartonNo || cloud.carton_no || null,
+        description: cloud.description || '',
+        batchNo: cloud.batchNo || cloud.batch_no || null,
+        expiryDate: cloud.expiryDate || cloud.expiry_date || null,
+        expiryTimestamp: toExpiryTimestamp(cloud.expiryDate || cloud.expiry_date),
+        quantity: Number(cloud.quantity || cloud.totalQuantity || 0),
+        remainingQuantity: Number(
+            cloud.remainingQuantity !== undefined
+                ? cloud.remainingQuantity
+                : cloud.remaining_quantity !== undefined
+                    ? cloud.remaining_quantity
+                    : cloud.quantity || 0
+        ),
+        totalCtns: Number(cloud.totalCtns || cloud.total_ctns || cloud.quantity || 0),
+        location: cloud.location || cloud.warehouseId || cloud.warehouse_id || 'country_stock',
+        status: cloud.status || 'available',
+        barcode: cloud.barcode || generateBarcode(cloud.description, cloud.batchNo),
+        createdAt: cloud.importDate || cloud.import_date || cloud.createdAt || nowIso(),
+        updatedAt: cloud.updatedAt || cloud.updated_at || cloud.importDate || nowIso(),
+        metadata: cloud.metadata || {}
+    };
+}
+
+export async function importStockWithBarcode(payload) {
     try {
         const validation = validateImportPayload(payload);
         if (!validation.ok) {
@@ -273,27 +324,41 @@ export function importStockWithBarcode(payload) {
         }
 
         const normalized = validation.data;
-        const batches = loadBatches();
-        const barcode = generateBarcode(normalized.description, normalized.batchNo);
-        const now = nowIso();
-        const entry = {
-            id: `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        let cloudBatch = await saveBatchToCloud({
             cartonNo: normalized.cartonNo || null,
             description: normalized.description,
             batchNo: normalized.batchNo,
             expiryDate: normalized.expiryDate,
-            expiryTimestamp: toExpiryTimestamp(normalized.expiryDate),
             quantity: normalized.quantity,
-            remainingQuantity: normalized.quantity,
             totalCtns: normalized.totalCtns,
             location: normalized.location,
-            status: 'available',
-            barcode,
-            createdAt: now,
-            updatedAt: now,
             metadata: normalized.metadata || {}
-        };
+        });
 
+        let entry = adaptCloudBatch(cloudBatch);
+        if (!entry) {
+            const barcode = generateBarcode(normalized.description, normalized.batchNo);
+            const now = nowIso();
+            entry = {
+                id: `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                cartonNo: normalized.cartonNo || null,
+                description: normalized.description,
+                batchNo: normalized.batchNo,
+                expiryDate: normalized.expiryDate,
+                expiryTimestamp: toExpiryTimestamp(normalized.expiryDate),
+                quantity: normalized.quantity,
+                remainingQuantity: normalized.quantity,
+                totalCtns: normalized.totalCtns,
+                location: normalized.location,
+                status: 'available',
+                barcode,
+                createdAt: now,
+                updatedAt: now,
+                metadata: normalized.metadata || {}
+            };
+        }
+
+        const batches = loadBatches();
         batches.push(entry);
         batches.sort((a, b) => (a.expiryTimestamp || Infinity) - (b.expiryTimestamp || Infinity));
         saveBatches(batches);
@@ -310,7 +375,7 @@ export function importStockWithBarcode(payload) {
             createdAt: entry.createdAt
         });
 
-        return { success: true, data: entry };
+        return { success: true, data: entry, cloudSynced: Boolean(cloudBatch) };
     } catch (error) {
         return { success: false, error: error.message || 'IMPORT_FAILED' };
     }

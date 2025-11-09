@@ -1559,7 +1559,7 @@
             reader.readAsText(file);
         });
 
-        if (csvImportBtn) csvImportBtn.addEventListener('click', () => {
+        if (csvImportBtn) csvImportBtn.addEventListener('click', async () => {
             try {
                 if (!csvParsedRows || csvParsedRows.length === 0){ 
                     showToast('No rows to import','error'); 
@@ -1568,7 +1568,7 @@
                 const csvImportLocationEl = document.getElementById('csvImportLocation');
                 const importLocation = (csvImportLocationEl && csvImportLocationEl.value) ? csvImportLocationEl.value : 'country_stock';
                 let ok = 0, fail = 0;
-                csvParsedRows.forEach(r => {
+                for (const r of csvParsedRows) {
                     try {
                         const qty = parseInt(r.quantity, 10);
                         const ctns = parseInt(r.totalCtns, 10);
@@ -1588,7 +1588,7 @@
                             sourceWarehouseId: importLocation !== 'country_stock' ? importLocation : null
                         };
                         if (typeof importStockWithBarcode === 'function') {
-                            const res = importStockWithBarcode(importData);
+                            const res = await importStockWithBarcode(importData);
                             if (res && res.success) ok++; else fail++;
                         } else {
                             console.error('importStockWithBarcode function not found');
@@ -1598,7 +1598,7 @@
                         console.error('Error importing row:', err, r);
                         fail++;
                     }
-                });
+                }
                 showToast(`Import done: ${ok} ok, ${fail} failed. Stock imported to ${importLocation}`, fail ? 'error' : 'success');
                 const csvModal = document.getElementById('csvModal');
                 if (csvModal) csvModal.style.display = 'none';
