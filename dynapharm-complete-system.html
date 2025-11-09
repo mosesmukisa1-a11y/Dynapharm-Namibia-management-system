@@ -29144,6 +29144,9 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function showWalkInSaleModal(customerType) {
+            if (!Array.isArray(window.walkInCart)) {
+                window.walkInCart = [];
+            }
             const form = document.getElementById('walkInSaleForm');
             const customerTypeSelect = document.getElementById('walkInCustomerType');
             const referralDropdown = document.getElementById('distributorReferralDropdown');
