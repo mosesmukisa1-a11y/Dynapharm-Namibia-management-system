@@ -10702,6 +10702,9 @@
         
         // HR Portal Data
         let employees = [];
+        let walkInSales = [];
+        let hasSyncedWalkInSales = false;
+        let walkInSalesSyncInProgress = false;
         let leaveRequests = [];
         let warnings = [];
         let terminations = [];
@@ -21672,6 +21675,11 @@ async function reverseLastPrescriptionPayment(reportId){
                     activeSection = 'dispenserWalkInSection';
                     activeTab = 'walkInTab';
                     gradient = 'linear-gradient(135deg, #3498db, #2980b9)';
+                    if (!hasSyncedWalkInSales) {
+                        syncWalkInSalesFromApi().catch(() => {});
+                    } else {
+                        refreshWalkInSalesList();
+                    }
                     break;
                 case 'prescription':
                     activeSection = 'dispenserPrescriptionSection';
@@ -30374,26 +30382,29 @@ async function reverseLastPrescriptionPayment(reportId){
 
             // Record department event
             recordDepartmentEvent('walkin_sale', sale);
-            
+
+            // Persist to backend API (fallback to offline cache if needed)
+            const savedSale = await createWalkInSaleViaApi(sale);
+
             // Broadcast stock update event for real-time sync
             try {
-                const branchId = (currentUser && currentUser.branch) || 'unknown';
+                const branchId = savedSale.branch || (currentUser && currentUser.branch) || 'unknown';
                 window.dispatchEvent(new CustomEvent('stock:updated', { 
-                    detail: { branch: branchId, products: cart, user: (currentUser && currentUser.fullName) || 'system', reference: sale.id } 
+                    detail: { branch: branchId, products: cart, user: (currentUser && currentUser.fullName) || 'system', reference: savedSale.id } 
                 }));
                 // Also broadcast sale event for Finance/MIS portals
-                window.dispatchEvent(new CustomEvent('sale:updated', { detail: { sale, type: 'walkin' } }));
+                window.dispatchEvent(new CustomEvent('sale:updated', { detail: { sale: savedSale, type: 'walkin' } }));
                 // Publish to Railway gateway
                 const m = document.querySelector('meta[name="rt-base"]');
                 const rtBase = m && m.content && m.content.trim();
                 if (rtBase) {
                     fetch(rtBase.replace(/\/$/, '') + '/publish', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ event: { type: 'stock:updated', branch: branchId, products: cart, sale: sale.id, ts: Date.now() } })
+                        body: JSON.stringify({ event: { type: 'stock:updated', branch: branchId, products: cart, sale: savedSale.id, ts: Date.now() } })
                     }).catch(_ => {});
                     fetch(rtBase.replace(/\/$/, '') + '/publish', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ event: { type: 'sale:updated', sale, type: 'walkin', ts: Date.now() } })
+                        body: JSON.stringify({ event: { type: 'sale:updated', sale: savedSale, type: 'walkin', ts: Date.now() } })
                     }).catch(_ => {});
                 }
                 // Publish to Vercel SSE
@@ -30403,26 +30414,27 @@ async function reverseLastPrescriptionPayment(reportId){
                 }).catch(_ => {});
                 fetch('/api/realtime_publish', { 
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ channel: 'sales', event: { sale, type: 'walkin', ts: Date.now() } }) 
+                    body: JSON.stringify({ channel: 'sales', event: { sale: savedSale, type: 'walkin', ts: Date.now() } }) 
                 }).catch(_ => {});
             } catch (_) {}
 
-            // Save sale to localStorage - save to both keys for compatibility
-            walkInSales.push(sale);
-            localStorage.setItem('dyna_walkin_sales', JSON.stringify(walkInSales));
-            
+            // Save sale to local cache for offline support
+            walkInSales = Array.isArray(walkInSales) ? walkInSales : [];
+            walkInSales.push(savedSale);
+            saveWalkInSalesCache(walkInSales);
+
             // Also save to the key finance portal expects (for backward compatibility)
             const financeSales = JSON.parse(localStorage.getItem('dynapharm_walkin_sales') || '[]');
-            financeSales.push(sale);
+            financeSales.push(savedSale);
             localStorage.setItem('dynapharm_walkin_sales', JSON.stringify(financeSales));
-            
+
             // Update cash drawer
             const cashDrawer = JSON.parse(localStorage.getItem('dyna_cash_drawer') || '{}');
             if (!cashDrawer.totalSales) cashDrawer.totalSales = [];
             cashDrawer.totalSales.push({
                 type: 'walkin',
-                amount: grandTotal,
-                timestamp: sale.timestamp
+                amount: savedSale.total || grandTotal,
+                timestamp: savedSale.timestamp
             });
             localStorage.setItem('dyna_cash_drawer', JSON.stringify(cashDrawer));
             
@@ -30435,7 +30447,7 @@ async function reverseLastPrescriptionPayment(reportId){
             };
             const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
             
-            let successMessage = `✅ Sale processed successfully!\n\nTotal: N$ ${grandTotal.toFixed(2)}\nPayment Method: ${paymentLabel}`;
+            let successMessage = `✅ Sale processed successfully!\n\nTotal: N$ ${(savedSale.total || grandTotal).toFixed(2)}\nPayment Method: ${paymentLabel}`;
             if (clientReferenceNumber && !existingClient) {
                 successMessage += `\n\n📝 New client registered!\nReference: ${clientReferenceNumber}`;
             } else if (clientReferenceNumber) {
@@ -30447,6 +30459,9 @@ async function reverseLastPrescriptionPayment(reportId){
 			try { closeModal('walkInSaleConfirmationModal'); } catch (_) {}
             closeModal('walkInSaleModal');
             refreshWalkInSalesList();
+            setTimeout(() => {
+                syncWalkInSalesFromApi().catch(() => {});
+            }, 250);
 			return true;
         }
 
@@ -39072,6 +39087,159 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                 return [];
             }
         }
+
+        function loadWalkInSalesCache() {
+            try {
+                const primary = localStorage.getItem('dyna_walkin_sales');
+                if (primary) {
+                    const parsed = JSON.parse(primary);
+                    if (Array.isArray(parsed)) return parsed;
+                }
+                const legacy = localStorage.getItem('walkInSales');
+                if (legacy) {
+                    const parsedLegacy = JSON.parse(legacy);
+                    if (Array.isArray(parsedLegacy)) return parsedLegacy;
+                }
+            } catch (_) {}
+            return [];
+        }
+
+        function saveWalkInSalesCache(list) {
+            try { localStorage.setItem('dyna_walkin_sales', JSON.stringify(list)); } catch (_) {}
+            try { localStorage.setItem('walkInSales', JSON.stringify(list)); } catch (_) {}
+            try { localStorage.setItem('dynapharm_walkin_sales', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function normalizeWalkInSaleRecord(record) {
+            if (!record) return null;
+            const base = typeof record === 'object' ? { ...record } : {};
+            const data = base.data && typeof base.data === 'object' ? base.data : {};
+
+            const merged = {
+                ...data,
+                ...base,
+            };
+
+            merged.id =
+                merged.id ||
+                base.saleNumber ||
+                base.sale_number ||
+                `WALKIN-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+            merged.saleNumber = merged.saleNumber || merged.sale_number || merged.id;
+            merged.branch = merged.branch || merged.branchId || merged.branch_id || null;
+            merged.branchId = merged.branch;
+            merged.timestamp =
+                merged.timestamp ||
+                merged.sale_date ||
+                merged.createdAt ||
+                merged.created_at ||
+                new Date().toISOString();
+            merged.customerName = merged.customerName || merged.customer_name || '';
+            merged.phone = merged.phone || merged.customer_phone || '';
+            merged.email = merged.email || merged.customer_email || '';
+            merged.customerType = merged.customerType || merged.customer_type || 'customer';
+            merged.paymentMethod = merged.paymentMethod || merged.payment_method || 'cash';
+            merged.subtotal = Number(merged.subtotal ?? merged.total ?? merged.totalAmount ?? 0);
+            merged.total = Number(merged.total ?? merged.totalAmount ?? merged.subtotal);
+            merged.totalAmount = Number(merged.totalAmount ?? merged.total);
+            merged.totalBV = Number(merged.totalBV ?? merged.total_bv ?? 0);
+            merged.tax = Number(merged.tax ?? merged.tax_amount ?? 0);
+            merged.discount = Number(merged.discount ?? 0);
+            merged.status = merged.status || 'completed';
+            merged.products = Array.isArray(merged.products)
+                ? merged.products
+                : Array.isArray(merged.items)
+                ? merged.items
+                : [];
+
+            if (!merged.distributorReferral && merged.metadata?.distributorReferral) {
+                merged.distributorReferral = merged.metadata.distributorReferral;
+            }
+
+            return merged;
+        }
+
+        async function syncWalkInSalesFromApi({ notify = false } = {}) {
+            if (walkInSalesSyncInProgress) return walkInSales;
+            walkInSalesSyncInProgress = true;
+            try {
+                const branchId = getActiveBranchId();
+                const params = new URLSearchParams();
+                if (branchId) params.append('branch', branchId);
+                const queryString = params.toString();
+                const response = await fetch(`/api/branch/walkin-sales${queryString ? `?${queryString}` : ''}`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const payload = await response.json();
+                const list = Array.isArray(payload?.sales)
+                    ? payload.sales
+                    : Array.isArray(payload)
+                    ? payload
+                    : [];
+                walkInSales = list.map(normalizeWalkInSaleRecord).filter(Boolean);
+                saveWalkInSalesCache(walkInSales);
+                refreshWalkInSalesList();
+                if (notify) {
+                    showToast(`Walk-in sales synced (${walkInSales.length})`, 'success');
+                }
+                return walkInSales;
+            } catch (error) {
+                console.warn('Walk-in sales sync failed, using cached data:', error);
+                walkInSales = loadWalkInSalesCache();
+                if (notify) {
+                    showToast('Unable to sync walk-in sales. Showing cached data.', 'error');
+                }
+                refreshWalkInSalesList();
+                return walkInSales;
+            } finally {
+                walkInSalesSyncInProgress = false;
+                hasSyncedWalkInSales = true;
+            }
+        }
+
+        async function createWalkInSaleViaApi(salePayload) {
+            try {
+                const response = await fetch('/api/branch/walkin-sales', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ sale: salePayload })
+                });
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`HTTP ${response.status} ${errorText}`);
+                }
+                const payload = await response.json();
+                if (payload?.sale) {
+                    return normalizeWalkInSaleRecord(payload.sale);
+                }
+                if (Array.isArray(payload?.sales)) {
+                    const [first] = payload.sales;
+                    if (first) return normalizeWalkInSaleRecord(first);
+                }
+                if (payload?.success && payload?.data) {
+                    return normalizeWalkInSaleRecord(payload.data);
+                }
+                return normalizeWalkInSaleRecord(salePayload);
+            } catch (error) {
+                console.warn('Failed to persist walk-in sale via API, falling back to offline cache:', error);
+                return { ...salePayload, offline: true };
+            }
+        }
+
+        function getActiveBranchId() {
+            if (currentUser?.branch) return currentUser.branch;
+            const dispenserProfile = document.getElementById('dispenserProfile');
+            if (dispenserProfile?.dataset?.branch) return dispenserProfile.dataset.branch;
+            const branchSelector = document.getElementById('branchSelector');
+            if (branchSelector?.value) return branchSelector.value;
+            return null;
+        }
+
+        walkInSales = loadWalkInSalesCache();
 
         async function fetchEmployeesFromService() {
             const response = await fetch('/api/employees', { credentials: 'include' });
