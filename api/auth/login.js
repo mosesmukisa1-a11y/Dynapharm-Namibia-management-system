@@ -7,6 +7,42 @@ import {
   sanitizeUser
 } from '../_lib/auth.js';
 
+async function parseRequestBody(req) {
+  if (typeof req.json === 'function') {
+    return req.json();
+  }
+
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body || '{}');
+      } catch (error) {
+        throw new Error('Invalid JSON payload');
+      }
+    }
+    return req.body;
+  }
+
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      if (!raw) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw));
+      } catch (error) {
+        reject(new Error('Invalid JSON payload'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -19,7 +55,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = await req.json();
+    const body = await parseRequestBody(req);
     const username = body?.username?.trim();
     const password = body?.password || '';
 
@@ -58,10 +94,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: error?.message || null,
-      stack: error?.stack || null
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
