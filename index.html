@@ -96,8 +96,8 @@
             <button class="btn-hero-primary" id="heroPrimaryAction" onclick="openGuestPortal()">
               🌐 Explore Guest Portal
             </button>
-            <button class="btn-hero-secondary" id="heroSecondaryAction" onclick="openTeamAccess()">
-              🔐 Staff & Distributor Login
+            <button class="btn-hero-secondary" id="heroSecondaryAction" onclick="goToStaffLogin()">
+              🔐 Staff Login
             </button>
           </div>
           <div class="hero-stats">
@@ -162,17 +162,16 @@
         </div>
         <div class="access-card" id="team-section">
           <div class="access-icon">🛡️</div>
-          <h3>Staff & Distributors</h3>
+          <h3>Staff Login</h3>
           <p>
-            Access your role-specific portal for front desk, consultants, dispensers, finance, HR, stock management,
-            leadership dashboards and more.
+            Access role-specific portals for front desk, consultants, dispensers, finance, HR, stock management, leadership dashboards and more — one login unlocks everything.
           </p>
           <div class="access-actions">
-            <button class="btn-access" onclick="openTeamAccess()">Sign In To Portals</button>
+            <button class="btn-access" onclick="goToStaffLogin()">Sign In To Portals</button>
             <div class="access-links">
-              <a href="#" onclick="openTeamAccess(); return false;">Front Desk Portal</a>
-              <a href="#" onclick="openTeamAccess(); return false;">Stock Management</a>
-              <a href="#" onclick="openTeamAccess(); return false;">Leadership Dashboards</a>
+              <a href="#" onclick="goToStaffLogin(); return false;">Front Desk Portal</a>
+              <a href="#" onclick="goToStaffLogin(); return false;">Stock Management</a>
+              <a href="#" onclick="goToStaffLogin(); return false;">Leadership Dashboards</a>
             </div>
           </div>
         </div>
@@ -1423,11 +1422,16 @@
       function openGuestPortal() {
         window.location.href = 'distributor-guest.html';
       }
-      function openTeamAccess() {
+      function goToStaffLogin() {
+        const tabs = document.getElementById('portalTabs');
+        if (tabs) tabs.style.display = 'block';
+        const portalSection = document.getElementById('portalContentSection');
+        if (portalSection) portalSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         if (typeof openLoginModal === 'function') {
           openLoginModal();
-        } else {
-          window.location.href = '/?login=1';
+          if (typeof switchModalTab === 'function') {
+            setTimeout(() => switchModalTab('staff'), 150);
+          }
         }
       }
       function scrollToSection(id) {
