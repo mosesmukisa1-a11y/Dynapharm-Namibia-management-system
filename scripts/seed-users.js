@@ -42,9 +42,9 @@ async function ensureBranches(client, branchIds) {
   for (const branchId of unique) {
     await client.query(
       `INSERT INTO branches (id, name)
-       VALUES ($1, INITCAP($1))
+       VALUES ($1, INITCAP($2))
        ON CONFLICT (id) DO NOTHING`,
-      [branchId]
+      [branchId, branchId]
     );
   }
 }
