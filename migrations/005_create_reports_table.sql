@@ -1,15 +1,16 @@
 -- Migration: Create reports table for consultant/dispenser records
 
 CREATE TABLE IF NOT EXISTS reports (
-    id VARCHAR(255) PRIMARY KEY,
-    client_id VARCHAR(255),
-    consultant VARCHAR(255),
-    branch VARCHAR(100),
-    report_type VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    data JSONB
+    id VARCHAR(255) PRIMARY KEY
 );
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS client_id VARCHAR(255);
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS consultant VARCHAR(255);
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS branch VARCHAR(100);
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS report_type VARCHAR(100);
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS data JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_reports_client ON reports(client_id);
 CREATE INDEX IF NOT EXISTS idx_reports_consultant ON reports(consultant);
