@@ -9,10 +9,12 @@
  * The default list below can be expanded as needed.
  */
 
+import { readFileSync } from 'fs';
+import path from 'path';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 
-const usersToSeed = [
+const DEFAULT_USERS = [
   {
     id: 'USR001',
     username: 'admin',
@@ -24,8 +26,75 @@ const usersToSeed = [
     branch: 'townshop',
     branches: ['townshop']
   }
-  // Add more user objects here.
 ];
+
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--file' || arg === '-f') {
+      args.file = argv[i + 1];
+      i += 1;
+    } else if (arg === '--append-defaults') {
+      args.appendDefaults = true;
+    }
+  }
+  return args;
+}
+
+function parseCsv(content) {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim() !== '');
+  if (lines.length === 0) return [];
+
+  const headers = lines[0].split(',').map((header) => header.trim());
+  return lines.slice(1).map((line) => {
+    const values = line.split(',');
+    const entry = {};
+    headers.forEach((header, index) => {
+      entry[header] = values[index] !== undefined ? values[index].trim() : '';
+    });
+    if (entry.branches) {
+      entry.branches = entry.branches
+        .split('|')
+        .map((value) => value.trim())
+        .filter(Boolean);
+    }
+    return entry;
+  });
+}
+
+function loadUsersFromFile(filePath) {
+  const absolutePath = path.resolve(filePath);
+  const content = readFileSync(absolutePath, 'utf8');
+  const ext = path.extname(absolutePath).toLowerCase();
+
+  if (ext === '.json') {
+    const data = JSON.parse(content);
+    if (!Array.isArray(data)) {
+      throw new Error('JSON file must contain an array of users.');
+    }
+    return data;
+  }
+
+  if (ext === '.csv') {
+    return parseCsv(content);
+  }
+
+  throw new Error('Unsupported file type. Use .json or .csv');
+}
+
+const cliArgs = parseArgs(process.argv.slice(2));
+
+let usersToSeed = [];
+
+if (cliArgs.file) {
+  usersToSeed = loadUsersFromFile(cliArgs.file);
+  if (cliArgs.appendDefaults) {
+    usersToSeed = [...usersToSeed, ...DEFAULT_USERS];
+  }
+} else {
+  usersToSeed = DEFAULT_USERS;
+}
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL environment variable is required.');
@@ -50,9 +119,25 @@ async function ensureBranches(client, branchIds) {
 }
 
 async function upsertUser(client, user) {
+  if (!user?.username || !user?.password || !user?.role) {
+    throw new Error('Each user must include username, password, and role.');
+  }
+
   const passwordHash = await bcrypt.hash(user.password, 10);
-  const branches = Array.isArray(user.branches) ? user.branches : [];
+  let branches = [];
+  if (Array.isArray(user.branches)) {
+    branches = user.branches;
+  } else if (typeof user.branches === 'string') {
+    branches = user.branches
+      .split('|')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
   const branchesJson = JSON.stringify(branches);
+  const id = user.id || `USR${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const normalizedRole = user.role.toLowerCase();
+  const branchId = user.branch || (branches.length > 0 ? branches[0] : null);
 
   await client.query(
     `INSERT INTO users (
@@ -74,15 +159,15 @@ async function upsertUser(client, user) {
        branches = EXCLUDED.branches,
        updated_at = NOW()`,
     [
-      user.id,
+      id,
       user.username.toLowerCase(),
       user.password,
       passwordHash,
-      user.role,
-      user.fullName,
+      normalizedRole,
+      user.fullName || user.full_name || null,
       user.email,
       user.phone,
-      user.branch,
+      branchId,
       branchesJson
     ]
   );
