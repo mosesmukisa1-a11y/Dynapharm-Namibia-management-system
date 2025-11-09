@@ -8,10 +8,6 @@ import {
 } from '../_lib/auth.js';
 
 async function parseRequestBody(req) {
-  if (typeof req.json === 'function') {
-    return req.json();
-  }
-
   if (req.body) {
     if (typeof req.body === 'string') {
       try {
