@@ -116,48 +116,14 @@
     text-decoration: underline;
 }
 
-        .top-bar .container {
+.top-bar-inner {
             max-width: 1200px;
             margin: 0 auto;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             gap: 20px;
             padding: 0 20px;
-        }
-
-        .top-bar ul {
-            display: flex;
-            gap: 18px;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            align-items: center;
-        }
-
-        .top-bar li {
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .top-bar a {
-            color: var(--white);
-            text-decoration: none;
-        }
-
-        .top-bar a:hover {
-            text-decoration: underline;
-        }
-
-        .top-link {
-            background: transparent;
-            border: none;
-            color: var(--white);
-            font: inherit;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            cursor: pointer;
-            padding: 0;
         }
 
         .top-link:hover {
