@@ -11,8 +11,12 @@
 
 import { readFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DEFAULT_USERS = [
   {
@@ -83,29 +87,6 @@ function loadUsersFromFile(filePath) {
   throw new Error('Unsupported file type. Use .json or .csv');
 }
 
-const cliArgs = parseArgs(process.argv.slice(2));
-
-let usersToSeed = [];
-
-if (cliArgs.file) {
-  usersToSeed = loadUsersFromFile(cliArgs.file);
-  if (cliArgs.appendDefaults) {
-    usersToSeed = [...usersToSeed, ...DEFAULT_USERS];
-  }
-} else {
-  usersToSeed = DEFAULT_USERS;
-}
-
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL environment variable is required.');
-  process.exit(1);
-}
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
-
 async function ensureBranches(client, branchIds) {
   const unique = Array.from(new Set(branchIds.filter(Boolean)));
   for (const branchId of unique) {
@@ -119,6 +100,7 @@ async function ensureBranches(client, branchIds) {
 }
 
 async function upsertUser(client, user) {
+  if (!user) return;
   if (!user?.username || !user?.password || !user?.role) {
     throw new Error('Each user must include username, password, and role.');
   }
@@ -173,18 +155,27 @@ async function upsertUser(client, user) {
   );
 }
 
-async function main() {
-  if (usersToSeed.length === 0) {
-    console.log('No users configured to seed. Update usersToSeed array first.');
-    process.exit(0);
+export async function seedUsers(users) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is required.');
   }
+
+  if (!Array.isArray(users) || users.length === 0) {
+    console.log('No users provided; nothing to seed.');
+    return;
+  }
+
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  });
 
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    for (const user of usersToSeed) {
+    for (const user of users) {
       const branchIds = [user.branch, ...(user.branches || [])];
       await ensureBranches(client, branchIds);
       await upsertUser(client, user);
@@ -196,15 +187,47 @@ async function main() {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Failed to seed users:', error.message);
-    process.exitCode = 1;
+    throw error;
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-main().catch((error) => {
-  console.error('Unexpected error:', error);
-  process.exit(1);
-});
+function resolveUsersFromCli() {
+  const cliArgs = parseArgs(process.argv.slice(2));
+  let users = [];
+
+  if (cliArgs.file) {
+    users = loadUsersFromFile(cliArgs.file);
+    if (cliArgs.appendDefaults) {
+      users = [...users, ...DEFAULT_USERS];
+    }
+  } else {
+    users = DEFAULT_USERS;
+  }
+
+  return users;
+}
+
+async function main() {
+  try {
+    const users = resolveUsersFromCli();
+    if (!Array.isArray(users) || users.length === 0) {
+      console.log('No users configured to seed. Update users array or provide a file.');
+      process.exit(0);
+    }
+
+    await seedUsers(users);
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
+
+export { DEFAULT_USERS, parseArgs, loadUsersFromFile, parseCsv };
 
