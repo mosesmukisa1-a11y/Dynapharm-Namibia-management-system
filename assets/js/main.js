@@ -252,44 +252,182 @@ function ensureDefaultUsersSeeded() {
 
 ensureDefaultUsersSeeded();
 
-async function syncUsersFromApi() {
-  try {
-    const response = await fetch("/api/users", { credentials: "include" });
-    if (!response.ok) {
-      return;
-    }
-    const remoteUsers = await response.json();
-    if (!Array.isArray(remoteUsers) || remoteUsers.length === 0) {
-      return;
-    }
-    const normalized = remoteUsers
-      .map((user) => ({
-        id: user.id || `USR-${Date.now()}`,
-        username: user.username || "",
-        password: user.password || "",
-        fullName: user.fullName || user.name || user.username || "Dynapharm User",
-        email: user.email || null,
-        phone: user.phone || null,
-        role: user.role || "client",
-        branch: user.branch || null,
-        branches: Array.isArray(user.branches) ? user.branches : [],
-        isActive: user.isActive !== false,
-        createdAt: user.createdAt || user.created_at || new Date().toISOString()
-      }))
-      .filter((user) => user.username);
+function normalizeUserRecord(user) {
+  if (!user) return null;
+  return {
+    id: user.id || `USR-${Date.now()}`,
+    username: user.username || "",
+    password: user.password || "",
+    fullName: user.fullName || user.name || user.username || "Dynapharm User",
+    email: user.email || null,
+    phone: user.phone || null,
+    role: user.role || "client",
+    branch: user.branch || null,
+    branches: Array.isArray(user.branches) ? user.branches : [],
+    isActive: user.isActive !== false,
+    createdAt: user.createdAt || user.created_at || new Date().toISOString(),
+    metadata: user.metadata || null
+  };
+}
 
+function normalizeClientRecord(client) {
+  if (!client) return null;
+  const payload =
+    typeof client.data === "string"
+      ? (() => {
+          try {
+            return JSON.parse(client.data);
+          } catch {
+            return {};
+          }
+        })()
+      : client.data || {};
+
+  return {
+    id: client.id || payload.id || client.referenceNumber || client.reference_number || `CLT-${Date.now()}`,
+    referenceNumber: client.referenceNumber || client.reference_number || payload.referenceNumber || client.id,
+    fullName: client.fullName || client.full_name || payload.fullName || "Dynapharm Client",
+    phone: client.phone || payload.phone || "",
+    email: client.email || payload.email || "",
+    gender: client.gender || payload.gender || null,
+    dateOfBirth: client.dateOfBirth || client.date_of_birth || payload.dateOfBirth || null,
+    address: client.address || payload.address || "",
+    city: client.city || payload.city || "",
+    branch: client.branch || payload.branch || null,
+    createdAt: client.createdAt || client.created_at || payload.createdAt || new Date().toISOString(),
+    updatedAt: client.updated_at || client.updatedAt || payload.updatedAt || null,
+    ...payload
+  };
+}
+
+function normalizeReportRecord(report) {
+  if (!report) return null;
+  const payload =
+    typeof report.data === "string"
+      ? (() => {
+          try {
+            return JSON.parse(report.data);
+          } catch {
+            return {};
+          }
+        })()
+      : report.data || {};
+
+  return {
+    id: report.id || payload.id || `RPT-${Date.now()}`,
+    clientId: report.clientId || report.client_id || payload.clientId || null,
+    consultant: report.consultant || payload.consultant || null,
+    branch: report.branch || payload.branch || payload.consultantInfo?.branch || null,
+    createdAt: report.createdAt || report.created_at || payload.createdAt || payload.timestamp || new Date().toISOString(),
+    updatedAt: report.updated_at || report.updatedAt || payload.updatedAt || payload.lastModified || null,
+    ...payload
+  };
+}
+
+function normalizeStockRequestRecord(request) {
+  if (!request) return null;
+  const items =
+    typeof request.items === "string"
+      ? (() => {
+          try {
+            return JSON.parse(request.items);
+          } catch {
+            return [];
+          }
+        })()
+      : request.items || [];
+
+  const data =
+    typeof request.data === "string"
+      ? (() => {
+          try {
+            return JSON.parse(request.data);
+          } catch {
+            return {};
+          }
+        })()
+      : request.data || {};
+
+  return {
+    id: request.id || data.id || `REQ-${Date.now()}`,
+    requestNumber: request.request_number || request.requestNumber || data.requestNumber || request.id,
+    requestingBranch: request.requesting_branch || request.requestingBranch || data.requestingBranch || null,
+    status: request.status || data.status || "pending",
+    requestType: request.request_type || request.requestType || data.requestType || null,
+    items,
+    createdAt: request.created_at || data.createdAt || new Date().toISOString(),
+    updatedAt: request.updated_at || data.updatedAt || null,
+    ...data
+  };
+}
+
+async function syncDataset({ endpoint, storageKey, normalizer, onSync }) {
+  try {
+    const response = await fetch(endpoint, { credentials: "include" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const records = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+    if (!Array.isArray(records) || records.length === 0) return;
+
+    const normalized = records.map(normalizer).filter(Boolean);
     if (normalized.length === 0) return;
 
-    localStorage.setItem("dyna_users", JSON.stringify(normalized));
-    users = normalized;
-    window.dispatchEvent(new CustomEvent("users:synced", { detail: { count: normalized.length } }));
-    console.info(`Synced ${normalized.length} users from cloud.`);
+    localStorage.setItem(storageKey, JSON.stringify(normalized));
+    if (typeof onSync === "function") {
+      onSync(normalized);
+    }
   } catch (error) {
-    console.warn("Unable to sync users from API:", error);
+    console.warn(`Unable to sync ${storageKey} from ${endpoint}:`, error);
   }
 }
 
-syncUsersFromApi();
+async function syncCloudDatasets() {
+  await Promise.all([
+    syncDataset({
+      endpoint: "/api/users",
+      storageKey: "dyna_users",
+      normalizer: normalizeUserRecord,
+      onSync(records) {
+        users = records;
+        window.dispatchEvent(new CustomEvent("users:synced", { detail: { count: records.length } }));
+        console.info(`Synced ${records.length} users from cloud.`);
+      }
+    }),
+    syncDataset({
+      endpoint: "/api/clients",
+      storageKey: "dyna_clients",
+      normalizer: normalizeClientRecord,
+      onSync(records) {
+        window.dispatchEvent(new CustomEvent("clients:synced", { detail: { count: records.length } }));
+        console.info(`Synced ${records.length} clients from cloud.`);
+      }
+    }),
+    syncDataset({
+      endpoint: "/api/reports",
+      storageKey: "dyna_reports",
+      normalizer: normalizeReportRecord,
+      onSync(records) {
+        window.dispatchEvent(new CustomEvent("reports:synced", { detail: { count: records.length } }));
+        console.info(`Synced ${records.length} reports from cloud.`);
+      }
+    }),
+    syncDataset({
+      endpoint: "/api/stock-requests",
+      storageKey: "dyna_stock_requests",
+      normalizer: normalizeStockRequestRecord,
+      onSync(records) {
+        window.dispatchEvent(new CustomEvent("stockRequests:synced", { detail: { count: records.length } }));
+        console.info(`Synced ${records.length} stock requests from cloud.`);
+      }
+    })
+  ]);
+}
+
+syncCloudDatasets();
 
 let currentAccountUser = null;
 const heroSection = document.querySelector(".hero");

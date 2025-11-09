@@ -1,5 +1,67 @@
 import { applyAuthCors } from './_lib/auth.js';
-import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+
+async function parseRequestBody(req) {
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body || '{}');
+      } catch (error) {
+        throw new Error('Invalid JSON payload');
+      }
+    }
+    return req.body;
+  }
+
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      if (!raw) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw));
+      } catch (error) {
+        reject(new Error('Invalid JSON payload'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function normalizeClient(row) {
+  if (!row) return null;
+  const payload =
+    typeof row.data === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(row.data);
+          } catch {
+            return {};
+          }
+        })()
+      : row.data || {};
+
+  return {
+    id: row.id || payload.id || row.reference_number || payload.referenceNumber || `CLT-${Date.now()}`,
+    referenceNumber: row.reference_number || payload.referenceNumber || row.id,
+    fullName: row.full_name || payload.fullName || '',
+    phone: row.phone || payload.phone || '',
+    email: row.email || payload.email || '',
+    gender: row.gender || payload.gender || null,
+    dateOfBirth: row.date_of_birth || payload.dateOfBirth || payload.date_of_birth || null,
+    address: row.address || payload.address || '',
+    city: row.city || payload.city || '',
+    branch: row.branch || payload.branch || null,
+    createdAt: row.created_at || payload.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || payload.updatedAt || null,
+    data: payload
+  };
+}
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -23,16 +85,16 @@ export default async function handler(req, res) {
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
-        return res.json(client);
+        return res.json(normalizeClient(client));
       } else if (reference) {
         const client = await getOne('SELECT * FROM clients WHERE reference_number = $1', [reference]);
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
-        return res.json(client);
+        return res.json(normalizeClient(client));
       } else if (phone) {
         const clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
-        return res.json(clients);
+        return res.json(clients.map(normalizeClient).filter(Boolean));
       } else {
         let queryText = 'SELECT * FROM clients';
         const params = [];
@@ -51,12 +113,12 @@ export default async function handler(req, res) {
         queryText += ' ORDER BY created_at DESC';
         
         const clients = await getMany(queryText, params);
-        return res.json(clients);
+        return res.json(clients.map(normalizeClient).filter(Boolean));
       }
     }
 
     if (method === 'POST') {
-      const body = await req.json();
+      const body = await parseRequestBody(req);
       
       if (Array.isArray(body)) {
         // Bulk insert
@@ -82,7 +144,7 @@ export default async function handler(req, res) {
             });
             
             const result = await insert('clients', clientData);
-            results.push(result);
+            results.push(normalizeClient(result));
           } catch (error) {
             if (error.code !== '23505') {
               console.error('Error inserting client:', error);
@@ -116,16 +178,21 @@ export default async function handler(req, res) {
         });
         
         const client = await insert('clients', clientData);
-        await publishRealtimeEvent('clients', 'create', client);
-        return res.json(client);
+        const normalized = normalizeClient(client);
+        await publishRealtimeEvent('clients', 'create', normalized);
+        return res.status(201).json({ success: true, client: normalized });
       }
     }
 
     if (method === 'PUT') {
-      const body = await req.json();
+      const body = await parseRequestBody(req);
+      if (!body?.id) {
+        return res.status(400).json({ success: false, error: 'Client id is required' });
+      }
       const client = await update('clients', body.id, body, 'id');
-      await publishRealtimeEvent('clients', 'update', client);
-      return res.json(client);
+      const normalized = normalizeClient(client);
+      await publishRealtimeEvent('clients', 'update', normalized);
+      return res.json({ success: true, client: normalized });
     }
 
     if (method === 'DELETE') {
