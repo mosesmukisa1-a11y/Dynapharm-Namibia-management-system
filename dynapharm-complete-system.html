@@ -10791,8 +10791,17 @@
             openedBy: null,
             openedAt: null,
             drops: [],
-            expenses: []
+            expenses: [],
+            sessionId: null,
+            metadata: {}
         };
+        let branchCashSession = null;
+        let branchCashMovements = [];
+        let branchDeposits = [];
+        let branchExpensesRecords = [];
+        let branchPaymentsRecords = [];
+        let hasSyncedBranchFinance = false;
+        let branchFinanceSyncInProgress = false;
 		let crmPortalInteractions = [];
 		let crmPortalWorkflows = [];
 		let crmPortalWorkflowLog = [];
@@ -17152,6 +17161,8 @@ async function logout() {
 			URL.revokeObjectURL(link.href);
 		}
 
+        let countryStock = Array.isArray(window.countryStock) ? window.countryStock : [];
+
 		function exportCountryStock() {
 			loadStockData();
 			const data = Array.isArray(countryStock) ? countryStock : [];
@@ -21704,13 +21715,23 @@ async function reverseLastPrescriptionPayment(reportId){
                     activeSection = 'dispenserBankingSection';
                     activeTab = 'bankingTab';
                     gradient = 'linear-gradient(135deg, #f39c12, #e67e22)';
+                    syncBranchFinanceData({ notify: true })
+                        .then(() => {
+                            displayCashDrawerStatus();
                     displayBankingHistory();
+                        })
+                        .catch(() => {
+                            displayCashDrawerStatus();
+                            displayBankingHistory();
+                        });
                     break;
                 case 'payments':
                     activeSection = 'dispenserPaymentsSection';
                     activeTab = 'paymentsTab';
                     gradient = 'linear-gradient(135deg, #9b59b6, #8e44ad)';
-                    displayPaymentHistory();
+                    syncBranchFinanceData({ notify: false })
+                        .then(() => displayPaymentHistory())
+                        .catch(() => displayPaymentHistory());
                     break;
                 case 'onlineOrders':
                     activeSection = 'dispenserOnlineOrdersSection';
@@ -23540,19 +23561,111 @@ async function reverseLastPrescriptionPayment(reportId){
             document.body.appendChild(modal);
         }
         
-        function submitExpense(e) {
+        async function submitExpense(e) {
             e.preventDefault();
-            alert('Expense recorded successfully!');
-            closeModal('expenseModal');
+            if (!branchCashSession || !branchCashSession.isOpen) {
+                alert('Cash drawer is not open. Open the drawer before recording expenses.');
+                return;
+            }
+
+            const type = document.getElementById('expenseType')?.value || 'other';
+            const amountInput = document.getElementById('expenseAmount')?.value || '0';
+            const description = document.getElementById('expenseDescription')?.value || type;
+            const amount = parseFloat(amountInput);
+
+            if (Number.isNaN(amount) || amount <= 0) {
+                alert('Please enter a valid amount.');
+                return;
+            }
+
+            const branchId =
+                (typeof getBranchId === 'function' && getBranchId()) ||
+                (currentUser && currentUser.branch) ||
+                'default';
+
+            try {
+                await createBranchCashMovement({
+                    branchId,
+                    sessionId: branchCashSession.id,
+                    type: 'expense',
+                    amount,
+                    description,
+                    notes: `Category: ${type}`,
+                    recordedBy: currentUser?.fullName || currentUser?.username || 'system'
+                });
+
+                document.getElementById('expenseForm')?.reset();
+                closeModal('expenseModal');
+                alert('✅ Expense recorded successfully!');
+            } catch (error) {
+                console.error('Failed to submit expense:', error);
+                alert(`❌ Failed to record expense: ${error.message}`);
+            }
         }
         
         function displayBankingHistory() {
             const container = document.getElementById('bankingOperations');
             if (!container) return;
-            
+
+            const branchId =
+                (typeof getBranchId === 'function' && getBranchId()) ||
+                (currentUser && currentUser.branch) ||
+                'default';
+
+            const depositsForBranch = (branchDeposits || []).filter(
+                (deposit) => (deposit.branchId || deposit.branch) === branchId
+            );
+
+            if (depositsForBranch.length === 0) {
+                container.innerHTML = `
+                    <h4>Banking History</h4>
+                    <p style="text-align: center; color: #666; padding: 20px;">No banking records found for this branch.</p>
+                `;
+                return;
+            }
+
+            const cards = depositsForBranch
+                .sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0))
+                .map((deposit) => {
+                    const amount = Number(deposit.amount || 0).toFixed(2);
+                    const dateLabel = new Date(deposit.date || deposit.createdAt || Date.now()).toLocaleDateString();
+                    const status = (deposit.status || 'pending').toLowerCase();
+                    const statusColor =
+                        status === 'approved' ? '#27ae60' : status === 'rejected' ? '#e74c3c' : '#f39c12';
+                    return `
+                        <div class="client-card" style="margin-bottom: 12px;">
+                            <div style="display:flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <h4 style="margin-bottom: 6px;">Slip ${deposit.slipNumber || deposit.id}</h4>
+                                    <p style="margin: 0; color: #555;">Amount: <strong>N$ ${amount}</strong></p>
+                                    <p style="margin: 0; color: #555;">Bank: ${deposit.bankName || 'N/A'} (${deposit.bankBranch || 'Branch'})</p>
+                                    <p style="margin: 0; color: #555;">Deposited by: ${deposit.depositedBy || 'Unknown'} on ${dateLabel}</p>
+                                    ${deposit.notes ? `<p style="margin-top: 6px; color: #777;">${deposit.notes}</p>` : ''}
+                                    ${
+                                        deposit.decisionNotes
+                                            ? `<p style="margin-top: 6px; color: #555;"><strong>Finance Note:</strong> ${deposit.decisionNotes}</p>`
+                                            : ''
+                                    }
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="display:inline-block; padding: 6px 12px; border-radius: 16px; background:${statusColor}; color:white; font-weight:600;">
+                                        ${status.toUpperCase()}
+                                    </span>
+                                    <div style="margin-top: 12px; color:#888; font-size:0.85rem;">
+                                        ${new Date(deposit.createdAt || deposit.date || Date.now()).toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                })
+                .join('');
+
             container.innerHTML = `
                 <h4>Banking History</h4>
-                <p style="text-align: center; color: #666; padding: 20px;">No banking records found.</p>
+                <div style="max-height: 520px; overflow-y: auto; padding-right: 8px;">
+                    ${cards}
+                </div>
             `;
         }
 
@@ -23646,9 +23759,9 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         async function loadBranchInventory({ notify = false } = {}) {
-            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
             await syncBranchInventoryFromApi({ branchId, notify });
-            const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
+                const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
             if (noticeEl) {
                 noticeEl.style.display = !hasInventoryFullAccess() ? 'block' : 'none';
             }
@@ -23751,27 +23864,27 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         async function loadBranchStockMovements({ notify = false } = {}) {
-            const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
+                const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
             await syncBranchMovementsFromApi({ branchId, notify });
 
-            const movementsEl = document.getElementById('branchInventoryMovements');
-            if (!movementsEl) return;
+                const movementsEl = document.getElementById('branchInventoryMovements');
+                if (!movementsEl) return;
 
             let branchMovements = [...branchStockMovements];
 
-            if (!hasInventoryFullAccess()) {
-                branchMovements = branchMovements.filter(m => {
+                if (!hasInventoryFullAccess()) {
+                    branchMovements = branchMovements.filter(m => {
                     if (m.metadata?.isExpectedStock && !m.metadata?.gmApproved) return false;
                     if (m.metadata?.isStockLoss || m.type === 'loss') return false;
                     if (m.metadata?.isSensitive || m.metadata?.sensitive) return false;
-                    return true;
-                });
-            }
+                        return true;
+                    });
+                }
 
-            if (branchMovements.length === 0) {
-                movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
-                return;
-            }
+                if (branchMovements.length === 0) {
+                    movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
+                    return;
+                }
 
             movementsEl.innerHTML = branchMovements
                 .slice(0, 50)
@@ -23806,7 +23919,7 @@ async function reverseLastPrescriptionPayment(reportId){
                             expiryDisplay = ` | Expiry: ${expiry.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
                         }
                     }
-
+                    
                     return `
                         <div style="display: flex; justify-content: space-between; align-items: start; padding: 12px; border-bottom: 1px solid #eee; gap: 15px;">
                             <div style="flex: 1;">
@@ -23928,7 +24041,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     metadata: {
                         unit,
                         isExpectedStock,
-                        gmApproved: hasInventoryFullAccess() || !isExpectedStock
+                    gmApproved: hasInventoryFullAccess() || !isExpectedStock
                     }
                 });
 
@@ -24003,7 +24116,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 return;
             }
 
-            const sourceItem = branchInventoryData.find(item =>
+            const sourceItem = branchInventoryData.find(item => 
                 item.product === product && item.batchNo === batchNo && item.branch === fromBranchId
             );
 
@@ -24096,13 +24209,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 await postBranchInventoryAction('adjust', {
                     branchId: item.branch,
                     productName: item.product,
-                    batchNo: item.batchNo,
-                    expiryDate: item.expiryDate,
+                batchNo: item.batchNo,
+                expiryDate: item.expiryDate,
                     quantity: qty,
-                    unit: item.unit || 'units',
-                    notes: `Adjustment: ${oldQty} → ${qty}${isLoss ? ' (LOSS)' : ''}`,
+                unit: item.unit || 'units',
+                notes: `Adjustment: ${oldQty} → ${qty}${isLoss ? ' (LOSS)' : ''}`,
                     metadata: {
-                        isStockLoss: isLoss,
+                isStockLoss: isLoss,
                         previousQuantity: oldQty,
                         adjustedBy: (window.currentUser && window.currentUser.fullName) || 'System'
                     }
@@ -24770,20 +24883,6 @@ async function reverseLastPrescriptionPayment(reportId){
         });
         
         // Cash drawer functions
-        function openCashDrawer() {
-            cashDrawer.isOpen = true;
-            cashDrawer.openedBy = currentUser?.fullName || 'Unknown';
-            cashDrawer.openedAt = new Date().toISOString();
-            displayCashDrawerStatus();
-            alert('Cash drawer opened!');
-        }
-        
-        function closeCashDrawer() {
-            cashDrawer.isOpen = false;
-            displayCashDrawerStatus();
-            alert('Cash drawer closed!');
-        }
-
         function displayCashDrawerStatus() {
             const statusDiv = document.getElementById('cashDrawerStatus');
             if (!statusDiv) return;
@@ -24840,81 +24939,132 @@ async function reverseLastPrescriptionPayment(reportId){
             `;
         }
 
-        function openCashDrawer() {
-            const openingBalance = prompt('Enter opening cash balance in drawer (N$):');
-            if (openingBalance === null) return;
-            
-            const amount = parseFloat(openingBalance) || 0;
-            
-            cashDrawer = {
+        async function openCashDrawer() {
+            const openingBalanceInput = prompt('Enter opening cash balance in drawer (N$):');
+            if (openingBalanceInput === null) return;
+
+            const amount = parseFloat(openingBalanceInput);
+            if (Number.isNaN(amount) || amount < 0) {
+                alert('Invalid opening balance.');
+                return;
+            }
+
+            const branchId =
+                (typeof getBranchId === 'function' && getBranchId()) ||
+                (currentUser && currentUser.branch) ||
+                'default';
+
+            try {
+                const response = await fetch('/api/branch/cash-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'open',
+                        branchId,
                 openingBalance: amount,
-                currentBalance: amount,
-                isOpen: true,
-                openedBy: currentUser.fullName,
-                openedAt: new Date().toISOString(),
-                branch: currentUser ? currentUser.branch : (currentBranch || 'unknown'), // Save branch for finance access
-                drops: [],
-                expenses: []
-            };
-            
-            // Save to localStorage for finance portal access
-            localStorage.setItem('dyna_cash_drawer', JSON.stringify(cashDrawer));
-            
-            alert(`✅ Cash drawer opened\nOpening Balance: N$${amount.toFixed(2)}\nOpened by: ${currentUser.fullName}`);
+                        openedBy: currentUser?.fullName || currentUser?.username || 'system'
+                    })
+                });
+
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'Failed to open cash drawer');
+                }
+
+                branchCashSession = payload.session;
+                branchCashMovements = [];
+                saveBranchFinanceCache('branch_cash_session', branchId, branchCashSession);
+                saveBranchFinanceCache('branch_cash_movements', branchId, branchCashMovements);
+                refreshCashDrawerState(branchId);
             displayCashDrawerStatus();
+                alert(
+                    `✅ Cash drawer opened\nOpening Balance: N$${amount.toFixed(2)}\nOpened by: ${
+                        branchCashSession.openedBy || currentUser?.fullName || 'system'
+                    }`
+                );
+            } catch (error) {
+                console.error('Error opening cash drawer:', error);
+                alert(`❌ Failed to open cash drawer: ${error.message}`);
+            }
         }
 
-        function recordCashDrop() {
-            const amount = prompt('Enter cash drop amount (N$):');
-            if (!amount) return;
-            
-            const dropAmount = parseFloat(amount);
-            if (isNaN(dropAmount) || dropAmount <= 0) {
+        async function recordCashDrop() {
+            if (!branchCashSession || !branchCashSession.isOpen) {
+                alert('Cash drawer is not open. Please open the drawer first.');
+                return;
+            }
+
+            const amountInput = prompt('Enter cash drop amount (N$):');
+            if (!amountInput) return;
+
+            const dropAmount = parseFloat(amountInput);
+            if (Number.isNaN(dropAmount) || dropAmount <= 0) {
                 alert('Invalid amount');
                 return;
             }
             
             const notes = prompt('Notes (optional):') || '';
-            
-            cashDrawer.drops.push({
-                amount: dropAmount,
-                recordedBy: currentUser.fullName,
-                recordedAt: new Date().toISOString(),
-                notes: notes,
-                reference: 'DROP' + Date.now()
-            });
-            
-            cashDrawer.currentBalance -= dropAmount;
-            
-            alert(`✅ Cash drop recorded\nAmount: N$${dropAmount.toFixed(2)}\nRemaining in drawer: N$${cashDrawer.currentBalance.toFixed(2)}`);
-            displayCashDrawerStatus();
+            const branchId = branchCashSession.branchId;
+
+            try {
+                await createBranchCashMovement({
+                    branchId,
+                    sessionId: branchCashSession.id,
+                    type: 'drop',
+                    amount: dropAmount,
+                    notes,
+                    recordedBy: currentUser?.fullName || currentUser?.username || 'system'
+                });
+                alert(
+                    `✅ Cash drop recorded\nAmount: N$${dropAmount.toFixed(
+                        2
+                    )}\nRemaining in drawer: N$${(cashDrawer.currentBalance || 0).toFixed(2)}`
+                );
+            } catch (error) {
+                console.error('Error recording cash drop:', error);
+                alert(`❌ Failed to record cash drop: ${error.message}`);
+            }
         }
 
-        function recordExpense() {
+        async function recordExpense() {
+            if (!branchCashSession || !branchCashSession.isOpen) {
+                alert('Cash drawer is not open. Please open the drawer first.');
+                return;
+            }
+
             const description = prompt('Expense description:');
             if (!description) return;
             
-            const amount = prompt('Expense amount (N$):');
-            if (!amount) return;
+            const amountInput = prompt('Expense amount (N$):');
+            if (!amountInput) return;
             
-            const expenseAmount = parseFloat(amount);
-            if (isNaN(expenseAmount) || expenseAmount <= 0) {
+            const expenseAmount = parseFloat(amountInput);
+            if (Number.isNaN(expenseAmount) || expenseAmount <= 0) {
                 alert('Invalid amount');
                 return;
             }
             
-            cashDrawer.expenses.push({
-                description: description,
-                amount: expenseAmount,
-                recordedBy: currentUser.fullName,
-                recordedAt: new Date().toISOString(),
-                reference: 'EXP' + Date.now()
-            });
-            
-            cashDrawer.currentBalance -= expenseAmount;
-            
-            alert(`✅ Expense recorded\nDescription: ${description}\nAmount: N$${expenseAmount.toFixed(2)}`);
-            displayCashDrawerStatus();
+            const branchId = branchCashSession.branchId;
+
+            try {
+                await createBranchCashMovement({
+                    branchId,
+                    sessionId: branchCashSession.id,
+                    type: 'expense',
+                    amount: expenseAmount,
+                    description,
+                    recordedBy: currentUser?.fullName || currentUser?.username || 'system'
+                });
+                alert(
+                    `✅ Expense recorded\nDescription: ${description}\nAmount: N$${expenseAmount.toFixed(
+                        2
+                    )}`
+                );
+            } catch (error) {
+                console.error('Error recording expense:', error);
+                alert(`❌ Failed to record expense: ${error.message}`);
+            }
         }
 
         function viewCashHistory() {
@@ -24943,57 +25093,50 @@ async function reverseLastPrescriptionPayment(reportId){
             alert(history);
         }
 
-        function closeCashDrawer() {
+        async function closeCashDrawer() {
+            if (!branchCashSession || !branchCashSession.isOpen) {
+                alert('Cash drawer is not open.');
+                return;
+            }
+
             const actualCash = prompt('Enter actual cash counted in drawer (N$):');
             if (actualCash === null) return;
             
             const counted = parseFloat(actualCash);
-            if (isNaN(counted)) {
+            if (Number.isNaN(counted)) {
                 alert('Invalid amount');
                 return;
             }
             
-            // Calculate expected
-            const today = new Date();
-            const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-            const todayReports = reports.filter(r => new Date(r.timestamp) >= startOfDay);
-            
-            let todayCash = 0;
-            todayReports.forEach(r => {
-                const client = clients.find(c => c.referenceNumber === r.clientId);
-                if (r.medicines && client) {
-                    const totals = calculatePrescriptionTotals(r.medicines, client.membershipStatus);
-                    todayCash += totals.paid.dp + totals.paid.cp;
+            const notes = prompt('Add closing notes (optional):') || '';
+            const branchId = branchCashSession.branchId;
+
+            try {
+                const response = await fetch('/api/branch/cash-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'close',
+                        sessionId: branchCashSession.id,
+                        countedCash: counted,
+                        notes,
+                        closedBy: currentUser?.fullName || currentUser?.username || 'system'
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'Failed to close cash drawer');
                 }
-            });
-            
-            const totalDrops = cashDrawer.drops.reduce((sum, drop) => sum + drop.amount, 0);
-            const totalExpenses = cashDrawer.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-            const expectedCash = cashDrawer.openingBalance + todayCash - totalDrops - totalExpenses;
-            const variance = counted - expectedCash;
-            
-            let reconciliation = `CASH DRAWER RECONCILIATION\n\n`;
-            reconciliation += `Opening Balance: N$${cashDrawer.openingBalance.toFixed(2)}\n`;
-            reconciliation += `+ Today's Cash: N$${todayCash.toFixed(2)}\n`;
-            reconciliation += `- Cash Drops: N$${totalDrops.toFixed(2)}\n`;
-            reconciliation += `- Expenses: N$${totalExpenses.toFixed(2)}\n`;
-            reconciliation += `= Expected Cash: N$${expectedCash.toFixed(2)}\n\n`;
-            reconciliation += `Actual Counted: N$${counted.toFixed(2)}\n`;
-            reconciliation += `Variance: N$${variance.toFixed(2)} ${variance >= 0 ? '(Over)' : '(Short)'}\n\n`;
-            
-            if (Math.abs(variance) > 10) {
-                reconciliation += `⚠️ WARNING: Variance exceeds N$10\nPlease investigate discrepancy.\n\n`;
-            }
-            
-            if (confirm(reconciliation + 'Close cash drawer?')) {
-                cashDrawer.isOpen = false;
-                cashDrawer.closedBy = currentUser.fullName;
-                cashDrawer.closedAt = new Date().toISOString();
-                cashDrawer.actualCash = counted;
-                cashDrawer.variance = variance;
-                
-                alert('✅ Cash drawer closed successfully');
+
+                branchCashSession = payload.session;
+                saveBranchFinanceCache('branch_cash_session', branchId, branchCashSession);
+                refreshCashDrawerState(branchId);
                 displayCashDrawerStatus();
+                alert('✅ Cash drawer closed successfully');
+            } catch (error) {
+                console.error('Error closing cash drawer:', error);
+                alert(`❌ Failed to close cash drawer: ${error.message}`);
             }
         }
 
@@ -31550,7 +31693,6 @@ async function reverseLastPrescriptionPayment(reportId){
         // ==================== STOCK MANAGEMENT FUNCTIONS ====================
         
         // Stock data storage
-        let countryStock = [];
         let windhoekStock = [];
         let ondangwaStock = [];
         let distributionHistory = [];
@@ -34208,12 +34350,12 @@ async function reverseLastPrescriptionPayment(reportId){
                     const branchId = branch.id || branch.name;
                     const branchStock = JSON.parse(localStorage.getItem(`branch_inventory_${branchId}`) || '[]');
                     if (Array.isArray(branchStock)) {
-                        allBranchStock = allBranchStock.concat(branchStock);
+                    allBranchStock = allBranchStock.concat(branchStock);
                     }
                 });
                 // Also include general branch_stock
                 if (Array.isArray(branchStockData)) {
-                    allBranchStock = allBranchStock.concat(branchStockData);
+                allBranchStock = allBranchStock.concat(branchStockData);
                 }
                 
                 // Calculate total stock value - Include ALL sources
@@ -39142,6 +39284,345 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         }
 
         walkInSales = loadWalkInSalesCache();
+
+        function getBranchFinanceCacheKey(prefix, branchId) {
+            return `${prefix}_${branchId || 'default'}`;
+        }
+
+        function saveBranchFinanceCache(prefix, branchId, data) {
+            const key = getBranchFinanceCacheKey(prefix, branchId);
+            try {
+                if (data === null || data === undefined) {
+                    localStorage.removeItem(key);
+                } else {
+                    localStorage.setItem(key, JSON.stringify(data));
+                }
+            } catch (_) {}
+        }
+
+        function loadBranchFinanceCache(prefix, branchId, fallback) {
+            const key = getBranchFinanceCacheKey(prefix, branchId);
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return fallback === undefined ? null : fallback;
+                const parsed = JSON.parse(raw);
+                return parsed === undefined ? (fallback === undefined ? null : fallback) : parsed;
+            } catch (_) {
+                return fallback === undefined ? null : fallback;
+            }
+        }
+
+        function refreshCashDrawerState(branchId) {
+            const session =
+                branchCashSession && (!branchId || branchCashSession.branchId === branchId)
+                    ? branchCashSession
+                    : null;
+
+            if (!session) {
+                cashDrawer = {
+                    openingBalance: 0,
+                    currentBalance: 0,
+                    isOpen: false,
+                    openedBy: null,
+                    openedAt: null,
+                    drops: [],
+                    expenses: [],
+                    sessionId: null,
+                    metadata: {}
+                };
+                return;
+            }
+
+            const movements = branchCashMovements.filter(
+                (movement) => movement.sessionId === session.id
+            );
+            const drops = movements
+                .filter((movement) => (movement.type || '').toLowerCase() === 'drop')
+                .map((movement) => ({
+                    amount: movement.amount || 0,
+                    recordedBy: movement.recordedBy || '',
+                    recordedAt: movement.recordedAt,
+                    notes: movement.notes || '',
+                    reference: movement.reference || movement.id
+                }));
+            const expenses = movements
+                .filter((movement) => (movement.type || '').toLowerCase() === 'expense')
+                .map((movement) => ({
+                    amount: movement.amount || 0,
+                    description: movement.description || movement.notes || '',
+                    recordedBy: movement.recordedBy || '',
+                    recordedAt: movement.recordedAt,
+                    reference: movement.reference || movement.id
+                }));
+
+            let balance =
+                session.metadata && session.metadata.currentBalance !== undefined
+                    ? Number(session.metadata.currentBalance)
+                    : Number(session.openingBalance || 0);
+
+            if (Number.isNaN(balance)) {
+                balance = Number(session.openingBalance || 0);
+                movements.forEach((movement) => {
+                    const amount = Number(movement.amount || 0);
+                    const type = (movement.type || '').toLowerCase();
+                    if (type === 'drop' || type === 'expense') {
+                        balance -= amount;
+                    } else if (type === 'addition') {
+                        balance += amount;
+                    } else if (type === 'adjustment') {
+                        balance += amount;
+                    }
+                });
+            }
+
+            cashDrawer = {
+                openingBalance: Number(session.openingBalance || 0),
+                currentBalance: balance,
+                isOpen: !!session.isOpen,
+                openedBy: session.openedBy || '',
+                openedAt: session.openedAt || '',
+                drops,
+                expenses,
+                sessionId: session.id,
+                metadata: session.metadata || {}
+            };
+        }
+
+        async function syncBranchFinanceData({ branchId, notify = false, force = false } = {}) {
+            if (branchFinanceSyncInProgress && !force) {
+                return;
+            }
+            branchFinanceSyncInProgress = true;
+
+            const effectiveBranchId =
+                branchId ||
+                (typeof getBranchId === 'function'
+                    ? getBranchId()
+                    : (currentUser && currentUser.branch) || 'default');
+
+            const errors = [];
+
+            try {
+                try {
+                    const sessionResp = await fetch(
+                        `/api/branch/cash-sessions?branch=${encodeURIComponent(
+                            effectiveBranchId
+                        )}&active=1`,
+                        { credentials: 'include' }
+                    );
+                    if (sessionResp.ok) {
+                        const payload = await sessionResp.json();
+                        branchCashSession = payload.session || null;
+                        saveBranchFinanceCache('branch_cash_session', effectiveBranchId, branchCashSession);
+                    } else {
+                        throw new Error(`${sessionResp.status} ${sessionResp.statusText}`);
+                    }
+                } catch (error) {
+                    branchCashSession = loadBranchFinanceCache('branch_cash_session', effectiveBranchId, null);
+                    errors.push('cash session');
+                    console.warn('Failed to sync cash session:', error);
+                }
+
+                try {
+                    const movementsResp = await fetch(
+                        `/api/branch/cash-movements?branch=${encodeURIComponent(
+                            effectiveBranchId
+                        )}&limit=500`,
+                        { credentials: 'include' }
+                    );
+                    if (movementsResp.ok) {
+                        const payload = await movementsResp.json();
+                        branchCashMovements = (payload.movements || []).map((movement) => ({
+                            ...movement,
+                            branchId: movement.branchId || effectiveBranchId,
+                            amount: Number(movement.amount || 0),
+                            recordedAt: movement.recordedAt || movement.recorded_at,
+                            recordedBy: movement.recordedBy || movement.recorded_by || '',
+                            type: (movement.type || '').toLowerCase()
+                        }));
+                        saveBranchFinanceCache('branch_cash_movements', effectiveBranchId, branchCashMovements);
+                    } else {
+                        throw new Error(`${movementsResp.status} ${movementsResp.statusText}`);
+                    }
+                } catch (error) {
+                    branchCashMovements = loadBranchFinanceCache(
+                        'branch_cash_movements',
+                        effectiveBranchId,
+                        []
+                    );
+                    errors.push('cash movements');
+                    console.warn('Failed to sync cash movements:', error);
+                }
+
+                try {
+                    const depositResp = await fetch(
+                        `/api/branch/deposits?branch=${encodeURIComponent(effectiveBranchId)}`,
+                        { credentials: 'include' }
+                    );
+                    if (depositResp.ok) {
+                        const payload = await depositResp.json();
+                        branchDeposits = (payload.deposits || []).map((deposit) => ({
+                            ...deposit,
+                            branch: deposit.branch || deposit.branchId || effectiveBranchId,
+                            branchId: deposit.branchId || deposit.branch || effectiveBranchId,
+                            amount: Number(deposit.amount || 0),
+                            createdAt: deposit.createdAt || deposit.created_at,
+                            createdBy: deposit.createdBy || deposit.created_by || '',
+                            slipNumber: deposit.slipNumber || deposit.slipNo || deposit.slip_number || '',
+                            status: (deposit.status || 'pending').toLowerCase()
+                        }));
+                        saveBranchFinanceCache('branch_bank_deposits', effectiveBranchId, branchDeposits);
+                    } else {
+                        throw new Error(`${depositResp.status} ${depositResp.statusText}`);
+                    }
+                } catch (error) {
+                    branchDeposits = loadBranchFinanceCache('branch_bank_deposits', effectiveBranchId, []);
+                    errors.push('bank deposits');
+                    console.warn('Failed to sync branch deposits:', error);
+                }
+
+                try {
+                    const expensesResp = await fetch(
+                        `/api/branch/expenses?branch=${encodeURIComponent(effectiveBranchId)}`,
+                        { credentials: 'include' }
+                    );
+                    if (expensesResp.ok) {
+                        const payload = await expensesResp.json();
+                        branchExpensesRecords = (payload.expenses || []).map((expense) => ({
+                            ...expense,
+                            branch: expense.branch || expense.branchId || effectiveBranchId,
+                            branchId: expense.branchId || expense.branch || effectiveBranchId,
+                            amount: Number(expense.amount || 0),
+                            date: expense.date || (expense.createdAt ? expense.createdAt.slice(0, 10) : ''),
+                            paymentMethod: expense.paymentMethod || expense.method || 'cash',
+                            description: expense.description || '',
+                            category: expense.category || 'other',
+                            status: (expense.status || 'recorded').toLowerCase()
+                        }));
+                        saveBranchFinanceCache('branch_expenses', effectiveBranchId, branchExpensesRecords);
+                    } else {
+                        throw new Error(`${expensesResp.status} ${expensesResp.statusText}`);
+                    }
+                } catch (error) {
+                    branchExpensesRecords = loadBranchFinanceCache('branch_expenses', effectiveBranchId, []);
+                    errors.push('expenses');
+                    console.warn('Failed to sync branch expenses:', error);
+                }
+
+                try {
+                    const paymentsResp = await fetch(
+                        `/api/branch/payments?branch=${encodeURIComponent(effectiveBranchId)}`,
+                        { credentials: 'include' }
+                    );
+                    if (paymentsResp.ok) {
+                        const payload = await paymentsResp.json();
+                        branchPaymentsRecords = (payload.payments || []).map((payment) => ({
+                            ...payment,
+                            branch: payment.branch || payment.branchId || effectiveBranchId,
+                            branchId: payment.branchId || payment.branch || effectiveBranchId,
+                            amount: Number(payment.amount || 0),
+                            date: payment.date || (payment.recordedAt ? payment.recordedAt.slice(0, 10) : ''),
+                            client: payment.client || payment.clientName || '',
+                            clientName: payment.clientName || payment.client || '',
+                            invoice: payment.invoice || payment.invoiceNumber || '',
+                            method: payment.method || payment.paymentMethod || 'cash',
+                            recordedAt: payment.recordedAt || payment.recorded_at,
+                            notes: payment.notes || ''
+                        }));
+                        saveBranchFinanceCache('branch_payments', effectiveBranchId, branchPaymentsRecords);
+                    } else {
+                        throw new Error(`${paymentsResp.status} ${paymentsResp.statusText}`);
+                    }
+                } catch (error) {
+                    branchPaymentsRecords = loadBranchFinanceCache('branch_payments', effectiveBranchId, []);
+                    errors.push('payments');
+                    console.warn('Failed to sync branch payments:', error);
+                }
+
+                bankDeposits = Array.isArray(branchDeposits) ? [...branchDeposits] : [];
+                expenses = Array.isArray(branchExpensesRecords) ? [...branchExpensesRecords] : expenses;
+
+                refreshCashDrawerState(effectiveBranchId);
+
+                if (notify && errors.length) {
+                    showToast(
+                        `Unable to reach ${errors.join(', ')} service(s). Showing cached data instead.`,
+                        'error'
+                    );
+                }
+            } catch (syncError) {
+                console.warn('Branch finance sync unexpected error:', syncError);
+            } finally {
+                branchFinanceSyncInProgress = false;
+                hasSyncedBranchFinance = true;
+            }
+        }
+
+        async function createBranchCashMovement({
+            branchId,
+            sessionId,
+            type,
+            amount,
+            description = '',
+            notes = '',
+            recordedBy,
+            metadata = null
+        }) {
+            if (!branchId) throw new Error('Branch ID is required');
+            if (!sessionId) throw new Error('Cash session is not open');
+            if (!type) throw new Error('Movement type is required');
+
+            const response = await fetch('/api/branch/cash-movements', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    branchId,
+                    sessionId,
+                    type,
+                    amount,
+                    description,
+                    notes,
+                    recordedBy,
+                    metadata
+                })
+            });
+
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.error || 'Failed to record cash movement');
+            }
+
+            const { movement, session } = payload;
+            const normalizedMovement = {
+                ...movement,
+                branchId: movement.branchId || branchId,
+                amount: Number(movement.amount || 0),
+                recordedAt: movement.recordedAt || movement.recorded_at,
+                recordedBy: movement.recordedBy || movement.recorded_by || '',
+                type: (movement.type || '').toLowerCase(),
+                notes: movement.notes || '',
+                description: movement.description || '',
+                reference: movement.reference || movement.id
+            };
+
+            const existingIndex = branchCashMovements.findIndex((m) => m.id === normalizedMovement.id);
+            if (existingIndex !== -1) {
+                branchCashMovements[existingIndex] = normalizedMovement;
+            } else {
+                branchCashMovements.unshift(normalizedMovement);
+            }
+            saveBranchFinanceCache('branch_cash_movements', branchId, branchCashMovements);
+
+            if (session) {
+                branchCashSession = session;
+                saveBranchFinanceCache('branch_cash_session', branchId, branchCashSession);
+            }
+
+            refreshCashDrawerState(branchId);
+            displayCashDrawerStatus();
+            return normalizedMovement;
+        }
         (function initializeBranchCaches() {
             try {
                 const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
