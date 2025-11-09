@@ -38832,12 +38832,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 submittedBy: (window.currentUser && window.currentUser.fullName) || (window.currentUser && window.currentUser.username) || 'HR'
             };
             try {
-                const employees = await fetch('/api/employees').then(r => r.json()).catch(() => []);
-                const existing = employees.find(e => e.dataCollection?.personalInfo?.idNumber === payload.personalInfo.idNumber);
+                const employeesFromApi = await fetchEmployeesFromService().catch(() => loadEmployeeCache());
+                const existing = employeesFromApi.find(e => e.dataCollection?.personalInfo?.idNumber === payload.personalInfo.idNumber);
                 if(existing) {
                     await fetch('/api/employees', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({
                             id: existing.id,
                             dataCollection: payload,
@@ -38851,6 +38852,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     await fetch('/api/employees', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({
                             fullName: payload.personalInfo.fullName,
                             userId: `STAFF-${payload.personalInfo.idNumber.slice(-6)}`,
@@ -38864,6 +38866,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     });
                     alert('Data collection form submitted successfully!');
                 }
+                await syncEmployeesFromApi({ notify: false }).catch(() => {});
                 clearDataCollectionForm();
                 await loadDataCollectionList();
             } catch(e) {
@@ -38883,8 +38886,8 @@ async function reverseLastPrescriptionPayment(reportId){
 
         async function loadDataCollectionList() {
             try {
-                const employees = await fetch('/api/employees').then(r => r.json()).catch(() => []);
-                const withData = employees.filter(e => e.dataCollection);
+                const employeesList = await fetchEmployeesFromService().catch(() => loadEmployeeCache());
+                const withData = employeesList.filter(e => e.dataCollection);
                 const container = document.getElementById('dcTable');
                 if(!container) return;
                 
@@ -38928,8 +38931,8 @@ async function reverseLastPrescriptionPayment(reportId){
 
         async function viewDataCollection(empId) {
             try {
-                const employees = await fetch('/api/employees').then(r => r.json()).catch(() => []);
-                const emp = employees.find(e => e.id === empId);
+                const employeesList = await fetchEmployeesFromService().catch(() => loadEmployeeCache());
+                const emp = employeesList.find(e => e.id === empId);
                 if(!emp || !emp.dataCollection) {
                     alert('Data not found');
                     return;
@@ -38993,8 +38996,8 @@ Signatures:
 
         async function exportDataCollection(empId) {
             try {
-                const employees = await fetch('/api/employees').then(r => r.json()).catch(() => []);
-                const emp = employees.find(e => e.id === empId);
+                const employeesList = await fetchEmployeesFromService().catch(() => loadEmployeeCache());
+                const emp = employeesList.find(e => e.id === empId);
                 if(!emp || !emp.dataCollection) {
                     alert('Data not found');
                     return;
@@ -39013,32 +39016,96 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         }
         
         // Employee Management Functions
-        function loadEmployees() {
-            try {
-                // Prefer HR key, but fall back to dyna_employees if present
-                const hrDataRaw = localStorage.getItem('hr_employees');
-                const dynaDataRaw = localStorage.getItem('dyna_employees');
-                const hrList = hrDataRaw ? JSON.parse(hrDataRaw) : null;
-                const dynaList = dynaDataRaw ? JSON.parse(dynaDataRaw) : null;
+        function mapEmployeeRecord(record) {
+            if (!record) return null;
+            const data = typeof record.data === 'string' ? (() => { try { return JSON.parse(record.data); } catch (_) { return {}; } })() : (record.data || {});
+            const normalizeDate = (value) => {
+                if (!value) return '';
+                const d = new Date(value);
+                return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+            };
+            const mapped = {
+                id: record.id || data.id || record.employeeId,
+                employeeId: record.employeeId || record.employee_id || data.employeeId || record.id,
+                name: record.name || record.fullName || record.full_name || data.name || 'Team Member',
+                department: record.department || data.department || '',
+                position: record.position || data.position || data.role || '',
+                role: record.role || data.role || '',
+                branch: record.branch || data.branch || '',
+                branches: record.branches || data.branches || [],
+                email: record.email || data.email || '',
+                phone: record.phone || data.phone || '',
+                hireDate: normalizeDate(record.hireDate || record.hire_date || data.hireDate),
+                employmentType: record.employmentType || record.employment_type || data.employmentType || '',
+                salary:
+                    data.salary !== undefined
+                        ? Number(data.salary)
+                        : record.salary !== undefined && record.salary !== null
+                        ? Number(record.salary)
+                        : '',
+                address: record.address || data.address || '',
+                dob: normalizeDate(record.dob || data.dob || data.dateOfBirth),
+                emergencyContactName:
+                    record.emergencyContactName || record.emergency_contact_name || data.emergencyContactName || '',
+                emergencyContactPhone:
+                    record.emergencyContactPhone || record.emergency_contact_phone || data.emergencyContactPhone || '',
+                notes: record.notes || data.notes || ''
+            };
+            if (data.dataCollection) mapped.dataCollection = data.dataCollection;
+            return { ...mapped, ...data };
+        }
 
-                if (Array.isArray(hrList) && hrList.length > 0) {
-                    employees = hrList;
-                    console.log(`✅ Loaded ${employees.length} employees from localStorage (hr_employees)`);
-                } else if (Array.isArray(dynaList) && dynaList.length > 0) {
-                    employees = dynaList;
-                    // Heal hr_employees from dyna_employees for HR portal compatibility
-                    try { localStorage.setItem('hr_employees', JSON.stringify(dynaList)); } catch(_) {}
-                    console.log(`✅ Loaded ${employees.length} employees from localStorage (dyna_employees fallback)`);
-                } else {
-                    employees = [];
-                    console.log('⚠️ No employees found in localStorage (hr_employees/dyna_employees empty)');
+        function loadEmployeeCache() {
+            try {
+                const hrRaw = localStorage.getItem('hr_employees');
+                if (hrRaw) {
+                    const parsed = JSON.parse(hrRaw);
+                    if (Array.isArray(parsed)) return parsed;
                 }
+                const legacyRaw = localStorage.getItem('dyna_employees');
+                if (legacyRaw) {
+                    const parsedLegacy = JSON.parse(legacyRaw);
+                    if (Array.isArray(parsedLegacy)) return parsedLegacy;
+                }
+                return [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        async function fetchEmployeesFromService() {
+            const response = await fetch('/api/employees', { credentials: 'include' });
+            if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+            const payload = await response.json();
+            const list = Array.isArray(payload) ? payload : Array.isArray(payload?.employees) ? payload.employees : [];
+            return list.map(mapEmployeeRecord).filter(Boolean);
+        }
+
+        async function syncEmployeesFromApi({ notify = false } = {}) {
+            try {
+                employees = await fetchEmployeesFromService();
+                try {
+                    localStorage.setItem('hr_employees', JSON.stringify(employees));
+                    localStorage.setItem('dyna_employees', JSON.stringify(employees));
+                    localStorage.setItem('hr_employees_lastUpdated', String(Date.now()));
+                    localStorage.setItem('dyna_employees_lastUpdated', String(Date.now()));
+                } catch(_) {}
+                if (notify) showToast(`Employees synced (${employees.length})`, 'success');
                 displayEmployees();
             } catch (error) {
-                console.error('❌ Error loading employees:', error);
-                employees = [];
+                console.warn('Employee sync failed:', error);
+                if (notify) showToast('Unable to reach employee service. Showing cached data.', 'error');
+                employees = loadEmployeeCache();
                 displayEmployees();
+                throw error;
             }
+        }
+
+        function loadEmployees() {
+            syncEmployeesFromApi({ notify: false }).catch(() => {
+                employees = loadEmployeeCache();
+                displayEmployees();
+            });
         }
         
         function displayEmployees() {
@@ -39104,16 +39171,31 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             document.getElementById('addEmployeeModal').style.display = 'block';
         }
         
-        function deleteEmployee(employeeId) {
+        async function deleteEmployee(employeeId) {
             if (!confirm('Are you sure you want to delete this employee?')) return;
-            
-            employees = employees.filter(e => e.employeeId !== employeeId);
-            localStorage.setItem('hr_employees', JSON.stringify(employees));
-            displayEmployees();
+            try {
+                const response = await fetch(`/api/employees?employeeId=${encodeURIComponent(employeeId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error(`Delete failed with status ${response.status}`);
+                employees = employees.filter(e => e.employeeId !== employeeId);
+                try {
+                    localStorage.setItem('hr_employees', JSON.stringify(employees));
+                    localStorage.setItem('dyna_employees', JSON.stringify(employees));
+                    localStorage.setItem('hr_employees_lastUpdated', String(Date.now()));
+                    localStorage.setItem('dyna_employees_lastUpdated', String(Date.now()));
+                } catch(_) {}
+                displayEmployees();
+                showToast('Employee removed successfully.', 'success');
+            } catch (error) {
+                console.error('Error deleting employee:', error);
+                alert('Error deleting employee: ' + (error.message || 'Unknown error'));
+            }
         }
         
         function refreshEmployeeList() {
-            loadEmployees();
+            syncEmployeesFromApi({ notify: true }).catch(() => {});
         }
         
         function exportEmployeeData() {
@@ -39690,13 +39772,13 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         document.addEventListener('submit', function(e) {
             if (e.target.id === 'addEmployeeForm') {
                 e.preventDefault();
-                const formData = {
-                    employeeId: document.getElementById('employeeId').value,
-                    name: document.getElementById('employeeName').value,
+                const formPayload = {
+                    employeeId: document.getElementById('employeeId').value.trim(),
+                    name: document.getElementById('employeeName').value.trim(),
                     department: document.getElementById('employeeDepartment').value,
-                    position: document.getElementById('employeePosition').value,
-                    email: document.getElementById('employeeEmail').value,
-                    phone: document.getElementById('employeePhone').value,
+                    position: document.getElementById('employeePosition').value.trim(),
+                    email: document.getElementById('employeeEmail').value.trim(),
+                    phone: document.getElementById('employeePhone').value.trim(),
                     hireDate: document.getElementById('employeeHireDate').value,
                     employmentType: document.getElementById('employmentType').value,
                     salary: document.getElementById('employeeSalary').value,
@@ -39706,74 +39788,67 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
                     emergencyContactPhone: document.getElementById('emergencyContactPhone').value,
                     notes: document.getElementById('employeeNotes').value
                 };
-                
-                // Ensure employees array exists
-                if (!employees || !Array.isArray(employees)) {
-                    employees = [];
-                }
-                
-                const existingIndex = employees.findIndex(e => e.employeeId === formData.employeeId);
-                if (existingIndex >= 0) {
-                    employees[existingIndex] = formData;
-                    console.log(`✅ Updated employee: ${formData.name} (${formData.employeeId})`);
-                } else {
-                    employees.push(formData);
-                    console.log(`✅ Added new employee: ${formData.name} (${formData.employeeId})`);
-                }
-                
-                // Save to localStorage immediately (both hr_employees and dyna_employees for consistency)
-                try {
-                    localStorage.setItem('hr_employees', JSON.stringify(employees));
-                    localStorage.setItem('dyna_employees', JSON.stringify(employees));
-                    console.log(`✅ Saved ${employees.length} employees to localStorage (both hr_employees and dyna_employees)`);
-                    
-                    // Verify save was successful
-                    const verifyHR = localStorage.getItem('hr_employees');
-                    const verifyDyna = localStorage.getItem('dyna_employees');
-                    if (!verifyHR || !verifyDyna) {
-                        console.error('❌ Save verification failed - localStorage save incomplete!');
-                        alert('⚠️ Warning: Employee may not have been saved properly. Please try again.');
-                        return;
-                    }
-                    
-                    const nowTs = Date.now();
-                    try {
-                        localStorage.setItem('hr_employees_lastUpdated', String(nowTs));
-                        localStorage.setItem('dyna_employees_lastUpdated', String(nowTs));
-                    } catch (_) {}
-                    
-                    // Set a flag to prevent cloud-sync from overwriting for the next few seconds
-                    if (typeof window !== 'undefined') {
-                        window._employeeJustSaved = nowTs;
-                        console.log('🛡️ Set protection flag against cloud-sync overwrite');
-                    }
-                    
-                    closeModal('addEmployeeModal');
-                    displayEmployees();
-                    alert(`✅ Employee saved successfully! Total employees: ${employees.length}`);
-                } catch (error) {
-                    console.error('❌ Error saving employee to localStorage:', error);
-                    alert('❌ Error saving employee: ' + error.message);
-                }
-                // Try to save to cloud via serverless API
+
+                const existingIndex = Array.isArray(employees)
+                    ? employees.findIndex(emp => emp.employeeId === formPayload.employeeId)
+                    : -1;
+                const existing = existingIndex >= 0 ? employees[existingIndex] : null;
+
+                const payload = {
+                    id: existing?.id,
+                    employeeId: formPayload.employeeId,
+                    name: formPayload.name,
+                    department: formPayload.department,
+                    position: formPayload.position,
+                    email: formPayload.email,
+                    phone: formPayload.phone,
+                    hireDate: formPayload.hireDate,
+                    employmentType: formPayload.employmentType,
+                    salary: formPayload.salary ? Number(formPayload.salary) : null,
+                    address: formPayload.address,
+                    dob: formPayload.dob,
+                    emergencyContactName: formPayload.emergencyContactName,
+                    emergencyContactPhone: formPayload.emergencyContactPhone,
+                    notes: formPayload.notes
+                };
+
                 (async () => {
                     try {
-                        const payload = {
-                            fullName: formData.name,
-                            userId: formData.employeeId || ('STAFF-' + Date.now()),
-                            role: formData.position || 'staff',
-                            branch: (currentUser && currentUser.branch) || 'townshop',
-                            email: formData.email || '',
-                            phone: formData.phone || '',
-                            hireDate: formData.hireDate || new Date().toISOString().split('T')[0],
-                            employmentStatus: 'active'
-                        };
-                        await fetch('/api/employees', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'x-user-role': 'hr_manager' },
+                        const method = existing?.id ? 'PUT' : 'POST';
+                        const endpoint =
+                            method === 'PUT' && payload.id
+                                ? `/api/employees?id=${encodeURIComponent(payload.id)}`
+                                : '/api/employees';
+                        const response = await fetch(endpoint, {
+                            method,
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
                             body: JSON.stringify(payload)
                         });
-                    } catch(_) { /* ignore */ }
+                        if (!response.ok) {
+                            throw new Error(`Save failed with status ${response.status}`);
+                        }
+                        const result = await response.json();
+                        const saved = mapEmployeeRecord(result.employee || result);
+                        if (!Array.isArray(employees)) employees = [];
+                        if (existingIndex >= 0) {
+                            employees[existingIndex] = saved;
+                        } else {
+                            employees.push(saved);
+                        }
+                        try {
+                            localStorage.setItem('hr_employees', JSON.stringify(employees));
+                            localStorage.setItem('dyna_employees', JSON.stringify(employees));
+                            localStorage.setItem('hr_employees_lastUpdated', String(Date.now()));
+                            localStorage.setItem('dyna_employees_lastUpdated', String(Date.now()));
+                        } catch(_) {}
+                        closeModal('addEmployeeModal');
+                        displayEmployees();
+                        showToast(`Employee ${existingIndex >= 0 ? 'updated' : 'added'} successfully.`, 'success');
+                    } catch (error) {
+                        console.error('Error saving employee:', error);
+                        alert('Error saving employee: ' + (error.message || 'Unknown error'));
+                    }
                 })();
             }
             

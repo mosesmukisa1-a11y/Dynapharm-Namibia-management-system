@@ -89,7 +89,8 @@ async function main() {
       '002_create_shared_tables.sql',
       '003_create_file_uploads_table.sql',
       '004_create_users_table.sql',
-      '005_create_reports_table.sql'
+      '005_create_reports_table.sql',
+      '006_create_employees_table.sql'
     ];
     
     for (const migration of migrations) {

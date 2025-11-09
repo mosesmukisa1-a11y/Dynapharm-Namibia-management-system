@@ -1043,20 +1043,40 @@ function finalizeUserSession(user, options = {}) {
 
 // Section Navigation
 function showSection(section) {
+  const shopSection = document.getElementById("shop-section");
+  const aboutSection = document.getElementById("about-section");
+  const mediaSection = document.getElementById("media-section");
+
+  const show = (el) => {
+    if (!el) return;
+    el.style.display = "block";
+  };
+
+  const hide = (el) => {
+    if (!el) return;
+    el.style.display = "none";
+  };
+
   if (section === "shop") {
-    document.getElementById("shop-section").style.display = "block";
-    document.getElementById("about-section").classList.remove("active");
-    document.getElementById("media-section").classList.remove("active");
+    show(shopSection);
+    hide(aboutSection);
+    hide(mediaSection);
+    aboutSection?.classList.remove("active");
+    mediaSection?.classList.remove("active");
     showDistributorTab("shop");
     loadShopProducts();
   } else if (section === "about") {
-    document.getElementById("shop-section").style.display = "none";
-    document.getElementById("about-section").classList.add("active");
-    document.getElementById("media-section").classList.remove("active");
+    hide(shopSection);
+    show(aboutSection);
+    hide(mediaSection);
+    aboutSection?.classList.add("active");
+    mediaSection?.classList.remove("active");
   } else if (section === "media") {
-    document.getElementById("shop-section").style.display = "none";
-    document.getElementById("about-section").classList.remove("active");
-    document.getElementById("media-section").classList.add("active");
+    hide(shopSection);
+    hide(aboutSection);
+    show(mediaSection);
+    aboutSection?.classList.remove("active");
+    mediaSection?.classList.add("active");
     showDistributorTab("media");
   }
 }
@@ -1707,6 +1727,10 @@ async function handleAdminLogin() {
 // Load Shop Products
 async function loadShopProducts() {
   const container = document.getElementById("productsContainer");
+  if (!container) {
+    console.debug("Products container not found, skipping shop load.");
+    return;
+  }
   container.innerHTML =
     '<div class="loading"><div class="spinner"></div><p>Loading products...</p></div>';
 
@@ -1807,6 +1831,10 @@ let pendingCartItem = null;
 
 function displayProducts(products) {
   const container = document.getElementById("productsContainer");
+  if (!container) {
+    console.debug("Products container not found, unable to render products.");
+    return;
+  }
   if (products.length === 0) {
     container.innerHTML = '<div class="loading"><p>No products found.</p></div>';
     return;
@@ -2537,7 +2565,9 @@ async function submitOrder() {
 }
 
 function filterProducts() {
-  const searchTerm = document.getElementById("productSearch").value.toLowerCase();
+  const searchInput = document.getElementById("productSearch");
+  if (!searchInput) return;
+  const searchTerm = searchInput.value.toLowerCase();
   const filtered = allProducts.filter((product) => {
     const name = (product.description || product.name || "").toLowerCase();
     return name.includes(searchTerm);
@@ -2690,26 +2720,36 @@ function showDistributorTab(tabName, evt) {
     document.querySelector(`.distributor-tab-btn[data-tab="${tabName}"]`)?.classList.add("active");
   }
 
-  if (sections.media) {
-    if (tabName === "media") {
-      sections.media.classList.add("active");
-    } else {
-      sections.media.classList.remove("active");
+  const fallbackSection = sections.shop || null;
+  const targetSection = sections[tabName] || fallbackSection;
+
+  Object.entries(sections).forEach(([key, sectionEl]) => {
+    if (!sectionEl) return;
+    const isActive = sectionEl === targetSection;
+    sectionEl.style.display = isActive ? "block" : "none";
+    if (!isActive) {
+      sectionEl.classList.remove("highlight-section");
+      sectionEl.classList.remove("active");
     }
+  });
+
+  if (sections.media) {
+    sections.media.classList.toggle("active", targetSection === sections.media);
   }
 
-  const targetSection = sections[tabName] || sections.shop;
   if (targetSection) {
     targetSection.classList.add("highlight-section");
     targetSection.scrollIntoView({ behavior: "smooth", block: "start" });
     setTimeout(() => targetSection.classList.remove("highlight-section"), 1200);
+  } else if (tabName) {
+    console.debug("Distributor tab target not found:", tabName);
   }
 
   if (tabName === "testimonials") {
     loadTestimonials();
   }
 
-  if (tabName === "shop") {
+  if (targetSection === sections.shop) {
     loadShopProducts();
   }
 }
@@ -3048,9 +3088,9 @@ document.addEventListener("DOMContentLoaded", function () {
   toggleLandingEditorButton(false);
 
   // Ensure products section is active on load
-  showDistributorTab("shop");
   const shopSectionEl = document.getElementById("shop-section");
   if (shopSectionEl) {
+    showSection("shop");
     requestAnimationFrame(() => {
       shopSectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
       shopSectionEl.classList.add("highlight-section");
