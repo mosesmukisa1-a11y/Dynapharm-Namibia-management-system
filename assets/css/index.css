@@ -30,6 +30,92 @@
             font-size: 0.85rem;
         }
 
+.access-section {
+    padding: 60px 20px;
+    background: #f8fafc;
+}
+
+.access-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    gap: 30px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.access-card {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 32px 28px;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.access-icon {
+    font-size: 2.5rem;
+}
+
+.access-card h3 {
+    margin: 0;
+    font-size: 1.4rem;
+    color: var(--text-dark);
+}
+
+.access-card p {
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.access-actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.btn-access {
+    border: none;
+    border-radius: 999px;
+    padding: 12px 22px;
+    font-weight: 600;
+    cursor: pointer;
+    background: #f1f5f9;
+    color: var(--text-dark);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-access.primary {
+    background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 25px rgba(196, 30, 58, 0.35);
+}
+
+.btn-access:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.access-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    font-size: 0.95rem;
+}
+
+.access-links a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.access-links a:hover {
+    text-decoration: underline;
+}
+
         .top-bar .container {
             max-width: 1200px;
             margin: 0 auto;

@@ -41,10 +41,11 @@
           <span>Dynapharm Namibia</span>
         </a>
         <ul class="nav-links">
-          <li><a href="#" onclick="showSection('shop'); return false;">Home</a></li>
-          <li><a href="#" onclick="showDistributorTab('shop'); return false;">Guest Portal</a></li>
-          <li><a href="#" onclick="showSection('about'); return false;">About Us</a></li>
-          <li><a href="#" onclick="showDistributorTab('media'); return false;">Media</a></li>
+          <li><a href="#home" onclick="scrollToTop(); return false;">Home</a></li>
+          <li><a href="distributor-guest.html">Guest Portal</a></li>
+          <li><a href="#visit-section" onclick="scrollToSection('visit-section'); return false;">Visitors</a></li>
+          <li><a href="#team-section" onclick="scrollToSection('team-section'); return false;">Team Portals</a></li>
+          <li><a href="#about-section" onclick="scrollToSection('about-section'); return false;">About Us</a></li>
           <li id="accountNavItem" class="account-nav">
             <button class="account-button" id="accountButton" onclick="toggleAccountMenu(event)">
               <span class="account-initials" id="accountInitials">DN</span>
@@ -92,11 +93,11 @@
             your healthiest life.
           </p>
           <div class="hero-cta">
-            <button class="btn-hero-primary" id="heroPrimaryAction" onclick="showDistributorTab('shop')">
-              🛒 Shop Products
+            <button class="btn-hero-primary" id="heroPrimaryAction" onclick="openGuestPortal()">
+              🌐 Explore Guest Portal
             </button>
-            <button class="btn-hero-secondary" id="heroSecondaryAction" onclick="showDistributorTab('checkup')">
-              🏥 Book Consultation
+            <button class="btn-hero-secondary" id="heroSecondaryAction" onclick="openTeamAccess()">
+              🔐 Staff & Distributor Login
             </button>
           </div>
           <div class="hero-stats">
@@ -135,6 +136,44 @@
               <li><span>🛡️</span>Immune Booster</li>
               <li><span>☕</span>Power Coffee</li>
             </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Primary Audience Section -->
+    <section class="access-section" id="visit-section">
+      <div class="access-container">
+        <div class="access-card">
+          <div class="access-icon">🌿</div>
+          <h3>Visitors & Customers</h3>
+          <p>
+            Shop premium Dynapharm products, request full body check-ups, and stay up to date with our latest news —
+            no login required.
+          </p>
+          <div class="access-actions">
+            <button class="btn-access primary" onclick="openGuestPortal()">Enter Guest Portal</button>
+            <div class="access-links">
+              <a href="distributor-guest.html#shop">Shop Products</a>
+              <a href="distributor-guest.html#appointments">Book Appointment</a>
+              <a href="distributor-guest.html#media">Media & News</a>
+            </div>
+          </div>
+        </div>
+        <div class="access-card" id="team-section">
+          <div class="access-icon">🛡️</div>
+          <h3>Staff & Distributors</h3>
+          <p>
+            Access your role-specific portal for front desk, consultants, dispensers, finance, HR, stock management,
+            leadership dashboards and more.
+          </p>
+          <div class="access-actions">
+            <button class="btn-access" onclick="openTeamAccess()">Sign In To Portals</button>
+            <div class="access-links">
+              <a href="#" onclick="openTeamAccess(); return false;">Front Desk Portal</a>
+              <a href="#" onclick="openTeamAccess(); return false;">Stock Management</a>
+              <a href="#" onclick="openTeamAccess(); return false;">Leadership Dashboards</a>
+            </div>
           </div>
         </div>
       </div>
@@ -1380,5 +1419,24 @@
 
     <!-- Load main system script for product data if available -->
     <script src="./assets/js/sw-register.js" defer></script>
+    <script>
+      function openGuestPortal() {
+        window.location.href = 'distributor-guest.html';
+      }
+      function openTeamAccess() {
+        if (typeof openLoginModal === 'function') {
+          openLoginModal();
+        } else {
+          window.location.href = '/?login=1';
+        }
+      }
+      function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    </script>
   </body>
 </html>
