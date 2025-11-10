@@ -173,12 +173,12 @@
             const iframe = document.getElementById('invFrame');
             if (!iframe) return;
             
-            // Try to load stock-management-portal.html, with better error handling
-            iframe.src = './stock-management-portal.html';
+            // Load the main system with the stock tab preselected
+            iframe.src = './dynapharm-complete-system.html#stock';
             
             // Handle iframe load errors
             iframe.onerror = function() {
-                console.warn('stock-management-portal.html failed to load');
+                    console.warn('dynapharm-complete-system.html#stock failed to load');
                 showIframeFallback();
             };
             
@@ -190,7 +190,7 @@
                     if (!iframeDoc) {
                         // Iframe might be blocked by CORS, show fallback
                         setTimeout(() => {
-                            if (iframe.contentWindow?.location?.href === 'about:blank' || 
+                    if (iframe.contentWindow?.location?.href === 'about:blank' || 
                                 iframe.contentWindow?.location?.href?.includes('refused')) {
                                 showIframeFallback();
                             }
@@ -234,7 +234,7 @@
                         <p style="color: var(--muted); margin-bottom: 20px;">The stock management portal can be accessed directly from the main system.</p>
                         <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                             <a href="./dynapharm-complete-system.html#stock" class="btn primary" style="text-decoration: none; display: inline-block;">Open Stock Portal</a>
-                            <a href="./stock-management-portal.html" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open in New Tab ↗</a>
+                <a href="./dynapharm-complete-system.html#stock" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open in New Tab ↗</a>
                         </div>
                         <div style="margin-top: 30px; padding: 20px; background: #0b1020; border-radius: 8px; border: 1px solid #1e2a44;">
                             <h4 style="color: var(--text); margin-bottom: 10px;">Quick Inventory Summary</h4>
@@ -727,7 +727,7 @@
                     <option value="year">Last 12 months</option>
                 </select>
                 <input id="searchBox" class="input" placeholder="Search sales/invoices (id, client, branch)" />
-                <a class="btn" href="./stock-management-portal.html" target="_blank" rel="noopener">Open Full Stock Portal ↗</a>
+                <a class="btn" href="./dynapharm-complete-system.html#stock" target="_blank" rel="noopener">Open Full Stock Portal ↗</a>
             </div>
         </div>
     </header>

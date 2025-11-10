@@ -12528,6 +12528,207 @@
             }
         }
 
+        let lastBranchSyncTs = 0;
+        let lastProductSyncTs = 0;
+        let lastBarcodeSyncTs = 0;
+
+        function createSlugId(input, fallbackPrefix = 'item') {
+            if (!input) return `${fallbackPrefix}-${Date.now().toString(36)}`;
+            return String(input)
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                || `${fallbackPrefix}-${Date.now().toString(36)}`;
+        }
+
+        async function fetchJsonFromApi(endpoint, fallbackData = null) {
+            try {
+                const response = await fetch(endpoint, { credentials: 'include' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.warn(`Request failed for ${endpoint}:`, error);
+                return fallbackData;
+            }
+        }
+
+        async function syncBranchesFromBackend(force = false) {
+            try {
+                if (!force && Date.now() - lastBranchSyncTs < 60000) return;
+                lastBranchSyncTs = Date.now();
+                const apiEndpoint = `${API_BASE}/branches`;
+                const apiData = await fetchJsonFromApi(apiEndpoint, null);
+                const list = Array.isArray(apiData) ? apiData : (apiData && Array.isArray(apiData.branches) ? apiData.branches : []);
+                if (!list.length) return;
+                branches = list.map(item => {
+                    const name = item.name || item.branch || item.branch_name || item.title || 'Branch';
+                    const id = item.id || item.branch_id || createSlugId(name, 'branch');
+                    return {
+                        id,
+                        name,
+                        location: item.location || item.address || item.city || '',
+                        phone: item.phone || item.telephone || item.mobile || item.contact_number || ''
+                    };
+                });
+                try { localStorage.setItem('dyna_branches', JSON.stringify(branches)); } catch (_) {}
+                if (typeof loadBranches === 'function') loadBranches();
+                if (typeof loadBranchesForDistribution === 'function') loadBranchesForDistribution();
+                if (typeof populateInvoiceBranchFilter === 'function') populateInvoiceBranchFilter();
+                if (typeof refreshBranchDirectory === 'function') {
+                    try { refreshBranchDirectory(branches); } catch (_) {}
+                }
+            } catch (error) {
+                console.warn('Branch synchronisation failed:', error);
+            }
+        }
+
+        async function syncProductsFromBackend(force = false) {
+            try {
+                if (!force && Date.now() - lastProductSyncTs < 60000) return;
+                lastProductSyncTs = Date.now();
+                const apiEndpoint = `${API_BASE}/products`;
+                const apiData = await fetchJsonFromApi(apiEndpoint, null);
+                const list = Array.isArray(apiData) ? apiData : [];
+                if (!list.length) return;
+                const normalized = list.map(item => {
+                    const description = item.description || item.name || item.productName || item.title || 'Product';
+                    const id = item.id || item.sku || createSlugId(description, 'prod');
+                    return {
+                        id,
+                        sku: item.sku || null,
+                        name: item.name || description,
+                        description,
+                        category: item.category || null,
+                        unit: item.unit || 'units',
+                        dp: Number(item.dp ?? item.price ?? item.retailPrice ?? 0),
+                        cp: Number(item.cp ?? item.costPrice ?? item.purchasePrice ?? item.dp ?? 0),
+                        bv: Number(item.bv ?? item.businessVolume ?? 0),
+                        tax_rate: Number(item.tax_rate ?? item.taxRate ?? 0),
+                        is_active: item.is_active !== undefined ? item.is_active : true
+                    };
+                });
+                try { localStorage.setItem('dyna_products', JSON.stringify(normalized)); } catch (_) {}
+                window.PRICE_LIST = normalized.map(prod => ({
+                    description: prod.description || prod.name,
+                    dp: Number(prod.dp || 0),
+                    cp: Number(prod.cp || 0),
+                    bv: Number(prod.bv || 0)
+                }));
+                if (typeof loadShopProducts === 'function') {
+                    try { loadShopProducts(); } catch (_) {}
+                }
+                if (typeof refreshRetailCatalogue === 'function') {
+                    try { refreshRetailCatalogue(); } catch (_) {}
+                }
+            } catch (error) {
+                console.warn('Product synchronisation failed:', error);
+            }
+        }
+
+        function mapBatchToPortalStock(batch, overrides = {}) {
+            const description = batch.description || batch.product_name || batch.productName || 'Product';
+            const barcode = batch.barcode || overrides.barcode || '';
+            const remaining = Number(batch.remainingQuantity ?? batch.remaining_quantity ?? batch.quantity ?? 0) || 0;
+            const expiryRaw = batch.expiryDate || batch.expiry_date || batch.expiry || '';
+            const normalizedExpiry = typeof normalizeExpiryInput === 'function'
+                ? normalizeExpiryInput(expiryRaw || '')
+                : (expiryRaw ? String(expiryRaw).slice(0, 7) : '');
+            return {
+                id: batch.id || createSlugId(description, 'batch'),
+                productName: description,
+                productCode: barcode || batch.product_id || batch.productId || '',
+                category: overrides.category || 'Stock',
+                quantity: remaining,
+                unit: overrides.unit || batch.unit || 'units',
+                batchNumber: batch.batchNo || batch.batch_no || '',
+                expiryDate: normalizedExpiry || '',
+                supplier: batch.cartonNo || batch.carton_no || overrides.supplier || 'N/A',
+                cost: Number(overrides.cost || batch.unitCost || batch.cost || 0),
+                receivedDate: batch.importDate || batch.import_date || batch.created_at || new Date().toISOString(),
+                barcode,
+                notes: overrides.notes || ''
+            };
+        }
+
+        async function syncBarcodeStockFromBackend(force = false) {
+            try {
+                if (!force && Date.now() - lastBarcodeSyncTs < 20000) return;
+                lastBarcodeSyncTs = Date.now();
+                const apiEndpoint = `${API_BASE}/stock-batches`;
+                const apiData = await fetchJsonFromApi(apiEndpoint, null);
+                const list = Array.isArray(apiData) ? apiData : [];
+                if (!list.length) return;
+
+                const normalizedBatches = list.map(batch => {
+                    const expiryRaw = batch.expiryDate || batch.expiry_date || batch.expiry || '';
+                    const normalizedExpiry = typeof normalizeExpiryInput === 'function'
+                        ? normalizeExpiryInput(expiryRaw || '')
+                        : (expiryRaw ? String(expiryRaw).slice(0, 7) : '');
+                    const expiryTimestamp = normalizedExpiry ? new Date(`${normalizedExpiry}-01T00:00:00`).getTime() : null;
+                    const quantity = Number(batch.quantity ?? batch.totalQuantity ?? 0) || 0;
+                    const dispatched = Number(batch.dispatchedQuantity ?? batch.dispatched_quantity ?? 0) || 0;
+                    let remaining = Number(batch.remainingQuantity ?? batch.remaining_quantity ?? (quantity - dispatched)) || 0;
+                    if (remaining < 0) remaining = 0;
+                    const locationRaw = batch.location || batch.warehouse_id || batch.warehouseId || '';
+                    const location = String(locationRaw || 'country_stock').toLowerCase();
+                    return {
+                        id: batch.id || createSlugId(`${batch.description || 'batch'}-${Math.random()}`, 'batch'),
+                        barcode: batch.barcode || '',
+                        cartonNo: batch.cartonNo || batch.carton_no || '',
+                        description: batch.description || batch.product_name || batch.productName || 'Product',
+                        batchNo: batch.batchNo || batch.batch_no || '',
+                        expiryDate: normalizedExpiry || '',
+                        expiryTimestamp,
+                        quantity,
+                        totalCtns: Number(batch.totalCtns ?? batch.total_ctns ?? quantity) || quantity,
+                        importDate: batch.importDate || batch.import_date || batch.created_at || new Date().toISOString(),
+                        location,
+                        status: batch.status || 'available',
+                        dispatchedQuantity: dispatched,
+                        remainingQuantity: remaining,
+                        productId: batch.productId || batch.product_id || null,
+                        metadata: batch.metadata || null
+                    };
+                });
+
+                try { localStorage.setItem('dyna_barcode_stock', JSON.stringify(normalizedBatches)); } catch (_) {}
+
+                const countryBatches = normalizedBatches.filter(b => (b.location || '').includes('country'));
+                const windhoekBatches = normalizedBatches.filter(b => (b.location || '').includes('windhoek'));
+                const ondangwaBatches = normalizedBatches.filter(b => (b.location || '').includes('ondangwa'));
+
+                countryStock = countryBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Country Stock' }));
+                windhoekStock = windhoekBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Windhoek Warehouse' }));
+                ondangwaStock = ondangwaBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Ondangwa Warehouse' }));
+
+                try {
+                    localStorage.setItem('dyna_countryStock', JSON.stringify(countryStock));
+                    localStorage.setItem('dyna_windhoekStock', JSON.stringify(windhoekStock));
+                    localStorage.setItem('dyna_ondangwaStock', JSON.stringify(ondangwaStock));
+                } catch (_) {}
+
+                saveStockData();
+                displayCountryStock();
+                displayWindhoekStock();
+                displayOndangwaStock();
+                displayDistributionHistory();
+            } catch (error) {
+                console.warn('Barcode stock synchronisation failed:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            syncBranchesFromBackend().catch(err => console.debug('Branch sync (startup) error', err));
+            syncProductsFromBackend().catch(err => console.debug('Product sync (startup) error', err));
+            syncBarcodeStockFromBackend().catch(err => console.debug('Barcode stock sync (startup) error', err));
+        });
+
+        window.addEventListener('stock:updated', () => {
+            syncBarcodeStockFromBackend(true).catch(err => console.debug('Barcode stock sync (event) error', err));
+        });
+
         function getRecordCacheKey(record) {
             if (!record || typeof record !== 'object') return null;
             if (record.id) return String(record.id);
@@ -26136,8 +26337,14 @@ async function reverseLastPrescriptionPayment(reportId){
 
         // Cross-portal workflow shortcuts from Stock tab
         function openStockDashboard() {
-            // Open embedded stock dashboard portal in a new window for full-screen view
-            window.open('stock-management-portal.html', '_blank');
+            // Focus the integrated stock portal tab within this application
+            if (typeof openTab === 'function') {
+                openTab('stock');
+                try { recordDepartmentEvent('open_stock_dashboard', { branch: getBranchId() }); } catch (e) {}
+                return;
+            }
+            // Fallback: navigate to stock tab via hash
+            window.location.hash = '#stock';
             try { recordDepartmentEvent('open_stock_dashboard', { branch: getBranchId() }); } catch (e) {}
         }
         function openMISFromStock() {
@@ -38404,6 +38611,10 @@ function getWalkInCart() {
                 }
             }
             
+            if (successCount > 0) {
+                await syncBarcodeStockFromBackend(true);
+            }
+
             alert(`✅ Imported ${successCount} items successfully${failCount > 0 ? ' (Failed: ' + failCount + ')' : ''}`);
             
             // Broadcast stock update event for real-time sync
@@ -38479,10 +38690,14 @@ function getWalkInCart() {
             showStockTab('distribution');
         }
         
-        function loadBranchesForDistribution() {
+        async function loadBranchesForDistribution() {
             const branchSelect = document.getElementById('distributionBranch');
             if (!branchSelect) return;
             
+            if (!Array.isArray(branches) || branches.length === 0) {
+                await syncBranchesFromBackend(true);
+            }
+
             branchSelect.innerHTML = '<option value="">Select Branch</option>';
             branches.forEach(branch => {
                 branchSelect.innerHTML += `<option value="${branch.id}">${branch.name}</option>`;
