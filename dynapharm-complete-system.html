@@ -9813,8 +9813,11 @@
                 </div>
                 
                 <!-- Distributor Referral Field for Customers -->
-                <div id="customerReferralField" style="display: block; margin-bottom: 20px; padding: 15px; background: #fff3cd; border: 2px solid #f39c12; border-radius: 5px;">                                                                
+                <div id="customerReferralField" style="display: block; margin-bottom: 20px; padding: 15px; background: #fff3cd; border: 2px solid #f39c12; border-radius: 5px;">
                     <h4 style="margin-bottom: 10px; color: #856404;">⚠️ Required: Referred Distributor</h4>
+                    <div id="walkInDistributorInsights" style="margin-bottom: 12px; padding: 10px 12px; background: #fff; border-radius: 6px; border: 1px dashed rgba(133,100,4,0.35); color: #5f370e; font-size: 0.85rem;">
+                        Loading distributor directory...
+                    </div>
                     
                     <!-- Checkbox for "I have no referral" -->
                     <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ddd;">
@@ -9847,6 +9850,9 @@
                 
                 <div style="border: 2px solid #3498db; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
                     <h4 style="margin-bottom: 15px;">📦 Select Products</h4>
+                    <div id="walkInPriceListInsights" style="margin: 0 0 12px 0; padding: 10px 12px; background: #e8f4fd; border-radius: 6px; border: 1px solid rgba(52,152,219,0.35); color: #1d4ed8; font-size: 0.85rem;">
+                        Preparing product catalogue...
+                    </div>
                     <div id="walkInProductsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;">
                         <p style="text-align: center; color: #7f8c8d;">Loading products...</p>
                     </div>
@@ -9878,6 +9884,9 @@
                                 <strong style="font-size: 1.1rem;">Grand Total:</strong>
                                 <span id="walkInGrandTotal" style="font-size: 1.3rem; color: #c41e3a; font-weight: bold;">N$ 0.00</span>
                             </div>
+                        </div>
+                        <div id="walkInDualPricingNotice" style="margin-top: 10px; font-size: 0.82rem; color: #475569;">
+                            Dual pricing summary will appear here.
                         </div>
                     </div>
                 </div>
@@ -10824,6 +10833,10 @@
         let clientRegModalOriginalParent = null;
         let clientRegModalPlaceholder = null;
         let clientRegModalLandingActive = false;
+        // Walk-in sale modal placement helpers
+        let walkInSaleModalOriginalParent = null;
+        let walkInSaleModalPlaceholder = null;
+        let walkInSaleModalDetached = false;
 
         function setGlobalDistributor(info) {
             try {
@@ -29436,6 +29449,8 @@ async function reverseLastPrescriptionPayment(reportId){
             modal.style.display = 'none';
             if (modalId === 'clientRegModal' && !isLandingModeActive()) {
                 restoreClientRegModal(modal);
+            } else if (modalId === 'walkInSaleModal' && walkInSaleModalDetached) {
+                restoreWalkInSaleModal(modal);
             }
         }
         
@@ -29443,6 +29458,8 @@ async function reverseLastPrescriptionPayment(reportId){
             if (event.target.classList && event.target.classList.contains('modal')) {
                 if (event.target.id === 'clientRegModal') {
                     closeModal('clientRegModal');
+                } else if (event.target.id === 'walkInSaleModal') {
+                    closeModal('walkInSaleModal');
                 } else {
                     event.target.style.display = 'none';
                 }
@@ -29754,6 +29771,43 @@ async function reverseLastPrescriptionPayment(reportId){
             clientRegModalPlaceholder = null;
         }
 
+        function ensureWalkInSaleModalOnBody(modal) {
+            if (!modal) return modal;
+            const parent = modal.parentNode;
+            if (!walkInSaleModalOriginalParent && parent && parent !== document.body) {
+                walkInSaleModalOriginalParent = parent;
+            }
+            if (!walkInSaleModalPlaceholder && walkInSaleModalOriginalParent) {
+                walkInSaleModalPlaceholder = document.createElement('div');
+                walkInSaleModalPlaceholder.id = 'walkInSaleModalPlaceholder';
+                walkInSaleModalPlaceholder.style.display = 'none';
+            }
+            if (modal.parentNode !== document.body) {
+                if (walkInSaleModalPlaceholder && walkInSaleModalOriginalParent) {
+                    walkInSaleModalOriginalParent.insertBefore(walkInSaleModalPlaceholder, modal);
+                }
+                document.body.appendChild(modal);
+                walkInSaleModalDetached = true;
+            }
+            modal.classList.add('walkin-modal-active');
+            return modal;
+        }
+
+        function restoreWalkInSaleModal(modal) {
+            if (!modal) return;
+            if (modal.parentNode === document.body && walkInSaleModalOriginalParent) {
+                if (walkInSaleModalPlaceholder && walkInSaleModalPlaceholder.parentNode === walkInSaleModalOriginalParent) {
+                    walkInSaleModalOriginalParent.insertBefore(modal, walkInSaleModalPlaceholder);
+                    walkInSaleModalPlaceholder.parentNode.removeChild(walkInSaleModalPlaceholder);
+                } else {
+                    walkInSaleModalOriginalParent.appendChild(modal);
+                }
+            }
+            modal.classList.remove('walkin-modal-active');
+            walkInSaleModalDetached = false;
+            walkInSaleModalPlaceholder = null;
+        }
+
         function openClientReg(type) {
             try {
                 var visitTypeEl = document.getElementById('visitType');
@@ -30053,6 +30107,16 @@ async function reverseLastPrescriptionPayment(reportId){
                 persistDistributorsToLocalStorage(distributors);
             }
 
+        distributorsLoaded = distributors.length > 0;
+        if (distributorsLoaded) {
+            try {
+                if (source === 'api' || !localStorage.getItem('dyna_distributors_last_sync')) {
+                    localStorage.setItem('dyna_distributors_last_sync', new Date().toISOString());
+                }
+            } catch (_) {}
+        }
+        updateWalkInDistributorInsights();
+
             return distributors;
         }
         
@@ -30268,47 +30332,77 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
-        function showWalkInSaleModal(customerType) {
+        async function showWalkInSaleModal(customerType) {
+            const modal = document.getElementById('walkInSaleModal');
             const form = document.getElementById('walkInSaleForm');
             const customerTypeSelect = document.getElementById('walkInCustomerType');
             const referralDropdown = document.getElementById('distributorReferralDropdown');
             const customerDropdown = document.getElementById('customerNameDropdown');
-            const modal = document.getElementById('walkInSaleModal');
             const titleEl = document.getElementById('walkInSaleTitle');
-            
-            if (!form || !customerTypeSelect || !modal) {
+
+            if (!modal || !form || !customerTypeSelect) {
                 console.error('Walk-in sale modal markup missing. Unable to open modal.');
+                alert('Walk-in sale module is currently unavailable. Please refresh and try again.');
                 return;
             }
-            
+
+            ensureWalkInSaleModalOnBody(modal);
+
+            try {
+                await ensurePriceListHydrated();
+            } catch (err) {
+                console.warn('Unable to fully hydrate price list before opening walk-in sale modal:', err);
+            }
+            try {
+                if (typeof loadDistributors === 'function') {
+                    await loadDistributors();
+                }
+            } catch (err) {
+                console.warn('Unable to load distributor directory before opening walk-in sale modal:', err);
+            }
+            updateWalkInDistributorInsights();
+
             if (typeof form.reset === 'function') form.reset();
             if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
                 window.walkInCartStore.clear();
             } else {
                 const cart = getWalkInCart();
                 cart.length = 0;
+                if (window.walkInCartStore && typeof window.walkInCartStore.replace === 'function') {
+                    window.walkInCartStore.replace(cart);
+                }
             }
             customerTypeSelect.value = customerType || 'customer';
-            
-            // Clear distributor search fields and checkbox
+
             clearSelectedReferral();
             if (referralDropdown) referralDropdown.style.display = 'none';
             if (customerDropdown) customerDropdown.style.display = 'none';
-            
-            // Reset payment method to cash (default)
+
             selectWalkInPaymentMethod('cash');
-            
+
             if (titleEl) titleEl.textContent = '👤 Walk-in Sale';
-            
-            // Load and display all products with correct pricing
-            loadAllProductsForSale();
-            
-            // Clear cart display
-            updateWalkInCart();
-            
-            // Show modal
+
+            try {
+                await loadAllProductsForSale();
+            } catch (err) {
+                console.error('Error loading products for walk-in sale:', err);
+                const listEl = document.getElementById('walkInProductsList');
+                if (listEl) {
+                    listEl.innerHTML = '<p style="text-align: center; color: #c00; padding: 20px;">Unable to load product catalogue. Please refresh the page.</p>';
+                }
+            }
+
+            try {
+                updateWalkInCart();
+            } catch (err) {
+                console.error('Error refreshing walk-in cart display:', err);
+            }
+            updateWalkInPriceListInsights();
+
             modal.style.display = 'block';
+            modal.setAttribute('aria-hidden', 'false');
         }
+        window.showWalkInSaleModal = showWalkInSaleModal;
         
         function selectWalkInPaymentMethod(method) {
             // Update hidden input
@@ -30747,12 +30841,18 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             // Update product pricing based on customer type
-            loadAllProductsForSale();
+            loadAllProductsForSale().catch(err => console.error('onCustomerTypeChange: failed to refresh catalogue', err));
         }
 
-        function loadAllProductsForSale() {
+        async function loadAllProductsForSale() {
+            try {
+                await ensurePriceListHydrated();
+            } catch (err) {
+                console.warn('loadAllProductsForSale: unable to hydrate price list before rendering products', err);
+            }
             const customerType = document.getElementById('walkInCustomerType').value;
             displayAllProducts(customerType);
+            updateWalkInPriceListInsights();
         }
 
         function displayAllProducts(customerType) {
@@ -30792,9 +30892,13 @@ async function reverseLastPrescriptionPayment(reportId){
             
             productsList.innerHTML = filteredProducts.map(product => {
                 // Show appropriate pricing based on customer type
-                const displayPrice = customerType === 'distributor' ? product.dp : product.cp;
-                const priceLabel = customerType === 'distributor' ? 'DP' : 'CP';
-                
+                const customerPrice = Number(product.cp || product.price || 0);
+                const distributorPrice = Number(product.dp || customerPrice);
+                const priceLabel = customerType === 'distributor' ? 'Distributor' : 'Customer';
+                const highlightCustomer = customerType !== 'distributor';
+                const highlightDistributor = customerType === 'distributor';
+                const bvValue = product.bv || 0;
+
                 // Get product images
                 let productPhotos = getProductImage ? getProductImage(product.description, photoMap) : [];
                 if (!productPhotos || productPhotos.length === 0) {
@@ -30834,12 +30938,19 @@ async function reverseLastPrescriptionPayment(reportId){
                         </div>
                         `}
                         <h4 style="color: #2c3e50; margin-bottom: 5px; font-size: 1rem; min-height: 40px;">${displayName}</h4>
-                        <p style="color: #c41e3a; font-size: 1.3rem; font-weight: bold; margin: 10px 0;">
-                            N$${displayPrice.toFixed(2)} <span style="font-size: 0.8rem; color: #666;">(${priceLabel})</span>
-                        </p>
-                        ${product.bv ? `<p style="color: #666; font-size: 0.9rem;">BV: ${product.bv}</p>` : ''}
-                        <button class="btn btn-success" onclick="addToWalkInCart('${product.description.replace(/'/g, "\\'")}', ${product.cp}, ${product.dp}, ${product.bv || 0})" style="width: 100%; margin-top: 10px; background: #c41e3a; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                            ➕ Add to Cart
+                        <div style="display: flex; gap: 10px; margin: 12px 0;">
+                            <div style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid ${highlightCustomer ? '#c41e3a' : '#e2e8f0'}; background: ${highlightCustomer ? 'rgba(196,30,58,0.12)' : '#f8fafc'};">
+                                <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: ${highlightCustomer ? '#b91c1c' : '#64748b'};">Customer</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: ${highlightCustomer ? '#b91c1c' : '#1f2937'};">N$ ${customerPrice.toFixed(2)}</div>
+                            </div>
+                            <div style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid ${highlightDistributor ? '#2563eb' : '#e2e8f0'}; background: ${highlightDistributor ? 'rgba(37,99,235,0.12)' : '#f8fafc'};">
+                                <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: ${highlightDistributor ? '#1d4ed8' : '#64748b'};">Distributor</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: ${highlightDistributor ? '#1d4ed8' : '#1f2937'};">N$ ${distributorPrice.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        <p style="color: #475569; font-size: 0.85rem; margin: 0 0 8px 0;">BV: ${Number(bvValue).toFixed(0)}</p>
+                        <button class="btn btn-success" onclick="addToWalkInCart('${product.description.replace(/'/g, "\\'")}', ${customerPrice}, ${distributorPrice}, ${bvValue})" style="width: 100%; margin-top: 10px; background: #c41e3a; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                            ➕ Add (${priceLabel} price)
                         </button>
                     </div>
                 `;
@@ -30849,6 +30960,68 @@ async function reverseLastPrescriptionPayment(reportId){
             if (typeof initializeProductCarousels === 'function') {
                 setTimeout(() => initializeProductCarousels(), 100);
             }
+        }
+
+        function formatDateTimeLabel(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                if (isNaN(date.getTime())) return 'N/A';
+                return date.toLocaleString('en-GB', { hour12: false });
+            } catch (_) {
+                return 'N/A';
+            }
+        }
+
+        function updateWalkInPriceListInsights() {
+            const insightsEl = document.getElementById('walkInPriceListInsights');
+            if (!insightsEl) return;
+
+            const priceList = getPriceListData();
+            if (!priceList || priceList.length === 0) {
+                insightsEl.innerHTML = '⚠️ Product catalogue unavailable. Please refresh or try again.';
+                insightsEl.style.color = '#b91c1c';
+                return;
+            }
+
+            const customerPrices = priceList.map(p => Number(p.cp || p.price || 0)).filter(n => Number.isFinite(n) && n > 0);
+            const distributorPrices = priceList.map(p => Number(p.dp || p.cp || p.price || 0)).filter(n => Number.isFinite(n) && n > 0);
+            const bvValues = priceList.map(p => Number(p.bv || 0)).filter(n => Number.isFinite(n) && n >= 0);
+            const cpMin = customerPrices.length ? Math.min(...customerPrices) : 0;
+            const cpMax = customerPrices.length ? Math.max(...customerPrices) : 0;
+            const dpMin = distributorPrices.length ? Math.min(...distributorPrices) : 0;
+            const dpMax = distributorPrices.length ? Math.max(...distributorPrices) : 0;
+            const avgBv = bvValues.length ? (bvValues.reduce((sum, val) => sum + val, 0) / bvValues.length) : 0;
+            const lastSync = formatDateTimeLabel(localStorage.getItem('dyna_price_list_last_sync'));
+
+            insightsEl.style.color = '#1d4ed8';
+            insightsEl.innerHTML = `
+                📦 <strong>${priceList.length}</strong> products ready •
+                Customer range: N$ ${cpMin.toFixed(2)} – N$ ${cpMax.toFixed(2)} •
+                Distributor range: N$ ${dpMin.toFixed(2)} – N$ ${dpMax.toFixed(2)} •
+                Avg BV: ${avgBv.toFixed(0)} •
+                Last sync: ${lastSync}
+            `;
+        }
+
+        function updateWalkInDistributorInsights() {
+            const insightsEl = document.getElementById('walkInDistributorInsights');
+            if (!insightsEl) return;
+
+            if (!Array.isArray(distributors) || distributors.length === 0) {
+                insightsEl.innerHTML = 'ℹ️ Distributor directory is loading. Start typing above to fetch the latest list.';
+                insightsEl.style.color = '#5f370e';
+                return;
+            }
+
+            const withMobile = distributors.filter(d => d.mobileNo || d.mobile).length;
+            const lastSync = formatDateTimeLabel(localStorage.getItem('dyna_distributors_last_sync'));
+            insightsEl.style.color = '#5f370e';
+            insightsEl.innerHTML = `
+                📇 <strong>${distributors.length}</strong> distributors available •
+                ${withMobile} with contact numbers •
+                Last sync: ${lastSync}
+            `;
         }
 
         function searchProductsForWalkIn() {
@@ -31021,6 +31194,9 @@ async function reverseLastPrescriptionPayment(reportId){
                         <div style="font-size: 0.9rem; color: #666;">
                             ${priceLabel}: N$ ${pricePerUnit.toFixed(2)}
                         </div>
+                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
+                            Customer N$ ${Number(item.cp || pricePerUnit).toFixed(2)} • Distributor N$ ${Number(item.dp || item.cp || pricePerUnit).toFixed(2)}
+                        </div>
                         <div style="font-size: 0.85rem; color: #c41e3a; margin-top: 3px;">
                             BV: ${(item.bv * item.quantity).toFixed(0)}
                         </div>
@@ -31055,6 +31231,8 @@ async function reverseLastPrescriptionPayment(reportId){
                 const pricePerUnit = customerType === 'distributor' ? item.dp : item.cp;
                 return sum + (pricePerUnit * item.quantity);
             }, 0);
+            const customerSubtotal = cart.reduce((sum, item) => sum + ((item.cp || item.price || 0) * item.quantity), 0);
+            const distributorSubtotal = cart.reduce((sum, item) => sum + ((item.dp || item.cp || item.price || 0) * item.quantity), 0);
             
             const totalBV = cart.reduce((sum, item) => {
                 return sum + (item.bv * item.quantity);
@@ -31067,6 +31245,24 @@ async function reverseLastPrescriptionPayment(reportId){
             document.getElementById('walkInDiscountAmount').textContent = `BV: ${totalBV.toFixed(0)}`;
             document.getElementById('walkInTaxAmount').textContent = `N$ 0.00`;
             document.getElementById('walkInGrandTotal').textContent = `N$ ${grandTotal.toFixed(2)}`;
+
+            const dualNotice = document.getElementById('walkInDualPricingNotice');
+            if (dualNotice) {
+                const lastSync = localStorage.getItem('dyna_price_list_last_sync');
+                let syncLabel = '';
+                if (lastSync) {
+                    const d = new Date(lastSync);
+                    if (!isNaN(d.getTime())) {
+                        syncLabel = ` • Price list synced ${d.toLocaleString()}`;
+                    }
+                }
+                dualNotice.textContent = `Customer total: N$ ${customerSubtotal.toFixed(2)} • Distributor total: N$ ${distributorSubtotal.toFixed(2)}${syncLabel}`;
+                if (customerType === 'distributor') {
+                    dualNotice.style.color = '#1d4ed8';
+                } else {
+                    dualNotice.style.color = '#475569';
+                }
+            }
         }
 
         function updateWalkInCartQuantity(index, delta, newValue) {
@@ -46583,8 +46779,8 @@ This sale appears in the Dispenser Portal sales reports.
     </style>
     <script>
         // Ensure PRICE_LIST exists even if the inline declaration fails in production builds
-        (async function ensurePriceListHydrated() {
-            if (Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0) return;
+        async function ensurePriceListHydrated(force = false) {
+            if (!force && Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0) return;
 
             // Try cached copy first
             try {
@@ -46593,6 +46789,9 @@ This sale appears in the Dispenser Portal sales reports.
                     const parsed = JSON.parse(cached);
                     if (Array.isArray(parsed) && parsed.length > 0) {
                         window.PRICE_LIST = parsed;
+                        if (!localStorage.getItem('dyna_price_list_last_sync')) {
+                            localStorage.setItem('dyna_price_list_last_sync', new Date().toISOString());
+                        }
                         console.info(`Hydrated PRICE_LIST from localStorage (${parsed.length} products)`);
                         return;
                     }
@@ -46609,6 +46808,7 @@ This sale appears in the Dispenser Portal sales reports.
                 if (Array.isArray(list) && list.length > 0) {
                     window.PRICE_LIST = list;
                     try { localStorage.setItem('dyna_price_list', JSON.stringify(list)); } catch (_) {}
+                    try { localStorage.setItem('dyna_price_list_last_sync', new Date().toISOString()); } catch (_) {}
                     console.info(`Hydrated PRICE_LIST from price-list.json (${list.length} products)`);
                 } else {
                     console.warn('price-list.json did not yield a product array');
@@ -46616,7 +46816,11 @@ This sale appears in the Dispenser Portal sales reports.
             } catch (err) {
                 console.error('Failed to hydrate PRICE_LIST fallback', err);
             }
-        })();
+        }
+        window.ensurePriceListHydrated = ensurePriceListHydrated;
+        ensurePriceListHydrated()
+            .then(() => updateWalkInPriceListInsights())
+            .catch(err => console.error('Initial PRICE_LIST hydration failed', err));
     </script>
 </body>
 <script>
