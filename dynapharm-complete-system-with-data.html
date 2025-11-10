@@ -1959,6 +1959,8 @@
         let currentBranch = '';
         let uploadedPDF = null;
         let autoRefreshInterval = null;
+
+        let PACKAGE_DATABASE = window.PACKAGE_DATABASE || {};
         
         // Cash management
         let cashDrawer = {
@@ -5412,7 +5414,7 @@
         }
 
         // DYNAPHARM NAMIBIA SPECIAL PACKAGE 2025 - Official Package Database
-        const PACKAGE_DATABASE = {
+        PACKAGE_DATABASE = window.PACKAGE_DATABASE = {
             'Gastric Package': {
                 price: { dp: 2054, cp: 2432, bv: 381 },
                 products: [

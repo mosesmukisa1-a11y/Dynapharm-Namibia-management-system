@@ -2089,6 +2089,23 @@
         
         function populateLandingBranchSelect() {
             const branchSelect = document.getElementById('landingCheckupBranchSelect');
+            const bindSelectHandler = (select) => {
+                if (!select) return;
+                select.onchange = function(e) {
+                    const value = e.target.value || '';
+                    if (value) {
+                        currentBranch = value;
+                    }
+                    const checkSelect = document.getElementById('checkupBranchSelect');
+                    if (checkSelect && checkSelect.value !== value) {
+                        checkSelect.value = value;
+                    }
+                    const preferredSelect = document.getElementById('preferredBranchSelect');
+                    if (preferredSelect && preferredSelect.value !== value) {
+                        preferredSelect.value = value;
+                    }
+                };
+            };
             if (branchSelect && branches && branches.length > 0) {
                 branchSelect.innerHTML = '<option value="">Select Branch</option>';
                 branches.forEach(branch => {
@@ -2097,6 +2114,10 @@
                     option.textContent = branch.name || branch.id;
                     branchSelect.appendChild(option);
                 });
+                if (currentBranch && !branchSelect.value) {
+                    branchSelect.value = currentBranch;
+                }
+                bindSelectHandler(branchSelect);
             } else if (branchSelect) {
                 // Load branches if not already loaded
                 loadData().then(() => {
@@ -2108,6 +2129,10 @@
                             option.textContent = branch.name || branch.id;
                             branchSelect.appendChild(option);
                         });
+                        if (currentBranch && !branchSelect.value) {
+                            branchSelect.value = currentBranch;
+                        }
+                        bindSelectHandler(branchSelect);
                     }
                 });
             }
@@ -2160,6 +2185,12 @@
             
             if (landingPage) landingPage.style.display = 'none';
             if (container) container.style.display = 'block';
+            if (clientRegModalLandingActive) {
+                const modal = document.getElementById('clientRegModal');
+                if (modal) {
+                    restoreClientRegModal(modal);
+                }
+            }
         }
         
         // Legacy function names for compatibility
@@ -10789,6 +10820,10 @@
         
         // Global Distributor selection (name + NB number) shared across portals
         let globalDistributor = null;
+        // Client registration modal placement helpers for landing page workflow
+        let clientRegModalOriginalParent = null;
+        let clientRegModalPlaceholder = null;
+        let clientRegModalLandingActive = false;
 
         function setGlobalDistributor(info) {
             try {
@@ -16310,6 +16345,11 @@
                     if (refEl) {
                         refEl.textContent = 'Reference Number: ' + referenceNumber;
                         refEl.style.display = 'block';
+                    }
+                    const landingRef = document.getElementById('landingClientRefNumber');
+                    if (landingRef) {
+                        landingRef.textContent = 'Reference Number: ' + referenceNumber;
+                        landingRef.style.display = 'block';
                     }
             
                     alert(`✅ Client saved successfully!\n\nReference: ${referenceNumber}\n${client.referralName ? `Referred by: ${client.referralName}\n\n` : ''}Save this reference number for future visits.`);
@@ -25564,36 +25604,104 @@ async function reverseLastPrescriptionPayment(reportId){
             document.body.appendChild(modal);
         }
 
-        function submitCashRequest(e) {
+        async function submitCashRequest(e) {
             e.preventDefault();
+            const amountField = document.getElementById('cashAmount');
+            const purposeField = document.getElementById('cashPurpose');
+            const urgentField = document.getElementById('cashUrgent');
+
+            const amount = Number(amountField?.value || 0);
+            const purpose = (purposeField?.value || '').trim();
+            const urgent = Boolean(urgentField?.checked);
+
+            if (!Number.isFinite(amount) || amount <= 0 || !purpose) {
+                alert('Please provide a valid amount and purpose for the cash request.');
+                return;
+            }
+
+            const payload = {
+                amount,
+                purpose,
+                urgent,
+                branch: currentBranch || undefined,
+                employeeId: currentUser?.username || undefined,
+                employee: currentUser?.fullName || undefined
+            };
+
+            let result = null;
             try {
-                const amount = parseFloat(document.getElementById('cashAmount').value);
-                const purpose = document.getElementById('cashPurpose').value;
-                const urgent = document.getElementById('cashUrgent').checked;
-                const request = {
-                    id: 'CASH' + Date.now(),
-                    employee: currentUser?.fullName || 'Unknown',
-                    employeeId: currentUser?.username || '',
-                    branch: currentBranch || '',
-                    amount,
-                    purpose,
-                    urgent,
-                    status: 'pending',
-                    createdAt: new Date().toISOString()
-                };
-                const storeKey = 'finance_cash_requests';
-                const existing = JSON.parse(localStorage.getItem(storeKey) || '[]');
-                existing.push(request);
-                localStorage.setItem(storeKey, JSON.stringify(existing));
-                recordDepartmentEvent && recordDepartmentEvent('cash_requested', request);
-                alert('Cash request submitted successfully! It will be reviewed by Finance.');
-                closeModal('cashRequestModal');
-                displayFinanceCashRequests && displayFinanceCashRequests();
-                const context = activeStaffContext || 'branch';
-                refreshStaffServices(context);
-            } catch (err) {
-                console.warn('submitCashRequest error', err);
-                alert('Error submitting cash request.');
+                result = await apiRequest(CASH_API_ENDPOINT, 'POST', payload);
+            } catch (error) {
+                console.warn('submitCashRequest error', error);
+            }
+
+            let normalized = null;
+            if (result && result.offline && result.data) {
+                normalized = normalizeCashRecord(result.data, {
+                    defaultEmployeeId: currentUser?.username || null,
+                    defaultEmployeeName: currentUser?.fullName || null,
+                    defaultBranch: currentBranch || null,
+                    pendingSync: true,
+                    source: 'offline'
+                });
+            } else if (result) {
+                const candidate =
+                    result.cashRequest ||
+                    result.request ||
+                    result.data ||
+                    result.record ||
+                    result.result ||
+                    (result.success && result.payload) ||
+                    (result.success === true && result);
+                if (candidate) {
+                    normalized = normalizeCashRecord(candidate, {
+                        defaultEmployeeId: currentUser?.username || null,
+                        defaultEmployeeName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        source: 'api'
+                    });
+                }
+            }
+
+            if (!normalized) {
+                normalized = normalizeCashRecord(payload, {
+                    defaultEmployeeId: currentUser?.username || null,
+                    defaultEmployeeName: currentUser?.fullName || null,
+                    defaultBranch: currentBranch || null,
+                    pendingSync: true,
+                    source: 'offline'
+                });
+                enqueuePendingRequest(CASH_PENDING_QUEUE_KEY, {
+                    id: normalized.id,
+                    payload: Object.assign({}, payload),
+                    createdAt: normalized.createdAt,
+                    employeeId: normalized.employeeId,
+                    branch: normalized.branch
+                });
+            } else if (!normalized.pendingSync) {
+                removePendingRequest(CASH_PENDING_QUEUE_KEY, normalized.id);
+            }
+
+            upsertCashCacheRecord(normalized);
+            if (typeof recordDepartmentEvent === 'function') {
+                try {
+                    recordDepartmentEvent('cash_requested', normalized);
+                } catch (_) {}
+            }
+
+            closeModal('cashRequestModal');
+            alert(
+                normalized.pendingSync
+                    ? 'Cash request saved offline. It will sync automatically when the connection returns.'
+                    : 'Cash request submitted successfully!'
+            );
+            displayFinanceCashRequests && displayFinanceCashRequests();
+            const context = activeStaffContext || 'branch';
+            refreshStaffServices(context);
+            if (!normalized.pendingSync) {
+                try {
+                    await viewMyCashRequests(context);
+                } catch (_) {}
             }
         }
 
@@ -29323,12 +29431,21 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            modal.style.display = 'none';
+            if (modalId === 'clientRegModal' && !isLandingModeActive()) {
+                restoreClientRegModal(modal);
+            }
         }
-
+        
         window.onclick = function(event) {
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
+            if (event.target.classList && event.target.classList.contains('modal')) {
+                if (event.target.id === 'clientRegModal') {
+                    closeModal('clientRegModal');
+                } else {
+                    event.target.style.display = 'none';
+                }
             }
         }
 
@@ -29592,6 +29709,51 @@ async function reverseLastPrescriptionPayment(reportId){
             return slots;
         }
 
+        function isLandingModeActive() {
+            const landingPage = document.getElementById('landingPage');
+            if (!landingPage) return false;
+            try {
+                return window.getComputedStyle(landingPage).display !== 'none';
+            } catch (_) {
+                return landingPage.style.display !== 'none';
+            }
+        }
+
+        function moveClientRegModalToBody(modal) {
+            if (!modal) return;
+            if (!clientRegModalOriginalParent && modal.parentNode) {
+                clientRegModalOriginalParent = modal.parentNode;
+            }
+            if (!clientRegModalPlaceholder) {
+                clientRegModalPlaceholder = document.createElement('div');
+                clientRegModalPlaceholder.id = 'clientRegModalPlaceholder';
+                clientRegModalPlaceholder.style.display = 'none';
+            }
+            if (modal.parentNode && modal.parentNode !== document.body) {
+                modal.parentNode.insertBefore(clientRegModalPlaceholder, modal);
+            }
+            if (modal.parentNode !== document.body) {
+                document.body.appendChild(modal);
+            }
+            modal.classList.add('landing-modal-active');
+            clientRegModalLandingActive = true;
+        }
+
+        function restoreClientRegModal(modal) {
+            if (!modal) return;
+            if (modal.parentNode === document.body && clientRegModalOriginalParent) {
+                if (clientRegModalPlaceholder && clientRegModalPlaceholder.parentNode === clientRegModalOriginalParent) {
+                    clientRegModalOriginalParent.insertBefore(modal, clientRegModalPlaceholder);
+                    clientRegModalPlaceholder.parentNode.removeChild(clientRegModalPlaceholder);
+                } else {
+                    clientRegModalOriginalParent.appendChild(modal);
+                }
+            }
+            modal.classList.remove('landing-modal-active');
+            clientRegModalLandingActive = false;
+            clientRegModalPlaceholder = null;
+        }
+
         function openClientReg(type) {
             try {
                 var visitTypeEl = document.getElementById('visitType');
@@ -29599,11 +29761,54 @@ async function reverseLastPrescriptionPayment(reportId){
             } catch(_){ }
             var modal = document.getElementById('clientRegModal');
             if (modal) {
+                if (!clientRegModalOriginalParent && modal.parentNode) {
+                    clientRegModalOriginalParent = modal.parentNode;
+                }
+                const container = modal.closest('.container');
+                let containerHidden = false;
+                if (container) {
+                    try {
+                        containerHidden = window.getComputedStyle(container).display === 'none';
+                    } catch (_) {
+                        containerHidden = container.style.display === 'none';
+                    }
+                }
+                if (isLandingModeActive() || containerHidden) {
+                    moveClientRegModalToBody(modal);
+                } else if (clientRegModalLandingActive && modal.parentNode === document.body) {
+                    restoreClientRegModal(modal);
+                }
+
                 if (type === 'appointment') {
                     modal.classList.add('mode-appointment');
                 } else {
                     modal.classList.remove('mode-appointment');
                 }
+
+                var landingBranchSelect = document.getElementById('landingCheckupBranchSelect');
+                var branchValue = '';
+                if (landingBranchSelect && landingBranchSelect.value) {
+                    branchValue = landingBranchSelect.value;
+                } else if (currentBranch) {
+                    branchValue = currentBranch;
+                }
+                if (branchValue) {
+                    currentBranch = branchValue;
+                    var checkupSelect = document.getElementById('checkupBranchSelect');
+                    if (checkupSelect && checkupSelect.value !== branchValue) {
+                        checkupSelect.value = branchValue;
+                    }
+                    var preferredSelect = document.getElementById('preferredBranchSelect');
+                    if (preferredSelect && preferredSelect.value !== branchValue) {
+                        preferredSelect.value = branchValue;
+                    }
+                }
+                var landingRef = document.getElementById('landingClientRefNumber');
+                if (landingRef) {
+                    landingRef.style.display = 'none';
+                    landingRef.textContent = '';
+                }
+
                 modal.style.display = 'block';
             }
             initializeAppointmentPreferences();
