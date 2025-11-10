@@ -2,11 +2,11 @@
   "name": "dynapharm-cloud",
   "version": "2.0.0",
   "description": "Dynapharm International Namibia - Cloud Health Management System",
-  "main": "dynapharm_backend.py",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "python3 dynapharm_backend.py",
-    "dev": "python3 dynapharm_backend.py",
+    "start": "node server.js",
+    "dev": "node server.js",
     "test": "curl http://localhost:8001/api/health",
     "auto-commit": "node tools/auto-commit.js",
     "guard": "node tools/guard-inline-events.js",
@@ -44,7 +44,8 @@
     "pg": "^8.16.3",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "cookie": "^0.6.0"
+    "cookie": "^0.6.0",
+    "express": "^4.19.2"
   },
   "devDependencies": {
     "chokidar": "^3.6.0",

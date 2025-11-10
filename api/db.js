@@ -2,14 +2,44 @@ import { Pool } from 'pg';
 
 let pool = null;
 
+function resolveSslConfig() {
+  const envOverride = process.env.DATABASE_SSL;
+  if (envOverride) {
+    const flag = envOverride.toLowerCase();
+    if (['0', 'false', 'disabled', 'off'].includes(flag)) {
+      return false;
+    }
+    return { rejectUnauthorized: false };
+  }
+
+  if (!process.env.DATABASE_URL) {
+    return false;
+  }
+
+  try {
+    const normalizedUrl = process.env.DATABASE_URL.replace(/^postgres(ql)?:/, 'postgresql:');
+    const url = new URL(normalizedUrl);
+    const hostname = (url.hostname || '').toLowerCase();
+    if (hostname && !['localhost', '127.0.0.1'].includes(hostname)) {
+      return { rejectUnauthorized: false };
+    }
+  } catch (error) {
+    console.warn('DATABASE_URL parse failed, defaulting SSL off:', error.message);
+  }
+
+  return false;
+}
+
 function getPool() {
   if (!pool) {
+    const sslConfig = resolveSslConfig();
+    const connectionTimeout = Number(process.env.DB_CONNECTION_TIMEOUT || 10000);
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 2,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      ssl: sslConfig,
+      max: Number(process.env.DB_POOL_MAX || 5),
+      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT || 30000),
+      connectionTimeoutMillis: Number.isFinite(connectionTimeout) ? connectionTimeout : 10000,
     });
     pool.on('error', (err) => {
       console.error('Unexpected error on idle client', err);

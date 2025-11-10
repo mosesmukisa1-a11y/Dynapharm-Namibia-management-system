@@ -535,6 +535,9 @@
         let productLabelItems = [];
         const currentUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : null;
         const currentRole = (currentUser && currentUser.role) ? currentUser.role.toLowerCase() : '';
+        const reviewModal = document.getElementById('reviewModal');
+        const productLabelsModal = document.getElementById('productLabelsModal');
+        const productLabelsGrid = document.getElementById('productLabelsGrid');
 
         async function loadBranches() {
             const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
@@ -1377,10 +1380,7 @@
         });
 
         const productLabelsBtn = document.getElementById('productLabelsBtn');
-        if (productLabelsBtn) productLabelsBtn.addEventListener('click', () => {
-            const modal = document.getElementById('productLabelsModal');
-            modal.style.display = 'flex';
-        });
+        if (productLabelsBtn) productLabelsBtn.addEventListener('click', openProductLabelsModal);
 
         const workflowTabs = Array.from(document.querySelectorAll('.workflow-tab'));
         const workflowSections = Array.from(document.querySelectorAll('.workflow-section'));
@@ -1435,6 +1435,39 @@
         if (csvCloseBtn) csvCloseBtn.addEventListener('click', () => { document.getElementById('csvModal').style.display = 'none'; });
         const csvModal = document.getElementById('csvModal');
         if (csvModal) csvModal.addEventListener('click', (e) => { if (e.target && e.target.id === 'csvModal') csvModal.style.display = 'none'; });
+        const reviewCloseBtn = document.getElementById('reviewCloseBtn');
+        if (reviewCloseBtn) reviewCloseBtn.addEventListener('click', () => { if (reviewModal) reviewModal.style.display = 'none'; });
+        if (reviewModal) reviewModal.addEventListener('click', (event) => { if (event.target && event.target.id === 'reviewModal') reviewModal.style.display = 'none'; });
+
+        const dispatchNoteCloseBtn = document.getElementById('dispatchNoteCloseBtn');
+        if (dispatchNoteCloseBtn) dispatchNoteCloseBtn.addEventListener('click', () => closeDispatchNoteModal());
+        const dispatchNotePrintBtn = document.getElementById('dispatchNotePrintBtn');
+        if (dispatchNotePrintBtn) dispatchNotePrintBtn.addEventListener('click', () => printDispatchNote());
+
+        const productLabelsCloseBtn = document.getElementById('productLabelsCloseBtn');
+        if (productLabelsCloseBtn) productLabelsCloseBtn.addEventListener('click', () => closeProductLabelsModal());
+        if (productLabelsModal) productLabelsModal.addEventListener('click', (event) => {
+            if (event.target && event.target.id === 'productLabelsModal') {
+                closeProductLabelsModal();
+            }
+        });
+        const productLabelsPrintBtn = document.getElementById('productLabelsPrintBtn');
+        if (productLabelsPrintBtn) productLabelsPrintBtn.addEventListener('click', () => printProductLabels());
+        const productLabelAddBtn = document.getElementById('productLabelAddBtn');
+        if (productLabelAddBtn) productLabelAddBtn.addEventListener('click', () => addProductLabel());
+        const productLabelSelect = document.getElementById('productLabelSelect');
+        if (productLabelSelect) productLabelSelect.addEventListener('change', () => {
+            const qtyInput = document.getElementById('productLabelQty');
+            if (qtyInput) qtyInput.focus();
+        });
+        if (productLabelsGrid) productLabelsGrid.addEventListener('click', (event) => {
+            const removeBtn = event.target.closest('[data-label-remove]');
+            if (!removeBtn) return;
+            const index = Number(removeBtn.getAttribute('data-label-remove'));
+            if (!Number.isNaN(index)) {
+                removeProductLabel(index);
+            }
+        });
 
         const reqSubmitBtn = document.getElementById('reqSubmitBtn');
         if (reqSubmitBtn) reqSubmitBtn.addEventListener('click', async () => {

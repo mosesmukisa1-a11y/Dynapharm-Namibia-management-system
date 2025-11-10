@@ -27,7 +27,8 @@
 
 ```bash
 cd backend
-./start_backend.sh
+# Legacy script (deprecated) - prefer npm start
+# ./start_backend.sh
 ```
 
 ### Option 2: Manual Start
@@ -37,9 +38,10 @@ cd backend
 brew services start postgresql@15
 
 # 2. Start Backend
-cd backend
-export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
-python3 dynapharm_backend.py
+cd /Users/moseswalker/Downloads/Dynapharm-Namibia-management-system
+export DATABASE_URL="postgresql://moseswalker@localhost:5432/dynapharm"
+npm install
+npm start
 ```
 
 ### 3. Open Frontend
@@ -72,7 +74,7 @@ curl http://localhost:8001/api/branches
 ## 🔧 Current Configuration
 
 - **Database**: PostgreSQL 15.14 (local)
-- **Backend**: Python HTTP server on port 8001
+- **Backend**: Node.js Express server (`server.js`) on port 8001 reusing `/api` modules
 - **Frontend**: HTML file configured for local backend
 - **Connection**: All working ✅
 
@@ -94,10 +96,11 @@ curl http://localhost:8001/api/branches
 If you want to use Docker instead:
 
 ```bash
-cd backend
+cd /Users/moseswalker/Downloads/Dynapharm-Namibia-management-system
 docker-compose up -d
-# Update .env with: DB_USER=dynapharm, DB_PASSWORD=dynapharm_password
-python3 dynapharm_backend.py
+export DATABASE_URL="postgresql://dynapharm:dynapharm_password@localhost:5432/dynapharm"
+npm install
+npm start
 ```
 
 ## 🎯 Next Steps
