@@ -188,6 +188,67 @@
                 });
             } catch(_) {}
         })();
+
+        // Ensure shared datasets exist before dependent features run
+        let PACKAGE_DATABASE = window.PACKAGE_DATABASE || {};
+
+        const WalkInCartStore = (() => {
+            const STORAGE_KEY = 'dyna_walkin_cart_session';
+            const ensureArray = (value) => Array.isArray(value) ? value : [];
+            const loadInitialCart = () => {
+                const fromWindow = ensureArray(window.walkInCart);
+                try {
+                    const stored = localStorage.getItem(STORAGE_KEY);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed)) {
+                            return parsed;
+                        }
+                    }
+                } catch (_) {}
+                return [...fromWindow];
+            };
+            let cart = ensureArray(loadInitialCart());
+            const sync = () => { window.walkInCart = cart; };
+            const persist = () => {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+                } catch (_) {}
+            };
+            sync();
+            return {
+                get() {
+                    cart = ensureArray(cart);
+                    sync();
+                    return cart;
+                },
+                replace(nextCart) {
+                    cart = ensureArray(nextCart).map(item => ({ ...item }));
+                    sync();
+                    persist();
+                    return cart;
+                },
+                update(mutator) {
+                    cart = ensureArray(cart);
+                    try {
+                        mutator(cart);
+                    } catch (err) {
+                        console.error('WalkInCartStore.update error:', err);
+                    }
+                    sync();
+                    persist();
+                    return cart;
+                },
+                clear() {
+                    cart = [];
+                    sync();
+                    persist();
+                    return cart;
+                },
+                persist
+            };
+        })();
+        window.walkInCartStore = WalkInCartStore;
     </script>
     
     <!-- Optional: Backend API base override (set this in deployments) -->
@@ -11639,6 +11700,104 @@
             };
         }
 
+        async function fetchLeaveRecordsIncludingOffline(options = {}) {
+            const opts = options || {};
+            let records = [];
+            try {
+                const response = await apiRequest(LEAVE_API_ENDPOINT, 'GET');
+                const fetched = extractArray(response, []);
+                const normalized = fetched
+                    .map((item) =>
+                        normalizeLeaveRecord(item, {
+                            defaultStaff: currentUser?.username || null,
+                            defaultStaffName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            source: 'api'
+                        })
+                    )
+                    .filter(Boolean);
+                setLeaveCacheRecords(normalized);
+                records = normalized;
+            } catch (error) {
+                console.debug('fetchLeaveRecordsIncludingOffline fallback', error?.message || error);
+                records = getLeaveCacheRecords();
+            }
+            const offlineQueue = loadPendingQueue(LEAVE_PENDING_QUEUE_KEY).map((entry) =>
+                normalizeLeaveRecord(
+                    Object.assign({ id: entry?.id }, entry?.payload || {}),
+                    {
+                        defaultStaff: currentUser?.username || null,
+                        defaultStaffName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        pendingSync: true,
+                        source: 'offline'
+                    }
+                )
+            );
+            const combined = [];
+            const seen = new Set();
+            records.concat(offlineQueue).forEach((record) => {
+                if (!record) return;
+                const key = getRecordCacheKey(record);
+                if (key && seen.has(key)) return;
+                if (key) seen.add(key);
+                combined.push(record);
+            });
+            if (opts.onlyPending) {
+                return combined.filter((record) => (record.statusRaw || record.status || '').toLowerCase() === 'pending');
+            }
+            return combined;
+        }
+
+        async function fetchCashRecordsIncludingOffline(options = {}) {
+            const opts = options || {};
+            let records = [];
+            try {
+                const response = await apiRequest(CASH_API_ENDPOINT, 'GET');
+                const fetched = extractArray(response, []);
+                const normalized = fetched
+                    .map((item) =>
+                        normalizeCashRecord(item, {
+                            defaultEmployeeId: currentUser?.username || null,
+                            defaultEmployeeName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            source: 'api'
+                        })
+                    )
+                    .filter(Boolean);
+                setCashCacheRecords(normalized);
+                records = normalized;
+            } catch (error) {
+                console.debug('fetchCashRecordsIncludingOffline fallback', error?.message || error);
+                records = getCashCacheRecords();
+            }
+            const offlineQueue = loadPendingQueue(CASH_PENDING_QUEUE_KEY).map((entry) =>
+                normalizeCashRecord(
+                    Object.assign({ id: entry?.id }, entry?.payload || {}),
+                    {
+                        defaultEmployeeId: currentUser?.username || null,
+                        defaultEmployeeName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        pendingSync: true,
+                        source: 'offline'
+                    }
+                )
+            );
+            const combined = [];
+            const seen = new Set();
+            records.concat(offlineQueue).forEach((record) => {
+                if (!record) return;
+                const key = getRecordCacheKey(record);
+                if (key && seen.has(key)) return;
+                if (key) seen.add(key);
+                combined.push(record);
+            });
+            if (opts.onlyPending) {
+                return combined.filter((record) => (record.status || '').toLowerCase() === 'pending');
+            }
+            return combined;
+        }
+
 		const CRM_STORAGE_KEYS = {
 			interactions: 'crm_portal_interactions',
 			workflows: 'crm_portal_workflows',
@@ -13734,22 +13893,65 @@
         }
         
         // Load all approvals (combined view)
-        function loadAllApprovals() {
+        async function loadAllApprovals() {
             const container = document.getElementById('allApprovalsList');
             if (!container) return;
-            
-            const cashRequests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
-            const leaveRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
-            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(r => r.status === 'pending_gm' || r.status === 'pending');
-            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(r => r.status === 'pending');
-            
+            container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">Loading approvals...</p>';
+            let cashRequests = [];
+            let leaveRequests = [];
+            try {
+                cashRequests = await fetchCashRecordsIncludingOffline({ onlyPending: true });
+            } catch (error) {
+                const cachedCash = getCashCacheRecords();
+                cashRequests = cachedCash.filter((r) => (r.status || '').toLowerCase() === 'pending');
+            }
+            try {
+                leaveRequests = await fetchLeaveRecordsIncludingOffline({ onlyPending: true });
+            } catch (error) {
+                const cachedLeave = getLeaveCacheRecords();
+                leaveRequests = cachedLeave.filter(
+                    (r) => (r.statusRaw || r.status || '').toLowerCase() === 'pending'
+                );
+            }
+            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(
+                (r) => r.status === 'pending_gm' || r.status === 'pending'
+            );
+            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(
+                (r) => r.status === 'pending'
+            );
+
             const allRequests = [
-                ...cashRequests.map(r => ({ ...r, requestType: 'cash', type: 'cash', typeLabel: 'Cash Request', icon: '💵' })),
-                ...leaveRequests.map(r => ({ ...r, requestType: 'leave', type: 'leave', typeLabel: 'Leave Request', icon: '📅', leaveType: r.type })),
-                ...stockRequests.map(r => ({ ...r, requestType: 'stock', type: 'stock', typeLabel: 'Stock Movement', icon: '📦' })),
-                ...otherRequests.map(r => ({ ...r, requestType: 'other', type: 'other', typeLabel: r.category || 'Other Request', icon: '📋' }))
+                ...cashRequests.map((r) => ({
+                    ...r,
+                    requestType: 'cash',
+                    type: 'cash',
+                    typeLabel: 'Cash Request',
+                    icon: '💵'
+                })),
+                ...leaveRequests.map((r) => ({
+                    ...r,
+                    leaveType: r.type,
+                    requestType: 'leave',
+                    type: 'leave',
+                    typeLabel: 'Leave Request',
+                    icon: '📅'
+                })),
+                ...stockRequests.map((r) => ({
+                    ...r,
+                    requestType: 'stock',
+                    type: 'stock',
+                    typeLabel: 'Stock Movement',
+                    icon: '📦'
+                })),
+                ...otherRequests.map((r) => ({
+                    ...r,
+                    requestType: 'other',
+                    type: 'other',
+                    typeLabel: r.category || 'Other Request',
+                    icon: '📋'
+                }))
             ];
-            
+
             if (allRequests.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending approvals at this time.</p>';
                 return;
@@ -13768,46 +13970,76 @@
         }
         
         // Load cash approvals
-        function loadCashApprovals() {
+        async function loadCashApprovals() {
             const container = document.getElementById('cashApprovalsList');
             if (!container) return;
-            
-            const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
-            
+            container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">Loading cash requests...</p>';
+            let requests = [];
+            try {
+                requests = await fetchCashRecordsIncludingOffline({ onlyPending: true });
+            } catch (error) {
+                const cached = getCashCacheRecords();
+                requests = cached.filter((r) => (r.status || '').toLowerCase() === 'pending');
+            }
             if (requests.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending cash requests.</p>';
                 return;
             }
             
-            requests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            requests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             
             let html = '<div style="display: grid; gap: 15px;">';
-            requests.forEach(request => {
-                const date = new Date(request.createdAt);
-                html += renderApprovalCard({ ...request, requestType: 'cash', type: 'cash', typeLabel: 'Cash Request', icon: '💵' }, date);
+            requests.forEach((request) => {
+                const date = new Date(request.createdAt || Date.now());
+                html += renderApprovalCard(
+                    {
+                        ...request,
+                        requestType: 'cash',
+                        type: 'cash',
+                        typeLabel: 'Cash Request',
+                        icon: '💵'
+                    },
+                    date
+                );
             });
             html += '</div>';
             container.innerHTML = html;
         }
         
         // Load leave approvals
-        function loadLeaveApprovals() {
+        async function loadLeaveApprovals() {
             const container = document.getElementById('leaveApprovalsList');
             if (!container) return;
-            
-            const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
-            
+            container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">Loading leave requests...</p>';
+            let requests = [];
+            try {
+                requests = await fetchLeaveRecordsIncludingOffline({ onlyPending: true });
+            } catch (error) {
+                const cached = getLeaveCacheRecords();
+                requests = cached.filter((r) => (r.statusRaw || r.status || '').toLowerCase() === 'pending');
+            }
             if (requests.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">✅ No pending leave requests.</p>';
                 return;
             }
             
-            requests.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+            requests.sort(
+                (a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0)
+            );
             
             let html = '<div style="display: grid; gap: 15px;">';
-            requests.forEach(request => {
-                const date = new Date(request.submittedAt);
-                html += renderApprovalCard({ ...request, type: 'leave', typeLabel: 'Leave Request', icon: '📅', leaveType: request.type }, date);
+            requests.forEach((request) => {
+                const date = new Date(request.submittedAt || request.createdAt || Date.now());
+                html += renderApprovalCard(
+                    {
+                        ...request,
+                        leaveType: request.type,
+                        type: 'leave',
+                        typeLabel: 'Leave Request',
+                        icon: '📅'
+                    },
+                    date
+                );
             });
             html += '</div>';
             container.innerHTML = html;
@@ -13935,33 +14167,43 @@
             
             try {
                 if (requestType === 'cash') {
-                    const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
-                    const request = requests.find(r => r.id === requestId);
-                    if (request) {
-                        request.status = 'approved';
-                        request.approvedBy = window.currentUser?.fullName || 'GM';
-                        request.approvedAt = new Date().toISOString();
-                        request.approvalNotes = reason || '';
-                        localStorage.setItem('finance_cash_requests', JSON.stringify(requests));
-                        
-                        // Broadcast event
+                    const requests = getCashCacheRecords();
+                    const idx = requests.findIndex((r) => (r.id || r.offlineId) === requestId);
+                    if (idx !== -1) {
+                        const updated = {
+                            ...requests[idx],
+                            status: 'approved',
+                            statusRaw: 'approved',
+                            approvedBy: window.currentUser?.fullName || 'GM',
+                            approvedAt: new Date().toISOString(),
+                            approvalNotes: reason || ''
+                        };
+                        requests[idx] = updated;
+                        setCashCacheRecords(requests);
+                        removePendingRequest(CASH_PENDING_QUEUE_KEY, requestId);
+
                         if (typeof publishRealtimeEvent === 'function') {
-                            publishRealtimeEvent('cash_request', 'approved', request);
+                            publishRealtimeEvent('cash_request', 'approved', updated);
                         }
                     }
                 } else if (requestType === 'leave') {
-                    const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]');
-                    const request = requests.find(r => r.id === requestId);
-                    if (request) {
-                        request.status = 'Approved';
-                        request.approvedBy = window.currentUser?.fullName || 'GM';
-                        request.approvedAt = new Date().toISOString();
-                        request.approvalNotes = reason || '';
-                        localStorage.setItem('leaveRequests', JSON.stringify(requests));
-                        
-                        // Broadcast event
+                    const requests = getLeaveCacheRecords();
+                    const idx = requests.findIndex((r) => (r.id || r.offlineId) === requestId);
+                    if (idx !== -1) {
+                        const updated = {
+                            ...requests[idx],
+                            status: 'Approved',
+                            statusRaw: 'approved',
+                            approvedBy: window.currentUser?.fullName || 'GM',
+                            approvedAt: new Date().toISOString(),
+                            approvalNotes: reason || ''
+                        };
+                        requests[idx] = updated;
+                        setLeaveCacheRecords(requests);
+                        removePendingRequest(LEAVE_PENDING_QUEUE_KEY, requestId);
+
                         if (typeof publishRealtimeEvent === 'function') {
-                            publishRealtimeEvent('leave_request', 'approved', request);
+                            publishRealtimeEvent('leave_request', 'approved', updated);
                         }
                     }
                 } else if (requestType === 'stock') {
@@ -14014,33 +14256,43 @@
             
             try {
                 if (requestType === 'cash') {
-                    const requests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
-                    const request = requests.find(r => r.id === requestId);
-                    if (request) {
-                        request.status = 'rejected';
-                        request.rejectedBy = window.currentUser?.fullName || 'GM';
-                        request.rejectedAt = new Date().toISOString();
-                        request.rejectionReason = reason;
-                        localStorage.setItem('finance_cash_requests', JSON.stringify(requests));
-                        
-                        // Broadcast event
+                    const requests = getCashCacheRecords();
+                    const idx = requests.findIndex((r) => (r.id || r.offlineId) === requestId);
+                    if (idx !== -1) {
+                        const updated = {
+                            ...requests[idx],
+                            status: 'rejected',
+                            statusRaw: 'rejected',
+                            rejectedBy: window.currentUser?.fullName || 'GM',
+                            rejectedAt: new Date().toISOString(),
+                            rejectionReason: reason
+                        };
+                        requests[idx] = updated;
+                        setCashCacheRecords(requests);
+                        removePendingRequest(CASH_PENDING_QUEUE_KEY, requestId);
+
                         if (typeof publishRealtimeEvent === 'function') {
-                            publishRealtimeEvent('cash_request', 'rejected', request);
+                            publishRealtimeEvent('cash_request', 'rejected', updated);
                         }
                     }
                 } else if (requestType === 'leave') {
-                    const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]');
-                    const request = requests.find(r => r.id === requestId);
-                    if (request) {
-                        request.status = 'Rejected';
-                        request.rejectedBy = window.currentUser?.fullName || 'GM';
-                        request.rejectedAt = new Date().toISOString();
-                        request.rejectionReason = reason;
-                        localStorage.setItem('leaveRequests', JSON.stringify(requests));
-                        
-                        // Broadcast event
+                    const requests = getLeaveCacheRecords();
+                    const idx = requests.findIndex((r) => (r.id || r.offlineId) === requestId);
+                    if (idx !== -1) {
+                        const updated = {
+                            ...requests[idx],
+                            status: 'Rejected',
+                            statusRaw: 'rejected',
+                            rejectedBy: window.currentUser?.fullName || 'GM',
+                            rejectedAt: new Date().toISOString(),
+                            rejectionReason: reason
+                        };
+                        requests[idx] = updated;
+                        setLeaveCacheRecords(requests);
+                        removePendingRequest(LEAVE_PENDING_QUEUE_KEY, requestId);
+
                         if (typeof publishRealtimeEvent === 'function') {
-                            publishRealtimeEvent('leave_request', 'rejected', request);
+                            publishRealtimeEvent('leave_request', 'rejected', updated);
                         }
                     }
                 } else if (requestType === 'stock') {
@@ -14080,15 +14332,35 @@
         }
         
         // Update approval count
-        function updateApprovalCount() {
-            const cashRequests = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]').filter(r => r.status === 'pending');
-            const leaveRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.status === 'Pending');
-            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(r => r.status === 'pending_gm' || (r.status === 'pending' && r.priority === 'urgent'));
-            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(r => r.status === 'pending');
-            
-            const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length + otherRequests.length;
+        async function updateApprovalCount() {
+            let cashCount = 0;
+            let leaveCount = 0;
+            try {
+                const cashRequests = await fetchCashRecordsIncludingOffline({ onlyPending: true });
+                cashCount = Array.isArray(cashRequests) ? cashRequests.length : 0;
+            } catch (error) {
+                const cachedCash = getCashCacheRecords();
+                cashCount = cachedCash.filter((r) => (r.status || '').toLowerCase() === 'pending').length;
+            }
+            try {
+                const leaveRequests = await fetchLeaveRecordsIncludingOffline({ onlyPending: true });
+                leaveCount = Array.isArray(leaveRequests) ? leaveRequests.length : 0;
+            } catch (error) {
+                const cachedLeave = getLeaveCacheRecords();
+                leaveCount = cachedLeave.filter(
+                    (r) => (r.statusRaw || r.status || '').toLowerCase() === 'pending'
+                ).length;
+            }
+            const stockRequests = JSON.parse(localStorage.getItem('dyna_stock_requests') || '[]').filter(
+                (r) => r.status === 'pending_gm' || (r.status === 'pending' && r.priority === 'urgent')
+            );
+            const otherRequests = JSON.parse(localStorage.getItem('gm_pending_requests') || '[]').filter(
+                (r) => r.status === 'pending'
+            );
+
+            const totalCount = cashCount + leaveCount + stockRequests.length + otherRequests.length;
             window.gmPendingApprovalsCount = totalCount;
-            
+
             if (typeof window.updateGlobalAlerts === 'function') {
                 window.updateGlobalAlerts({ pendingApprovalsCount: totalCount });
             }
@@ -19917,7 +20189,7 @@ async function logout() {
         }
 
         // DYNAPHARM NAMIBIA SPECIAL PACKAGE 2025 - Official Package Database
-        var PACKAGE_DATABASE = window.PACKAGE_DATABASE || {
+        PACKAGE_DATABASE = window.PACKAGE_DATABASE = {
             'Gastric Package': {
                 price: { dp: 2054, cp: 2432, bv: 381 },
                 products: [
@@ -25131,47 +25403,7 @@ async function reverseLastPrescriptionPayment(reportId){
             if (!statusDiv) return;
             statusDiv.innerHTML = '<p style="color: #64748b;">Loading leave requests...</p>';
             const username = (currentUser?.username || '').toLowerCase();
-            let records = [];
-            try {
-                const response = await apiRequest(LEAVE_API_ENDPOINT, 'GET');
-                const fetched = extractArray(response, []);
-                const normalized = fetched
-                    .map((item) =>
-                        normalizeLeaveRecord(item, {
-                            defaultStaff: currentUser?.username || null,
-                            defaultStaffName: currentUser?.fullName || null,
-                            defaultBranch: currentBranch || null,
-                            source: 'api'
-                        })
-                    )
-                    .filter(Boolean);
-                setLeaveCacheRecords(normalized);
-                records = normalized;
-            } catch (error) {
-                console.debug('viewMyLeaveRequests fallback', error?.message || error);
-                records = getLeaveCacheRecords();
-            }
-            const offlineQueue = loadPendingQueue(LEAVE_PENDING_QUEUE_KEY).map((entry) =>
-                normalizeLeaveRecord(
-                    Object.assign({ id: entry?.id }, entry?.payload || {}),
-                    {
-                        defaultStaff: currentUser?.username || null,
-                        defaultStaffName: currentUser?.fullName || null,
-                        defaultBranch: currentBranch || null,
-                        pendingSync: true,
-                        source: 'offline'
-                    }
-                )
-            );
-            const combined = [];
-            const seen = new Set();
-            records.concat(offlineQueue).forEach((record) => {
-                if (!record) return;
-                const key = getRecordCacheKey(record);
-                if (key && seen.has(key)) return;
-                if (key) seen.add(key);
-                combined.push(record);
-            });
+            const combined = await fetchLeaveRecordsIncludingOffline();
             const mine = combined.filter((req) => (req.staff || '').toLowerCase() === username);
             if (mine.length === 0) {
                 statusDiv.innerHTML = '<p style="color: #666;">No leave requests yet.</p>';
@@ -25370,47 +25602,7 @@ async function reverseLastPrescriptionPayment(reportId){
             if (!container) return;
             container.innerHTML = '<p style="color: #64748b;">Loading cash requests...</p>';
             const username = (currentUser?.username || '').toLowerCase();
-            let records = [];
-            try {
-                const response = await apiRequest(CASH_API_ENDPOINT, 'GET');
-                const fetched = extractArray(response, []);
-                const normalized = fetched
-                    .map((item) =>
-                        normalizeCashRecord(item, {
-                            defaultEmployeeId: currentUser?.username || null,
-                            defaultEmployeeName: currentUser?.fullName || null,
-                            defaultBranch: currentBranch || null,
-                            source: 'api'
-                        })
-                    )
-                    .filter(Boolean);
-                setCashCacheRecords(normalized);
-                records = normalized;
-            } catch (error) {
-                console.debug('viewMyCashRequests fallback', error?.message || error);
-                records = getCashCacheRecords();
-            }
-            const offlineQueue = loadPendingQueue(CASH_PENDING_QUEUE_KEY).map((entry) =>
-                normalizeCashRecord(
-                    Object.assign({ id: entry?.id }, entry?.payload || {}),
-                    {
-                        defaultEmployeeId: currentUser?.username || null,
-                        defaultEmployeeName: currentUser?.fullName || null,
-                        defaultBranch: currentBranch || null,
-                        pendingSync: true,
-                        source: 'offline'
-                    }
-                )
-            );
-            const combined = [];
-            const seen = new Set();
-            records.concat(offlineQueue).forEach((record) => {
-                if (!record) return;
-                const key = getRecordCacheKey(record);
-                if (key && seen.has(key)) return;
-                if (key) seen.add(key);
-                combined.push(record);
-            });
+            const combined = await fetchCashRecordsIncludingOffline();
             const mine = combined.filter((r) => (r.employeeId || '').toLowerCase() === username);
             if (mine.length === 0) {
                 container.innerHTML = '<p style="color: #666;">No cash requests yet.</p>';
@@ -29144,14 +29336,23 @@ async function reverseLastPrescriptionPayment(reportId){
         let selectedPreferredDate = null;
 
         // Walk-in Sales State
-        window.walkInCart = Array.isArray(window.walkInCart) ? window.walkInCart : [];
         function getWalkInCart() {
+            if (window.walkInCartStore && typeof window.walkInCartStore.get === 'function') {
+                return window.walkInCartStore.get();
+            }
             if (!Array.isArray(window.walkInCart)) {
                 window.walkInCart = [];
             }
             return window.walkInCart;
         }
-        const walkInSales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+        walkInSales = (() => {
+            try {
+                const parsed = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        })();
 
         function initializeAppointmentPreferences() {
             populatePreferredBranchSelect();
@@ -29863,9 +30064,6 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function showWalkInSaleModal(customerType) {
-            if (!Array.isArray(window.walkInCart)) {
-                window.walkInCart = [];
-            }
             const form = document.getElementById('walkInSaleForm');
             const customerTypeSelect = document.getElementById('walkInCustomerType');
             const referralDropdown = document.getElementById('distributorReferralDropdown');
@@ -29879,8 +30077,12 @@ async function reverseLastPrescriptionPayment(reportId){
             }
             
             if (typeof form.reset === 'function') form.reset();
-            const cart = getWalkInCart();
-            cart.length = 0;
+            if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
+                window.walkInCartStore.clear();
+            } else {
+                const cart = getWalkInCart();
+                cart.length = 0;
+            }
             customerTypeSelect.value = customerType || 'customer';
             
             // Clear distributor search fields and checkbox
@@ -30553,29 +30755,40 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function addToWalkInCart(productName, cp, dp, bv) {
-            const cart = getWalkInCart();
-            const existingItem = cart.find(item => item.name === productName);
-            
-            const customerType = document.getElementById('walkInCustomerType').value;
-            
-            if (existingItem) {
-                existingItem.quantity += 1;
+            const mutator = (cart) => {
+                const existingItem = cart.find(item => item.name === productName);
+                if (existingItem) {
+                    existingItem.quantity += 1;
+                } else {
+                    cart.push({
+                        name: productName,
+                        cp: cp,
+                        dp: dp,
+                        bv: bv || 0,
+                        quantity: 1
+                    });
+                }
+            };
+
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(mutator);
             } else {
-                cart.push({
-                    name: productName,
-                    cp: cp,
-                    dp: dp,
-                    bv: bv || 0,
-                    quantity: 1
-                });
+                const cart = getWalkInCart();
+                mutator(cart);
             }
-            
+
             updateWalkInCart();
         }
 
         function removeFromWalkInCart(index) {
-            const cart = getWalkInCart();
-            cart.splice(index, 1);
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(cart => {
+                    cart.splice(index, 1);
+                });
+            } else {
+                const cart = getWalkInCart();
+                cart.splice(index, 1);
+            }
             updateWalkInCart();
         }
 
@@ -30652,27 +30865,34 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         function updateWalkInCartQuantity(index, delta, newValue) {
-            const cart = getWalkInCart();
-            if (index < 0 || index >= cart.length) return;
-            
-            const item = cart[index];
-            
-            if (newValue !== undefined && newValue !== null) {
-                // Direct value update from input field
-                const quantity = parseInt(newValue) || 1;
-                item.quantity = Math.max(1, quantity);
-            } else if (delta !== 0) {
-                // Increment/decrement
-                item.quantity = Math.max(1, item.quantity + delta);
+            let updatedItem = null;
+            const applyUpdate = (cart) => {
+                if (index < 0 || index >= cart.length) return;
+                const item = cart[index];
+                if (!item) return;
+                if (newValue !== undefined && newValue !== null) {
+                    const quantity = parseInt(newValue, 10) || 1;
+                    item.quantity = Math.max(1, quantity);
+                } else if (delta !== 0) {
+                    item.quantity = Math.max(1, (item.quantity || 1) + delta);
+                }
+                updatedItem = item;
+            };
+
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(applyUpdate);
+            } else {
+                const cart = getWalkInCart();
+                applyUpdate(cart);
             }
-            
-            // Update the input field value
+
+            if (!updatedItem) return;
+
             const qtyInput = document.getElementById(`qty-${index}`);
             if (qtyInput) {
-                qtyInput.value = item.quantity;
+                qtyInput.value = updatedItem.quantity;
             }
-            
-            // Refresh cart display
+
             updateWalkInCart();
         }
 
@@ -31047,6 +31267,13 @@ async function reverseLastPrescriptionPayment(reportId){
                 'bank': '🏦 Bank Transfer'
             };
             const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
+
+            if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
+                window.walkInCartStore.clear();
+            } else {
+                cart.length = 0;
+            }
+            updateWalkInCart();
             
             let successMessage = `✅ Sale processed successfully!\n\nTotal: N$ ${(savedSale.total || grandTotal).toFixed(2)}\nPayment Method: ${paymentLabel}`;
             if (clientReferenceNumber && !existingClient) {
@@ -41441,16 +41668,25 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         }
 
         // Finance - Cash Requests approval list
-        function displayFinanceCashRequests() {
+        async function displayFinanceCashRequests() {
             try {
                 const container = document.getElementById('financeCashRequests');
                 if (!container) return;
-                const list = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
+                container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">Loading cash requests...</p>';
+                let list = [];
+                try {
+                    list = await fetchCashRecordsIncludingOffline();
+                } catch (error) {
+                    list = getCashCacheRecords();
+                }
                 if (list.length === 0) {
                     container.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No cash requests yet.</p>';
                     return;
                 }
-                container.innerHTML = list.slice().reverse().map(r => `
+                const sorted = list
+                    .slice()
+                    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                container.innerHTML = sorted.map(r => `
                     <div style="background: white; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${r.status === 'approved' ? '#27ae60' : r.status === 'rejected' ? '#e74c3c' : '#3498db'};">
                         <div style="display:flex; justify-content: space-between; align-items: center;">
                             <div>
@@ -41475,31 +41711,43 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
 
         function approveCashRequest(id) {
             try {
-                const key = 'finance_cash_requests';
-                const list = JSON.parse(localStorage.getItem(key) || '[]');
-                const i = list.findIndex(r => r.id === id);
-                if (i === -1) return;
-                list[i].status = 'approved';
-                list[i].approvedBy = currentUser?.fullName || 'Finance';
-                list[i].approvedAt = new Date().toISOString();
-                localStorage.setItem(key, JSON.stringify(list));
+                const list = getCashCacheRecords();
+                const index = list.findIndex((r) => (r.id || r.offlineId) === id);
+                if (index === -1) return;
+                const updated = {
+                    ...list[index],
+                    status: 'approved',
+                    statusRaw: 'approved',
+                    approvedBy: currentUser?.fullName || 'Finance',
+                    approvedAt: new Date().toISOString()
+                };
+                list[index] = updated;
+                setCashCacheRecords(list);
+                removePendingRequest(CASH_PENDING_QUEUE_KEY, id);
                 displayFinanceCashRequests();
-                recordDepartmentEvent && recordDepartmentEvent('cash_approved', list[i]);
+                recordDepartmentEvent && recordDepartmentEvent('cash_approved', updated);
+                updateApprovalCount();
             } catch (e) { console.warn('approveCashRequest error', e); }
         }
 
         function rejectCashRequest(id) {
             try {
-                const key = 'finance_cash_requests';
-                const list = JSON.parse(localStorage.getItem(key) || '[]');
-                const i = list.findIndex(r => r.id === id);
-                if (i === -1) return;
-                list[i].status = 'rejected';
-                list[i].rejectedBy = currentUser?.fullName || 'Finance';
-                list[i].rejectedAt = new Date().toISOString();
-                localStorage.setItem(key, JSON.stringify(list));
+                const list = getCashCacheRecords();
+                const index = list.findIndex((r) => (r.id || r.offlineId) === id);
+                if (index === -1) return;
+                const updated = {
+                    ...list[index],
+                    status: 'rejected',
+                    statusRaw: 'rejected',
+                    rejectedBy: currentUser?.fullName || 'Finance',
+                    rejectedAt: new Date().toISOString()
+                };
+                list[index] = updated;
+                setCashCacheRecords(list);
+                removePendingRequest(CASH_PENDING_QUEUE_KEY, id);
                 displayFinanceCashRequests();
-                recordDepartmentEvent && recordDepartmentEvent('cash_rejected', list[i]);
+                recordDepartmentEvent && recordDepartmentEvent('cash_rejected', updated);
+                updateApprovalCount();
             } catch (e) { console.warn('rejectCashRequest error', e); }
         }
         
