@@ -570,6 +570,643 @@
     color: #ffffff;
     border-color: #c41e3a;
 }
+#stockContent .stock-hub-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding-bottom: 48px;
+}
+#stockContent .stock-hub-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 32px;
+    padding: 40px;
+    background: radial-gradient(140% 180% at 100% 0%, rgba(103, 232, 249, 0.55) 0%, rgba(14, 116, 144, 0.9) 55%, rgba(15, 23, 42, 0.95) 100%);
+    color: #ffffff;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 32px;
+    box-shadow: 0 40px 70px rgba(15, 23, 42, 0.22);
+}
+#stockContent .stock-hub-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(103, 232, 249, 0.18) 100%);
+    pointer-events: none;
+}
+#stockContent .stock-hub-hero__text {
+    position: relative;
+    z-index: 1;
+    max-width: min(520px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+#stockContent .stock-hub-hero__eyebrow {
+    margin: 0;
+    font-size: 0.82rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 700;
+    opacity: 0.75;
+}
+#stockContent .stock-hub-hero__text h2 {
+    margin: 0;
+    font-size: clamp(2.1rem, 3vw, 2.8rem);
+    letter-spacing: -0.015em;
+}
+#stockContent .stock-hub-hero__text p {
+    margin: 0;
+    color: rgba(241, 245, 249, 0.86);
+    line-height: 1.7;
+    font-size: 1.02rem;
+}
+#stockContent .stock-hub-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+#stockContent .hub-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 12px 24px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(10px);
+}
+#stockContent .hub-btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+}
+#stockContent .hub-btn--primary {
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+#stockContent .hub-btn--ghost {
+    background: rgba(15, 23, 42, 0.15);
+    color: #e2e8f0;
+    border: 1px solid rgba(226, 232, 240, 0.35);
+}
+#stockContent .stock-hub-hero__profile {
+    position: relative;
+    z-index: 1;
+    min-width: min(260px, 100%);
+    flex: 1;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid rgba(226, 232, 240, 0.2);
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+}
+#stockContent .stock-hub-mode-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+#stockContent .stock-hub-mode-toggle .hub-toggle-btn {
+    border: 1px solid rgba(15, 23, 42, 0.15);
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 16px;
+    padding: 12px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+#stockContent .stock-hub-mode-toggle .hub-toggle-btn.hub-toggle-btn--active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    box-shadow: 0 18px 28px rgba(37, 99, 235, 0.25);
+    border-color: transparent;
+}
+#stockContent .stock-hub-mode-toggle .hub-toggle-btn:hover {
+    background: rgba(37, 99, 235, 0.08);
+}
+#stockContent .stock-hub-shell #stockWorkflowNav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    background: #0f172a;
+    border-radius: 24px;
+    padding: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.5);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+#stockContent .stock-hub-shell #stockWorkflowNav .workflow-tab {
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: rgba(15, 23, 42, 0.35);
+    color: #e2e8f0;
+    padding: 14px 16px;
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+#stockContent .stock-hub-shell #stockWorkflowNav .workflow-tab:hover {
+    transform: translateY(-1px);
+    border-color: rgba(148, 163, 184, 0.45);
+    background: rgba(59, 130, 246, 0.18);
+}
+#stockContent .stock-hub-shell #stockWorkflowNav .workflow-tab.active {
+    background: linear-gradient(135deg, #2563eb, #4338ca);
+    border-color: transparent;
+    color: #ffffff;
+    box-shadow: 0 22px 36px rgba(37, 99, 235, 0.2);
+}
+#stockContent .stock-hub-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+#stockContent .stock-hub-tab-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #ffffff;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 18px 30px rgba(15, 23, 42, 0.08);
+}
+#stockContent .stock-hub-tab-row--secondary {
+    background: #0f172a;
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+    color: #e2e8f0;
+}
+#stockContent .stock-hub-tab-row--secondary .stock-hub-tab-label {
+    font-size: 0.85rem;
+    color: #cbd5f5;
+    align-self: center;
+    padding-right: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+#stockContent .stock-hub-tab-row--secondary .tab-button {
+    color: #e2e8f0;
+    border-color: rgba(226, 232, 240, 0.22);
+    background: rgba(15, 23, 42, 0.35);
+}
+#stockContent .stock-hub-tab-row .tab-button {
+    border-radius: 14px;
+    padding: 10px 18px;
+    background: rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    color: #0f172a;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+#stockContent .stock-hub-tab-row .tab-button:hover {
+    transform: translateY(-1px);
+    background: rgba(37, 99, 235, 0.12);
+    border-color: rgba(37, 99, 235, 0.35);
+}
+#stockContent .stock-hub-tab-row .tab-button.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: 0 16px 28px rgba(37, 99, 235, 0.22);
+}
+#stockContent .stock-hub-tab-row--secondary .tab-button.active {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(99, 102, 241, 0.95));
+}
+#stockContent .hub-tab-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+#stockContent .hub-section {
+    background: #ffffff;
+    border-radius: 28px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 28px 46px rgba(15, 23, 42, 0.12);
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+#stockContent .hub-section__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+#stockContent .hub-section__title {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #0f172a;
+}
+#stockContent .hub-section__meta {
+    margin: 0;
+    color: #64748b;
+    max-width: 520px;
+    line-height: 1.7;
+}
+#stockContent .hub-section__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-left: auto;
+}
+#stockContent .hub-section__actions label {
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+#stockContent .hub-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+}
+#stockContent .hub-metric-card {
+    position: relative;
+    border-radius: 24px;
+    padding: 24px 26px;
+    color: #ffffff;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    overflow: hidden;
+}
+#stockContent .hub-metric-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.3), transparent 60%);
+    opacity: 0.65;
+}
+#stockContent .hub-metric-card[data-variant="value"] {
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+#stockContent .hub-metric-card[data-variant="pending"] {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+}
+#stockContent .hub-metric-card[data-variant="low"] {
+    background: linear-gradient(135deg, #facc15, #eab308);
+}
+#stockContent .hub-metric-card[data-variant="transfers"] {
+    background: linear-gradient(135deg, #c084fc, #8b5cf6);
+}
+#stockContent .hub-metric-card__icon {
+    position: relative;
+    z-index: 1;
+    font-size: 2rem;
+}
+#stockContent .hub-metric-card__body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#stockContent .hub-metric-card__label {
+    margin: 0;
+    font-size: 0.92rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.82;
+}
+#stockContent .hub-metric-card__value {
+    margin: 0;
+    font-size: 2.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+#stockContent .hub-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+#stockContent .hub-panel {
+    background: #0f172a;
+    border-radius: 20px;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    padding: 18px 20px;
+    color: #cbd5f5;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06);
+}
+#stockContent .hub-panel__heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+#stockContent .hub-panel__value {
+    margin: 12px 0 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+#stockContent .hub-panel__meta {
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+    color: rgba(148, 163, 184, 0.75);
+}
+#stockContent .hub-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    align-items: stretch;
+}
+#stockContent .hub-flow__node {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.02), rgba(37, 99, 235, 0.08));
+    border-radius: 20px;
+    border: 1px solid rgba(37, 99, 235, 0.15);
+    padding: 18px;
+    text-align: center;
+    color: #0f172a;
+    box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+}
+#stockContent .hub-flow__node strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1rem;
+}
+#stockContent .hub-flow__value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #2563eb;
+}
+#stockContent .hub-action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+#stockContent .hub-action {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 18px;
+    padding: 14px 16px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+#stockContent .hub-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 28px rgba(15, 23, 42, 0.28);
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: transparent;
+}
+#stockContent .hub-activity-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+#stockContent .hub-activity-item {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 16px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: #f8fafc;
+}
+#stockContent .hub-activity-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+#stockContent .hub-activity-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#stockContent .hub-activity-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+#stockContent .hub-activity-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+#stockContent .hub-activity-empty {
+    text-align: center;
+    padding: 32px 16px;
+    border-radius: 16px;
+    background: rgba(148, 163, 184, 0.12);
+    color: #475569;
+    font-weight: 600;
+}
+#stockContent .hub-card {
+    background: #0f172a;
+    border-radius: 24px;
+    border: 1px solid rgba(37, 99, 235, 0.18);
+    padding: 22px 24px;
+    color: #e2e8f0;
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.12);
+}
+#stockContent .hub-card--surface {
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 26px 44px rgba(15, 23, 42, 0.1);
+}
+#stockContent .hub-card__title {
+    margin: 0;
+    font-size: 1.2rem;
+}
+#stockContent .hub-card__meta {
+    margin: 6px 0 0;
+    color: rgba(226, 232, 240, 0.75);
+    font-size: 0.92rem;
+}
+#stockContent .hub-card--surface .hub-card__meta {
+    color: #64748b;
+}
+#stockContent input, #stockContent select, #stockContent textarea {
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: #f8fafc;
+    padding: 10px 14px;
+    color: #0f172a;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+#stockContent input:focus, #stockContent select:focus, #stockContent textarea:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+    background: #ffffff;
+}
+#stockContent table {
+    width: 100%;
+    border-collapse: collapse;
+    border-radius: 18px;
+    overflow: hidden;
+}
+#stockContent table thead tr {
+    background: #0f172a;
+    color: #e2e8f0;
+}
+#stockContent table th, #stockContent table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    text-align: left;
+    font-size: 0.95rem;
+}
+#stockContent table tbody tr:nth-child(even) {
+    background: rgba(148, 163, 184, 0.08);
+}
+#stockContent .hub-table-wrapper {
+    overflow-x: auto;
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+}
+#stockContent .hub-split {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+}
+#stockContent .hub-highlight {
+    border-radius: 20px;
+    padding: 18px;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.2));
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #0f172a;
+}
+#stockContent .hub-highlight--info {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.2));
+    border-color: rgba(59, 130, 246, 0.35);
+}
+#stockContent .hub-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+}
+#stockContent .hub-summary-card {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 20px;
+    box-shadow: 0 22px 40px rgba(15, 23, 42, 0.08);
+}
+#stockContent .hub-summary-card h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1.05rem;
+    color: #0f172a;
+}
+#stockContent .hub-summary-card p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.6;
+}
+#stockContent .hub-card-cta {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+#stockContent .hub-card-cta .hub-btn {
+    justify-content: center;
+}
+#stockContent .hub-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+#stockContent .hub-divider {
+    height: 1px;
+    background: rgba(148, 163, 184, 0.22);
+    margin: 12px 0;
+}
+#stockContent .hub-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+#stockContent .hub-tag {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    font-size: 0.85rem;
+    color: #0f172a;
+    font-weight: 600;
+}
+#stockContent .hub-table-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+#stockContent .hub-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+#stockContent .hub-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+#stockContent .hub-scroll::-webkit-scrollbar-thumb {
+    background: rgba(37, 99, 235, 0.35);
+    border-radius: 999px;
+}
+@media (max-width: 1024px) {
+    #stockContent .stock-hub-hero {
+        padding: 32px;
+    }
+    #stockContent .stock-hub-hero__profile {
+        min-width: 100%;
+    }
+    #stockContent .hub-section {
+        padding: 24px 22px;
+    }
+}
+@media (max-width: 768px) {
+    #stockContent .stock-hub-hero {
+        padding: 26px;
+    }
+    #stockContent .stock-hub-hero__actions {
+        width: 100%;
+    }
+    #stockContent .hub-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    #stockContent .hub-section__actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+
         .tab-content { padding: 30px; display: none; }
         .tab-content.active { display: block; }
         .stock-tab-content { padding: 20px; display: none; }
@@ -5012,6 +5649,9 @@
                     <button class="dispenserTab" id="walkInTab" onclick="showDispenserTab('walkIn')" style="flex: 1; padding: 15px; background: linear-gradient(135deg, #3498db, #2980b9); color: white; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: bold;">
                         🛒 Sales
                     </button>
+                    <button class="dispenserTab" id="saleTab" onclick="showDispenserTab('sale')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                        🛒 Sale
+                    </button>
                     <button class="dispenserTab" id="prescriptionTab" onclick="showDispenserTab('prescription')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
                         💊 Prescriptions
                     </button>
@@ -5046,112 +5686,571 @@
                 
                 <!-- Branch Stock Section (Hidden by default) -->
                 <div id="dispenserStockSection" style="display: none;">
-                    <div class="form-section">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
-                            <h2 style="color: #2c3e50; margin: 0;">📦 Branch Inventory Management</h2>
-                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                                <button class="btn btn-primary" onclick="refreshBranchInventory()" style="background: #c41e3a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                    🔄 Refresh
-                                </button>
-                                <button class="btn btn-success" onclick="openBranchStockReceiveModal()" style="background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
-                                    ➕ Receive Stock
-                                </button>
-                                <button class="btn btn-info" onclick="openBranchStockTransferModal()" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
-                                    📤 Transfer Stock
-                                </button>
-                                <button class="btn btn-secondary" onclick="exportBranchInventoryCSV()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
-                                    📥 Export CSV
-                                </button>
+                    <style>
+                        #dispenserStockSection {
+                            background: #f5f7fb;
+                            border-radius: 24px;
+                            padding: 0;
+                        }
+                        #dispenserStockSection .stock-portal {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 24px;
+                        }
+                        #dispenserStockSection .stock-hero {
+                            display: flex;
+                            flex-wrap: wrap;
+                            justify-content: space-between;
+                            align-items: center;
+                            gap: 18px;
+                            padding: 28px 32px;
+                            border-radius: 24px;
+                            background: radial-gradient(120% 150% at 100% 0%, rgba(99, 102, 241, 0.55) 0%, rgba(30, 64, 175, 0.92) 55%, rgba(17, 24, 39, 0.98) 100%);
+                            color: #ffffff;
+                            position: relative;
+                            overflow: hidden;
+                        }
+                        #dispenserStockSection .stock-hero::after {
+                            content: "";
+                            position: absolute;
+                            inset: 0;
+                            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(99, 102, 241, 0.15) 100%);
+                            pointer-events: none;
+                        }
+                        #dispenserStockSection .stock-hero-content {
+                            max-width: 520px;
+                            position: relative;
+                            z-index: 1;
+                        }
+                        #dispenserStockSection .stock-hero-eyebrow {
+                            margin: 0 0 8px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.14em;
+                            font-size: 0.8rem;
+                            font-weight: 700;
+                            opacity: 0.7;
+                        }
+                        #dispenserStockSection .stock-hero h2 {
+                            margin: 0;
+                            font-size: clamp(1.8rem, 3vw, 2.3rem);
+                            letter-spacing: -0.01em;
+                        }
+                        #dispenserStockSection .stock-hero p {
+                            margin: 12px 0 0;
+                            color: rgba(255, 255, 255, 0.82);
+                            line-height: 1.7;
+                            font-size: 0.98rem;
+                        }
+                        #dispenserStockSection .stock-hero-actions {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 12px;
+                            position: relative;
+                            z-index: 1;
+                        }
+                        #dispenserStockSection .stock-action {
+                            border: none;
+                            border-radius: 999px;
+                            padding: 12px 22px;
+                            font-weight: 600;
+                            font-size: 0.95rem;
+                            cursor: pointer;
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 10px;
+                            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+                            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+                            background: rgba(255, 255, 255, 0.08);
+                            color: #e2e8f0;
+                            backdrop-filter: blur(10px);
+                        }
+                        #dispenserStockSection .stock-action:hover {
+                            transform: translateY(-2px);
+                            box-shadow: 0 18px 36px rgba(15, 23, 42, 0.22);
+                            opacity: 0.95;
+                        }
+                        #dispenserStockSection .stock-action--refresh {
+                            border: 1px solid rgba(255, 255, 255, 0.25);
+                        }
+                        #dispenserStockSection .stock-action--receive {
+                            background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+                            color: #ffffff;
+                        }
+                        #dispenserStockSection .stock-action--transfer {
+                            background: linear-gradient(135deg, #a855f7, #6366f1);
+                            color: #ffffff;
+                        }
+                        #dispenserStockSection .stock-action--export {
+                            background: linear-gradient(135deg, #f97316, #ea580c);
+                            color: #ffffff;
+                        }
+                        #dispenserStockSection .stock-filters-card {
+                            background: #ffffff;
+                            border-radius: 24px;
+                            padding: 26px 28px;
+                            box-shadow: 0 22px 44px rgba(15, 23, 42, 0.08);
+                            border: 1px solid rgba(15, 23, 42, 0.05);
+                        }
+                        #dispenserStockSection .stock-filters-header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            gap: 16px;
+                            flex-wrap: wrap;
+                            margin-bottom: 18px;
+                        }
+                        #dispenserStockSection .stock-filters-header h3 {
+                            margin: 0;
+                            font-size: 1.2rem;
+                            color: #0f172a;
+                        }
+                        #dispenserStockSection .stock-filters-header p {
+                            margin: 4px 0 0;
+                            color: #64748b;
+                            font-size: 0.95rem;
+                        }
+                        #dispenserStockSection .stock-chip {
+                            border: none;
+                            background: rgba(99, 102, 241, 0.12);
+                            color: #312e81;
+                            padding: 9px 18px;
+                            border-radius: 999px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+                        }
+                        #dispenserStockSection .stock-chip:hover {
+                            background: rgba(99, 102, 241, 0.18);
+                            color: #111827;
+                            transform: translateY(-1px);
+                        }
+                        #dispenserStockSection .stock-filters-grid {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                            gap: 18px;
+                        }
+                        #dispenserStockSection .stock-field label {
+                            display: block;
+                            margin-bottom: 6px;
+                            font-weight: 600;
+                            color: #0f172a;
+                            font-size: 0.9rem;
+                        }
+                        #dispenserStockSection .stock-field input,
+                        #dispenserStockSection .stock-field select {
+                            width: 100%;
+                            border: 1px solid #d1d5db;
+                            border-radius: 14px;
+                            padding: 12px 14px;
+                            font-size: 0.95rem;
+                            background: #f8fafc;
+                            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                            color: #1f2937;
+                        }
+                        #dispenserStockSection .stock-field input:focus,
+                        #dispenserStockSection .stock-field select:focus {
+                            outline: none;
+                            border-color: #6366f1;
+                            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+                            background: #ffffff;
+                        }
+                        #dispenserStockSection .stock-kpi-grid {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                            gap: 20px;
+                        }
+                        #dispenserStockSection .stock-kpi-card {
+                            position: relative;
+                            border-radius: 22px;
+                            padding: 24px 26px;
+                            color: #ffffff;
+                            overflow: hidden;
+                            box-shadow: 0 28px 48px rgba(15, 23, 42, 0.14);
+                        }
+                        #dispenserStockSection .stock-kpi-card::after {
+                            content: "";
+                            position: absolute;
+                            inset: 0;
+                            background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.22), transparent 55%);
+                            opacity: 0.6;
+                        }
+                        #dispenserStockSection .stock-kpi-card--total {
+                            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+                        }
+                        #dispenserStockSection .stock-kpi-card--value {
+                            background: linear-gradient(135deg, #0f766e, #0d9488);
+                        }
+                        #dispenserStockSection .stock-kpi-card--low {
+                            background: linear-gradient(135deg, #f59e0b, #d97706);
+                        }
+                        #dispenserStockSection .stock-kpi-card--out {
+                            background: linear-gradient(135deg, #dc2626, #b91c1c);
+                        }
+                        #dispenserStockSection .stock-kpi-label {
+                            margin: 0;
+                            text-transform: uppercase;
+                            letter-spacing: 0.14em;
+                            font-size: 0.78rem;
+                            opacity: 0.78;
+                        }
+                        #dispenserStockSection .stock-kpi-value {
+                            margin: 12px 0 0;
+                            font-size: 2.2rem;
+                            font-weight: 700;
+                            letter-spacing: -0.02em;
+                        }
+                        #dispenserStockSection .stock-kpi-subtext {
+                            margin: 14px 0 0;
+                            font-size: 0.9rem;
+                            opacity: 0.85;
+                        }
+                        #dispenserStockSection .stock-table-card {
+                            background: #ffffff;
+                            border-radius: 26px;
+                            border: 1px solid rgba(15, 23, 42, 0.05);
+                            box-shadow: 0 30px 60px rgba(15, 23, 42, 0.12);
+                            overflow: hidden;
+                        }
+                        #dispenserStockSection .stock-section-header {
+                            padding: 24px 28px 0;
+                            display: flex;
+                            justify-content: space-between;
+                            gap: 16px;
+                            flex-wrap: wrap;
+                        }
+                        #dispenserStockSection .stock-section-header h3 {
+                            margin: 0;
+                            font-size: 1.35rem;
+                            color: #0f172a;
+                        }
+                        #dispenserStockSection .stock-section-header p {
+                            margin: 6px 0 0;
+                            color: #64748b;
+                            max-width: 520px;
+                            font-size: 0.94rem;
+                        }
+                        #dispenserStockSection .stock-table-wrapper {
+                            padding: 0 28px 28px;
+                            overflow-x: auto;
+                        }
+                        #dispenserStockSection .stock-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            min-width: 720px;
+                            font-size: 0.95rem;
+                        }
+                        #dispenserStockSection .stock-table thead th {
+                            background: #f8fafc;
+                            color: #0f172a;
+                            padding: 14px 16px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.06em;
+                            font-size: 0.8rem;
+                            border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+                        }
+                        #dispenserStockSection .stock-table-row:nth-child(even) {
+                            background: #fdfdff;
+                        }
+                        #dispenserStockSection .stock-cell {
+                            padding: 16px;
+                            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+                            color: #1f2937;
+                            vertical-align: middle;
+                        }
+                        #dispenserStockSection .stock-cell--qty,
+                        #dispenserStockSection .stock-cell--price,
+                        #dispenserStockSection .stock-cell--value {
+                            text-align: right;
+                            font-variant-numeric: tabular-nums;
+                        }
+                        #dispenserStockSection .stock-cell--qty {
+                            font-weight: 600;
+                        }
+                        #dispenserStockSection .stock-cell--expiry,
+                        #dispenserStockSection .stock-cell--status,
+                        #dispenserStockSection .stock-cell--actions {
+                            text-align: center;
+                        }
+                        #dispenserStockSection .stock-status-badge {
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 6px;
+                            padding: 6px 16px;
+                            border-radius: 999px;
+                            font-weight: 600;
+                            font-size: 0.85rem;
+                        }
+                        #dispenserStockSection .stock-status-badge--good {
+                            background: #dcfce7;
+                            color: #166534;
+                        }
+                        #dispenserStockSection .stock-status-badge--warn {
+                            background: #fef9c3;
+                            color: #92400e;
+                        }
+                        #dispenserStockSection .stock-status-badge--bad {
+                            background: #fee2e2;
+                            color: #b91c1c;
+                        }
+                        #dispenserStockSection .stock-inline-btn {
+                            padding: 6px 14px;
+                            border-radius: 999px;
+                            border: 1px solid rgba(99, 102, 241, 0.35);
+                            background: rgba(99, 102, 241, 0.12);
+                            color: #312e81;
+                            font-size: 0.82rem;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+                        }
+                        #dispenserStockSection .stock-inline-btn:hover {
+                            background: rgba(99, 102, 241, 0.18);
+                            border-color: rgba(99, 102, 241, 0.55);
+                            color: #1e1b4b;
+                            transform: translateY(-1px);
+                        }
+                        #dispenserStockSection .stock-empty-state {
+                            padding: 48px 16px;
+                            text-align: center;
+                            color: #64748b;
+                            font-weight: 500;
+                            background: #f8fafc;
+                            border-radius: 18px;
+                        }
+                        #dispenserStockSection .stock-activity-card {
+                            background: #ffffff;
+                            border-radius: 26px;
+                            border: 1px solid rgba(15, 23, 42, 0.05);
+                            box-shadow: 0 30px 60px rgba(15, 23, 42, 0.12);
+                            padding: 24px 28px 28px;
+                        }
+                        #dispenserStockSection .stock-activity-list {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 14px;
+                        }
+                        #dispenserStockSection .stock-activity-item {
+                            display: flex;
+                            gap: 16px;
+                            align-items: flex-start;
+                            padding: 16px 18px;
+                            border: 1px solid rgba(148, 163, 184, 0.14);
+                            border-radius: 18px;
+                            background: #f8fafc;
+                            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+                        }
+                        #dispenserStockSection .stock-activity-icon {
+                            width: 42px;
+                            height: 42px;
+                            border-radius: 14px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 1.2rem;
+                            font-weight: 700;
+                            flex-shrink: 0;
+                        }
+                        #dispenserStockSection .stock-activity-icon[data-variant="receive"],
+                        #dispenserStockSection .stock-activity-icon[data-variant="transfer_in"] {
+                            background: rgba(34, 197, 94, 0.18);
+                            color: #166534;
+                        }
+                        #dispenserStockSection .stock-activity-icon[data-variant="transfer_out"] {
+                            background: rgba(59, 130, 246, 0.18);
+                            color: #1d4ed8;
+                        }
+                        #dispenserStockSection .stock-activity-icon[data-variant="adjustment"] {
+                            background: rgba(249, 115, 22, 0.18);
+                            color: #9a3412;
+                        }
+                        #dispenserStockSection .stock-activity-icon[data-variant="default"] {
+                            background: rgba(148, 163, 184, 0.18);
+                            color: #475569;
+                        }
+                        #dispenserStockSection .stock-activity-body {
+                            flex: 1;
+                        }
+                        #dispenserStockSection .stock-activity-title {
+                            margin: 0;
+                            font-size: 1.05rem;
+                            font-weight: 600;
+                            color: #0f172a;
+                        }
+                        #dispenserStockSection .stock-activity-meta {
+                            margin: 6px 0 0;
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 12px;
+                            font-size: 0.85rem;
+                            color: #64748b;
+                        }
+                        #dispenserStockSection .stock-activity-note {
+                            margin: 10px 0 0;
+                            font-size: 0.9rem;
+                            color: #475569;
+                        }
+                        #dispenserStockSection .stock-activity-empty {
+                            padding: 28px;
+                            text-align: center;
+                            color: #64748b;
+                            background: #f8fafc;
+                            border-radius: 18px;
+                        }
+                        #dispenserStockSection .stock-restricted-notice {
+                            margin-top: 20px;
+                            padding: 18px 20px;
+                            border-radius: 18px;
+                            background: #fef3c7;
+                            border: 1px solid #facc15;
+                            color: #92400e;
+                            font-size: 0.95rem;
+                            line-height: 1.6;
+                        }
+                        @media (max-width: 1024px) {
+                            #dispenserStockSection .stock-hero {
+                                padding: 24px;
+                            }
+                            #dispenserStockSection .stock-section-header {
+                                padding: 20px 20px 0;
+                            }
+                            #dispenserStockSection .stock-table-wrapper {
+                                padding: 0 20px 20px;
+                            }
+                            #dispenserStockSection .stock-activity-card {
+                                padding: 20px;
+                            }
+                        }
+                        @media (max-width: 768px) {
+                            #dispenserStockSection .stock-action {
+                                width: 100%;
+                                justify-content: center;
+                            }
+                            #dispenserStockSection .stock-filters-card {
+                                padding: 22px;
+                            }
+                            #dispenserStockSection .stock-table {
+                                min-width: 100%;
+                            }
+                        }
+                    </style>
+                    <section class="stock-portal">
+                        <header class="stock-hero">
+                            <div class="stock-hero-content">
+                                <p class="stock-hero-eyebrow">Branch Operations</p>
+                                <h2>Branch Inventory Command Center</h2>
+                                <p>Monitor stock levels, respond to expiry risks, and coordinate transfers without leaving the counter.</p>
                             </div>
-                        </div>
-                        
-                        <!-- Filters and Search -->
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                                <div class="form-group">
-                                    <label>Search Product</label>
-                                    <input type="text" id="branchInventorySearch" placeholder="Search products..." 
-                                           onkeyup="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                            <div class="stock-hero-actions">
+                                <button type="button" class="stock-action stock-action--refresh" onclick="refreshBranchInventory()">🔄 Refresh Data</button>
+                                <button type="button" class="stock-action stock-action--receive" onclick="openBranchStockReceiveModal()">➕ Receive Stock</button>
+                                <button type="button" class="stock-action stock-action--transfer" onclick="openBranchStockTransferModal()">📤 Transfer Stock</button>
+                                <button type="button" class="stock-action stock-action--export" onclick="exportBranchInventoryCSV()">📥 Export CSV</button>
+                            </div>
+                        </header>
+
+                        <div class="stock-filters-card">
+                            <div class="stock-filters-header">
+                                <div>
+                                    <h3>Smart Filters</h3>
+                                    <p>Slice inventory by product, stock health, or expiry focus.</p>
                                 </div>
-                                <div class="form-group">
-                                    <label>Category</label>
-                                    <select id="branchInventoryCategory" onchange="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                                        <option value="all">All Categories</option>
-                                        <option value="low">Low Stock</option>
-                                        <option value="out">Out of Stock</option>
-                                        <option value="expiring">Expiring Soon</option>
+                                <button type="button" class="stock-chip" onclick="refreshBranchInventory()">Refresh data</button>
+                            </div>
+                            <div class="stock-filters-grid">
+                                <div class="stock-field">
+                                    <label for="branchInventorySearch">Search product</label>
+                                    <input type="text" id="branchInventorySearch" placeholder="Search by name or batch..." onkeyup="filterBranchInventory()">
+                                </div>
+                                <div class="stock-field">
+                                    <label for="branchInventoryCategory">Focus</label>
+                                    <select id="branchInventoryCategory" onchange="filterBranchInventory()">
+                                        <option value="all">All stock</option>
+                                        <option value="low">Low stock</option>
+                                        <option value="out">Out of stock</option>
+                                        <option value="expiring">Expiring soon</option>
                                     </select>
                                 </div>
-                                <div class="form-group">
-                                    <label>Sort By</label>
-                                    <select id="branchInventorySort" onchange="filterBranchInventory()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                                        <option value="name">Product Name</option>
-                                        <option value="stock">Stock Level</option>
-                                        <option value="expiry">Expiry Date</option>
+                                <div class="stock-field">
+                                    <label for="branchInventorySort">Sort by</label>
+                                    <select id="branchInventorySort" onchange="filterBranchInventory()">
+                                        <option value="name">Product name</option>
+                                        <option value="stock">Stock level</option>
+                                        <option value="expiry">Expiry date</option>
                                     </select>
                                 </div>
-                    </div>
-                </div>
-                
-                        <!-- KPI Cards -->
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                            <div style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 20px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Products</div>
-                                <div id="branchInventoryTotalProducts" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #27ae60, #229954); color: white; padding: 20px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 0.9rem; opacity: 0.9;">Total Stock Value</div>
-                                <div id="branchInventoryTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">N$ 0.00</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #f39c12, #e67e22); color: white; padding: 20px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 0.9rem; opacity: 0.9;">Low Stock Items</div>
-                                <div id="branchInventoryLowStock" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 0.9rem; opacity: 0.9;">Out of Stock</div>
-                                <div id="branchInventoryOutOfStock" style="font-size: 2rem; font-weight: bold; margin-top: 5px;">0</div>
                             </div>
                         </div>
-                        
-                        <!-- Inventory Table -->
-                        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; overflow-x: auto;">
-                            <table id="branchInventoryTable" class="table" style="width: 100%; border-collapse: collapse;">
-                                <thead>
-                                    <tr style="background: #f8f9fa; border-bottom: 2px solid #c41e3a;">
-                                        <th style="padding: 12px; text-align: left; font-weight: 600;">Product</th>
-                                        <th style="padding: 12px; text-align: left; font-weight: 600;">Batch No</th>
-                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Quantity</th>
-                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Expiry Date</th>
-                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Unit Price</th>
-                                        <th style="padding: 12px; text-align: right; font-weight: 600;">Total Value</th>
-                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Status</th>
-                                        <th style="padding: 12px; text-align: center; font-weight: 600;">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="branchInventoryTableBody">
-                                    <tr>
-                                        <td colspan="8" style="padding: 40px; text-align: center; color: #7f8c8d;">
-                                            Loading inventory...
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <div class="stock-kpi-grid">
+                            <article class="stock-kpi-card stock-kpi-card--total">
+                                <p class="stock-kpi-label">Total products</p>
+                                <p class="stock-kpi-value" id="branchInventoryTotalProducts">0</p>
+                                <p class="stock-kpi-subtext">Active SKUs in this branch.</p>
+                            </article>
+                            <article class="stock-kpi-card stock-kpi-card--value">
+                                <p class="stock-kpi-label">Stock value</p>
+                                <p class="stock-kpi-value" id="branchInventoryTotalValue">N$ 0.00</p>
+                                <p class="stock-kpi-subtext">Valuation based on current unit prices.</p>
+                            </article>
+                            <article class="stock-kpi-card stock-kpi-card--low">
+                                <p class="stock-kpi-label">Low stock</p>
+                                <p class="stock-kpi-value" id="branchInventoryLowStock">0</p>
+                                <p class="stock-kpi-subtext">Flagged items requiring restock.</p>
+                            </article>
+                            <article class="stock-kpi-card stock-kpi-card--out">
+                                <p class="stock-kpi-label">Out of stock</p>
+                                <p class="stock-kpi-value" id="branchInventoryOutOfStock">0</p>
+                                <p class="stock-kpi-subtext">Items currently unavailable.</p>
+                            </article>
                         </div>
-                        
-                        <!-- Stock Movements History (Restricted) -->
-                        <div style="margin-top: 30px;">
-                            <h3 style="color: #2c3e50; margin-bottom: 15px;">📊 Recent Stock Movements</h3>
-                            <div id="branchInventoryMovements" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
-                                <p style="text-align: center; color: #7f8c8d;">Loading movements...</p>
+
+                        <div class="stock-table-card">
+                            <div class="stock-section-header">
+                                <div>
+                                    <h3>Live Inventory</h3>
+                                    <p>Real-time batch visibility with expiry and valuation insights.</p>
+                                </div>
                             </div>
-                            <div id="branchInventoryRestrictedNotice" style="display: none; background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                                <p style="color: #856404; margin: 0;">
-                                    <strong>⚠️ Restricted Access:</strong> Sensitive inventory data (expected stock, stock losses, and adjustments) requires GM clearance. 
-                                    Contact your General Manager for access to this information.
-                                </p>
+                            <div class="stock-table-wrapper">
+                                <table id="branchInventoryTable" class="stock-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Product</th>
+                                            <th>Batch No</th>
+                                            <th>Quantity</th>
+                                            <th>Expiry Date</th>
+                                            <th>Unit Price</th>
+                                            <th>Total Value</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="branchInventoryTableBody">
+                                        <tr>
+                                            <td colspan="8" class="stock-empty-state">Loading inventory...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                    </div>
+
+                        <div class="stock-activity-card">
+                            <div class="stock-section-header">
+                                <div>
+                                    <h3>Recent Stock Movements</h3>
+                                    <p>Track receipts, transfers, adjustments, and approvals as they happen.</p>
+                                </div>
+                            </div>
+                            <div id="branchInventoryMovements" class="stock-activity-list">
+                                <div class="stock-activity-empty">Loading movements...</div>
+                            </div>
+                            <div id="branchInventoryRestrictedNotice" class="stock-restricted-notice" style="display: none;">
+                                <strong>⚠️ Restricted Access</strong> Sensitive inventory data (expected stock, losses, and adjustments) requires GM clearance. Contact your General Manager for approval.
+                            </div>
+                        </div>
+                    </section>
                 </div>
                 
                 <!-- Branch Stock Receive Modal -->
@@ -5988,23 +7087,26 @@
                 </div>
             </div>
             <div id="stockContent" style="display: none;">
-                <div class="user-profile" id="stockProfile"></div>
-                
-                <div class="portal-header">
-                    <h2>📦 Stock & Inventory Management Portal</h2>
-                    <p>Manage country stock, warehouse inventory, and branch distribution</p>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top: 10px;">
-                        <button class="btn btn-primary" onclick="refreshAllData()">🔄 Refresh Data</button>
-                        <button class="btn" id="stockHelpBtnGlobal">❓ Help</button>
+            <div class="stock-hub-shell">
+                <header class="stock-hub-hero">
+                    <div class="stock-hub-hero__text">
+                        <p class="stock-hub-hero__eyebrow">National Inventory Network</p>
+                        <h2>Stock & Inventory Management Portal</h2>
+                        <p>Manage country stock, warehouse inventory, and branch distribution with real-time intelligence.</p>
+                        <div class="stock-hub-hero__actions">
+                            <button class="hub-btn hub-btn--primary" onclick="refreshAllData()">🔄 Refresh Data</button>
+                            <button class="hub-btn hub-btn--ghost" id="stockHelpBtnGlobal">❓ Help & Playbooks</button>
+                        </div>
                     </div>
-                </div>
+                    <div class="stock-hub-hero__profile user-profile" id="stockProfile"></div>
+                </header>
 
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
-                    <button id="stockMainTabBtn" class="btn btn-primary" onclick="toggleStockView('main')" style="min-width: 160px;">📦 Stock Tools</button>
-                    <button id="stockStaffTabBtn" class="btn" onclick="toggleStockView('staff')" style="min-width: 160px;">👤 Staff Services</button>
-                </div>
+                <nav class="stock-hub-mode-toggle">
+                    <button id="stockMainTabBtn" class="btn hub-toggle-btn hub-toggle-btn--active" onclick="toggleStockView('main')">📦 Stock Tools</button>
+                    <button id="stockStaffTabBtn" class="btn hub-toggle-btn" onclick="toggleStockView('staff')">👤 Staff Services</button>
+                </nav>
 
-                <div id="stockWorkflowNav">
+                <div id="stockWorkflowNav" class="stock-hub-journey">
                     <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
                     <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
                     <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
@@ -6014,9 +7116,9 @@
                     <button type="button" class="tab-button workflow-tab" data-tab="distribution" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
                 </div>
 
-                <div id="stockTabsContainer" style="margin-top:12px;">
-                <!-- Stock Management Tabs - Modern Comprehensive Structure -->
-                <div class="tabs" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 3px solid #c41e3a; padding-bottom: 10px;">
+                <div id="stockTabsContainer" class="stock-hub-tabs">
+                <!-- Stock Management Tabs -->
+                <nav class="stock-hub-tab-row">
                     <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
                     <button class="tab-button" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
                     <button class="tab-button" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse Distribution</button>
@@ -6027,20 +7129,20 @@
                     <button class="tab-button" onclick="showStockTab('invoices')" id="stockTabInvoices">🧾 Invoices</button>
                     <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
                     <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
-                </div>
+                </nav>
 
-                <div class="tabs" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; background: rgba(12, 20, 42, 0.65); border: 1px solid #1e2a44; border-radius: 10px; padding: 10px;">
-                    <span style="pointer-events:none; font-size: 0.85rem; color: #8aa0b5; align-self: center; padding-right: 6px;">Advanced Tools:</span>
-                    <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode & Scans</button>
+                <nav class="stock-hub-tab-row stock-hub-tab-row--secondary">
+                    <span class="stock-hub-tab-label">Advanced Tools:</span>
+                    <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode &amp; Scans</button>
                     <button class="tab-button" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder Plans</button>
-                    <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch & Returns</button>
+                    <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch &amp; Returns</button>
                     <button class="tab-button" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
                     <button class="tab-button" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Legacy Country</button>
                     <button class="tab-button" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Legacy Windhoek</button>
                     <button class="tab-button" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Legacy Ondangwa</button>
                     <button class="tab-button" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Legacy Distribution</button>
                     <button class="tab-button" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Inventory Log</button>
-                </div>
+                </nav>
 
                 <!-- Overview Tab - Stock Management Dashboard -->
                 <div id="overviewTab" class="stock-tab-content" style="display: block;">
@@ -6065,15 +7167,15 @@
                     </div>
 
                     <!-- Inventory Timely Report -->
-                    <div class="form-section">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                    <section class="hub-section">
+                        <div class="hub-section__header">
                             <div>
-                                <h3>⌛ Inventory Timely Report</h3>
-                                <p style="margin: 4px 0 0; color: #666; max-width: 520px;">Track received stock, sales performance, adjustments and client activity with quick time-based snapshots.</p>
+                                <h3 class="hub-section__title">Inventory Timely Report</h3>
+                                <p class="hub-section__meta">Track received stock, sales performance, adjustments, and client activity with quick time-based snapshots.</p>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                <label for="inventoryTimelyRange" style="font-size: 0.85rem; color: #8aa0b5;">Reporting Period</label>
-                                <select id="inventoryTimelyRange" onchange="renderInventoryTimelyReport(this.value)" style="background: #0f1830; color: var(--text); border: 1px solid #1e2a44; border-radius: 8px; padding: 8px 12px; min-width: 160px;">
+                            <div class="hub-section__actions">
+                                <label for="inventoryTimelyRange">Reporting Period</label>
+                                <select id="inventoryTimelyRange" onchange="renderInventoryTimelyReport(this.value)">
                                     <option value="daily">Daily</option>
                                     <option value="weekly">Weekly</option>
                                     <option value="monthly" selected>Monthly</option>
@@ -6082,293 +7184,232 @@
                                 </select>
                             </div>
                         </div>
-                        <div id="inventoryTimelySummary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-top: 20px;">
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Stock Received</span>
-                                    <span>📥</span>
-                                </div>
-                                <div id="inventoryReportReceived" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportReceivedMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Stock Sold</span>
-                                    <span>🛒</span>
-                                </div>
-                                <div id="inventoryReportSold" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportSoldMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Field Sales</span>
-                                    <span>🚐</span>
-                                </div>
-                                <div id="inventoryReportFieldSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportFieldSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Consultant Sales</span>
-                                    <span>👩‍💼</span>
-                                </div>
-                                <div id="inventoryReportConsultantSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportConsultantSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Online Sales</span>
-                                    <span>💻</span>
-                                </div>
-                                <div id="inventoryReportOnlineSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportOnlineSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Cash Refunds</span>
-                                    <span>💵</span>
-                                </div>
-                                <div id="inventoryReportCashRefunds" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportCashRefundsMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Expiries</span>
-                                    <span>⏱️</span>
-                                </div>
-                                <div id="inventoryReportExpiries" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportExpiriesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Damages</span>
-                                    <span>🧯</span>
-                                </div>
-                                <div id="inventoryReportDamages" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportDamagesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Walk-in Sales</span>
-                                    <span>🚶</span>
-                                </div>
-                                <div id="inventoryReportWalkinSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportWalkinSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Referred Clients</span>
-                                    <span>🤝</span>
-                                </div>
-                                <div id="inventoryReportReferrals" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportReferralsMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Distributor Sales</span>
-                                    <span>🏷️</span>
-                                </div>
-                                <div id="inventoryReportDistributorSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportDistributorSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
-                            <div style="background: #0f1830; border: 1px solid #1e2a44; border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; color: #8aa0b5;">
-                                    <span>Non-Distributor Sales</span>
-                                    <span>🛍️</span>
-                                </div>
-                                <div id="inventoryReportNonDistributorSales" style="font-size: 1.6rem; font-weight: 700; margin-top: 8px;">0</div>
-                                <div id="inventoryReportNonDistributorSalesMeta" style="font-size: 0.85rem; color: #8aa0b5; margin-top: 4px;">No data</div>
-                            </div>
+                        <div id="inventoryTimelySummary" class="hub-panel-grid">
+                            <article class="hub-panel" data-icon="📥">
+                                <div class="hub-panel__heading"><span>Stock Received</span><span>📥</span></div>
+                                <p id="inventoryReportReceived" class="hub-panel__value">0</p>
+                                <p id="inventoryReportReceivedMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🛒">
+                                <div class="hub-panel__heading"><span>Stock Sold</span><span>🛒</span></div>
+                                <p id="inventoryReportSold" class="hub-panel__value">0</p>
+                                <p id="inventoryReportSoldMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🚐">
+                                <div class="hub-panel__heading"><span>Field Sales</span><span>🚐</span></div>
+                                <p id="inventoryReportFieldSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportFieldSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="👩‍💼">
+                                <div class="hub-panel__heading"><span>Consultant Sales</span><span>👩‍💼</span></div>
+                                <p id="inventoryReportConsultantSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportConsultantSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="💻">
+                                <div class="hub-panel__heading"><span>Online Sales</span><span>💻</span></div>
+                                <p id="inventoryReportOnlineSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportOnlineSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="💵">
+                                <div class="hub-panel__heading"><span>Cash Refunds</span><span>💵</span></div>
+                                <p id="inventoryReportCashRefunds" class="hub-panel__value">0</p>
+                                <p id="inventoryReportCashRefundsMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="⏱️">
+                                <div class="hub-panel__heading"><span>Expiries</span><span>⏱️</span></div>
+                                <p id="inventoryReportExpiries" class="hub-panel__value">0</p>
+                                <p id="inventoryReportExpiriesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🧯">
+                                <div class="hub-panel__heading"><span>Damages</span><span>🧯</span></div>
+                                <p id="inventoryReportDamages" class="hub-panel__value">0</p>
+                                <p id="inventoryReportDamagesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🚶">
+                                <div class="hub-panel__heading"><span>Walk-in Sales</span><span>🚶</span></div>
+                                <p id="inventoryReportWalkinSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportWalkinSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🤝">
+                                <div class="hub-panel__heading"><span>Referred Clients</span><span>🤝</span></div>
+                                <p id="inventoryReportReferrals" class="hub-panel__value">0</p>
+                                <p id="inventoryReportReferralsMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🏷️">
+                                <div class="hub-panel__heading"><span>Distributor Sales</span><span>🏷️</span></div>
+                                <p id="inventoryReportDistributorSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportDistributorSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
+                            <article class="hub-panel" data-icon="🛍️">
+                                <div class="hub-panel__heading"><span>Non-Distributor Sales</span><span>🛍️</span></div>
+                                <p id="inventoryReportNonDistributorSales" class="hub-panel__value">0</p>
+                                <p id="inventoryReportNonDistributorSalesMeta" class="hub-panel__meta">No data</p>
+                            </article>
                         </div>
-                    </div>
-                    
+                    </section>
                     <!-- Stock Flow Visualization -->
-                    <div class="form-section">
-                        <h3>📊 Stock Flow Overview</h3>
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
-                                <div style="text-align: center; flex: 1; min-width: 150px;">
-                                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
-                                        <strong>📥 Country Import</strong>
-                                        <div id="overviewCountryStock" style="font-size: 1.5rem; font-weight: bold; color: #1976d2; margin-top: 5px;">0</div>
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Stock Flow Overview</h3>
+                            <p class="hub-section__meta">Monitor stock movement from country import through warehouses and branches to sales.</p>
+                        </div>
+                        <div class="hub-flow">
+                            <div class="hub-flow__node">
+                                <strong>📥 Country Import</strong>
+                                <div id="overviewCountryStock" class="hub-flow__value">0</div>
                             </div>
+                            <div class="hub-flow__node">
+                                <strong>🏢 Warehouses</strong>
+                                <div id="overviewWarehouseStock" class="hub-flow__value">0</div>
                             </div>
-                                <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
-                                <div style="text-align: center; flex: 1; min-width: 150px;">
-                                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
-                                        <strong>🏢 Warehouses</strong>
-                                        <div id="overviewWarehouseStock" style="font-size: 1.5rem; font-weight: bold; color: #f57c00; margin-top: 5px;">0</div>
+                            <div class="hub-flow__node">
+                                <strong>🏬 Branches</strong>
+                                <div id="overviewBranchStock" class="hub-flow__value">0</div>
                             </div>
-                            </div>
-                                <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
-                                <div style="text-align: center; flex: 1; min-width: 150px;">
-                                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
-                                        <strong>🏬 Branches</strong>
-                                        <div id="overviewBranchStock" style="font-size: 1.5rem; font-weight: bold; color: #388e3c; margin-top: 5px;">0</div>
-                            </div>
-                            </div>
-                                <div style="text-align: center; font-size: 2rem; color: #666;">→</div>
-                                <div style="text-align: center; flex: 1; min-width: 150px;">
-                                    <div style="background: #fce4ec; padding: 15px; border-radius: 8px;">
-                                        <strong>🛒 Shop/Sales</strong>
-                                        <div id="overviewShopStock" style="font-size: 1.5rem; font-weight: bold; color: #c2185b; margin-top: 5px;">0</div>
-                            </div>
-                                </div>
+                            <div class="hub-flow__node">
+                                <strong>🛒 Shop &amp; Sales</strong>
+                                <div id="overviewShopStock" class="hub-flow__value">0</div>
                             </div>
                         </div>
-                    </div>
-                    
+                    </section>
                     <!-- Recent Activity -->
-                    <div class="form-section">
-                        <h3>⚡ Recent Stock Movements</h3>
-                        <div id="overviewRecentMovements" style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
-                            <p style="text-align: center; color: #7f8c8d;">Loading movements...</p>
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Recent Stock Movements</h3>
+                            <p class="hub-section__meta">Latest receipts, transfers, and adjustments across all locations.</p>
                         </div>
-                    </div>
-                    
+                        <div id="overviewRecentMovements" class="hub-activity-feed">
+                            <div class="hub-activity-empty">Loading movements...</div>
+                        </div>
+                    </section>
                     <!-- Quick Actions -->
-                    <div class="form-section">
-                        <h3>🚀 Quick Actions</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                            <button class="btn btn-success" onclick="showStockTab('countryImport')" style="padding: 15px; font-size: 1rem;">
-                                📥 Import Country Stock
-                            </button>
-                            <button class="btn btn-info" onclick="showStockTab('warehouseDistribution')" style="padding: 15px; font-size: 1rem;">
-                                🏢 Distribute to Warehouse
-                            </button>
-                            <button class="btn btn-primary" onclick="showStockTab('branchDistribution')" style="padding: 15px; font-size: 1rem;">
-                                🏬 Distribute to Branch
-                            </button>
-                            <button class="btn btn-warning" onclick="showStockTab('orders')" style="padding: 15px; font-size: 1rem;">
-                                📋 View Orders
-                            </button>
-                            <button class="btn" onclick="showStockTab('countryInventory')" style="padding: 15px; font-size: 1rem;">
-                                🌍 Country Inventory
-                            </button>
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Quick Actions</h3>
+                            <p class="hub-section__meta">Jump directly into the flow you need.</p>
                         </div>
-                    </div>
-                    <div class="form-section">
-                        <h3>🧾 Purchase Orders & Supplier Collaboration</h3>
-                        <p style="margin-bottom: 20px; color: #666;">Purchase orders use the same format as stock import. They are automatically generated from stock movements across all branches.</p>
-                        
-                        <!-- Purchase Order Form with Table Format (identical to Stock Import) -->
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                            <h4 style="margin-bottom: 15px;">📋 Create Purchase Order (Table Format)</h4>
-                            <form id="purchaseOrderForm" onsubmit="handlePurchaseOrderSubmit(event)">
-                                <div style="margin-bottom: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                                    <div>
-                                        <label>Supplier</label>
-                                        <input type="text" id="poSupplier" placeholder="Supplier name" required>
-                                    </div>
-                                    <div>
-                                        <label>PO Number</label>
-                                        <input type="text" id="poNumber" placeholder="PO-2025-001" required>
-                                    </div>
-                                    <div>
-                                        <label>Expected Arrival</label>
-                                        <input type="date" id="poEta" required>
-                                    </div>
-                                    <div>
-                                        <label>Total Cost (N$)</label>
-                                        <input type="number" id="poValue" min="0" step="0.01" required>
-                                    </div>
-                                    <div>
-                                        <label>Currency</label>
-                                        <input type="text" id="poCurrency" value="NAD" required>
-                                    </div>
-                                    <div>
-                                        <label>Status</label>
-                                        <select id="poStatus" required>
-                                            <option value="Open">Open</option>
-                                            <option value="Acknowledged">Acknowledged</option>
-                                            <option value="In Transit">In Transit</option>
-                                            <option value="Delivered">Delivered</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div style="margin-bottom: 15px;">
-                                    <label>Notes</label>
-                                    <textarea id="poNotes" rows="2" placeholder="Incoterms, lead time commitments..." style="width: 100%; padding: 8px;"></textarea>
-                                </div>
-                                <div style="overflow-x: auto;">
-                                    <table id="purchaseOrderTable" style="width: 100%; border-collapse: collapse; background: white;">
-                                        <thead>
-                                            <tr style="background: #c41e3a; color: white;">
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Cartons No.</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Description</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Batch No.</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Expiry Date</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Quantity</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Total (CTNS)</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="purchaseOrderTableBody">
-                                            <tr>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="po-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="po-description" style="width: 100%; padding: 8px;" placeholder="Product description" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="po-batch-no" style="width: 100%; padding: 8px;" placeholder="DP24265" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="month" class="po-expiry-date" style="width: 100%; padding: 8px;" placeholder="YYYY-MM" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="po-quantity" style="width: 100%; padding: 8px;" placeholder="Qty" min="1" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="po-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <button type="button" class="btn btn-danger" onclick="removePurchaseOrderRow(this)" style="padding: 5px 10px;">Remove</button>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                        <tfoot>
-                                            <tr>
-                                                <td colspan="7" style="padding: 10px; border: 1px solid #ddd;">
-                                                    <button type="button" class="btn btn-success" onclick="addPurchaseOrderRow()">➕ Add Row</button>
-                                                    <button type="button" class="btn btn-info" onclick="autoGeneratePurchaseOrdersFromMovements()" style="margin-left: 10px;">🔄 Auto-Generate from Stock Movements</button>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                                <div style="margin-top: 20px; text-align: center;">
-                                    <button type="submit" class="btn btn-success" style="padding: 12px 40px; font-size: 1.1rem;">📥 Create Purchase Order</button>
-                                    <button type="button" class="btn" onclick="clearPurchaseOrderForm()">Clear All</button>
-                                </div>
-                            </form>
+                        <div class="hub-action-grid">
+                            <button class="hub-action" onclick="showStockTab('countryImport')">📥 Import Country Stock</button>
+                            <button class="hub-action" onclick="showStockTab('warehouseDistribution')">🏢 Distribute to Warehouse</button>
+                            <button class="hub-action" onclick="showStockTab('branchDistribution')">🏬 Distribute to Branch</button>
+                            <button class="hub-action" onclick="showStockTab('orders')">📋 Manage Orders</button>
+                            <button class="hub-action" onclick="showStockTab('countryInventory')">🌍 Country Inventory</button>
                         </div>
-                        
-                        <div style="display: grid; gap: 15px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
-                            <div style="background: white; border-radius: 8px; border: 1px solid #e1e5ec; padding: 15px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <h4 style="margin: 0;">Open Orders</h4>
-                                    <div style="display:flex; gap:8px;">
-                                        <button class="btn btn-info" onclick="renderPurchaseOrders()">🔄 Refresh</button>
-                                        <button class="btn" onclick="exportPurchaseOrders()">📥 Export</button>
+                    </section>
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Purchase Orders &amp; Supplier Collaboration</h3>
+                            <p class="hub-section__meta">Purchase orders mirror the stock import format and sync with supplier scorecards.</p>
+                        </div>
+                        <div class="hub-stack">
+                            <div class="hub-card hub-card--surface">
+                                <h4 class="hub-card__title">Create Purchase Order</h4>
+                                <p class="hub-card__meta">Table format identical to stock import for quick copy and paste from supplier ASNs.</p>
+                                <form id="purchaseOrderForm" onsubmit="handlePurchaseOrderSubmit(event)">
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>Supplier</label>
+                                            <input type="text" id="poSupplier" placeholder="Supplier name" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>PO Number</label>
+                                            <input type="text" id="poNumber" placeholder="PO-2025-001" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Expected Arrival</label>
+                                            <input type="date" id="poEta" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Total Cost (N$)</label>
+                                            <input type="number" id="poValue" min="0" step="0.01" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Currency</label>
+                                            <input type="text" id="poCurrency" value="NAD" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Status</label>
+                                            <select id="poStatus" required>
+                                                <option value="Open">Open</option>
+                                                <option value="Acknowledged">Acknowledged</option>
+                                                <option value="In Transit">In Transit</option>
+                                                <option value="Delivered">Delivered</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                                <div id="purchaseOrderList" style="max-height: 360px; overflow-y: auto; display: grid; gap: 12px;"></div>
+                                    <div class="form-group">
+                                        <label>Notes</label>
+                                        <textarea id="poNotes" rows="2" placeholder="Incoterms, lead time commitments..."></textarea>
+                                    </div>
+                                    <div class="hub-table-wrapper">
+                                        <table id="purchaseOrderTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>Cartons No.</th>
+                                                    <th>Description</th>
+                                                    <th>Batch No.</th>
+                                                    <th>Expiry Date</th>
+                                                    <th style="text-align:center;">Quantity</th>
+                                                    <th style="text-align:center;">Total (CTNS)</th>
+                                                    <th style="text-align:center;">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="purchaseOrderTableBody">
+                                                <tr>
+                                                    <td><input type="text" class="po-carton-no" placeholder="A1-98" required></td>
+                                                    <td><input type="text" class="po-description" placeholder="Product description" required></td>
+                                                    <td><input type="text" class="po-batch-no" placeholder="DP24265" required></td>
+                                                    <td><input type="month" class="po-expiry-date" placeholder="YYYY-MM" required></td>
+                                                    <td><input type="number" class="po-quantity" placeholder="Qty" min="1" required></td>
+                                                    <td><input type="number" class="po-total-ctns" placeholder="CTNS" min="1" required></td>
+                                                    <td style="text-align:center;"><button type="button" class="btn btn-danger" onclick="removePurchaseOrderRow(this)">Remove</button></td>
+                                                </tr>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <td colspan="7">
+                                                        <div class="hub-table-actions">
+                                                            <button type="button" class="btn btn-success" onclick="addPurchaseOrderRow()">➕ Add Row</button>
+                                                            <button type="button" class="btn btn-info" onclick="autoGeneratePurchaseOrdersFromMovements()">🔄 Auto-Generate from Stock Movements</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div class="hub-card-cta">
+                                        <button type="submit" class="hub-btn hub-btn--primary">📥 Create Purchase Order</button>
+                                        <button type="button" class="hub-btn hub-btn--ghost" onclick="clearPurchaseOrderForm()">Clear All</button>
+                                    </div>
+                                </form>
                             </div>
-                            <div style="background: white; border-radius: 8px; border: 1px solid #e1e5ec; padding: 15px;">
-                                <h4 style="margin-top: 0;">Strategic Procurement Signals</h4>
-                                <ul id="planInsights" style="margin: 0; padding-left: 18px; color: #555; line-height: 1.6;"></ul>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-section">
-                        <h3>🤝 Supplier Scorecards</h3>
-                        <p style="margin-bottom: 10px; color: #666;">Automatically updated from purchase orders, ASNs, and quality checks to highlight supplier reliability.</p>
-                        <div id="supplierScorecard" style="overflow-x: auto;"></div>
-                    </div>
-                </div>
 
+                            <div class="hub-summary-grid">
+                                <article class="hub-card hub-card--surface">
+                                    <div class="hub-section__header">
+                                        <h4 class="hub-section__title" style="font-size:1.1rem;">Open Orders</h4>
+                                        <div class="hub-table-actions">
+                                            <button class="btn btn-info" onclick="renderPurchaseOrders()">🔄 Refresh</button>
+                                            <button class="btn" onclick="exportPurchaseOrders()">📥 Export</button>
+                                        </div>
+                                    </div>
+                                    <div id="purchaseOrderList" class="hub-scroll" style="display: grid; gap: 12px;"></div>
+                                </article>
+                                <article class="hub-card hub-card--surface">
+                                    <h4 class="hub-section__title" style="font-size:1.1rem;">Strategic Procurement Signals</h4>
+                                    <ul id="planInsights" style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6;"></ul>
+                                </article>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Supplier Scorecards</h3>
+                            <p class="hub-section__meta">Automatically updated from purchase orders, ASNs, and quality checks to highlight supplier reliability.</p>
+                        </div>
+                        <div id="supplierScorecard" class="hub-table-wrapper"></div>
+                    </section>
                 <!-- Stock Help Modal -->
                 <div id="stockHelpModal" style="position:fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:5000;">
                     <div style="width:min(960px,94vw); max-height:84vh; overflow:auto; background:#fff; color:#111; border:1px solid #ccc; border-radius:10px;">
@@ -6381,25 +7422,25 @@
                 </div>
                 
                 <!-- Country Import Tab -->
-                <div id="countryImportTab" class="stock-tab-content" style="display: none;">
-                    <div class="form-section">
-                        <h3>📥 Country Stock Import & Quality Assurance</h3>
-                        <p style="margin-bottom: 15px; color: #666;">Import stock into country inventory with batch tracking, quality checks, and FEFO enforcement</p>
-                        
-                        <!-- ASN & Quality Section -->
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px;">
-                            <div>
-                                <h4 style="margin-bottom:8px;">🚚 Supplier ASNs</h4>
-                                <div id="asnList" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; max-height: 300px; overflow-y: auto;">
-                                    <p style="color: #7f8c8d; text-align: center;">No ASNs pending</p>
+                <div id="countryImportTab" class="stock-tab-content hub-tab" style="display: none;">
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Country Stock Intake &amp; Quality Assurance</h3>
+                            <p class="hub-section__meta">Import stock into country inventory with batch tracking, quality checks, and FEFO enforcement.</p>
+                        </div>
+                        <div class="hub-split">
+                            <article class="hub-card hub-card--surface">
+                                <h4 class="hub-card__title">🚚 Supplier ASNs</h4>
+                                <div id="asnList" class="hub-scroll">
+                                    <div class="hub-activity-empty">No ASNs pending</div>
                                 </div>
-                            </div>
-                            <div>
-                                <h4 style="margin-bottom:8px;">🧪 Quality & Disposition</h4>
-                                <div id="qualityList" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; margin-bottom: 10px;">
-                                    <p style="color: #7f8c8d; text-align: center; font-size: 0.9rem;">Recent quality inspections</p>
+                            </article>
+                            <article class="hub-card hub-card--surface">
+                                <h4 class="hub-card__title">🧪 Quality &amp; Disposition</h4>
+                                <div id="qualityList" class="hub-scroll">
+                                    <div class="hub-activity-empty">Recent quality inspections</div>
                                 </div>
-                                <form onsubmit="handleQualitySubmit(event)" style="background:#f8f9fa; border:1px solid #e1e5ec; border-radius:8px; padding:10px;">
+                                <form onsubmit="handleQualitySubmit(event)" class="hub-stack">
                                     <div class="form-grid">
                                         <div class="form-group">
                                             <label class="required">Batch</label>
@@ -6451,19 +7492,18 @@
                                             <textarea id="qcNotes" rows="2" placeholder="Inspection notes..."></textarea>
                                         </div>
                                     </div>
-                                    <div style="text-align:right; margin-top:8px;">
-                                        <button class="btn btn-success" type="submit">Save Inspection</button>
+                                    <div class="hub-card-cta">
+                                        <button class="hub-btn hub-btn--primary" type="submit">Save Inspection</button>
                                     </div>
                                 </form>
-                            </div>
+                            </article>
                         </div>
-                    </div>
-                    
-                    <div class="form-section">
-                        <h3>📥 Receive Country Stock</h3>
-                        <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
-                            <h4 style="margin: 0 0 10px 0; color: #2e7d32;">📋 Import Workflow</h4>
-                            <p style="margin: 0; color: #424242; font-size: 0.95rem;">
+                    </section>
+
+                    <section class="hub-section">
+                        <div class="hub-highlight">
+                            <h4 style="margin: 0 0 10px; color: #14532d;">📋 Import Workflow</h4>
+                            <p style="margin: 0; color: #134e4a;">
                                 <strong>All imported stock is automatically:</strong><br>
                                 • Allocated with unique barcodes for tracking<br>
                                 • Enforced with FEFO (First Expired First Out) - batches sorted by expiry date<br>
@@ -6471,81 +7511,69 @@
                                 • Tracked for full audit trail from import to sale
                             </p>
                         </div>
-                        <p style="margin-bottom: 20px; color: #666;">Import stock with batch tracking and FIFO/FEFO enforcement</p>
-                        
-                        <!-- Bulk Import Form -->
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                            <h4 style="margin-bottom: 15px;">📋 Import Stock (Table Format)</h4>
+                        <div class="hub-card hub-card--surface">
+                            <h4 class="hub-card__title">📋 Import Stock (Table Format)</h4>
                             <form id="bulkStockImportForm" class="stock-import-form" onsubmit="handleBulkStockImportSubmit(event)">
-                                <div style="overflow-x: auto;">
-                                    <table id="stockImportTable" style="width: 100%; border-collapse: collapse; background: white;">
+                                <div class="hub-table-wrapper">
+                                    <table id="stockImportTable">
                                         <thead>
-                                            <tr style="background: #c41e3a; color: white;">
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Cartons No.</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Description</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Batch No.</th>
-                                                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Expiry Date</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Quantity</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Total (CTNS)</th>
-                                                <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Action</th>
+                                            <tr>
+                                                <th>Cartons No.</th>
+                                                <th>Description</th>
+                                                <th>Batch No.</th>
+                                                <th>Expiry Date</th>
+                                                <th style="text-align:center;">Quantity</th>
+                                                <th style="text-align:center;">Total (CTNS)</th>
+                                                <th style="text-align:center;">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody id="stockImportTableBody" data-stock-import-body="true">
                                             <tr>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="stock-carton-no" style="width: 100%; padding: 8px;" placeholder="A1-98">
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="stock-description" style="width: 100%; padding: 8px;" placeholder="Product description" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="text" class="stock-batch-no" style="width: 100%; padding: 8px;" placeholder="DP24265" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="month" class="stock-expiry-date" style="width: 100%; padding: 8px;" placeholder="YYYY-MM" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="stock-quantity" style="width: 100%; padding: 8px;" placeholder="Qty" min="1" required>
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <input type="number" class="stock-total-ctns" style="width: 100%; padding: 8px;" placeholder="CTNS" min="1">
-                                                </td>
-                                                <td style="padding: 10px; border: 1px solid #ddd;">
-                                                    <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)" style="padding: 5px 10px;">Remove</button>
-                                                </td>
+                                                <td><input type="text" class="stock-carton-no" placeholder="A1-98"></td>
+                                                <td><input type="text" class="stock-description" placeholder="Product description" required></td>
+                                                <td><input type="text" class="stock-batch-no" placeholder="DP24265" required></td>
+                                                <td><input type="month" class="stock-expiry-date" placeholder="YYYY-MM" required></td>
+                                                <td><input type="number" class="stock-quantity" placeholder="Qty" min="1" required></td>
+                                                <td><input type="number" class="stock-total-ctns" placeholder="CTNS" min="1"></td>
+                                                <td style="text-align:center;"><button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)">Remove</button></td>
                                             </tr>
                                         </tbody>
                                         <tfoot>
                                             <tr>
-                                                <td colspan="7" style="padding: 10px; border: 1px solid #ddd;">
-                                                    <button type="button" class="btn btn-success" onclick="addStockImportRow()">➕ Add Row</button>
-                                                    <button type="button" class="btn btn-info" onclick="importFromCSV()" style="margin-left: 10px;">📁 Import from CSV</button>
+                                                <td colspan="7">
+                                                    <div class="hub-table-actions">
+                                                        <button type="button" class="btn btn-success" onclick="addStockImportRow()">➕ Add Row</button>
+                                                        <button type="button" class="btn btn-info" onclick="importFromCSV()">📁 Import from CSV</button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         </tfoot>
                                     </table>
                                 </div>
-                                <div style="margin-top: 20px; text-align: center;">
-                                    <button type="submit" class="btn btn-success" style="padding: 12px 40px; font-size: 1.1rem;">📥 Import Stock</button>
-                                    <button type="button" class="btn" onclick="clearStockImportForm()">Clear All</button>
+                                <div class="hub-card-cta">
+                                    <button type="submit" class="hub-btn hub-btn--primary">📥 Import Stock</button>
+                                    <button type="button" class="hub-btn hub-btn--ghost" onclick="clearStockImportForm()">Clear All</button>
                                 </div>
                             </form>
                         </div>
-                    </div>
-                    
-                    <div class="form-section">
-                        <h3>📊 Country Stock Inventory</h3>
-                        <div class="search-box">
-                            <input type="text" id="countryStockSearch" placeholder="Search products..." onkeyup="searchCountryStock()">
-                            <button class="btn btn-success" onclick="displayCountryStock()">🔄 Refresh</button>
-                            <button class="btn" onclick="exportCountryStock()">📥 Export CSV</button>
+                    </section>
+
+                    <section class="hub-section">
+                        <div class="hub-section__header">
+                            <h3 class="hub-section__title">Country Stock Inventory</h3>
+                            <div class="hub-section__actions">
+                                <input type="text" id="countryStockSearch" placeholder="Search products..." onkeyup="searchCountryStock()">
+                                <button class="hub-btn hub-btn--ghost" type="button" onclick="displayCountryStock()">🔄 Refresh</button>
+                                <button class="hub-btn hub-btn--ghost" type="button" onclick="exportCountryStock()">📥 Export CSV</button>
+                            </div>
                         </div>
-                        <div id="countryStockList" style="max-height: 500px; overflow-y: auto; margin-top: 15px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
-                            <p style="text-align: center; color: #7f8c8d;">Loading country stock...</p>
+                        <div id="countryStockList" class="hub-card hub-card--surface hub-scroll">
+                            <div class="hub-activity-empty">Loading country stock...</div>
                         </div>
-                    </div>
+                    </section>
                 </div>
-                
+
+                <!-- Legacy Country Stock Tab (Hidden) -->
                 <!-- Legacy Country Stock Tab (Hidden) -->
                 <div id="countryStockTab" class="stock-tab-content" style="display: none;">
                     <div class="form-section">
@@ -9794,6 +10822,15 @@
                         <input type="text" id="walkInCustomerName" placeholder="Full Name" required>
                         <input type="hidden" id="walkInCustomerCode">
                         <div id="customerNameDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
+                        <div id="distributorCustomerHelper" style="display: none; margin-top: 10px;">
+                            <div style="padding: 12px; background: #f1f5f9; border: 1px solid #cbd5f5; border-radius: 6px; font-size: 0.85rem; color: #475569;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px;">
+                                    <strong style="color: #1d4ed8;">Distributor quick pick</strong>
+                                    <span id="distributorHelperStatus" style="font-size: 0.78rem; color: #64748b;">Loading directory...</span>
+                                </div>
+                                <div id="distributorQuickList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;"></div>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Phone Number (Optional)</label>
@@ -9909,6 +10946,14 @@
                         </button>
                     </div>
                     <input type="hidden" id="walkInPaymentMethod" value="cash">
+                <div id="walkInTenderManager" style="margin-top: 15px; padding: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong style="color: #92400e;">Mixed Payments (optional)</strong>
+                        <span style="font-size: 0.8rem; color: #b45309;">Allocate tenders to balance totals</span>
+                    </div>
+                    <div id="walkInTenderRows"></div>
+                    <div id="walkInTenderSummary" style="margin-top: 10px; font-size: 0.85rem; color: #475569;">No payments recorded yet.</div>
+                </div>
                 </div>
                 
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
@@ -11370,11 +12415,26 @@
                 const stored = localStorage.getItem('dynapharm_api_base');
                 if (stored) candidates.push(stored);
             } catch (_) {}
+
+            const hostname = window.location?.hostname || '';
+            const port = window.location?.port || '';
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+            const isStaticDev = isLocalhost && (port === '8000' || port === '4173');
+
+            if (isStaticDev) {
+                candidates.push('http://localhost:8001/api');
+            }
+
             if (window.location?.origin && window.location.origin !== 'null') {
                 candidates.push(`${window.location.origin.replace(/\/$/, '')}/api`);
             }
+
+            if (isLocalhost && !isStaticDev) {
+                candidates.push('http://localhost:8001/api');
+            }
+
             candidates.push('https://dynapharm-backend-production.up.railway.app/api');
-            candidates.push('http://localhost:8001/api');
+
             for (const candidate of candidates) {
                 const resolved = normaliseApiBase(candidate);
                 if (resolved) return resolved;
@@ -11386,9 +12446,24 @@
         const API_BASE_LOCAL = (() => {
             const overrides = [
                 window.API_BASE_LOCAL_OVERRIDE,
-                (() => { try { return localStorage.getItem('dynapharm_api_base_local'); } catch (_) { return null; } })(),
-                API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1') ? API_BASE : 'http://localhost:8001/api'
+                (() => { try { return localStorage.getItem('dynapharm_api_base_local'); } catch (_) { return null; } })()
             ];
+
+            const hostname = window.location?.hostname || '';
+            const port = window.location?.port || '';
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+            const isStaticDev = isLocalhost && (port === '8000' || port === '4173');
+
+            if (isStaticDev) {
+                overrides.push('http://localhost:8001/api');
+            }
+
+            overrides.push(API_BASE);
+
+            if (isLocalhost && !isStaticDev) {
+                overrides.push('http://localhost:8001/api');
+            }
+
             for (const candidate of overrides) {
                 const resolved = normaliseApiBase(candidate);
                 if (resolved) return resolved;
@@ -11396,6 +12471,39 @@
             return API_BASE;
         })();
         const USE_OFFLINE_MODE = false; // Prefer online API; only fallback if truly offline
+
+        (function patchFetchForApiRouting(){
+            if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
+            const nativeFetch = window.fetch.bind(window);
+            const apiBase = API_BASE;
+
+            function normaliseEndpoint(endpoint) {
+                const base = apiBase.replace(/\/+$/, '');
+                const suffix = endpoint.replace(/^\/api/, '');
+                return `${base}${suffix}`;
+            }
+
+            window.fetch = function patchedFetch(input, init) {
+                try {
+                    if (typeof input === 'string' && input.startsWith('/api/')) {
+                        return nativeFetch(normaliseEndpoint(input), init);
+                    }
+
+                    if (typeof Request !== 'undefined' && input instanceof Request) {
+                        const url = input.url;
+                        const isRelativeApi = url.startsWith('/api/');
+                        if (isRelativeApi) {
+                            const rewritten = normaliseEndpoint(url);
+                            const cloned = new Request(rewritten, input);
+                            return nativeFetch(cloned, init);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('API fetch patch failed; falling back to native fetch', err);
+                }
+                return nativeFetch(input, init);
+            };
+        })();
 
         const LEAVE_CACHE_PRIMARY_KEY = 'hr_leave_requests';
         const LEAVE_CACHE_LEGACY_KEYS = ['leaveRequests', 'branch_leave_requests'];
@@ -22381,6 +23489,40 @@ async function reverseLastPrescriptionPayment(reportId){
     } catch(e){ alert('Error reversing payment'); }
 }
 
+        async function ensureWalkInDataHydrated(options = {}) {
+            const { force = false } = options || {};
+            let priceListLoaded = false;
+            let distributorsLoadedNow = false;
+
+            if (typeof ensurePriceListHydrated === 'function') {
+                try {
+                    await ensurePriceListHydrated(force);
+                    priceListLoaded = Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0;
+                } catch (err) {
+                    console.warn('ensureWalkInDataHydrated: price list hydration failed', err);
+                }
+            }
+
+            if (typeof loadDistributors === 'function') {
+                try {
+                    const list = await loadDistributors({ forceRefresh: force });
+                    distributorsLoadedNow = Array.isArray(list) && list.length > 0;
+                } catch (err) {
+                    console.warn('ensureWalkInDataHydrated: distributor load failed', err);
+                }
+            }
+
+            if (priceListLoaded && typeof updateWalkInPriceListInsights === 'function') {
+                try { updateWalkInPriceListInsights(); } catch (err) { console.debug('updateWalkInPriceListInsights failed', err); }
+            }
+            if ((distributorsLoadedNow || (Array.isArray(window.distributors) && window.distributors.length > 0)) && typeof updateWalkInDistributorInsights === 'function') {
+                try { updateWalkInDistributorInsights(); } catch (err) { console.debug('updateWalkInDistributorInsights failed', err); }
+            }
+            if (typeof refreshDistributorCustomerHelper === 'function') {
+                try { refreshDistributorCustomerHelper(); } catch (_) {}
+            }
+        }
+
         function showDispenserTab(tab) {
             // Hide all sections
             const sections = ['dispenserWalkInSection', 'dispenserPrescriptionSection', 'dispenserStockSection', 'dispenserBankingSection', 'dispenserPaymentsSection', 'dispenserOnlineOrdersSection', 'dispenserBonusSection', 'dispenserCommunicationSection', 'dispenserStaffSection', 'dispenserDistributorRegistrationSection', 'dispenserFieldProgramSection'];
@@ -22390,7 +23532,7 @@ async function reverseLastPrescriptionPayment(reportId){
             });
             
             // Reset all tab buttons
-            const tabs = ['walkInTab', 'prescriptionTab', 'stockTab', 'bankingTab', 'paymentsTab', 'onlineOrdersTab', 'bonusTab', 'communicationTab', 'staffTab', 'distributorRegistrationTab', 'fieldProgramTab'];
+            const tabs = ['walkInTab', 'saleTab', 'prescriptionTab', 'stockTab', 'bankingTab', 'paymentsTab', 'onlineOrdersTab', 'bonusTab', 'communicationTab', 'staffTab', 'distributorRegistrationTab', 'fieldProgramTab'];
             tabs.forEach(tabBtn => {
                 const el = document.getElementById(tabBtn);
                 if (el) {
@@ -22410,6 +23552,22 @@ async function reverseLastPrescriptionPayment(reportId){
                     activeSection = 'dispenserWalkInSection';
                     activeTab = 'walkInTab';
                     gradient = 'linear-gradient(135deg, #3498db, #2980b9)';
+                    if (typeof ensureWalkInDataHydrated === 'function') {
+                        ensureWalkInDataHydrated().catch(err => console.warn('walkIn tab hydration issue', err));
+                    }
+                    if (!hasSyncedWalkInSales) {
+                        syncWalkInSalesFromApi().catch(() => {});
+                    } else {
+                        refreshWalkInSalesList();
+                    }
+                    break;
+                case 'sale':
+                    activeSection = 'dispenserWalkInSection';
+                    activeTab = 'saleTab';
+                    gradient = 'linear-gradient(135deg, #3498db, #2980b9)';
+                    if (typeof ensureWalkInDataHydrated === 'function') {
+                        ensureWalkInDataHydrated().catch(err => console.warn('sale tab hydration issue', err));
+                    }
                     if (!hasSyncedWalkInSales) {
                         syncWalkInSalesFromApi().catch(() => {});
                     } else {
@@ -24541,7 +25699,7 @@ async function reverseLastPrescriptionPayment(reportId){
 
             // Render table
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="padding: 40px; text-align: center; color: #7f8c8d;">No inventory items found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="stock-empty-state">No inventory items found</td></tr>';
                 return;
             }
 
@@ -24550,21 +25708,20 @@ async function reverseLastPrescriptionPayment(reportId){
                 const statusText = item.status === 'low_stock' ? 'Low Stock' : item.status === 'out_of_stock' || (item.quantity || 0) === 0 ? 'Out of Stock' : 'In Stock';
                 const expiryDate = item.expiryDate ? new Date(item.expiryDate + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'N/A';
                 const totalValue = (item.quantity || 0) * (item.unitPrice || 0);
+                const actions = hasInventoryFullAccess() ? `<button class="stock-inline-btn" onclick="editBranchInventoryItem('${item.id || ''}')">Edit</button>` : '';
 
                 return `
-                    <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 12px;">${item.product || 'N/A'}</td>
-                        <td style="padding: 12px;">${item.batchNo || 'N/A'}</td>
-                        <td style="padding: 12px; text-align: right; font-weight: 600;">${item.quantity || 0}</td>
-                        <td style="padding: 12px; text-align: center;">${expiryDate}</td>
-                        <td style="padding: 12px; text-align: right;">N$${(item.unitPrice || 0).toFixed(2)}</td>
-                        <td style="padding: 12px; text-align: right; font-weight: 600;">N$${totalValue.toFixed(2)}</td>
-                        <td style="padding: 12px; text-align: center;">
-                            <span class="pill ${statusClass}" style="padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">${statusText}</span>
+                    <tr class="stock-table-row">
+                        <td class="stock-cell">${item.product || 'N/A'}</td>
+                        <td class="stock-cell">${item.batchNo || 'N/A'}</td>
+                        <td class="stock-cell stock-cell--qty">${item.quantity || 0}</td>
+                        <td class="stock-cell stock-cell--expiry">${expiryDate}</td>
+                        <td class="stock-cell stock-cell--price">N$${(item.unitPrice || 0).toFixed(2)}</td>
+                        <td class="stock-cell stock-cell--value">N$${totalValue.toFixed(2)}</td>
+                        <td class="stock-cell stock-cell--status">
+                            <span class="stock-status-badge stock-status-badge--${statusClass}">${statusText}</span>
                         </td>
-                        <td style="padding: 12px; text-align: center;">
-                            ${hasInventoryFullAccess() ? `<button class="btn btn-sm" onclick="editBranchInventoryItem('${item.id || ''}')" style="padding: 4px 8px; font-size: 0.8rem; margin-right: 5px;">Edit</button>` : ''}
-                        </td>
+                        <td class="stock-cell stock-cell--actions">${actions}</td>
                     </tr>
                 `;
             }).join('');
@@ -24606,13 +25763,23 @@ async function reverseLastPrescriptionPayment(reportId){
                 }
 
                 if (branchMovements.length === 0) {
-                    movementsEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No stock movements recorded</p>';
+                    movementsEl.innerHTML = '<div class="stock-activity-empty">No stock movements recorded</div>';
                     return;
                 }
 
             movementsEl.innerHTML = branchMovements
                 .slice(0, 50)
                 .map(movement => {
+                    const variant =
+                        movement.type === 'receive'
+                            ? 'receive'
+                            : movement.type === 'transfer_out'
+                            ? 'transfer_out'
+                            : movement.type === 'transfer_in'
+                            ? 'transfer_in'
+                            : movement.type === 'adjustment'
+                            ? 'adjustment'
+                            : 'default';
                     const actionIcon =
                         movement.type === 'receive'
                             ? '📥'
@@ -24623,48 +25790,34 @@ async function reverseLastPrescriptionPayment(reportId){
                             : movement.type === 'adjustment'
                             ? '✏️'
                             : '📊';
-                    const actionColor =
-                        movement.type === 'receive'
-                            ? '#27ae60'
-                            : movement.type === 'transfer_out'
-                            ? '#3498db'
-                            : movement.type === 'transfer_in'
-                            ? '#27ae60'
-                            : movement.type === 'adjustment'
-                            ? '#f39c12'
-                            : '#7f8c8d';
-
                     const movementDate = new Date(movement.timestamp || Date.now());
-                    const expiryText = movement.metadata?.expiryDate || movement.expiryDate;
-                    let expiryDisplay = '';
-                    if (expiryText) {
-                        const expiry = new Date((expiryText.length === 7 ? `${expiryText}-01` : expiryText));
+                    const qtyText = typeof movement.quantity === 'number' ? `${movement.quantity} ${movement.unit || 'units'}` : '';
+                    const metaSegments = [];
+                    if (qtyText) metaSegments.push(qtyText);
+                    metaSegments.push(movementDate.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+                    if (movement.user || movement.performedBy) metaSegments.push(`By ${movement.user || movement.performedBy}`);
+                    if (movement.sourceBranch) metaSegments.push(`From ${movement.sourceBranch}`);
+                    if (movement.destinationBranch) metaSegments.push(`To ${movement.destinationBranch}`);
+                    if (movement.metadata?.reference || movement.reference) metaSegments.push(`Ref ${movement.metadata?.reference || movement.reference}`);
+                    if (movement.metadata?.expiryDate || movement.expiryDate) {
+                        const expiryRaw = movement.metadata?.expiryDate || movement.expiryDate;
+                        const expiry = new Date((expiryRaw?.length === 7 ? `${expiryRaw}-01` : expiryRaw));
                         if (!Number.isNaN(expiry.getTime())) {
-                            expiryDisplay = ` | Expiry: ${expiry.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+                            metaSegments.push(`Expiry ${expiry.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`);
                         }
                     }
-                    
+                    const meta = metaSegments.length ? metaSegments.map(part => `<span>${part}</span>`).join('') : '<span>Details unavailable</span>';
+                    const note = movement.notes || movement.metadata?.note || movement.metadata?.reason || '';
+
                     return `
-                        <div style="display: flex; justify-content: space-between; align-items: start; padding: 12px; border-bottom: 1px solid #eee; gap: 15px;">
-                            <div style="flex: 1;">
-                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                                    <span style="font-size: 1.2rem;">${actionIcon}</span>
-                                    <strong>${movement.product || 'N/A'}</strong>
-                                    <span style="color: ${actionColor}; font-weight: 600; font-size: 0.85rem; text-transform: uppercase;">${movement.type || 'movement'}</span>
-                                    ${(movement.metadata?.isSensitive || movement.metadata?.isStockLoss) ? '<span style="color: #dc3545; font-size: 0.75rem;">🔒 RESTRICTED</span>' : ''}
-                                </div>
-                                <div style="font-size: 0.85rem; color: #666;">
-                                    Batch: ${movement.batchNo || 'N/A'} | Qty: ${movement.quantity || 0} ${movement.unit || 'units'}
-                                    ${expiryDisplay}
-                                </div>
-                                ${movement.notes ? `<div style="font-size: 0.8rem; color: #999; margin-top: 3px;">${movement.notes}</div>` : ''}
+                        <article class="stock-activity-item">
+                            <div class="stock-activity-icon" data-variant="${variant}">${actionIcon}</div>
+                            <div class="stock-activity-body">
+                                <h4 class="stock-activity-title">${movement.productName || movement.product || movement.description || 'Inventory Update'}</h4>
+                                <div class="stock-activity-meta">${meta}</div>
+                                ${note ? `<p class="stock-activity-note">${note}</p>` : ''}
                             </div>
-                            <div style="text-align: right; font-size: 0.85rem; color: #666;">
-                                <div>${movementDate.toLocaleDateString()}</div>
-                                <div style="font-size: 0.75rem; color: #999;">${movementDate.toLocaleTimeString()}</div>
-                                <div style="font-size: 0.75rem; color: #999; margin-top: 3px;">${movement.user || 'System'}</div>
-                            </div>
-                        </div>
+                        </article>
                     `;
                 })
                 .join('');
@@ -29466,11 +30619,193 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
-        let preferredCalendarDate = null;
-        let selectedPreferredDate = null;
+let preferredCalendarDate = null;
+let selectedPreferredDate = null;
 
-        // Walk-in Sales State
-        function getWalkInCart() {
+// Walk-in Sales State helpers
+const WALK_IN_PAYMENT_METHODS = [
+    { id: 'cash', label: 'Cash', icon: '💵' },
+    { id: 'card', label: 'Card', icon: '💳' },
+    { id: 'mobile', label: 'Mobile Money', icon: '📱' },
+    { id: 'bank', label: 'Bank Transfer', icon: '🏦' }
+];
+const WALK_IN_TENDER_TOLERANCE = 0.05;
+window.WALK_IN_PAYMENT_METHODS = WALK_IN_PAYMENT_METHODS;
+window.WALK_IN_TENDER_TOLERANCE = WALK_IN_TENDER_TOLERANCE;
+
+function getWalkInGrandTotalValue() {
+    const cart = getWalkInCart();
+    const customerType = document.getElementById('walkInCustomerType')?.value || 'customer';
+    return cart.reduce((sum, item) => {
+        const pricePerUnit = customerType === 'distributor' ? item.dp : item.cp;
+        return sum + (pricePerUnit * item.quantity);
+    }, 0);
+}
+
+function ensureWalkInTenderState(force = false) {
+    const currentPrimary = document.getElementById('walkInPaymentMethod')?.value || 'cash';
+    if (!window.walkInTenderState || force) {
+        const totalDue = getWalkInGrandTotalValue();
+        window.walkInTenderState = {};
+        WALK_IN_PAYMENT_METHODS.forEach(method => {
+            window.walkInTenderState[method.id] = {
+                enabled: method.id === currentPrimary,
+                amount: method.id === currentPrimary ? Number(totalDue.toFixed(2)) : 0,
+                manual: false
+            };
+        });
+    } else {
+        WALK_IN_PAYMENT_METHODS.forEach(method => {
+            if (!window.walkInTenderState[method.id]) {
+                window.walkInTenderState[method.id] = {
+                    enabled: method.id === currentPrimary,
+                    amount: 0,
+                    manual: false
+                };
+            }
+        });
+    }
+    return window.walkInTenderState;
+}
+window.ensureWalkInTenderState = ensureWalkInTenderState;
+
+function resetWalkInTenderState() {
+    ensureWalkInTenderState(true);
+    renderWalkInTenderManager();
+}
+window.resetWalkInTenderState = resetWalkInTenderState;
+
+function getPaymentMethodMeta(methodId) {
+    return WALK_IN_PAYMENT_METHODS.find(m => m.id === methodId) || { id: methodId, label: methodId, icon: '' };
+}
+
+function calculateWalkInTenderSummary() {
+    const state = ensureWalkInTenderState();
+    const totalDue = Number(getWalkInGrandTotalValue().toFixed(2));
+    let applied = 0;
+    const entries = [];
+
+    WALK_IN_PAYMENT_METHODS.forEach(method => {
+        const tender = state[method.id];
+        if (tender && tender.enabled && Number(tender.amount) > 0) {
+            const amount = Number(tender.amount);
+            applied += amount;
+            entries.push({
+                method: method.id,
+                label: method.label,
+                icon: method.icon,
+                amount
+            });
+        }
+    });
+
+    applied = Number(applied.toFixed(2));
+    const diff = Number((totalDue - applied).toFixed(2));
+
+    return {
+        totalDue,
+        applied,
+        diff,
+        entries
+    };
+}
+window.calculateWalkInTenderSummary = calculateWalkInTenderSummary;
+
+function renderWalkInTenderManager() {
+    const container = document.getElementById('walkInTenderRows');
+    const summaryEl = document.getElementById('walkInTenderSummary');
+    if (!container) return;
+
+    const state = ensureWalkInTenderState();
+    const rowsHtml = WALK_IN_PAYMENT_METHODS.map(method => {
+        const tender = state[method.id];
+        const enabled = tender?.enabled;
+        const amount = enabled ? Number(tender.amount || 0).toFixed(2) : '';
+        return `
+            <div data-method="${method.id}" style="display: flex; align-items: center; gap: 10px; padding: 6px 0;">
+                <label style="flex: 1; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" ${enabled ? 'checked' : ''} onchange="handleWalkInTenderToggle('${method.id}', this.checked)">
+                    <span style="font-weight: 600;">${method.icon} ${method.label}</span>
+                </label>
+                <input type="number"
+                    min="0"
+                    step="0.01"
+                    value="${amount}"
+                    ${enabled ? '' : 'disabled'}
+                    oninput="handleWalkInTenderInput('${method.id}', this.value)"
+                    style="width: 120px; padding: 6px 8px; border: 1px solid #cbd5f5; border-radius: 6px; background: ${enabled ? 'white' : '#f1f5f9'}; text-align: right;">
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = rowsHtml;
+
+    if (summaryEl) {
+        const { totalDue, applied, diff } = calculateWalkInTenderSummary();
+        let status = '';
+        let color = '#475569';
+        if (Math.abs(diff) <= WALK_IN_TENDER_TOLERANCE) {
+            status = `✅ Balanced • Applied N$ ${applied.toFixed(2)} of N$ ${totalDue.toFixed(2)}`;
+            color = '#15803d';
+        } else if (diff > 0) {
+            status = `⚠️ Outstanding N$ ${diff.toFixed(2)} • Applied N$ ${applied.toFixed(2)} of N$ ${totalDue.toFixed(2)}`;
+            color = '#b91c1c';
+        } else {
+            status = `⚠️ Change due N$ ${Math.abs(diff).toFixed(2)} • Applied N$ ${applied.toFixed(2)} of N$ ${totalDue.toFixed(2)}`;
+            color = '#b91c1c';
+        }
+        summaryEl.textContent = status;
+        summaryEl.style.color = color;
+    }
+}
+window.renderWalkInTenderManager = renderWalkInTenderManager;
+
+function handleWalkInTenderToggle(methodId, checked) {
+    const state = ensureWalkInTenderState();
+    const tender = state[methodId];
+    if (!tender) return;
+    tender.enabled = checked;
+    if (!checked) {
+        tender.amount = 0;
+        tender.manual = false;
+    } else if (tender.amount === 0) {
+        const { diff } = calculateWalkInTenderSummary();
+        const outstanding = Number((diff <= 0 ? 0 : diff).toFixed(2));
+        tender.amount = outstanding > 0 ? outstanding : 0;
+    }
+    renderWalkInTenderManager();
+}
+window.handleWalkInTenderToggle = handleWalkInTenderToggle;
+
+function handleWalkInTenderInput(methodId, value) {
+    const state = ensureWalkInTenderState();
+    const tender = state[methodId];
+    if (!tender) return;
+    const parsed = Number(parseFloat(value || '0').toFixed(2));
+    tender.amount = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    tender.manual = true;
+    renderWalkInTenderManager();
+}
+window.handleWalkInTenderInput = handleWalkInTenderInput;
+
+function syncWalkInTenderToTotals() {
+    const state = ensureWalkInTenderState();
+    const primaryMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
+    const summary = calculateWalkInTenderSummary();
+    const primaryTender = state[primaryMethod];
+    if (!primaryTender) return renderWalkInTenderManager();
+
+    const otherApplied = summary.applied - (primaryTender.enabled ? Number(primaryTender.amount || 0) : 0);
+    const requiredPrimary = Number((summary.totalDue - otherApplied).toFixed(2));
+    if (primaryTender.enabled && (!primaryTender.manual || primaryTender.amount === 0)) {
+        primaryTender.amount = requiredPrimary >= 0 ? requiredPrimary : 0;
+    }
+    renderWalkInTenderManager();
+}
+window.syncWalkInTenderToTotals = syncWalkInTenderToTotals;
+
+// Walk-in Sales State
+function getWalkInCart() {
             if (window.walkInCartStore && typeof window.walkInCartStore.get === 'function') {
                 return window.walkInCartStore.get();
             }
@@ -29911,7 +31246,8 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Distributors Management with IndexedDB for large datasets
-        let distributors = [];
+        var distributors = window.distributors || [];
+        window.distributors = distributors;
         let adminDistributorDirectory = [];
         let adminDistributorIndex = {};
         let adminDistributorSelected = null;
@@ -30097,6 +31433,7 @@ async function reverseLastPrescriptionPayment(reportId){
             }
 
             distributors = normalizeDistributors(loaded);
+            window.distributors = distributors;
 
             if (source === 'api') {
                 try {
@@ -30108,6 +31445,7 @@ async function reverseLastPrescriptionPayment(reportId){
             }
 
         distributorsLoaded = distributors.length > 0;
+        window.distributorsLoaded = distributorsLoaded;
         if (distributorsLoaded) {
             try {
                 if (source === 'api' || !localStorage.getItem('dyna_distributors_last_sync')) {
@@ -30156,7 +31494,8 @@ async function reverseLastPrescriptionPayment(reportId){
         }
         
         // Flag to track if distributors are loaded
-        let distributorsLoaded = false;
+        var distributorsLoaded = typeof window.distributorsLoaded === 'boolean' ? window.distributorsLoaded : false;
+        window.distributorsLoaded = distributorsLoaded;
 
         // Initialize default distributors on page load
         async function initializeDefaultDistributors() {
@@ -30170,6 +31509,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 ];
                 
                 distributors = [...defaultDistributors];
+                window.distributors = distributors;
                 try {
                     await saveDistributors();
                     console.log('Initialized default distributors');
@@ -30379,6 +31719,7 @@ async function reverseLastPrescriptionPayment(reportId){
             if (customerDropdown) customerDropdown.style.display = 'none';
 
             selectWalkInPaymentMethod('cash');
+            resetWalkInTenderState();
 
             if (titleEl) titleEl.textContent = '👤 Walk-in Sale';
 
@@ -30436,6 +31777,31 @@ async function reverseLastPrescriptionPayment(reportId){
                 selectedBtn.style.border = '2px solid #27ae60';
                 selectedBtn.style.background = '#e8f5e9';
                 selectedBtn.style.fontWeight = 'bold';
+            }
+
+            try {
+                const state = ensureWalkInTenderState();
+                Object.keys(state).forEach(id => {
+                    const tender = state[id];
+                    if (!tender) return;
+                    if (id === method) {
+                        tender.enabled = true;
+                    } else if (!tender.manual && Number(tender.amount || 0) === 0) {
+                        tender.enabled = false;
+                    }
+                });
+                const summaryBefore = calculateWalkInTenderSummary();
+                const primaryTender = state[method];
+                if (primaryTender) {
+                    const otherApplied = summaryBefore.applied - (primaryTender.enabled ? Number(primaryTender.amount || 0) : 0);
+                    const required = Number((summaryBefore.totalDue - otherApplied).toFixed(2));
+                    if (!primaryTender.manual || required >= 0) {
+                        primaryTender.amount = required >= 0 ? required : Number(primaryTender.amount || 0);
+                    }
+                }
+                renderWalkInTenderManager();
+            } catch (e) {
+                console.debug('selectWalkInPaymentMethod: tender state sync skipped', e);
             }
         }
         
@@ -30733,7 +32099,13 @@ async function reverseLastPrescriptionPayment(reportId){
         function searchDistributorsForCustomerName() {
             // Check if distributors are loaded
             if (!distributorsLoaded || distributors.length === 0) {
-                console.warn('Distributors not loaded yet');
+                if (typeof loadDistributors === 'function') {
+                    loadDistributors().then(() => {
+                        distributorsLoaded = Array.isArray(distributors) && distributors.length > 0;
+                        window.distributorsLoaded = distributorsLoaded;
+                        searchDistributorsForCustomerName();
+                    }).catch(err => console.error('searchDistributorsForCustomerName: failed to load distributors', err));
+                }
                 return;
             }
             
@@ -30801,14 +32173,115 @@ async function reverseLastPrescriptionPayment(reportId){
             document.getElementById('walkInCustomerName').value = name;
             document.getElementById('walkInCustomerCode').value = code;
             document.getElementById('customerNameDropdown').style.display = 'none';
+            try { refreshDistributorCustomerHelper(); } catch (_) {}
+        }
+
+        function getDistributorCanonicalCode(dist) {
+            if (!dist) return '';
+            const code = dist.distributorCode || dist.code || dist.distributorNB || dist.distributor_number || dist.nbNumber || '';
+            return String(code || '').trim();
+        }
+
+        function escapeAttributeValue(value) {
+            return String(value || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '&quot;');
+        }
+
+        function refreshDistributorCustomerHelper() {
+            const helperPanel = document.getElementById('distributorCustomerHelper');
+            const quickList = document.getElementById('distributorQuickList');
+            const helperStatus = document.getElementById('distributorHelperStatus');
+            if (!helperPanel || !quickList || helperPanel.style.display === 'none') return;
+
+            if (!Array.isArray(distributors) || distributors.length === 0) {
+                quickList.innerHTML = '<div style="padding: 10px; background: white; border: 1px dashed rgba(148,163,184,0.5); border-radius: 6px; text-align: center; color: #64748b;">ℹ️ Distributor directory is loading...</div>';
+                if (helperStatus) helperStatus.textContent = 'Waiting for distributor directory...';
+                return;
+            }
+
+            const sampleSize = 6;
+            const selectedCode = (document.getElementById('walkInCustomerCode')?.value || '').toUpperCase();
+            const candidates = [...distributors]
+                .filter(Boolean)
+                .sort((a, b) => {
+                    const nameA = (a.distributorName || a.name || '').toLowerCase();
+                    const nameB = (b.distributorName || b.name || '').toLowerCase();
+                    if (nameA < nameB) return -1;
+                    if (nameA > nameB) return 1;
+                    return 0;
+                })
+                .slice(0, sampleSize);
+
+            if (helperStatus) {
+                const total = distributors.length;
+                helperStatus.textContent = `${total.toLocaleString('en-US')} distributor${total === 1 ? '' : 's'} available`;
+            }
+
+            if (candidates.length === 0) {
+                quickList.innerHTML = '<div style="padding: 10px; background: white; border: 1px dashed rgba(148,163,184,0.5); border-radius: 6px; text-align: center; color: #64748b;">⚠️ No distributors found. Try syncing the directory.</div>';
+                return;
+            }
+
+            quickList.innerHTML = candidates.map(dist => {
+                const name = dist.distributorName || dist.name || 'Unknown distributor';
+                const code = getDistributorCanonicalCode(dist);
+                const escapedName = escapeAttributeValue(name);
+                const escapedCode = escapeAttributeValue(code);
+                const isActive = selectedCode && selectedCode === String(code || '').toUpperCase();
+                const labelName = escapeHtml(name);
+                const labelCode = escapeHtml(code || 'N/A');
+                const labelPhone = escapeHtml(dist.mobileNo || dist.mobile || '');
+                return `
+                    <button type="button"
+                            onclick="selectDistributorForCustomerName('${escapedCode}', '${escapedName}')"
+                            style="
+                                padding: 10px;
+                                border-radius: 6px;
+                                border: 1px solid ${isActive ? '#1d4ed8' : '#cbd5f5'};
+                                background: ${isActive ? 'linear-gradient(135deg, #1d4ed8, #2563eb)' : '#ffffff'};
+                                color: ${isActive ? '#ffffff' : '#1e293b'};
+                                text-align: left;
+                                display: flex;
+                                flex-direction: column;
+                                gap: 4px;
+                                font-size: 0.85rem;
+                                transition: transform 0.15s ease, box-shadow 0.15s ease;
+                                box-shadow: ${isActive ? '0 6px 14px rgba(37,99,235,0.25)' : '0 1px 3px rgba(15,23,42,0.08)'};
+                            "
+                            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 18px rgba(15,23,42,0.12)';"
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='${isActive ? '0 6px 14px rgba(37,99,235,0.25)' : '0 1px 3px rgba(15,23,42,0.08)'}';">
+                        <span style="font-weight: 600;">${labelName}</span>
+        ${code ? `<span style="font-size: 0.75rem; color: ${isActive ? 'rgba(255,255,255,0.85)' : '#475569'};">NB: ${labelCode}${labelPhone ? ` • ${labelPhone}` : ''}</span>` : ''}
+                    </button>
+                `;
+            }).join('');
         }
         
-        function onCustomerTypeChange() {
+        async function onCustomerTypeChange() {
             const customerType = document.getElementById('walkInCustomerType').value;
             const customerNameField = document.getElementById('walkInCustomerName');
             const referralField = document.getElementById('customerReferralField');
+            const helperPanel = document.getElementById('distributorCustomerHelper');
+            const helperStatus = document.getElementById('distributorHelperStatus');
+            const quickList = document.getElementById('distributorQuickList');
             
             if (customerType === 'distributor') {
+                if (helperPanel) {
+                    helperPanel.style.display = 'block';
+                    if (helperStatus) helperStatus.textContent = 'Loading directory...';
+                    if (quickList) quickList.innerHTML = '<div style="padding: 8px; background: white; border: 1px dashed rgba(148,163,184,0.6); border-radius: 6px; text-align: center;">⏳ Preparing distributor list...</div>';
+                }
+                
+                if (typeof ensureWalkInDataHydrated === 'function') {
+                    try {
+                        await ensureWalkInDataHydrated();
+                    } catch (err) {
+                        console.warn('onCustomerTypeChange: ensureWalkInDataHydrated failed', err);
+                    }
+                }
+                
                 // Show distributor name as searchable field
                 customerNameField.placeholder = 'Search distributor by name or NB number';
                 customerNameField.onkeyup = searchDistributorsForCustomerName;
@@ -30822,6 +32295,8 @@ async function reverseLastPrescriptionPayment(reportId){
                 
                 // Clear referral fields and reset checkbox
                 clearSelectedReferral();
+                
+                refreshDistributorCustomerHelper();
             } else {
                 // Regular customer - manual name entry
                 customerNameField.placeholder = 'Full Name';
@@ -30838,7 +32313,16 @@ async function reverseLastPrescriptionPayment(reportId){
                 
                 // Clear referral fields and reset checkbox when switching to customer
                 clearSelectedReferral();
+                
+                if (helperPanel) helperPanel.style.display = 'none';
+                if (helperStatus) helperStatus.textContent = '';
+                if (quickList) quickList.innerHTML = '';
             }
+
+            customerNameField.value = '';
+            document.getElementById('walkInCustomerCode').value = '';
+            document.getElementById('customerNameDropdown').innerHTML = '';
+            document.getElementById('customerNameDropdown').style.display = 'none';
             
             // Update product pricing based on customer type
             loadAllProductsForSale().catch(err => console.error('onCustomerTypeChange: failed to refresh catalogue', err));
@@ -31263,6 +32747,7 @@ async function reverseLastPrescriptionPayment(reportId){
                     dualNotice.style.color = '#475569';
                 }
             }
+            try { syncWalkInTenderToTotals(); } catch (_) {}
         }
 
         function updateWalkInCartQuantity(index, delta, newValue) {
@@ -31329,6 +32814,18 @@ async function reverseLastPrescriptionPayment(reportId){
 				bank: '🏦 Bank Transfer'
 			};
 			const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
+            const tenderSummary = calculateWalkInTenderSummary();
+            if (Math.abs(tenderSummary.diff) > WALK_IN_TENDER_TOLERANCE) {
+                alert(`⚠️ Payment breakdown does not balance. Outstanding amount: N$ ${tenderSummary.diff.toFixed(2)}. Please adjust tenders before continuing.`);
+                renderWalkInTenderManager();
+                return;
+            }
+            const tenderEntries = tenderSummary.entries.length > 0 ? tenderSummary.entries : [{
+                method: paymentMethod,
+                label: paymentLabel.replace(/^[^A-Z]*\s*/, '').trim() || paymentMethodLabels[paymentMethod] || paymentMethod,
+                icon: getPaymentMethodMeta(paymentMethod).icon || '',
+                amount: Number(subtotal.toFixed(2))
+            }];
 
 			const confirmationModal = document.getElementById('walkInSaleConfirmationModal');
 			if (!confirmationModal) {
@@ -31337,7 +32834,11 @@ async function reverseLastPrescriptionPayment(reportId){
 				if (phone) confirmationMessage += `Phone: ${phone}\n`;
 				if (email) confirmationMessage += `Email: ${email}\n`;
 				confirmationMessage += `Type: ${customerType === 'distributor' ? 'Distributor' : 'Customer'}\n`;
-				confirmationMessage += `Payment Method: ${paymentLabel}\n\n`;
+                confirmationMessage += 'Payment Breakdown:\n';
+                tenderEntries.forEach(tender => {
+                    confirmationMessage += `  ${tender.label || tender.method}: N$ ${tender.amount.toFixed(2)}\n`;
+                });
+                confirmationMessage += '\n';
 				confirmationMessage += 'Products:\n';
 				cart.forEach((item, idx) => {
 					const price = customerType === 'distributor' ? item.dp : item.cp;
@@ -31363,7 +32864,13 @@ async function reverseLastPrescriptionPayment(reportId){
 			const confirmEmail = document.getElementById('confirmEmail');
 			if (confirmEmail) confirmEmail.textContent = email || '—';
 			const confirmPayment = document.getElementById('confirmPaymentMethod');
-			if (confirmPayment) confirmPayment.textContent = paymentLabel;
+            if (confirmPayment) {
+                confirmPayment.innerHTML = tenderEntries.map(tender => {
+                    const icon = tender.icon || getPaymentMethodMeta(tender.method).icon || '';
+                    const label = tender.label || getPaymentMethodMeta(tender.method).label || tender.method;
+                    return `${icon ? `${icon} ` : ''}${label}: <strong>N$ ${tender.amount.toFixed(2)}</strong>`;
+                }).join('<br>');
+            }
 
 			const referralInfo = document.getElementById('confirmReferralInfo');
 			if (customerType === 'customer') {
@@ -31430,6 +32937,20 @@ async function reverseLastPrescriptionPayment(reportId){
 				return false;
             }
             
+            const tenderSummary = calculateWalkInTenderSummary();
+            if (Math.abs(tenderSummary.diff) > WALK_IN_TENDER_TOLERANCE) {
+                alert(`⚠️ Payment breakdown does not balance. Outstanding amount: N$ ${tenderSummary.diff.toFixed(2)}. Please adjust tenders before confirming.`);
+                renderWalkInTenderManager();
+                return false;
+            }
+            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
+            const tenderEntries = tenderSummary.entries.length > 0 ? tenderSummary.entries : [{
+                method: paymentMethod,
+                label: getPaymentMethodMeta(paymentMethod).label || paymentMethod,
+                icon: getPaymentMethodMeta(paymentMethod).icon || '',
+                amount: Number(tenderSummary.totalDue.toFixed(2))
+            }];
+
             // Handle distributor referral based on customer type
             let referralName = '';
             let referralId = '';
@@ -31553,9 +33074,6 @@ async function reverseLastPrescriptionPayment(reportId){
             const now = new Date();
             const saleDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format for finance
             
-            // Get selected payment method
-            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
-            
             const sale = {
                 id: 'WALKIN-' + Date.now(),
                 clientId: clientId,
@@ -31578,7 +33096,12 @@ async function reverseLastPrescriptionPayment(reportId){
                 timestamp: now.toISOString(),
                 soldBy: currentUser ? currentUser.fullName : 'Unknown',
                 branch: currentUser ? currentUser.branch : 'unknown',
-                paymentMethod: paymentMethod // Use selected payment method
+                paymentMethod: tenderEntries[0]?.method || paymentMethod,
+                tenders: tenderEntries.map(t => ({
+                    method: t.method,
+                    label: t.label || getPaymentMethodMeta(t.method).label || t.method,
+                    amount: Number(t.amount.toFixed(2))
+                }))
             };
             
             // FEFO mandatory: deduct via barcode/batch FEFO first
@@ -31607,6 +33130,12 @@ async function reverseLastPrescriptionPayment(reportId){
 
             // Persist to backend API (fallback to offline cache if needed)
             const savedSale = await createWalkInSaleViaApi(sale);
+            if (!Array.isArray(savedSale.tenders) || savedSale.tenders.length === 0) {
+                savedSale.tenders = sale.tenders;
+            }
+            if (!savedSale.paymentMethod) {
+                savedSale.paymentMethod = sale.paymentMethod;
+            }
             
             // Broadcast stock update event for real-time sync
             try {
@@ -31653,21 +33182,34 @@ async function reverseLastPrescriptionPayment(reportId){
             // Update cash drawer
             const cashDrawer = JSON.parse(localStorage.getItem('dyna_cash_drawer') || '{}');
             if (!cashDrawer.totalSales) cashDrawer.totalSales = [];
+            const cashTenderTotal = tenderEntries
+                .filter(t => t.method === 'cash')
+                .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+            if (!Number.isFinite(cashDrawer.currentBalance)) {
+                cashDrawer.currentBalance = Number(cashDrawer.openingBalance || 0);
+            }
+            cashDrawer.currentBalance = Number((Number(cashDrawer.currentBalance || 0) + cashTenderTotal).toFixed(2));
             cashDrawer.totalSales.push({
                 type: 'walkin',
                 amount: savedSale.total || grandTotal,
+                timestamp: savedSale.timestamp,
+                tenders: tenderEntries
+            });
+            if (!Array.isArray(cashDrawer.tenderHistory)) {
+                cashDrawer.tenderHistory = [];
+            }
+            cashDrawer.tenderHistory.push({
+                saleId: savedSale.id,
+                tenders: tenderEntries,
+                total: savedSale.total || grandTotal,
                 timestamp: savedSale.timestamp
             });
             localStorage.setItem('dyna_cash_drawer', JSON.stringify(cashDrawer));
             
             // Show success message with client registration info if applicable
-            const paymentMethodLabels = {
-                'cash': '💵 Cash',
-                'card': '💳 Card',
-                'mobile': '📱 Mobile Money',
-                'bank': '🏦 Bank Transfer'
-            };
-            const paymentLabel = paymentMethodLabels[paymentMethod] || paymentMethod;
+            const paymentBreakdownLabel = tenderEntries
+                .map(t => `${getPaymentMethodMeta(t.method).icon || ''} ${t.label || t.method}: N$ ${t.amount.toFixed(2)}`)
+                .join('\n');
 
             if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
                 window.walkInCartStore.clear();
@@ -31675,8 +33217,9 @@ async function reverseLastPrescriptionPayment(reportId){
                 cart.length = 0;
             }
             updateWalkInCart();
+            resetWalkInTenderState();
             
-            let successMessage = `✅ Sale processed successfully!\n\nTotal: N$ ${(savedSale.total || grandTotal).toFixed(2)}\nPayment Method: ${paymentLabel}`;
+            let successMessage = `✅ Sale processed successfully!\n\nTotal: N$ ${(savedSale.total || grandTotal).toFixed(2)}\nPayment Breakdown:\n${paymentBreakdownLabel}`;
             if (clientReferenceNumber && !existingClient) {
                 successMessage += `\n\n📝 New client registered!\nReference: ${clientReferenceNumber}`;
             } else if (clientReferenceNumber) {
@@ -36418,6 +37961,27 @@ async function reverseLastPrescriptionPayment(reportId){
                 return `${year}-${month}`;
             }
 
+            // Month name formats e.g. "Dec -2028", "Aug-27", "September 2025"
+            const monthMap = {
+                jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+                jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12'
+            };
+            const monthYearMatch = value.match(/^([A-Za-z]+)\s*[-\/]?\s*(\d{2,4})$/);
+            if (monthYearMatch) {
+                const monthToken = monthYearMatch[1].trim().toLowerCase();
+                const monthKey = monthToken.slice(0, 4);
+                const monthAbbrev = monthMap[monthKey] || monthMap[monthToken.slice(0, 3)];
+                if (monthAbbrev) {
+                    let yearNum = parseInt(monthYearMatch[2], 10);
+                    if (Number.isFinite(yearNum)) {
+                        if (yearNum < 100) {
+                            yearNum += yearNum >= 70 ? 1900 : 2000;
+                        }
+                        return `${yearNum}-${monthAbbrev}`;
+                    }
+                }
+            }
+
             // Attempt Date parsing (supports DD/MM/YYYY, DD-MM-YYYY, etc.)
             const replaced = value.replace(/\./g, '-').replace(/\//g, '-');
             const parsed = new Date(replaced);
@@ -40778,39 +42342,107 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             if (!sessionId) throw new Error('Cash session is not open');
             if (!type) throw new Error('Movement type is required');
 
-            const response = await fetch('/api/branch/cash-movements', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
+            const movementType = (type || '').toLowerCase();
+            const numericAmount = Number(amount || 0);
+            const nowIso = new Date().toISOString();
+            let normalizedMovement = null;
+            let sessionUpdate = null;
+            let offlineFallback = false;
+
+            try {
+                const response = await fetch('/api/branch/cash-movements', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        branchId,
+                        sessionId,
+                        type,
+                        amount,
+                        description,
+                        notes,
+                        recordedBy,
+                        metadata
+                    })
+                });
+
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || `HTTP ${response.status}`);
+                }
+
+                const { movement, session } = payload;
+                normalizedMovement = {
+                    ...movement,
+                    branchId: movement.branchId || branchId,
+                    amount: Number(movement.amount || 0),
+                    recordedAt: movement.recordedAt || movement.recorded_at || nowIso,
+                    recordedBy: movement.recordedBy || movement.recorded_by || recordedBy || '',
+                    type: (movement.type || '').toLowerCase(),
+                    notes: movement.notes || '',
+                    description: movement.description || description || '',
+                    reference: movement.reference || movement.id
+                };
+
+                if (session) {
+                    sessionUpdate = {
+                        ...session,
+                        metadata: session.metadata || {}
+                    };
+                    sessionUpdate.currentBalance =
+                        sessionUpdate.currentBalance !== undefined
+                            ? Number(sessionUpdate.currentBalance)
+                            : Number(sessionUpdate.metadata?.currentBalance ?? sessionUpdate.openingBalance ?? 0);
+                }
+            } catch (error) {
+                console.warn('createBranchCashMovement: falling back to offline cache', error);
+                offlineFallback = true;
+                normalizedMovement = {
+                    id: `OFFLINE-${Date.now()}`,
                     branchId,
                     sessionId,
-                    type,
-                    amount,
-                    description,
-                    notes,
-                    recordedBy,
-                    metadata
-                })
-            });
+                    amount: numericAmount,
+                    recordedAt: nowIso,
+                    recordedBy: recordedBy || '',
+                    type: movementType,
+                    notes: notes || '',
+                    description: description || '',
+                    metadata: metadata || {},
+                    reference: `OFFLINE-${Date.now()}`,
+                    offline: true
+                };
 
-            const payload = await response.json();
-            if (!response.ok || !payload.success) {
-                throw new Error(payload.error || 'Failed to record cash movement');
+                const baseSession =
+                    branchCashSession && branchCashSession.id === sessionId
+                        ? { ...branchCashSession }
+                        : {
+                              id: sessionId,
+                              branchId,
+                              openingBalance: Number(branchCashSession?.openingBalance || 0),
+                              currentBalance: Number(
+                                  branchCashSession?.currentBalance ??
+                                      branchCashSession?.metadata?.currentBalance ??
+                                      branchCashSession?.openingBalance ??
+                                      0
+                              ),
+                              isOpen: true,
+                              openedBy: branchCashSession?.openedBy || recordedBy || 'system',
+                              openedAt: branchCashSession?.openedAt || nowIso,
+                              metadata: { ...(branchCashSession?.metadata || {}) }
+                          };
+
+                const delta =
+                    movementType === 'drop' || movementType === 'expense' ? -numericAmount : numericAmount;
+                baseSession.currentBalance = Number(baseSession.currentBalance || 0) + delta;
+                baseSession.metadata = baseSession.metadata || {};
+                baseSession.metadata.currentBalance = baseSession.currentBalance;
+                baseSession.metadata.lastOfflineUpdate = nowIso;
+                sessionUpdate = baseSession;
             }
 
-            const { movement, session } = payload;
-            const normalizedMovement = {
-                ...movement,
-                branchId: movement.branchId || branchId,
-                amount: Number(movement.amount || 0),
-                recordedAt: movement.recordedAt || movement.recorded_at,
-                recordedBy: movement.recordedBy || movement.recorded_by || '',
-                type: (movement.type || '').toLowerCase(),
-                notes: movement.notes || '',
-                description: movement.description || '',
-                reference: movement.reference || movement.id
-            };
+            if (!normalizedMovement) {
+                throw new Error('Unable to record cash movement');
+            }
 
             const existingIndex = branchCashMovements.findIndex((m) => m.id === normalizedMovement.id);
             if (existingIndex !== -1) {
@@ -40820,13 +42452,28 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             }
             saveBranchFinanceCache('branch_cash_movements', branchId, branchCashMovements);
 
-            if (session) {
-                branchCashSession = session;
+            if (sessionUpdate) {
+                branchCashSession = {
+                    ...sessionUpdate,
+                    metadata: { ...(sessionUpdate.metadata || {}) }
+                };
                 saveBranchFinanceCache('branch_cash_session', branchId, branchCashSession);
             }
 
             refreshCashDrawerState(branchId);
             displayCashDrawerStatus();
+
+            if (offlineFallback) {
+                try {
+                    showToast('Cash movement saved offline – will sync when the server is available.', {
+                        type: 'warning',
+                        duration: 6000
+                    });
+                } catch (_) {
+                    console.warn('Cash movement saved offline – will sync when reachable.');
+                }
+            }
+
             return normalizedMovement;
         }
         (function initializeBranchCaches() {
@@ -42747,7 +44394,7 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         
         // Product name mapping to dynapharm.net/ph format
         // Maps internal product names to website display names
-        const PRODUCT_NAME_MAPPING = {
+        var PRODUCT_NAME_MAPPING = window.PRODUCT_NAME_MAPPING || {
             // Bee Pollen products
             "BEE POLEN CAPSULE (30's)": "Bee Pollen Capsule",
             "BEE POLLEN CAPSULE (100's)": "Bee Pollen Capsule",
@@ -42768,9 +44415,10 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             "SEA CUCUMBER JELLY (250ml)": "Sea Cucumber Jelly",
             "SEA CUCUMBER JELLY (500ml)": "Sea Cucumber Jelly"
         };
+        window.PRODUCT_NAME_MAPPING = PRODUCT_NAME_MAPPING;
         
         // Product slug mapping for specific products that don't follow standard naming
-        const PRODUCT_SLUG_MAPPING = {
+        var PRODUCT_SLUG_MAPPING = window.PRODUCT_SLUG_MAPPING || {
             "BEE POLEN CAPSULE (30's)": "bee-pollen-capsule",
             "BEE POLLEN CAPSULE (100's)": "bee-pollen-capsule",
             "GINALI CAPSULE 100's": "gin-ali-capsule",
@@ -42782,16 +44430,19 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             "SEA CUCUMBER JELLY (250ml)": "sea-cucumber-jelly",
             "SEA CUCUMBER JELLY (500ml)": "sea-cucumber-jelly"
         };
+        window.PRODUCT_SLUG_MAPPING = PRODUCT_SLUG_MAPPING;
         
         // Function to convert product name to URL slug format
         function productNameToSlug(productName) {
             // First check if there's a specific slug mapping
-            if (PRODUCT_SLUG_MAPPING[productName]) {
-                return PRODUCT_SLUG_MAPPING[productName];
+            const slugMap = window.PRODUCT_SLUG_MAPPING || PRODUCT_SLUG_MAPPING || {};
+            if (slugMap[productName]) {
+                return slugMap[productName];
             }
             
             // Then check the name mapping
-            const mappedName = PRODUCT_NAME_MAPPING[productName] || productName;
+            const nameMap = window.PRODUCT_NAME_MAPPING || PRODUCT_NAME_MAPPING || {};
+            const mappedName = nameMap[productName] || productName;
             
             // Convert to slug format (lowercase, spaces to hyphens, remove special chars)
             return mappedName
@@ -43172,7 +44823,8 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
         
         // Function to get display name from mapping or original
         function getProductDisplayName(productName) {
-            return PRODUCT_NAME_MAPPING[productName] || productName;
+            const map = window.PRODUCT_NAME_MAPPING || PRODUCT_NAME_MAPPING || {};
+            return map[productName] || productName;
         }
         
         async function loadShopProducts() {
