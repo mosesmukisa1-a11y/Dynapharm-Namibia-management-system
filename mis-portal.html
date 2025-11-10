@@ -427,12 +427,13 @@
             getMonthlyStockSoldReport,
             exportStockSoldToExcel,
             exportDailyReceiptsToExcel
-        } from './api/mis-sales.js';
+        } from './web-modules/mis-sales.js';
 
         let catalogs = { products: [], distributors: [] };
         let currentUser = { username: 'mis.officer', fullName: 'MIS Officer', role: 'mis' };
         let draft = { id: '', lines: [] };
 		let currentDailyReceipts = [];
+        let currentDailyReceiptsSummary = { count: 0, totalAmount: 0, branchBreakdown: [] };
 		let currentStockSold = [];
 		let currentAuditLogs = [];
 
@@ -635,7 +636,9 @@
         window.loadDailyReceipts = async function() {
             const date = $('dailyReceiptDate').value || new Date().toISOString().slice(0, 10);
             $('dailyReceiptDate').value = date;
-            currentDailyReceipts = await getDailyReceipts(date);
+            const response = await getDailyReceipts(date);
+            currentDailyReceipts = Array.isArray(response?.receipts) ? response.receipts : [];
+            currentDailyReceiptsSummary = response?.totals || { count: 0, totalAmount: 0, branchBreakdown: [] };
             renderDailyReceipts();
         };
 
@@ -654,19 +657,19 @@
             tbody.innerHTML = currentDailyReceipts.map(r => `<tr>
                 <td>${r.receiptNumber || r.id}</td>
                 <td><span class="pill">${r.type === 'prescription' ? 'Prescription' : 'Walk-in'}</span></td>
-                <td>${r.branch}</td>
-                <td>${r.clientName}</td>
-                <td>${r.date}</td>
-                <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
-                <td class="right">N$ ${r.totalAmount.toFixed(2)}</td>
-                <td>${(r.products || []).length}</td>
+                <td>${r.branch || r.branchId || '—'}</td>
+                <td>${r.clientName || r.customerName || '—'}</td>
+                <td>${r.date || (r.saleDate ? new Date(r.saleDate).toLocaleDateString() : '')}</td>
+                <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : ''}</td>
+                <td class="right">N$ ${(Number(r.totalAmount || r.total || 0)).toFixed(2)}</td>
+                <td>${Array.isArray(r.products) ? r.products.length : (Array.isArray(r.items) ? r.items.length : 0)}</td>
             </tr>`).join('');
 
-            const totalAmount = currentDailyReceipts.reduce((sum, r) => sum + r.totalAmount, 0);
-            const uniqueBranches = new Set(currentDailyReceipts.map(r => r.branch));
-            $('dailyReceiptTotal').textContent = `Total Receipts: ${currentDailyReceipts.length}`;
+            const totalAmount = Number(currentDailyReceiptsSummary.totalAmount || 0);
+            const uniqueBranches = Number(currentDailyReceiptsSummary.branchBreakdown?.length || 0);
+            $('dailyReceiptTotal').textContent = `Total Receipts: ${currentDailyReceiptsSummary.count || currentDailyReceipts.length}`;
             $('dailyReceiptAmount').textContent = `Total Amount: N$ ${totalAmount.toFixed(2)}`;
-            $('dailyReceiptBranches').textContent = `Branches: ${uniqueBranches.size}`;
+            $('dailyReceiptBranches').textContent = `Branches: ${uniqueBranches || new Set(currentDailyReceipts.map(r => r.branch || r.branchId)).size}`;
         }
 
         window.exportDailyReceiptsExcel = function() {

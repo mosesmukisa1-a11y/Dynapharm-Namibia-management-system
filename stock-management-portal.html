@@ -511,7 +511,7 @@
     </div>
 
     <script type="module">
-        import { getStockRequests, getStockTransfers, getWarehouseStock, updateWarehouseStock, getStockStatistics, approveStockRequest, updateTransferStatus, createStockRequest, updateStockRequest, forwardStockRequestToGM, getDispatchNotes } from './web-modules/stock-requests.js';
+        import { refreshStockData, getStockRequests, getStockTransfers, getWarehouseStock, getWarehouses, getStockStatistics, approveStockRequest, updateTransferStatus, createStockRequest, updateStockRequest, forwardStockRequestToGM, getDispatchNotes } from './web-modules/stock-api.js';
         import { importStockWithBarcode, getBarcodeStockStatistics } from './web-modules/barcode-stock.js';
         import { getProducts } from './web-modules/products.js';
 
@@ -675,18 +675,19 @@
             // Aggregate stock by location and product
             const stockMap = new Map();
             
-            // Process warehouse stock (from stock-requests.js)
-            const warehouses = ['warehouse-windhoek','warehouse-ondangwa'];
-            warehouses.forEach(w => {
-                const res = getWarehouseStock(w);
+            // Process warehouse stock (from shared API)
+            const warehouses = getWarehouses();
+            warehouses.forEach(warehouse => {
+                const res = getWarehouseStock(warehouse.id);
                 if (res?.success) {
                     const stock = res.data;
                     Object.keys(stock).forEach(pid => {
                         const s = stock[pid];
-                        const key = `${w}|||${pid}`;
+                        const key = `${warehouse.id}|||${pid}`;
                         if (!stockMap.has(key)) {
                             stockMap.set(key, {
-                                location: w,
+                                locationId: warehouse.id,
+                                location: warehouse.name || warehouse.id,
                                 product: pid,
                                 totalQty: 0,
                                 availableQty: 0,
@@ -819,7 +820,7 @@
             });
             
             sortedEntries.forEach(entry => {
-                const status = entry.availableQty <= entry.reorderLevel ? 'LOW' : 
+                const status = entry.availableQty <= entry.reorderLevel ? 'LOW' :
                               (entry.availableQty > entry.reorderLevel*10 ? 'OVER' : 'OK');
                 const color = status==='LOW'?'bad':(status==='OVER'?'warn':'good');
                 const tr = document.createElement('tr');
@@ -859,6 +860,8 @@
             const range = document.getElementById('dateRange').value;
             const search = document.getElementById('searchBox').value.trim().toLowerCase();
             const productFilter = document.getElementById('productFilter').value;
+
+            await refreshStockData();
 
             // Transfers and requests
             const { data: transfers = [] } = getStockTransfers({ status: 'all', toBranch: branch==='all'?undefined:branch, fromWarehouse: wh==='all'?undefined:wh }) || { data: [] };
@@ -956,15 +959,15 @@
 
         // Notifications for low stock and overstock based on warehouse snapshot
         function evaluateThresholds() {
-            ['warehouse-windhoek','warehouse-ondangwa'].forEach(w => {
-                const res = getWarehouseStock(w);
+            getWarehouses().forEach(warehouse => {
+                const res = getWarehouseStock(warehouse.id);
                 if (!res?.success) return;
                 const stock = res.data;
                 Object.values(stock).forEach(s => {
                     if (s.quantity <= s.reorderLevel) {
-                        pushAlert('warn', `Low stock ${s.productId} in ${w} (qty ${s.quantity})`, { branch: w });
+                        pushAlert('warn', `Low stock ${s.productId} in ${warehouse.name || warehouse.id} (qty ${s.quantity})`, { branch: warehouse.id });
                     } else if (s.quantity > s.reorderLevel * 10) {
-                        pushAlert('warn', `Overstock ${s.productId} in ${w} (qty ${s.quantity})`, { branch: w });
+                        pushAlert('warn', `Overstock ${s.productId} in ${warehouse.name || warehouse.id} (qty ${s.quantity})`, { branch: warehouse.id });
                     }
                 });
             });
@@ -1005,8 +1008,18 @@
             tbody.innerHTML = '';
             const entries = [];
             // Stock
-            const stockOk = !!localStorage.getItem('dyna_warehouse_stock') || !!localStorage.getItem('dyna_barcode_stock');
-            entries.push({ name: 'Stock', ok: stockOk, details: stockOk?'Warehouse/Barcode data available':'No local stock data found' });
+            const warehousesList = getWarehouses();
+            const inventoryOk = warehousesList.some(warehouse => {
+                const res = getWarehouseStock(warehouse.id);
+                return res?.success && Object.keys(res.data || {}).length > 0;
+            });
+            let barcodeOk = false;
+            try { barcodeOk = !!localStorage.getItem('dyna_barcode_stock'); } catch (_) {}
+            const stockOk = inventoryOk || barcodeOk;
+            const stockDetails = stockOk
+                ? `${warehousesList.length} warehouse${warehousesList.length===1?'':'s'} synced${barcodeOk ? ' + barcode cache' : ''}`
+                : 'No warehouse inventory available';
+            entries.push({ name: 'Stock', ok: stockOk, details: stockDetails });
             // MIS
             const misOk = !!document.querySelector('link[href*="mis-portal.html"], iframe[src*="mis-portal.html"]') || true; // assume available in repo
             entries.push({ name: 'MIS', ok: misOk, details: misOk?'MIS module present':'MIS module not detected' });
@@ -1203,26 +1216,31 @@
             if (currentRole==='stock_manager') {
                 tbody.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => openReviewModal(btn.getAttribute('data-review'))));
             }
-            tbody.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () => {
+            tbody.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
                 const id = btn.getAttribute('data-approve');
                 const who = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'Approver';
                 const role = (window.parent && window.parent.currentUser) ? window.parent.currentUser.role : 'manager';
-                approveStockRequest(id, { approverRole: role, approvedBy: who, approved: true, notes: '' });
+                const res = await approveStockRequest(id, { approverRole: role, approvedBy: who, approved: true, notes: '' });
+                if (!res || res.success === false) {
+                    showToast('Failed to approve request','error');
+                    return;
+                }
                 showToast('Request approved','success');
-                // Immediately refresh to show updated stock
-                setTimeout(() => {
-                    refreshData();
-                    renderWarehouseSnapshot();
-                }, 100);
+                await refreshData();
+                await renderWarehouseSnapshot();
             }));
-            tbody.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+            tbody.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', async () => {
                 const id = btn.getAttribute('data-reject');
                 const who = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'Approver';
                 const role = (window.parent && window.parent.currentUser) ? window.parent.currentUser.role : 'manager';
                 if (confirm('Reject this request?')) {
-                    approveStockRequest(id, { approverRole: role, approvedBy: who, approved: false, notes: '' });
+                    const res = await approveStockRequest(id, { approverRole: role, approvedBy: who, approved: false, notes: '' });
+                    if (!res || res.success === false) {
+                        showToast('Failed to update request','error');
+                        return;
+                    }
                     showToast('Request rejected','info');
-                    refreshData();
+                    await refreshData();
                 }
             }));
         }
@@ -1256,7 +1274,7 @@
                 const id = btn.getAttribute('data-id');
                 const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser.fullName : 'User';
                 try {
-                    const res = updateTransferStatus(id, status, { user });
+                    const res = await updateTransferStatus(id, status, { user });
                     if (!res || res.success === false) {
                         showToast('Failed to update transfer','error');
                         return;
@@ -1278,10 +1296,8 @@
                     console.error('Transfer update error:', err);
                     showToast('Transfer update failed','error');
                 } finally {
-                    setTimeout(() => {
-                        refreshData();
-                        renderWarehouseSnapshot();
-                    }, 120);
+                    await refreshData();
+                    await renderWarehouseSnapshot();
                 }
             }));
             tbody.querySelectorAll('[data-view-dispatch]').forEach(btn => btn.addEventListener('click', () => {
@@ -1421,7 +1437,7 @@
         if (csvModal) csvModal.addEventListener('click', (e) => { if (e.target && e.target.id === 'csvModal') csvModal.style.display = 'none'; });
 
         const reqSubmitBtn = document.getElementById('reqSubmitBtn');
-        if (reqSubmitBtn) reqSubmitBtn.addEventListener('click', () => {
+        if (reqSubmitBtn) reqSubmitBtn.addEventListener('click', async () => {
             const branch = document.getElementById('reqBranch').value;
             const type = document.getElementById('reqType').value;
             const priority = document.getElementById('reqPriority').value;
@@ -1432,11 +1448,12 @@
             if (!branch || branch==='all' || !product || !qty || qty<=0) { showToast('Fill branch, product, and quantity','error'); return; }
             if (!returnDate) { showToast('Select return / required date','error'); return; }
             const user = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName:'Requestor', role:'dispenser' };
-            const res = createStockRequest({ branch, type, priority, items:[{ productId: product, description: product, quantity: qty }], notes, returnDate, requestedBy: user.fullName, requestedByRole: user.role });
+            const res = await createStockRequest({ branch, type, priority, items:[{ productId: product, description: product, quantity: qty }], notes, returnDate, requestedBy: user.fullName, requestedByRole: user.role });
             if (res && res.success) {
                 showToast('Request created: '+res.data.requestNumber,'success');
                 document.getElementById('requestModal').style.display = 'none';
-                refreshData();
+                await refreshData();
+                await renderWarehouseSnapshot();
             } else {
                 showToast('Failed to create request','error');
             }
@@ -1679,7 +1696,7 @@
         });
 
         const reviewSaveBtn = document.getElementById('reviewSaveBtn');
-        if (reviewSaveBtn) reviewSaveBtn.addEventListener('click', () => {
+        if (reviewSaveBtn) reviewSaveBtn.addEventListener('click', async () => {
             if (!reviewRequest) return;
             syncReviewItemsFromInputs();
             if (!reviewRequest.items || reviewRequest.items.length === 0) {
@@ -1687,18 +1704,18 @@
                 return;
             }
             const reviewer = currentUser ? currentUser.fullName : 'Stock Manager';
-            const res = updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
+            const res = await updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
             if (res && res.success) {
                 showToast('Changes saved','success');
                 reviewModal.style.display = 'none';
-                refreshData();
+                await refreshData();
             } else {
                 showToast('Failed to save changes','error');
             }
         });
 
         const reviewForwardBtn = document.getElementById('reviewForwardBtn');
-        if (reviewForwardBtn) reviewForwardBtn.addEventListener('click', () => {
+        if (reviewForwardBtn) reviewForwardBtn.addEventListener('click', async () => {
             if (!reviewRequest) return;
             syncReviewItemsFromInputs();
             if (!reviewRequest.items || reviewRequest.items.length === 0) {
@@ -1706,16 +1723,16 @@
                 return;
             }
             const reviewer = currentUser ? currentUser.fullName : 'Stock Manager';
-            const resSave = updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
+            const resSave = await updateStockRequest(reviewRequest.id, { items: reviewRequest.items, reviewedBy: reviewer });
             if (!resSave || !resSave.success) {
                 showToast('Save changes before forwarding','error');
                 return;
             }
-            const resForward = forwardStockRequestToGM(reviewRequest.id, { reviewedBy: reviewer });
+            const resForward = await forwardStockRequestToGM(reviewRequest.id, { reviewedBy: reviewer });
             if (resForward && resForward.success) {
                 showToast('Forwarded to GM','success');
                 reviewModal.style.display = 'none';
-                refreshData();
+                await refreshData();
             } else {
                 showToast('Forward failed','error');
             }

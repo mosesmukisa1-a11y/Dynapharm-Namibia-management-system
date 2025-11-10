@@ -33476,7 +33476,7 @@ async function reverseLastPrescriptionPayment(reportId){
         });
         
         // Inventory reporting & invoice helpers
-        const inventoryReportState = { lastRange: 'monthly' };
+        window.inventoryReportState = window.inventoryReportState || { lastRange: 'monthly' };
         const invoiceReportState = { loaded: false, data: [], filtered: [], refunds: [], branchDirectory: {}, debounceTimer: null, lastRange: 'monthly' };
         const REPORT_DATE_FIELDS = ['date', 'createdAt', 'created_at', 'timestamp', 'issuedAt', 'issued_at', 'saleDate', 'sale_date', 'orderDate', 'order_date', 'transactionDate', 'transaction_date', 'submittedAt', 'submitted_at', 'recordedAt', 'recorded_at'];
         const QUANTITY_KEYS = ['quantity', 'qty', 'units', 'count', 'totalUnits', 'total_units', 'itemCount', 'item_count'];
@@ -33485,11 +33485,12 @@ async function reverseLastPrescriptionPayment(reportId){
 
         function renderInventoryTimelyReport(range) {
             const selector = document.getElementById('inventoryTimelyRange');
-            const period = range || selector?.value || inventoryReportState.lastRange || 'monthly';
+            const state = window.inventoryReportState || (window.inventoryReportState = { lastRange: 'monthly' });
+            const period = range || selector?.value || state.lastRange || 'monthly';
             if (selector && selector.value !== period) {
                 selector.value = period;
             }
-            inventoryReportState.lastRange = period;
+            state.lastRange = period;
             const startDate = getReportStartDate(period);
 
             const stockReceived = filterRecordsByDate(gatherRecords(['dyna_branch_stock_receipts', 'branch_stock_receive_history', 'branch_stock_receipts', 'country_stock_imports']), startDate);
@@ -34447,8 +34448,9 @@ async function reverseLastPrescriptionPayment(reportId){
             
             // Recent movements
             loadRecentMovements();
-            if (inventoryReportState) {
-                renderInventoryTimelyReport(inventoryReportState.lastRange);
+            const state = window.inventoryReportState;
+            if (state) {
+                renderInventoryTimelyReport(state.lastRange);
             }
             } catch (error) {
                 console.error('Error refreshing stock overview:', error);
@@ -45550,6 +45552,43 @@ This sale appears in the Dispenser Portal sales reports.
             to { transform: translateY(0); opacity: 1; }
         }
     </style>
+    <script>
+        // Ensure PRICE_LIST exists even if the inline declaration fails in production builds
+        (async function ensurePriceListHydrated() {
+            if (Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0) return;
+
+            // Try cached copy first
+            try {
+                const cached = localStorage.getItem('dyna_price_list');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        window.PRICE_LIST = parsed;
+                        console.info(`Hydrated PRICE_LIST from localStorage (${parsed.length} products)`);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.debug('PRICE_LIST local cache unavailable', err);
+            }
+
+            // Fetch static JSON fallback bundled with the app
+            try {
+                const response = await fetch('/price-list.json', { cache: 'no-store' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const list = await response.json();
+                if (Array.isArray(list) && list.length > 0) {
+                    window.PRICE_LIST = list;
+                    try { localStorage.setItem('dyna_price_list', JSON.stringify(list)); } catch (_) {}
+                    console.info(`Hydrated PRICE_LIST from price-list.json (${list.length} products)`);
+                } else {
+                    console.warn('price-list.json did not yield a product array');
+                }
+            } catch (err) {
+                console.error('Failed to hydrate PRICE_LIST fallback', err);
+            }
+        })();
+    </script>
 </body>
 <script>
     (function(){
