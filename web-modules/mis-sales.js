@@ -295,10 +295,23 @@ export async function buildEncodedSalesReport({ start, end, branch }) {
       </div>
     `;
 
+    const meta = {
+      start,
+      end,
+      branch,
+      generatedAt: new Date().toISOString(),
+      totals: {
+        totalAmount,
+        totalQuantity,
+        recordCount: rows.length,
+      },
+    };
+
     return {
       html,
       csvHeaders: headers,
       csvRows,
+      meta,
     };
   } catch (error) {
     console.error('buildEncodedSalesReport failed', error);
@@ -306,15 +319,20 @@ export async function buildEncodedSalesReport({ start, end, branch }) {
       html: '<p style="color:#dc2626;">Failed to build report.</p>',
       csvHeaders: [],
       csvRows: [],
+      meta: null,
     };
   }
 }
 
-export async function submitReport(payload) {
+export async function submitReport(payload, recipients = []) {
   try {
     const response = await apiFetch('/api/reports', {
       method: 'POST',
-      body: payload,
+      body: {
+        reportType: 'mis_encoded_sales',
+        recipients,
+        ...payload,
+      },
     });
     return response;
   } catch (error) {

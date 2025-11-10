@@ -11288,6 +11288,16 @@
         })();
         const USE_OFFLINE_MODE = false; // Prefer online API; only fallback if truly offline
 
+        const LEAVE_CACHE_PRIMARY_KEY = 'hr_leave_requests';
+        const LEAVE_CACHE_LEGACY_KEYS = ['leaveRequests', 'branch_leave_requests'];
+        const LEAVE_PENDING_QUEUE_KEY = 'hr_leave_requests_pending';
+        const LEAVE_API_ENDPOINT = '/leave';
+
+        const CASH_CACHE_PRIMARY_KEY = 'finance_cash_requests';
+        const CASH_CACHE_LEGACY_KEYS = ['cashRequests', 'branch_cash_requests'];
+        const CASH_PENDING_QUEUE_KEY = 'finance_cash_requests_pending';
+        const CASH_API_ENDPOINT = '/branch/cash-requests';
+
         // Safe JSON parse with default fallback
         function safeParseFromStorage(key, defaultJsonString) {
             try {
@@ -11299,6 +11309,334 @@
             } catch (e) {
                 return JSON.parse(defaultJsonString);
             }
+        }
+
+        function getRecordCacheKey(record) {
+            if (!record || typeof record !== 'object') return null;
+            if (record.id) return String(record.id);
+            if (record.offlineId) return String(record.offlineId);
+            const staff = record.staff || record.employeeId || record.employee || record.fullName || '';
+            const created =
+                record.submittedAt ||
+                record.createdAt ||
+                record.created_at ||
+                record.timestamp ||
+                record.created ||
+                '';
+            const discriminator = record.type || record.purpose || record.reason || record.category || '';
+            const fallback = `${staff}|${created}|${discriminator}`;
+            return fallback || null;
+        }
+
+        function aggregateRecordsByKeys(keys) {
+            const list = [];
+            const seen = new Set();
+            const targets = Array.isArray(keys) ? keys : keys ? [keys] : [];
+            targets.forEach((key) => {
+                if (!key) return;
+                try {
+                    const raw = localStorage.getItem(key);
+                    if (!raw || raw === 'null' || raw === 'undefined') return;
+                    const parsed = JSON.parse(raw);
+                    if (!Array.isArray(parsed)) return;
+                    parsed.forEach((item) => {
+                        if (!item || typeof item !== 'object') return;
+                        const cacheKey = getRecordCacheKey(item);
+                        if (cacheKey && seen.has(cacheKey)) return;
+                        if (cacheKey) seen.add(cacheKey);
+                        list.push(item);
+                    });
+                } catch (_) {
+                    /* ignore parse failures */
+                }
+            });
+            return list;
+        }
+
+        function writeRecordsToKeys(primaryKey, legacyKeys, records) {
+            const serialised = JSON.stringify(Array.isArray(records) ? records : []);
+            const targets = [primaryKey].concat(Array.isArray(legacyKeys) ? legacyKeys : []);
+            targets.forEach((key, index) => {
+                if (!key) return;
+                try {
+                    localStorage.setItem(key, serialised);
+                } catch (error) {
+                    if (index === 0) {
+                        console.warn('Failed to persist cache record', key, error);
+                    }
+                }
+            });
+        }
+
+        function loadPendingQueue(queueKey) {
+            if (!queueKey) return [];
+            try {
+                const raw = localStorage.getItem(queueKey);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function savePendingQueue(queueKey, queue) {
+            if (!queueKey) return;
+            try {
+                localStorage.setItem(queueKey, JSON.stringify(Array.isArray(queue) ? queue : []));
+            } catch (error) {
+                console.warn('Failed to persist pending queue', queueKey, error);
+            }
+        }
+
+        function enqueuePendingRequest(queueKey, entry) {
+            if (!queueKey || !entry) return;
+            const queue = loadPendingQueue(queueKey).filter((item) => item && item.id !== entry.id);
+            queue.push(entry);
+            savePendingQueue(queueKey, queue);
+        }
+
+        function removePendingRequest(queueKey, recordId) {
+            if (!queueKey || !recordId) return;
+            const queue = loadPendingQueue(queueKey).filter((item) => item && item.id !== recordId);
+            savePendingQueue(queueKey, queue);
+        }
+
+        function sortRecordsNewest(records, primaryField, secondaryField) {
+            return (records || []).slice().sort((a, b) => {
+                const aDate =
+                    new Date(a?.[primaryField] || a?.[secondaryField] || a?.createdAt || a?.created_at || 0).getTime() || 0;
+                const bDate =
+                    new Date(b?.[primaryField] || b?.[secondaryField] || b?.createdAt || b?.created_at || 0).getTime() || 0;
+                return bDate - aDate;
+            });
+        }
+
+        function getLeaveCacheRecords() {
+            return aggregateRecordsByKeys([LEAVE_CACHE_PRIMARY_KEY].concat(LEAVE_CACHE_LEGACY_KEYS));
+        }
+
+        function setLeaveCacheRecords(records) {
+            const sorted = sortRecordsNewest(records, 'submittedAt', 'createdAt');
+            writeRecordsToKeys(LEAVE_CACHE_PRIMARY_KEY, LEAVE_CACHE_LEGACY_KEYS, sorted);
+        }
+
+        function upsertLeaveCacheRecord(record) {
+            if (!record) return getLeaveCacheRecords();
+            const key = getRecordCacheKey(record);
+            const next = getLeaveCacheRecords().filter((item) => getRecordCacheKey(item) !== key);
+            next.push(record);
+            setLeaveCacheRecords(next);
+            return next;
+        }
+
+        function removeLeaveCacheRecord(recordId) {
+            if (!recordId) return;
+            const next = getLeaveCacheRecords().filter((item) => getRecordCacheKey(item) !== String(recordId));
+            setLeaveCacheRecords(next);
+        }
+
+        function getCashCacheRecords() {
+            return aggregateRecordsByKeys([CASH_CACHE_PRIMARY_KEY].concat(CASH_CACHE_LEGACY_KEYS));
+        }
+
+        function setCashCacheRecords(records) {
+            const sorted = sortRecordsNewest(records, 'createdAt', 'submittedAt');
+            writeRecordsToKeys(CASH_CACHE_PRIMARY_KEY, CASH_CACHE_LEGACY_KEYS, sorted);
+        }
+
+        function upsertCashCacheRecord(record) {
+            if (!record) return getCashCacheRecords();
+            const key = getRecordCacheKey(record);
+            const next = getCashCacheRecords().filter((item) => getRecordCacheKey(item) !== key);
+            next.push(record);
+            setCashCacheRecords(next);
+            return next;
+        }
+
+        function removeCashCacheRecord(recordId) {
+            if (!recordId) return;
+            const next = getCashCacheRecords().filter((item) => getRecordCacheKey(item) !== String(recordId));
+            setCashCacheRecords(next);
+        }
+
+        function normalizeLeaveRecord(raw, context) {
+            const ctx = context || {};
+            const seed = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            const candidateId =
+                (raw &&
+                    (raw.id ||
+                        raw.leaveId ||
+                        raw.leave_id ||
+                        raw.requestId ||
+                        raw.request_id ||
+                        raw.reference ||
+                        raw.uuid)) ||
+                ctx.id;
+            const id = candidateId ? String(candidateId) : `LV${seed}`.toUpperCase();
+            const staff =
+                raw?.staff ||
+                raw?.staffUsername ||
+                raw?.username ||
+                raw?.userId ||
+                raw?.user_id ||
+                raw?.employeeId ||
+                raw?.employee_id ||
+                raw?.employeeCode ||
+                ctx.defaultStaff ||
+                null;
+            const employeeName =
+                raw?.employee ||
+                raw?.employeeName ||
+                raw?.employee_name ||
+                raw?.fullName ||
+                raw?.full_name ||
+                raw?.staffName ||
+                raw?.submittedBy ||
+                raw?.requestedBy ||
+                ctx.defaultStaffName ||
+                staff ||
+                'Unknown';
+            const branch =
+                raw?.branch ||
+                raw?.branchId ||
+                raw?.branch_id ||
+                raw?.location ||
+                ctx.defaultBranch ||
+                null;
+            const startDate =
+                raw?.startDate || raw?.start_date || raw?.fromDate || raw?.from || raw?.start || ctx.startDate || null;
+            const endDate = raw?.endDate || raw?.end_date || raw?.toDate || raw?.to || raw?.end || ctx.endDate || null;
+            const reason = raw?.reason || raw?.comments || raw?.description || raw?.notes || raw?.note || ctx.reason || '';
+            const urgent = Boolean(
+                raw?.urgent ||
+                raw?.isUrgent ||
+                (typeof raw?.priority === 'string' && raw.priority.toLowerCase() === 'urgent') ||
+                ctx.urgent
+            );
+            let statusValue = raw?.status || raw?.requestStatus || raw?.state || raw?.currentStatus || ctx.status || 'pending';
+            statusValue = typeof statusValue === 'string' ? statusValue.trim().toLowerCase() : 'pending';
+            let statusLabel = 'Pending';
+            if (statusValue === 'approved') statusLabel = 'Approved';
+            else if (statusValue === 'rejected') statusLabel = 'Rejected';
+            else if (statusValue === 'cancelled') statusLabel = 'Cancelled';
+            const submittedAt =
+                raw?.submittedAt ||
+                raw?.submitted_at ||
+                raw?.createdAt ||
+                raw?.created_at ||
+                raw?.timestamp ||
+                raw?.requestedAt ||
+                ctx.submittedAt ||
+                new Date().toISOString();
+            const createdAt =
+                raw?.createdAt ||
+                raw?.created_at ||
+                raw?.timestamp ||
+                raw?.created ||
+                submittedAt;
+            let days = Number(raw?.days ?? raw?.duration ?? raw?.totalDays ?? raw?.total_days ?? ctx.days ?? 0);
+            if (!Number.isFinite(days) || days <= 0) {
+                if (startDate && endDate) {
+                    const start = new Date(startDate);
+                    const end = new Date(endDate);
+                    if (!Number.isNaN(start.valueOf()) && !Number.isNaN(end.valueOf())) {
+                        const millis = end.setHours(12, 0, 0, 0) - start.setHours(12, 0, 0, 0);
+                        if (Number.isFinite(millis) && millis >= 0) {
+                            days = Math.floor(millis / (1000 * 60 * 60 * 24)) + 1;
+                        }
+                    }
+                }
+            }
+            if (!Number.isFinite(days) || days <= 0) days = null;
+            return {
+                id,
+                staff: staff || ctx.defaultStaff || null,
+                employee: employeeName,
+                fullName: employeeName,
+                branch,
+                type: raw?.type || raw?.leaveType || raw?.category || ctx.type || 'General Leave',
+                startDate: startDate || null,
+                endDate: endDate || null,
+                reason: reason || '',
+                urgent,
+                status: statusLabel,
+                statusRaw: statusValue,
+                submittedAt,
+                createdAt,
+                days,
+                pendingSync: Boolean(ctx.pendingSync || raw?.pendingSync),
+                offlineId: ctx.offlineId || raw?.offlineId || null,
+                source: ctx.source || raw?.source || 'api'
+            };
+        }
+
+        function normalizeCashRecord(raw, context) {
+            const ctx = context || {};
+            const seed = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            const candidateId =
+                (raw && (raw.id || raw.requestId || raw.request_id || raw.reference || raw.uuid)) || ctx.id;
+            const id = candidateId ? String(candidateId) : `CASH${seed}`.toUpperCase();
+            const employeeId =
+                raw?.employeeId ||
+                raw?.employee_id ||
+                raw?.userId ||
+                raw?.user_id ||
+                raw?.staff ||
+                raw?.staffId ||
+                ctx.defaultEmployeeId ||
+                null;
+            const employeeName =
+                raw?.employee ||
+                raw?.employeeName ||
+                raw?.employee_name ||
+                raw?.fullName ||
+                raw?.full_name ||
+                raw?.requestedBy ||
+                ctx.defaultEmployeeName ||
+                employeeId ||
+                'Unknown';
+            const branch =
+                raw?.branch ||
+                raw?.branchId ||
+                raw?.branch_id ||
+                raw?.location ||
+                ctx.defaultBranch ||
+                null;
+            const amountCandidate = Number(
+                raw?.amount ?? raw?.requestAmount ?? raw?.value ?? raw?.total ?? raw?.cash ?? ctx.amount ?? 0
+            );
+            const amount = Number.isFinite(amountCandidate) ? amountCandidate : 0;
+            let statusValue = raw?.status || raw?.requestStatus || raw?.state || ctx.status || 'pending';
+            statusValue = typeof statusValue === 'string' ? statusValue.trim().toLowerCase() : 'pending';
+            const status = statusValue === 'approved' ? 'approved' : statusValue === 'rejected' ? 'rejected' : 'pending';
+            const createdAt =
+                raw?.createdAt ||
+                raw?.created_at ||
+                raw?.timestamp ||
+                raw?.requestedAt ||
+                raw?.created ||
+                ctx.createdAt ||
+                new Date().toISOString();
+            return {
+                id,
+                employeeId: employeeId || ctx.defaultEmployeeId || null,
+                employee: employeeName,
+                branch,
+                amount,
+                purpose: raw?.purpose || raw?.reason || raw?.description || raw?.notes || ctx.purpose || '',
+                urgent: Boolean(
+                    raw?.urgent ||
+                    raw?.isUrgent ||
+                    (typeof raw?.priority === 'string' && raw.priority.toLowerCase() === 'urgent') ||
+                    ctx.urgent
+                ),
+                status,
+                createdAt,
+                pendingSync: Boolean(ctx.pendingSync || raw?.pendingSync),
+                offlineId: ctx.offlineId || raw?.offlineId || null,
+                source: ctx.source || raw?.source || 'api'
+            };
         }
 
 		const CRM_STORAGE_KEYS = {
@@ -12533,6 +12871,66 @@
 
         async function fallbackToLocalStorage(endpoint, method, data) {
             console.log('API unavailable, using localStorage fallback');
+            if (endpoint === LEAVE_API_ENDPOINT) {
+                if (method === 'GET') {
+                    return getLeaveCacheRecords();
+                }
+                if (method === 'POST') {
+                    const normalized = normalizeLeaveRecord(
+                        Object.assign({}, data || {}, {
+                            status: (data && data.status) || 'pending'
+                        }),
+                        {
+                            defaultStaff: currentUser?.username || null,
+                            defaultStaffName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            pendingSync: true,
+                            source: 'offline'
+                        }
+                    );
+                    normalized.pendingSync = true;
+                    normalized.source = 'offline';
+                    upsertLeaveCacheRecord(normalized);
+                    enqueuePendingRequest(LEAVE_PENDING_QUEUE_KEY, {
+                        id: normalized.id,
+                        payload: Object.assign({}, data || {}),
+                        createdAt: normalized.createdAt,
+                        staff: normalized.staff,
+                        branch: normalized.branch
+                    });
+                    return { success: true, offline: true, data: normalized };
+                }
+            }
+            if (endpoint === CASH_API_ENDPOINT) {
+                if (method === 'GET') {
+                    return getCashCacheRecords();
+                }
+                if (method === 'POST') {
+                    const normalized = normalizeCashRecord(
+                        Object.assign({}, data || {}, {
+                            status: (data && data.status) || 'pending'
+                        }),
+                        {
+                            defaultEmployeeId: currentUser?.username || null,
+                            defaultEmployeeName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            pendingSync: true,
+                            source: 'offline'
+                        }
+                    );
+                    normalized.pendingSync = true;
+                    normalized.source = 'offline';
+                    upsertCashCacheRecord(normalized);
+                    enqueuePendingRequest(CASH_PENDING_QUEUE_KEY, {
+                        id: normalized.id,
+                        payload: Object.assign({}, data || {}),
+                        createdAt: normalized.createdAt,
+                        employeeId: normalized.employeeId,
+                        branch: normalized.branch
+                    });
+                    return { success: true, offline: true, data: normalized };
+                }
+            }
             if (endpoint === '/clients') {
                 if (method === 'GET') {
                     return JSON.parse(localStorage.getItem('dyna_clients') || '[]');
@@ -17161,7 +17559,8 @@ async function logout() {
 			URL.revokeObjectURL(link.href);
 		}
 
-        let countryStock = Array.isArray(window.countryStock) ? window.countryStock : [];
+        var countryStock = Array.isArray(window.countryStock) ? window.countryStock : [];
+        window.countryStock = countryStock;
 
 		function exportCountryStock() {
 			loadStockData();
@@ -24727,23 +25126,74 @@ async function reverseLastPrescriptionPayment(reportId){
             document.body.appendChild(modal);
         }
 
-        function viewMyLeaveRequests(contextKey = 'branch') {
-            const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]').filter(r => r.staff === currentUser?.username);
+        async function viewMyLeaveRequests(contextKey = 'branch') {
             const statusDiv = getStaffStatusElement(contextKey, 'leave');
             if (!statusDiv) return;
-            
-            if (requests.length === 0) {
+            statusDiv.innerHTML = '<p style="color: #64748b;">Loading leave requests...</p>';
+            const username = (currentUser?.username || '').toLowerCase();
+            let records = [];
+            try {
+                const response = await apiRequest(LEAVE_API_ENDPOINT, 'GET');
+                const fetched = extractArray(response, []);
+                const normalized = fetched
+                    .map((item) =>
+                        normalizeLeaveRecord(item, {
+                            defaultStaff: currentUser?.username || null,
+                            defaultStaffName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            source: 'api'
+                        })
+                    )
+                    .filter(Boolean);
+                setLeaveCacheRecords(normalized);
+                records = normalized;
+            } catch (error) {
+                console.debug('viewMyLeaveRequests fallback', error?.message || error);
+                records = getLeaveCacheRecords();
+            }
+            const offlineQueue = loadPendingQueue(LEAVE_PENDING_QUEUE_KEY).map((entry) =>
+                normalizeLeaveRecord(
+                    Object.assign({ id: entry?.id }, entry?.payload || {}),
+                    {
+                        defaultStaff: currentUser?.username || null,
+                        defaultStaffName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        pendingSync: true,
+                        source: 'offline'
+                    }
+                )
+            );
+            const combined = [];
+            const seen = new Set();
+            records.concat(offlineQueue).forEach((record) => {
+                if (!record) return;
+                const key = getRecordCacheKey(record);
+                if (key && seen.has(key)) return;
+                if (key) seen.add(key);
+                combined.push(record);
+            });
+            const mine = combined.filter((req) => (req.staff || '').toLowerCase() === username);
+            if (mine.length === 0) {
                 statusDiv.innerHTML = '<p style="color: #666;">No leave requests yet.</p>';
                 return;
             }
-            
+            const sorted = mine.sort(
+                (a, b) =>
+                    new Date(b.submittedAt || b.createdAt || 0).getTime() - new Date(a.submittedAt || a.createdAt || 0).getTime()
+            );
             let html = '<div style="max-height: 300px; overflow-y: auto;">';
-            requests.forEach(req => {
+            sorted.forEach((req) => {
                 const status = req.status || 'Pending';
                 const badge = status === 'Approved' ? '#27ae60' : status === 'Rejected' ? '#e74c3c' : '#f39c12';
+                const pendingBadge = req.pendingSync
+                    ? '<span style="margin-left: 6px; color: #f97316; font-size: 0.75rem;">(offline)</span>'
+                    : '';
+                const startLabel = req.startDate ? new Date(req.startDate).toLocaleDateString() : '—';
+                const endLabel = req.endDate ? new Date(req.endDate).toLocaleDateString() : '—';
                 html += `
                     <div style="background: white; padding: 10px; margin-bottom: 10px; border-radius: 5px; border-left: 4px solid ${badge};">
-                        <strong>${req.type}</strong> - ${new Date(req.startDate).toLocaleDateString()} to ${new Date(req.endDate).toLocaleDateString()}<br>
+                        <strong>${req.type || 'Leave'}</strong> ${pendingBadge}<br>
+                        ${startLabel} to ${endLabel}<br>
                         <span style="background: ${badge}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.85rem;">${status}</span>
                     </div>
                 `;
@@ -24752,26 +25202,103 @@ async function reverseLastPrescriptionPayment(reportId){
             statusDiv.innerHTML = html;
         }
         
-        function submitLeaveRequest(e) {
+        async function submitLeaveRequest(e) {
             e.preventDefault();
-            const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]');
-            const newRequest = {
-                id: 'LV' + Date.now(),
-                staff: currentUser?.username || 'Unknown',
-                type: document.getElementById('leaveType').value,
-                startDate: document.getElementById('leaveStartDate').value,
-                endDate: document.getElementById('leaveEndDate').value,
-                reason: document.getElementById('leaveReason').value,
-                urgent: document.getElementById('leaveUrgent').checked,
-                status: 'Pending',
-                submittedAt: new Date().toISOString()
+            const typeField = document.getElementById('leaveType');
+            const startField = document.getElementById('leaveStartDate');
+            const endField = document.getElementById('leaveEndDate');
+            const reasonField = document.getElementById('leaveReason');
+            const urgentField = document.getElementById('leaveUrgent');
+
+            const leaveType = typeField?.value || '';
+            const startDate = startField?.value || '';
+            const endDate = endField?.value || '';
+            const reason = reasonField?.value || '';
+            const urgent = Boolean(urgentField?.checked);
+
+            if (!leaveType || !startDate || !endDate) {
+                alert('Please complete all required fields before submitting.');
+                return;
+            }
+
+            const payload = {
+                type: leaveType,
+                startDate,
+                endDate,
+                reason,
+                urgent,
+                staff: currentUser?.username || undefined,
+                fullName: currentUser?.fullName || undefined,
+                branch: currentBranch || undefined
             };
-            requests.push(newRequest);
-            localStorage.setItem('leaveRequests', JSON.stringify(requests));
+
+            let result = null;
+            try {
+                result = await apiRequest(LEAVE_API_ENDPOINT, 'POST', payload);
+            } catch (error) {
+                console.warn('submitLeaveRequest error', error);
+            }
+
+            let normalized = null;
+            if (result && result.offline && result.data) {
+                normalized = normalizeLeaveRecord(result.data, {
+                    defaultStaff: currentUser?.username || null,
+                    defaultStaffName: currentUser?.fullName || null,
+                    defaultBranch: currentBranch || null,
+                    pendingSync: true,
+                    source: 'offline'
+                });
+            } else if (result) {
+                const candidate =
+                    result.leave ||
+                    result.data ||
+                    result.record ||
+                    result.result ||
+                    (result.success && result.payload) ||
+                    (result.success === true && result);
+                if (candidate) {
+                    normalized = normalizeLeaveRecord(candidate, {
+                        defaultStaff: currentUser?.username || null,
+                        defaultStaffName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        source: 'api'
+                    });
+                }
+            }
+
+            if (!normalized) {
+                normalized = normalizeLeaveRecord(payload, {
+                    defaultStaff: currentUser?.username || null,
+                    defaultStaffName: currentUser?.fullName || null,
+                    defaultBranch: currentBranch || null,
+                    pendingSync: true,
+                    source: 'offline'
+                });
+                enqueuePendingRequest(LEAVE_PENDING_QUEUE_KEY, {
+                    id: normalized.id,
+                    payload: Object.assign({}, payload),
+                    createdAt: normalized.createdAt,
+                    staff: normalized.staff,
+                    branch: normalized.branch
+                });
+            } else if (!normalized.pendingSync) {
+                removePendingRequest(LEAVE_PENDING_QUEUE_KEY, normalized.id);
+            }
+
+            upsertLeaveCacheRecord(normalized);
             closeModal('leaveRequestModal');
-            alert('Leave request submitted successfully!');
+            alert(
+                normalized.pendingSync
+                    ? 'Leave request saved offline. It will sync automatically when the connection is restored.'
+                    : 'Leave request submitted successfully!'
+            );
             const context = activeStaffContext || 'branch';
             refreshStaffServices(context);
+            if (!normalized.pendingSync) {
+                try {
+                    await viewMyLeaveRequests(context);
+                } catch (_) {}
+            }
         }
 
         function openStaffCashRequest(contextKey = 'branch') {
@@ -24838,29 +25365,78 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
-        function viewMyCashRequests(contextKey = 'branch') {
+        async function viewMyCashRequests(contextKey = 'branch') {
+            const container = getStaffStatusElement(contextKey, 'cash');
+            if (!container) return;
+            container.innerHTML = '<p style="color: #64748b;">Loading cash requests...</p>';
+            const username = (currentUser?.username || '').toLowerCase();
+            let records = [];
             try {
-                const list = JSON.parse(localStorage.getItem('finance_cash_requests') || '[]');
-                const mine = list.filter(r => r.employeeId === (currentUser?.username || ''));
-                const container = getStaffStatusElement(contextKey, 'cash');
-                if (!container) return;
-                if (mine.length === 0) {
-                    container.innerHTML = '<p style="color: #666;">No cash requests yet.</p>';
-                    return;
-                }
-                container.innerHTML = mine.slice(-10).map(r => `
-                    <div style="background: white; border-left: 4px solid ${r.status === 'approved' ? '#27ae60' : r.status === 'rejected' ? '#e74c3c' : '#3498db'}; padding: 10px; margin-bottom: 8px; border-radius: 6px;">
-                        <div style="display:flex; justify-content: space-between;">
-                            <strong>N$ ${r.amount.toFixed(2)}</strong>
-                            <span style="background:${r.status === 'approved' ? '#27ae60' : r.status === 'rejected' ? '#e74c3c' : '#3498db'}; color:white; padding:2px 8px; border-radius:12px; font-size:0.8rem;">${r.status.toUpperCase()}</span>
-                        </div>
-                        <div style="color:#666; font-size:0.9rem;">${r.purpose}</div>
-                        <div style="color:#999; font-size:0.8rem;">${new Date(r.createdAt).toLocaleString()}</div>
-                    </div>
-                `).join('');
-            } catch (e) {
-                console.warn('viewMyCashRequests error', e);
+                const response = await apiRequest(CASH_API_ENDPOINT, 'GET');
+                const fetched = extractArray(response, []);
+                const normalized = fetched
+                    .map((item) =>
+                        normalizeCashRecord(item, {
+                            defaultEmployeeId: currentUser?.username || null,
+                            defaultEmployeeName: currentUser?.fullName || null,
+                            defaultBranch: currentBranch || null,
+                            source: 'api'
+                        })
+                    )
+                    .filter(Boolean);
+                setCashCacheRecords(normalized);
+                records = normalized;
+            } catch (error) {
+                console.debug('viewMyCashRequests fallback', error?.message || error);
+                records = getCashCacheRecords();
             }
+            const offlineQueue = loadPendingQueue(CASH_PENDING_QUEUE_KEY).map((entry) =>
+                normalizeCashRecord(
+                    Object.assign({ id: entry?.id }, entry?.payload || {}),
+                    {
+                        defaultEmployeeId: currentUser?.username || null,
+                        defaultEmployeeName: currentUser?.fullName || null,
+                        defaultBranch: currentBranch || null,
+                        pendingSync: true,
+                        source: 'offline'
+                    }
+                )
+            );
+            const combined = [];
+            const seen = new Set();
+            records.concat(offlineQueue).forEach((record) => {
+                if (!record) return;
+                const key = getRecordCacheKey(record);
+                if (key && seen.has(key)) return;
+                if (key) seen.add(key);
+                combined.push(record);
+            });
+            const mine = combined.filter((r) => (r.employeeId || '').toLowerCase() === username);
+            if (mine.length === 0) {
+                container.innerHTML = '<p style="color: #666;">No cash requests yet.</p>';
+                return;
+            }
+            mine.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            container.innerHTML = mine
+                .slice(-10)
+                .map((r) => {
+                    const statusColor =
+                        r.status === 'approved' ? '#27ae60' : r.status === 'rejected' ? '#e74c3c' : '#3498db';
+                    const offlineBadge = r.pendingSync
+                        ? '<span style="margin-left: 6px; color: #f97316; font-size: 0.75rem;">(offline)</span>'
+                        : '';
+                    return `
+                        <div style="background: white; border-left: 4px solid ${statusColor}; padding: 10px; margin-bottom: 8px; border-radius: 6px;">
+                            <div style="display:flex; justify-content: space-between;">
+                                <strong>N$ ${Number(r.amount || 0).toFixed(2)}</strong>
+                                <span style="background:${statusColor}; color:white; padding:2px 8px; border-radius:12px; font-size:0.8rem;">${(r.status || 'pending').toUpperCase()}</span>
+                            </div>
+                            <div style="color:#666; font-size:0.9rem;">${r.purpose || ''} ${offlineBadge}</div>
+                            <div style="color:#999; font-size:0.8rem;">${new Date(r.createdAt || Date.now()).toLocaleString()}</div>
+                        </div>
+                    `;
+                })
+                .join('');
         }
 
         function showDispenserLeaveRequest() {

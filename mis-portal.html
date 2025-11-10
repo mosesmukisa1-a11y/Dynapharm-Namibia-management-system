@@ -370,7 +370,7 @@
             </div>
             <div class="mt-12">
                 <table>
-                    <thead><tr><th>Distributor</th><th>SKU</th><th>Qty</th><th>Value (Encoded)</th><th>Stock Qty</th><th>Finance Value</th><th>Status</th><th>Notes</th></tr></thead>
+                    <thead><tr><th>Branch</th><th>Product</th><th>Encoded Qty</th><th>Encoded Amount</th><th>Receipt Qty</th><th>Receipt Amount</th><th>Difference</th><th>Status</th></tr></thead>
                     <tbody id="reconTbody"></tbody>
                 </table>
             </div>
@@ -575,10 +575,18 @@
         async function runReconciliation() {
             const start = $('reconStart').value; const end = $('reconEnd').value;
             const rows = await reconcilePeriod({ start, end });
-            $('reconTbody').innerHTML = rows.map(r => `<tr>
-                <td>${r.distributorName}</td><td>${r.sku}</td><td>${r.quantity}</td><td>${r.encodedValue.toFixed(2)}</td><td>${r.stockQty ?? '-'}</td><td>${(r.financeValue ?? 0).toFixed(2)}</td>
-                <td><span class="status-badge ${r.status==='matched'?'status-verified':'status-mismatch'}">${r.status}</span></td><td>${r.notes||''}</td>
-            </tr>`).join('');
+            $('reconTbody').innerHTML = rows.length
+                ? rows.map(r => `<tr>
+                    <td>${r.branch}</td>
+                    <td>${r.productName}</td>
+                    <td class="right">${Number(r.encodedQuantity || 0).toFixed(2)}</td>
+                    <td class="right">N$ ${Number(r.encodedAmount || 0).toFixed(2)}</td>
+                    <td class="right">${Number(r.receiptQuantity || 0).toFixed(2)}</td>
+                    <td class="right">N$ ${Number(r.receiptAmount || 0).toFixed(2)}</td>
+                    <td class="right">N$ ${Number(r.difference || 0).toFixed(2)}</td>
+                    <td><span class="status-badge ${r.status==='matched'?'status-verified':r.status==='encoded-higher'?'status-draft':'status-mismatch'}">${r.status}</span></td>
+                </tr>`).join('')
+                : '<tr><td colspan="8" style="text-align:center; padding:20px; color:#9ca3af;">No reconciliation variance for selected period.</td></tr>';
         }
 
         async function generateEncodedSalesReport() {
@@ -608,8 +616,14 @@
 			const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
 			currentAuditLogs = await getAuditLogs({ start, end, branch });
 			$('auditTbody').innerHTML = currentAuditLogs.length
-				? currentAuditLogs.map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${l.user?.fullName||l.user?.username||''}</td><td>${l.action}</td><td>${l.recordId||''}</td><td>${l.diff||''}</td><td>${l.version||''}</td></tr>`).join('')
-				: '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #999;">No audit log entries found for the selected filters.</td></tr>';
+				? currentAuditLogs.map(l => `<tr>
+					<td>${new Date(l.createdAt || l.timestamp).toLocaleString()}</td>
+					<td>${l.user || ''}</td>
+					<td>${l.eventType || ''}</td>
+					<td>${l.recordId || ''}</td>
+					<td>${typeof l.details === 'object' ? JSON.stringify(l.details) : (l.details || '')}</td>
+				</tr>`).join('')
+				: '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #999;">No audit log entries found for the selected filters.</td></tr>';
 		}
 
 		window.exportAuditCsv = async function() {
@@ -620,14 +634,13 @@
 				alert('No audit log entries to export.');
 				return;
 			}
-			const headers = ['Timestamp', 'User', 'Action', 'Record ID', 'Changes', 'Version'];
+			const headers = ['Timestamp', 'User', 'Event', 'Record ID', 'Details'];
 			const rows = currentAuditLogs.map(log => [
-				new Date(log.timestamp).toLocaleString(),
-				log.user?.fullName || log.user?.username || '',
-				log.action || '',
+				new Date(log.createdAt || log.timestamp).toLocaleString(),
+				log.user || '',
+				log.eventType || '',
 				log.recordId || '',
-				log.diff || '',
-				log.version ?? ''
+				typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || '')
 			]);
 			exportCsv('mis-audit-log.csv', headers, rows);
 		};
@@ -690,7 +703,7 @@
             $('stockSoldStartDate').value = start;
             $('stockSoldEndDate').value = end;
             
-            currentStockSold = await getStockSoldPerBranch(start, end, branch);
+            currentStockSold = await getStockSoldPerBranch({ start, end, branch });
             renderStockSold();
         };
 
@@ -711,8 +724,8 @@
                 <td class="right">N$ ${item.amount.toFixed(2)}</td>
             </tr>`).join('');
 
-            const totalQty = currentStockSold.reduce((sum, item) => sum + item.quantity, 0);
-            const totalValue = currentStockSold.reduce((sum, item) => sum + item.amount, 0);
+            const totalQty = currentStockSold.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            const totalValue = currentStockSold.reduce((sum, item) => sum + Number(item.amount || 0), 0);
             const uniqueProducts = new Set(currentStockSold.map(item => item.productName));
             
             $('stockSoldTotalItems').textContent = `Total Products: ${uniqueProducts.size}`;
@@ -736,7 +749,8 @@
             const branches = getBranches();
             
             for (const branch of branches) {
-                const branchData = await getStockSoldPerBranch(start, end, branch.id);
+                if (!branch || branch.id === 'all') continue;
+                const branchData = await getStockSoldPerBranch({ start, end, branch: branch.id });
                 if (branchData.length > 0) {
                     exportStockSoldToExcel(branchData, `stock-sold-${branch.id}-${start}-to-${end}.xlsx`);
                     await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between downloads

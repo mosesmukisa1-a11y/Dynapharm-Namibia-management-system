@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { query, getMany, getOne, withTransaction } from '../db.js';
+import { query, withTransaction } from '../db.js';
 
 function parseBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -67,10 +67,12 @@ function normalizeDraft(row, lines) {
   };
 }
 
-async function loadDraft(id) {
-  const draft = await getOne('SELECT * FROM mis_sales_drafts WHERE id = $1', [id]);
+async function loadDraft(id, client) {
+  const runQuery = client ? (text, params) => client.query(text, params) : (text, params) => query(text, params);
+  const draftResult = await runQuery('SELECT * FROM mis_sales_drafts WHERE id = $1', [id]);
+  const draft = client ? draftResult.rows[0] : draftResult.rows?.[0] || draftResult;
   if (!draft) return null;
-  const lines = await getMany(
+  const linesResult = await runQuery(
     `
       SELECT *
       FROM mis_sales_lines
@@ -79,6 +81,7 @@ async function loadDraft(id) {
     `,
     [id]
   );
+  const lines = client ? linesResult.rows : linesResult;
   return normalizeDraft(draft, lines);
 }
 
@@ -180,7 +183,25 @@ async function persistDraft(client, draft, user) {
     );
   }
 
-  return loadDraft(draftId);
+  await client.query(
+    `
+      INSERT INTO mis_sales_audit (event_type, record_id, user_name, details, created_at)
+      VALUES ($1, $2, $3, $4, NOW())
+    `,
+    [
+      'draft_saved',
+      draftId,
+      user?.fullName || user?.username || null,
+      JSON.stringify({
+        branch: branchId,
+        lineCount: lines.length,
+        totalAmount: totals.amount,
+        totalQuantity: totals.quantity,
+      }),
+    ]
+  );
+
+  return loadDraft(draftId, client);
 }
 
 async function verifyLines(client, draftId, lineIds, user) {
@@ -220,7 +241,22 @@ async function verifyLines(client, draftId, lineIds, user) {
     [draftId, user?.fullName || user?.username || null]
   );
 
-  return loadDraft(draftId);
+  await client.query(
+    `
+      INSERT INTO mis_sales_audit (event_type, record_id, user_name, details, created_at)
+      VALUES ($1, $2, $3, $4, NOW())
+    `,
+    [
+      'lines_verified',
+      draftId,
+      user?.fullName || user?.username || null,
+      JSON.stringify({
+        lineIds,
+      }),
+    ]
+  );
+
+  return loadDraft(draftId, client);
 }
 
 export default async function handler(req, res) {
