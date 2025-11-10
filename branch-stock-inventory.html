@@ -114,6 +114,69 @@
         let incomingDispatchNotes = [];
         const branchUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName: 'Branch User', branch: null };
         let latestBranchDispatchNote = null;
+        const GM_PENDING_DISPATCH_KEY = 'branch_gm_pending_dispatch_notified';
+        let gmPendingDispatchNotified = new Set();
+
+        function loadGmPendingCache() {
+            try {
+                const raw = localStorage.getItem(GM_PENDING_DISPATCH_KEY);
+                if (!raw) {
+                    gmPendingDispatchNotified = new Set();
+                    return;
+                }
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    gmPendingDispatchNotified = new Set(parsed);
+                } else {
+                    gmPendingDispatchNotified = new Set();
+                }
+            } catch (error) {
+                console.warn('Failed to load GM pending cache', error);
+                gmPendingDispatchNotified = new Set();
+            }
+        }
+
+        function saveGmPendingCache() {
+            try {
+                localStorage.setItem(GM_PENDING_DISPATCH_KEY, JSON.stringify(Array.from(gmPendingDispatchNotified)));
+            } catch (error) {
+                console.warn('Failed to persist GM pending cache', error);
+            }
+        }
+
+        function notifyPendingGmApproval(note, summary = {}) {
+            const approvalPayload = {
+                type: 'warehouse_dispatch',
+                dispatchId: note.id || note.transferId || note.requestNumber || note.barcode,
+                transferId: note.transferId || null,
+                requestNumber: note.requestNumber || null,
+                barcode: note.barcode || null,
+                branch: note.toBranch || branchUser.branch || null,
+                warehouse: note.fromWarehouse || null,
+                totalQuantity: summary.totalQty || 0,
+                items: (note.items || []).map(item => ({
+                    product: item.description || item.productId || 'Item',
+                    quantity: Number(item.quantity || 0)
+                })),
+                gmApprovalId: (note.gmApproval && (note.gmApproval.approvalRequestId || note.gmApproval.id)) || null,
+                guidance: note.guidanceSnapshot || null,
+                createdAt: note.createdAt || new Date().toISOString()
+            };
+
+            try {
+                if (window.parent && typeof window.parent.recordDepartmentEvent === 'function') {
+                    window.parent.recordDepartmentEvent('gm_dispatch_approval_required', approvalPayload);
+                } else if (typeof recordDepartmentEvent === 'function') {
+                    recordDepartmentEvent('gm_dispatch_approval_required', approvalPayload);
+                } else {
+                    window.dispatchEvent(new CustomEvent('department:event', {
+                        detail: { type: 'gm_dispatch_approval_required', payload: approvalPayload }
+                    }));
+                }
+            } catch (error) {
+                console.warn('Failed to notify GM dispatch approval requirement', error);
+            }
+        }
 
         async function loadBranches() {
             const isStaticHost = (location.hostname.endsWith('github.io') || location.protocol === 'file:');
@@ -369,6 +432,7 @@
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
+            loadGmPendingCache();
             try {
                 await loadBranches();
                 setIframe();
@@ -666,6 +730,14 @@
                     ? `<div style="font-size:11px; color:#fbbf24;">Approval request ${(approvalId || gmStatus) ? `(${approvalId || gmStatus})` : ''}</div>`
                     : '';
                 const guidanceSummary = buildDispatchGuidanceSummary(note);
+                if (gmRequired && !gmApproved) {
+                    const notifyKey = note.id || note.transferId || note.requestNumber || note.barcode;
+                    if (notifyKey && !gmPendingDispatchNotified.has(notifyKey)) {
+                        gmPendingDispatchNotified.add(notifyKey);
+                        saveGmPendingCache();
+                        notifyPendingGmApproval(note, { totalQty });
+                    }
+                }
                 const confirmDisabled = gmRequired && !gmApproved;
                 const confirmAttrs = confirmDisabled
                     ? 'disabled aria-disabled="true" style="opacity:0.55; cursor:not-allowed;" data-gm-blocked="1"'

@@ -12683,6 +12683,123 @@
             displayWindhoekStock();
             displayOndangwaStock();
             displayDistributionHistory();
+            loadWindhoekProducts();
+            loadOndangwaProducts();
+            populateBranchDistributionProducts();
+            updateWindhoekAvailableQuantity();
+            updateOndangwaAvailableQuantity();
+            updateBranchDistAvailableQty();
+        }
+
+        function getBarcodeStockList() {
+            try {
+                const raw = localStorage.getItem('dyna_barcode_stock');
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function calculateAvailableQuantity(productName, locationMatch) {
+            if (!productName) return 0;
+            const name = String(productName).toLowerCase();
+            const locationKey = String(locationMatch || '').toLowerCase();
+            const batches = getBarcodeStockList().filter(batch => {
+                const desc = (batch.description || batch.productName || '').toLowerCase();
+                const loc = String(batch.location || '').toLowerCase();
+                if (!desc || !loc) return false;
+                return desc === name && (locationKey ? loc.includes(locationKey) : true);
+            });
+            return batches.reduce((sum, batch) => {
+                const available = Number(batch.remainingQuantity ?? batch.remaining_quantity ?? batch.quantity ?? 0);
+                return sum + (Number.isFinite(available) ? available : 0);
+            }, 0);
+        }
+
+        function moveBarcodeStock(productName, quantity, fromLocation, toLocation, meta = {}) {
+            const normalizedName = String(productName || '').toLowerCase();
+            if (!normalizedName) return { success: false, message: 'Product required' };
+            const qty = Number(quantity || 0);
+            if (!Number.isFinite(qty) || qty <= 0) {
+                return { success: false, message: 'Quantity must be greater than zero' };
+            }
+            const sourceKey = String(fromLocation || '').toLowerCase();
+            const targetKey = String(toLocation || '').toLowerCase();
+            const list = getBarcodeStockList();
+            const eligible = list
+                .filter(batch => {
+                    const desc = (batch.description || batch.productName || '').toLowerCase();
+                    const loc = String(batch.location || '').toLowerCase();
+                    const status = (batch.status || 'available').toLowerCase();
+                    return desc === normalizedName && loc.includes(sourceKey) && status === 'available';
+                })
+                .sort((a, b) => (a.expiryTimestamp || Infinity) - (b.expiryTimestamp || Infinity));
+
+            let remaining = qty;
+            const createdBatches = [];
+            const now = new Date().toISOString();
+
+            for (const batch of eligible) {
+                if (remaining <= 0) break;
+                const available = Number(batch.remainingQuantity ?? batch.remaining_quantity ?? batch.quantity ?? 0);
+                if (!Number.isFinite(available) || available <= 0) continue;
+                const take = Math.min(remaining, available);
+                if (take <= 0) continue;
+
+                const newBatch = {
+                    ...batch,
+                    id: `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    barcode: batch.barcode || `BC${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+                    quantity: take,
+                    remainingQuantity: take,
+                    remaining_quantity: take,
+                    location: targetKey,
+                    status: 'available',
+                    dispatchedQuantity: 0,
+                    dispatched_quantity: 0,
+                    importDate: batch.importDate || batch.import_date || now,
+                    updatedAt: now,
+                    transferReference: meta.reference || '',
+                    transferNotes: meta.notes || '',
+                    movementType: meta.movementType || 'transfer'
+                };
+                createdBatches.push(newBatch);
+                list.push(newBatch);
+
+                const newRemaining = available - take;
+                batch.remainingQuantity = newRemaining < 0 ? 0 : newRemaining;
+                batch.remaining_quantity = batch.remainingQuantity;
+                batch.quantity = Math.max(Number(batch.quantity || 0) - take, 0);
+                batch.dispatchedQuantity = Number(batch.dispatchedQuantity || 0) + take;
+                batch.dispatched_quantity = batch.dispatchedQuantity;
+                batch.updatedAt = now;
+                batch.status = batch.remainingQuantity > 0 ? 'available' : 'dispatched';
+
+                remaining -= take;
+            }
+
+            if (remaining > 0) {
+                return { success: false, message: 'Insufficient stock available', shortfall: remaining };
+            }
+
+            applyBarcodeBatchesToState(list);
+            return { success: true, batches: createdBatches };
+        }
+
+        function getWarehouseProductSummary(locationMatch) {
+            const key = String(locationMatch || '').toLowerCase();
+            const result = new Map();
+            getBarcodeStockList().forEach(batch => {
+                const loc = String(batch.location || '').toLowerCase();
+                if (!loc.includes(key)) return;
+                const name = batch.description || batch.productName || 'Product';
+                const qty = Number(batch.remainingQuantity ?? batch.remaining_quantity ?? batch.quantity ?? 0);
+                if (!Number.isFinite(qty) || qty <= 0) return;
+                result.set(name, (result.get(name) || 0) + qty);
+            });
+            return result;
         }
 
         async function syncBarcodeStockFromBackend(force = false) {
@@ -12741,6 +12858,30 @@
             syncBranchesFromBackend().catch(err => console.debug('Branch sync (startup) error', err));
             syncProductsFromBackend().catch(err => console.debug('Product sync (startup) error', err));
             syncBarcodeStockFromBackend().catch(err => console.debug('Barcode stock sync (startup) error', err));
+
+            loadBranchesForDistribution();
+            loadWindhoekProducts();
+            loadOndangwaProducts();
+            populateBranchDistributionProducts();
+
+            const windhoekProductSelect = document.getElementById('windhoekProduct');
+            if (windhoekProductSelect) {
+                windhoekProductSelect.addEventListener('change', updateWindhoekAvailableQuantity);
+            }
+            const ondangwaProductSelect = document.getElementById('ondangwaProductNew');
+            if (ondangwaProductSelect) {
+                ondangwaProductSelect.addEventListener('change', updateOndangwaAvailableQuantity);
+            }
+            const branchSource = document.getElementById('branchDistSourceWarehouse');
+            if (branchSource) {
+                branchSource.addEventListener('change', () => {
+                    populateBranchDistributionProducts();
+                });
+            }
+            const branchProductSelect = document.getElementById('branchDistProduct');
+            if (branchProductSelect) {
+                branchProductSelect.addEventListener('change', updateBranchDistAvailableQty);
+            }
         });
 
         window.addEventListener('stock:updated', () => {
@@ -36029,128 +36170,57 @@ function getWalkInCart() {
         
         // Load products for Windhoek transfer based on source
         function loadWindhoekProducts() {
-            const source = document.getElementById('windhoekSource')?.value;
             const productSelect = document.getElementById('windhoekProduct');
             const availableQtyField = document.getElementById('windhoekAvailableQty');
-            
-            if (!productSelect || !source) return;
-            
-            // Reset fields
+            if (!productSelect) return;
+
+            const summary = getWarehouseProductSummary('country');
             productSelect.innerHTML = '<option value="">Select Product</option>';
-            if (availableQtyField) {
-                availableQtyField.value = '';
-                availableQtyField.placeholder = 'Select product to view available quantity';
-            }
-            document.getElementById('windhoekQuantity').value = '';
-            
-            loadStockData();
-            let products = [];
-            
-            if (source === 'country') {
-                // Get products from country stock and barcode stock
-                const productMap = new Map();
-                
-                // Add from countryStock
-                countryStock.forEach(item => {
-                    if (!productMap.has(item.productName)) {
-                        productMap.set(item.productName, item.quantity);
-                    } else {
-                        productMap.set(item.productName, productMap.get(item.productName) + item.quantity);
-                    }
-                });
-                
-                // Add from barcode stock
-                try {
-                    const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
-                    barcodeStock.forEach(batch => {
-                        if (batch.location === 'country_stock' && batch.status === 'available') {
-                            const currentQty = productMap.get(batch.description) || 0;
-                            productMap.set(batch.description, currentQty + (batch.remainingQuantity || 0));
-                        }
-                    });
-                } catch (error) {
-                    console.error('Error loading barcode stock:', error);
+            productSelect.disabled = summary.size === 0;
+
+            if (summary.size === 0) {
+                if (availableQtyField) {
+                    availableQtyField.value = 'No country stock available';
+                    availableQtyField.style.color = '#e74c3c';
                 }
-                
-                products = Array.from(productMap.entries()).map(([name, qty]) => ({ productName: name, quantity: qty }));
-            } else if (source === 'ondangwa') {
-                // Get products from Ondangwa warehouse
-                products = ondangwaStock.map(item => ({
-                    productName: item.productName,
-                    quantity: item.quantity
-                }));
+                return;
             }
-            
-            // Populate dropdown
-            products.forEach(product => {
+
+            summary.forEach((qty, name) => {
                 const option = document.createElement('option');
-                option.value = product.productName;
-                option.textContent = `${product.productName} (Available: ${product.quantity} units)`;
+                option.value = name;
+                option.textContent = `${name} (Available: ${qty} units)`;
                 productSelect.appendChild(option);
             });
+
+            updateWindhoekAvailableQuantity();
         }
         
-        // Load products for Ondangwa transfer based on source
         function loadOndangwaProducts() {
-            const source = document.getElementById('ondangwaSource')?.value;
-            const productSelect = document.getElementById('ondangwaProduct');
-            const availableQtyField = document.getElementById('ondangwaAvailableQty');
-            
-            if (!productSelect || !source) return;
-            
-            // Reset fields
+            const productSelect = document.getElementById('ondangwaProductNew');
+            const availableQtyField = document.getElementById('ondangwaAvailableQtyNew');
+            if (!productSelect) return;
+
+            const summary = getWarehouseProductSummary('country');
             productSelect.innerHTML = '<option value="">Select Product</option>';
-            if (availableQtyField) {
-                availableQtyField.value = '';
-                availableQtyField.placeholder = 'Select product to view available quantity';
-            }
-            document.getElementById('ondangwaQuantity').value = '';
-            
-            loadStockData();
-            let products = [];
-            
-            if (source === 'country') {
-                // Get products from country stock and barcode stock
-                const productMap = new Map();
-                
-                // Add from countryStock
-                countryStock.forEach(item => {
-                    if (!productMap.has(item.productName)) {
-                        productMap.set(item.productName, item.quantity);
-                    } else {
-                        productMap.set(item.productName, productMap.get(item.productName) + item.quantity);
-                    }
-                });
-                
-                // Add from barcode stock
-                try {
-                    const barcodeStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
-                    barcodeStock.forEach(batch => {
-                        if (batch.location === 'country_stock' && batch.status === 'available') {
-                            const currentQty = productMap.get(batch.description) || 0;
-                            productMap.set(batch.description, currentQty + (batch.remainingQuantity || 0));
-                        }
-                    });
-                } catch (error) {
-                    console.error('Error loading barcode stock:', error);
+            productSelect.disabled = summary.size === 0;
+
+            if (summary.size === 0) {
+                if (availableQtyField) {
+                    availableQtyField.value = 'No country stock available';
+                    availableQtyField.style.color = '#e74c3c';
                 }
-                
-                products = Array.from(productMap.entries()).map(([name, qty]) => ({ productName: name, quantity: qty }));
-            } else if (source === 'windhoek') {
-                // Get products from Windhoek warehouse
-                products = windhoekStock.map(item => ({
-                    productName: item.productName,
-                    quantity: item.quantity
-                }));
+                return;
             }
-            
-            // Populate dropdown
-            products.forEach(product => {
+
+            summary.forEach((qty, name) => {
                 const option = document.createElement('option');
-                option.value = product.productName;
-                option.textContent = `${product.productName} (Available: ${product.quantity} units)`;
+                option.value = name;
+                option.textContent = `${name} (Available: ${qty} units)`;
                 productSelect.appendChild(option);
             });
+
+            updateOndangwaAvailableQuantity();
         }
         
         // Update available quantity for Windhoek transfer
@@ -37490,7 +37560,7 @@ function getWalkInCart() {
         }
         
         function displayDistributionHistory() {
-            const container = document.getElementById('distributionHistoryList');
+            const container = document.getElementById('branchDistributionHistory') || document.getElementById('distributionHistoryList');
             if (!container) return;
             
             // Show loading indicator
@@ -38132,10 +38202,216 @@ function getWalkInCart() {
             }
         }
         
-        // Placeholder functions for form handlers
-        function handleTransferToWindhoek(event) { event.preventDefault(); alert('Transfer functionality - integrate with existing transfer functions'); }
-        function handleTransferToOndangwa(event) { event.preventDefault(); alert('Transfer functionality - integrate with existing transfer functions'); }
-        function handleBranchDistribution(event) { event.preventDefault(); alert('Distribution functionality - integrate with existing distribution functions'); }
+        // Form handlers for warehouse and branch workflows
+        function handleTransferToWindhoek(event) {
+            event.preventDefault();
+            const productSelect = document.getElementById('windhoekProduct');
+            const quantityInput = document.getElementById('windhoekQuantity');
+            const notesInput = document.getElementById('windhoekNotes');
+            if (!productSelect || !quantityInput) return;
+
+            const productName = productSelect.value;
+            const quantity = Number(quantityInput.value || 0);
+            if (!productName) {
+                showToast('Select a product to transfer.');
+                return;
+            }
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                showToast('Enter a valid quantity.');
+                return;
+            }
+
+            const available = calculateAvailableQuantity(productName, 'country');
+            if (quantity > available) {
+                showToast(`Only ${available} unit(s) available in Country Stock.`);
+                return;
+            }
+
+            const reference = `C2W-${Date.now().toString(36).toUpperCase()}`;
+            const notes = notesInput?.value?.trim() || '';
+            const result = moveBarcodeStock(productName, quantity, 'country', 'windhoek', {
+                reference,
+                notes,
+                movementType: 'transfer_country_to_windhoek'
+            });
+
+            if (!result.success) {
+                showToast(result.message || 'Transfer failed.');
+                return;
+            }
+
+            recordStockMovement({
+                type: 'transfer',
+                subtype: 'country_to_warehouse',
+                product: productName,
+                quantity,
+                from: 'country_stock',
+                to: 'windhoek',
+                reference,
+                notes,
+                createdBy: currentUser?.fullName || 'system'
+            });
+
+            showToast(`Transferred ${quantity} unit(s) to Windhoek Warehouse.`);
+            event.target.reset();
+            updateWindhoekAvailableQuantity();
+            loadWindhoekProducts();
+            displayWindhoekStock();
+        }
+
+        function handleTransferToOndangwa(event) {
+            event.preventDefault();
+            const productSelect = document.getElementById('ondangwaProductNew');
+            const quantityInput = document.getElementById('ondangwaQuantityNew');
+            const notesInput = document.getElementById('ondangwaNotesNew');
+            if (!productSelect || !quantityInput) return;
+
+            const productName = productSelect.value;
+            const quantity = Number(quantityInput.value || 0);
+            if (!productName) {
+                showToast('Select a product to transfer.');
+                return;
+            }
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                showToast('Enter a valid quantity.');
+                return;
+            }
+
+            const available = calculateAvailableQuantity(productName, 'country');
+            if (quantity > available) {
+                showToast(`Only ${available} unit(s) available in Country Stock.`);
+                return;
+            }
+
+            const reference = `C2O-${Date.now().toString(36).toUpperCase()}`;
+            const notes = notesInput?.value?.trim() || '';
+            const result = moveBarcodeStock(productName, quantity, 'country', 'ondangwa', {
+                reference,
+                notes,
+                movementType: 'transfer_country_to_ondangwa'
+            });
+
+            if (!result.success) {
+                showToast(result.message || 'Transfer failed.');
+                return;
+            }
+
+            recordStockMovement({
+                type: 'transfer',
+                subtype: 'country_to_warehouse',
+                product: productName,
+                quantity,
+                from: 'country_stock',
+                to: 'ondangwa',
+                reference,
+                notes,
+                createdBy: currentUser?.fullName || 'system'
+            });
+
+            showToast(`Transferred ${quantity} unit(s) to Ondangwa Warehouse.`);
+            event.target.reset();
+            updateOndangwaAvailableQuantity();
+            loadOndangwaProducts();
+            displayOndangwaStock();
+        }
+
+        function getBranchNameById(branchId) {
+            if (!branchId) return '';
+            const match = (branches || []).find(b => String(b.id) === String(branchId));
+            return match ? match.name : branchId;
+        }
+
+        function handleBranchDistribution(event) {
+            event.preventDefault();
+            loadStockData();
+
+            const sourceSelect = document.getElementById('branchDistSourceWarehouse');
+            const branchSelect = document.getElementById('branchDistDestination');
+            const productSelect = document.getElementById('branchDistProduct');
+            const quantityInput = document.getElementById('branchDistQuantity');
+            const prioritySelect = document.getElementById('branchDistPriority');
+            const notesInput = document.getElementById('branchDistNotes');
+            if (!sourceSelect || !branchSelect || !productSelect || !quantityInput) return;
+
+            const source = sourceSelect.value;
+            const branchId = branchSelect.value;
+            const productName = productSelect.value;
+            const quantity = Number(quantityInput.value || 0);
+            if (!source) { showToast('Select a source warehouse.'); return; }
+            if (!branchId) { showToast('Select a destination branch.'); return; }
+            if (!productName) { showToast('Select a product.'); return; }
+            if (!Number.isFinite(quantity) || quantity <= 0) { showToast('Enter a valid quantity.'); return; }
+
+            const available = calculateAvailableQuantity(productName, source);
+            if (quantity > available) {
+                showToast(`Only ${available} unit(s) available in ${source === 'windhoek' ? 'Windhoek' : 'Ondangwa'} Warehouse.`);
+                return;
+            }
+
+            const reference = `WH-${source.charAt(0).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+            const notes = notesInput?.value?.trim() || '';
+            const result = moveBarcodeStock(productName, quantity, source, branchId.toLowerCase(), {
+                reference,
+                notes,
+                movementType: 'warehouse_to_branch'
+            });
+
+            if (!result.success) {
+                showToast(result.message || 'Distribution failed.');
+                return;
+            }
+
+            const nowIso = new Date().toISOString();
+            const entry = {
+                id: `DIST-${Date.now()}`,
+                warehouse: source,
+                branch: branchId,
+                productName,
+                quantity,
+                date: nowIso.slice(0, 10),
+                createdAt: nowIso,
+                expiryDate: '',
+                dispatchNumber: reference,
+                notes,
+                priority: prioritySelect?.value || 'normal',
+                createdBy: currentUser?.fullName || 'system'
+            };
+
+            distributionHistory.unshift(entry);
+            try {
+                const existing = JSON.parse(localStorage.getItem('dyna_distributions') || '[]');
+                if (Array.isArray(existing)) {
+                    existing.unshift(entry);
+                    localStorage.setItem('dyna_distributions', JSON.stringify(existing));
+                } else {
+                    localStorage.setItem('dyna_distributions', JSON.stringify([entry]));
+                }
+            } catch (_) {
+                /* ignore */
+            }
+            saveStockData();
+
+            recordStockMovement({
+                type: 'distribution',
+                product: productName,
+                quantity,
+                from: source,
+                to: branchId,
+                reference,
+                notes,
+                priority: entry.priority,
+                createdBy: entry.createdBy
+            });
+
+            showToast(`Distributed ${quantity} unit(s) to ${getBranchNameById(branchId)}.`);
+            event.target.reset();
+            populateBranchDistributionProducts();
+            updateBranchDistAvailableQty();
+            displayWindhoekStock();
+            displayOndangwaStock();
+            displayDistributionHistory();
+        }
+
         function handleStockTransfer(event) { event.preventDefault(); alert('Transfer functionality - integrate with existing transfer functions'); }
         function handleSharingRule(event) { event.preventDefault(); alert('Sharing rule functionality - to be implemented'); }
         function refreshAutomaticOrders() { loadStockOrders(); }
@@ -38144,9 +38420,46 @@ function getWalkInCart() {
         function saveSyncSettings() { alert('Sync settings saved'); }
         function testSyncConnection() { alert('Sync connection test - to be implemented'); }
         function exportCountryInventory() { alert('Export functionality - to be implemented'); }
-        function updateWindhoekAvailableQuantity() { /* Integrate with existing */ }
-        function updateOndangwaAvailableQuantity() { /* Integrate with existing */ }
-        function updateBranchDistAvailableQty() { /* Integrate with existing */ }
+        function updateWindhoekAvailableQuantity() {
+            const productSelect = document.getElementById('windhoekProduct');
+            const availableField = document.getElementById('windhoekAvailableQty');
+            if (!availableField) return;
+            if (!productSelect || !productSelect.value) {
+                availableField.value = 'Select a product';
+                availableField.style.color = '#666';
+                return;
+            }
+            const available = calculateAvailableQuantity(productSelect.value, 'country');
+            availableField.value = `${available} unit(s) available`;
+            availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
+        }
+        function updateOndangwaAvailableQuantity() {
+            const productSelect = document.getElementById('ondangwaProductNew');
+            const availableField = document.getElementById('ondangwaAvailableQtyNew');
+            if (!availableField) return;
+            if (!productSelect || !productSelect.value) {
+                availableField.value = 'Select a product';
+                availableField.style.color = '#666';
+                return;
+            }
+            const available = calculateAvailableQuantity(productSelect.value, 'country');
+            availableField.value = `${available} unit(s) available`;
+            availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
+        }
+        function updateBranchDistAvailableQty() {
+            const source = document.getElementById('branchDistSourceWarehouse')?.value;
+            const productSelect = document.getElementById('branchDistProduct');
+            const availableField = document.getElementById('branchDistAvailableQty');
+            if (!availableField) return;
+            if (!source || !productSelect || !productSelect.value) {
+                availableField.value = 'Select warehouse & product';
+                availableField.style.color = '#666';
+                return;
+            }
+            const available = calculateAvailableQuantity(productSelect.value, source);
+            availableField.value = `${available} unit(s) available`;
+            availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
+        }
         function loadTransferFromProducts() { /* Integrate with existing */ }
         function updateTransferAvailableQty() { /* Integrate with existing */ }
 
@@ -39169,6 +39482,33 @@ function getWalkInCart() {
                 branchSelect.innerHTML += `<option value="${branch.id}">${branch.name}</option>`;
             });
         }
+
+        function populateBranchDistributionProducts() {
+            const sourceSelect = document.getElementById('branchDistSourceWarehouse');
+            const productSelect = document.getElementById('branchDistProduct');
+            if (!productSelect) return;
+
+            const source = sourceSelect?.value || '';
+            productSelect.innerHTML = '<option value="">Select Product</option>';
+
+            if (!source) {
+                productSelect.disabled = true;
+                updateBranchDistAvailableQty();
+                return;
+            }
+
+            const summary = getWarehouseProductSummary(source);
+            productSelect.disabled = summary.size === 0;
+
+            summary.forEach((qty, name) => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = `${name} (Available: ${qty} units)`;
+                productSelect.appendChild(option);
+            });
+
+            updateBranchDistAvailableQty();
+        }
         
         function searchCountryStock() {
             const search = document.getElementById('countryStockSearch')?.value.toLowerCase() || '';
@@ -39284,7 +39624,7 @@ function getWalkInCart() {
                     expiryDate.includes(search);
             });
             
-            const container = document.getElementById('distributionHistoryList');
+            const container = document.getElementById('branchDistributionHistory') || document.getElementById('distributionHistoryList');
             if (!container) return;
             
             if (filtered.length === 0) {
