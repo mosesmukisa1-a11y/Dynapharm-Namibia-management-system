@@ -148,6 +148,283 @@
             }
         }
 
+        function getAutoOrderSettings() {
+            const defaults = {
+                enabled: true,
+                threshold: 20,
+                frequency: 'weekly',
+                requireApproval: false,
+            };
+            try {
+                const stored = localStorage.getItem('dyna_auto_order_settings');
+                if (!stored) return defaults;
+                const parsed = JSON.parse(stored);
+                return Object.assign({}, defaults, parsed || {});
+            } catch (_) {
+                return defaults;
+            }
+        }
+
+        function applyAutoOrderSettings() {
+            const settings = getAutoOrderSettings();
+            const enabled = document.getElementById('autoOrdersEnabled');
+            const threshold = document.getElementById('reorderThreshold');
+            const freq = document.getElementById('autoOrderFrequency');
+            const require = document.getElementById('requireOrderApproval');
+            if (enabled) enabled.checked = !!settings.enabled;
+            if (threshold) threshold.value = settings.threshold;
+            if (freq) freq.value = settings.frequency;
+            if (require) require.checked = !!settings.requireApproval;
+        }
+
+        function saveAutoOrderSettings() {
+            const settings = {
+                enabled: !!document.getElementById('autoOrdersEnabled')?.checked,
+                threshold: Number(document.getElementById('reorderThreshold')?.value || 0),
+                frequency: document.getElementById('autoOrderFrequency')?.value || 'weekly',
+                requireApproval: !!document.getElementById('requireOrderApproval')?.checked,
+                updatedAt: new Date().toISOString(),
+            };
+            localStorage.setItem('dyna_auto_order_settings', JSON.stringify(settings));
+            showToast('Automatic order settings saved.');
+            applyAutoOrderSettings();
+        }
+
+        function refreshAutomaticOrders() {
+            loadStockOrders();
+            showToast('Automatic orders refreshed.');
+        }
+
+        function closeManualOrderModal() {
+            const modal = document.getElementById('manualOrderModal');
+            if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+        }
+
+        function getCatalogProducts() {
+            const fromStorage = safeParseFromStorage('dyna_products', '[]');
+            if (Array.isArray(fromStorage) && fromStorage.length) return fromStorage;
+            if (Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length) {
+                return window.PRICE_LIST.map(p => ({
+                    id: createSlugId(p.description, 'prod'),
+                    name: p.description,
+                    description: p.description,
+                }));
+            }
+            const barcodeStock = getBarcodeStockList();
+            const map = new Map();
+            barcodeStock.forEach(batch => {
+                const name = batch.description || batch.productName || '';
+                if (!name) return;
+                map.set(name, { id: createSlugId(name, 'prod'), name, description: name });
+            });
+            return Array.from(map.values());
+        }
+
+        function showCreateManualOrder() {
+            if (document.getElementById('manualOrderModal')) return;
+            if (!Array.isArray(branches) || branches.length === 0) {
+                syncBranchesFromBackend(true)
+                    .then(() => showCreateManualOrder())
+                    .catch(() => showToast('Unable to load branches. Try again later.'));
+                return;
+            }
+
+            const modal = document.createElement('div');
+            modal.id = 'manualOrderModal';
+            modal.style.position = 'fixed';
+            modal.style.inset = '0';
+            modal.style.background = 'rgba(15,23,42,0.6)';
+            modal.style.display = 'flex';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            modal.style.zIndex = '10000';
+
+            const dialog = document.createElement('div');
+            dialog.style.background = '#ffffff';
+            dialog.style.borderRadius = '12px';
+            dialog.style.border = '1px solid #cbd5f5';
+            dialog.style.width = 'min(520px, 94vw)';
+            dialog.style.maxHeight = '90vh';
+            dialog.style.overflowY = 'auto';
+            dialog.style.boxShadow = '0 20px 45px rgba(15,23,42,0.35)';
+
+            dialog.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e2e8f0;">
+                    <h3 style="margin:0;">Create Manual Order</h3>
+                    <button class="btn" onclick="closeManualOrderModal()">Close</button>
+                </div>
+                <form id="manualOrderForm" style="padding:20px; display:grid; gap:16px;">
+                    <div class="form-group">
+                        <label class="required">Product</label>
+                        <select id="manualOrderProduct" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Quantity</label>
+                        <input type="number" id="manualOrderQuantity" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Destination Branch</label>
+                        <select id="manualOrderBranch">
+                            <option value="">All Branches</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" id="manualOrderSupplier" placeholder="Supplier name">
+                    </div>
+                    <div class="form-group">
+                        <label>Expected Arrival</label>
+                        <input type="date" id="manualOrderEta">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea id="manualOrderNotes" rows="2" placeholder="Special instructions or reference"></textarea>
+                    </div>
+                    <div style="text-align:right;">
+                        <button type="submit" class="btn btn-success">Create Order</button>
+                    </div>
+                </form>
+            `;
+
+            modal.appendChild(dialog);
+            modal.addEventListener('click', (event) => {
+                if (event.target && event.target.id === 'manualOrderModal') {
+                    closeManualOrderModal();
+                }
+            });
+            document.body.appendChild(modal);
+
+            const productSelect = document.getElementById('manualOrderProduct');
+            const catalog = getCatalogProducts();
+            productSelect.innerHTML = '<option value="">Select Product</option>';
+            catalog.forEach(prod => {
+                const option = document.createElement('option');
+                option.value = prod.name || prod.description;
+                option.textContent = prod.name || prod.description || 'Product';
+                option.dataset.productId = prod.id || '';
+                productSelect.appendChild(option);
+            });
+
+            const branchSelect = document.getElementById('manualOrderBranch');
+            if (branchSelect) {
+                (branches || []).forEach(b => {
+                    const option = document.createElement('option');
+                    option.value = b.id;
+                    option.textContent = b.name;
+                    branchSelect.appendChild(option);
+                });
+            }
+
+            const form = document.getElementById('manualOrderForm');
+            form.addEventListener('submit', handleManualOrderSubmit);
+        }
+
+        function handleManualOrderSubmit(event) {
+            event.preventDefault();
+            const productSelect = document.getElementById('manualOrderProduct');
+            const quantityInput = document.getElementById('manualOrderQuantity');
+            if (!productSelect || !quantityInput) return;
+
+            const productName = productSelect.value;
+            const productId = productSelect.selectedOptions[0]?.dataset?.productId || '';
+            const quantity = Number(quantityInput.value || 0);
+            if (!productName) { showToast('Select a product.'); return; }
+            if (!Number.isFinite(quantity) || quantity <= 0) { showToast('Enter a valid quantity.'); return; }
+
+            const branchId = document.getElementById('manualOrderBranch')?.value || '';
+            const supplier = (document.getElementById('manualOrderSupplier')?.value || '').trim();
+            const eta = document.getElementById('manualOrderEta')?.value || '';
+            const notes = (document.getElementById('manualOrderNotes')?.value || '').trim();
+
+            const orders = getOrderList();
+            orders.unshift({
+                id: `ORDER-${Date.now()}`,
+                type: 'manual',
+                productId,
+                product: productName,
+                quantity,
+                branchId: branchId || null,
+                supplier: supplier || null,
+                eta: eta || null,
+                notes: notes || null,
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser?.fullName || 'system',
+            });
+            persistOrderList(orders);
+            loadStockOrders();
+            showToast('Manual order created.');
+            closeManualOrderModal();
+        }
+
+        function getSharingLocationOptions() {
+            const options = [
+                { id: 'country_stock', label: 'Country Stock' },
+                { id: 'warehouse:windhoek', label: 'Warehouse • Windhoek' },
+                { id: 'warehouse:ondangwa', label: 'Warehouse • Ondangwa' },
+            ];
+            (branches || []).forEach(branch => {
+                options.push({
+                    id: `branch:${branch.id}`,
+                    label: `Branch • ${branch.name}`,
+                });
+            });
+            return options;
+        }
+
+        function populateSharingLocations() {
+            const fromSelect = document.getElementById('sharingFrom');
+            const toSelect = document.getElementById('sharingTo');
+            if (!fromSelect || !toSelect) return;
+            const options = getSharingLocationOptions();
+            const renderOptions = (select) => {
+                select.innerHTML = '<option value="">Select Location</option>';
+                options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.id;
+                    option.textContent = opt.label;
+                    select.appendChild(option);
+                });
+            };
+            renderOptions(fromSelect);
+            renderOptions(toSelect);
+        }
+
+        function handleSharingRule(event) {
+            event.preventDefault();
+            const from = document.getElementById('sharingFrom')?.value;
+            const to = document.getElementById('sharingTo')?.value;
+            const access = document.getElementById('sharingAccessLevel')?.value || 'view';
+            const status = document.getElementById('sharingStatus')?.value || 'active';
+            if (!from || !to) {
+                showToast('Select both locations to create a rule.');
+                return;
+            }
+            if (from === to) {
+                showToast('Select different locations for sharing.');
+                return;
+            }
+
+            let sharing = safeParseFromStorage('dyna_stock_sharing', '[]');
+            const type = (from.startsWith('branch:') || to.startsWith('branch:')) ? 'shop_visibility' : 'warehouse_sharing';
+            sharing = Array.isArray(sharing) ? sharing.filter(existing => !(existing.from === from && existing.to === to && (existing.type || '').toLowerCase() === type)) : [];
+            const rule = {
+                id: `SHARE-${Date.now()}`,
+                type,
+                from,
+                to,
+                access,
+                status,
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser?.fullName || 'system',
+            };
+            sharing.unshift(rule);
+            localStorage.setItem('dyna_stock_sharing', JSON.stringify(sharing));
+            loadShopWarehouseSharing();
+            event.target.reset();
+            showToast('Sharing rule added.');
+        }
+
         // Auto-trigger when URL has ?collect=1
         (function(){
             try {
@@ -12578,6 +12855,8 @@
                 try { localStorage.setItem('dyna_branches', JSON.stringify(branches)); } catch (_) {}
                 if (typeof loadBranches === 'function') loadBranches();
                 if (typeof loadBranchesForDistribution === 'function') loadBranchesForDistribution();
+                if (typeof populateSharingLocations === 'function') populateSharingLocations();
+                if (typeof loadShopWarehouseSharing === 'function') loadShopWarehouseSharing();
                 if (typeof populateInvoiceBranchFilter === 'function') populateInvoiceBranchFilter();
                 if (typeof refreshBranchDirectory === 'function') {
                     try { refreshBranchDirectory(branches); } catch (_) {}
@@ -12863,14 +13142,22 @@
             loadWindhoekProducts();
             loadOndangwaProducts();
             populateBranchDistributionProducts();
+            populateSharingLocations();
+            applyAutoOrderSettings();
+            loadStockOrders();
+            loadShopWarehouseSharing();
 
             const windhoekProductSelect = document.getElementById('windhoekProduct');
             if (windhoekProductSelect) {
                 windhoekProductSelect.addEventListener('change', updateWindhoekAvailableQuantity);
             }
-            const ondangwaProductSelect = document.getElementById('ondangwaProductNew');
-            if (ondangwaProductSelect) {
-                ondangwaProductSelect.addEventListener('change', updateOndangwaAvailableQuantity);
+            const ondangwaProductSelectNew = document.getElementById('ondangwaProductNew');
+            if (ondangwaProductSelectNew) {
+                ondangwaProductSelectNew.addEventListener('change', updateOndangwaAvailableQuantity);
+            }
+            const ondangwaProductSelectLegacy = document.getElementById('ondangwaProduct');
+            if (ondangwaProductSelectLegacy) {
+                ondangwaProductSelectLegacy.addEventListener('change', updateOndangwaAvailableQuantity);
             }
             const branchSource = document.getElementById('branchDistSourceWarehouse');
             if (branchSource) {
@@ -12881,6 +13168,14 @@
             const branchProductSelect = document.getElementById('branchDistProduct');
             if (branchProductSelect) {
                 branchProductSelect.addEventListener('change', updateBranchDistAvailableQty);
+            }
+            const manualOrderClose = document.getElementById('manualOrderModal');
+            if (manualOrderClose) {
+                manualOrderClose.addEventListener('click', (event) => {
+                    if (event.target && event.target.id === 'manualOrderModal') {
+                        closeManualOrderModal();
+                    }
+                });
             }
         });
 
@@ -36174,7 +36469,9 @@ function getWalkInCart() {
             const availableQtyField = document.getElementById('windhoekAvailableQty');
             if (!productSelect) return;
 
-            const summary = getWarehouseProductSummary('country');
+            const sourceValue = document.getElementById('windhoekSource')?.value || 'country_stock';
+            const sourceKey = sourceValue === 'country' ? 'country_stock' : sourceValue;
+            const summary = getWarehouseProductSummary(sourceKey);
             productSelect.innerHTML = '<option value="">Select Product</option>';
             productSelect.disabled = summary.size === 0;
 
@@ -36197,28 +36494,32 @@ function getWalkInCart() {
         }
         
         function loadOndangwaProducts() {
-            const productSelect = document.getElementById('ondangwaProductNew');
-            const availableQtyField = document.getElementById('ondangwaAvailableQtyNew');
-            if (!productSelect) return;
+            const selects = [document.getElementById('ondangwaProductNew'), document.getElementById('ondangwaProduct')].filter(Boolean);
+            const availableFields = [document.getElementById('ondangwaAvailableQtyNew'), document.getElementById('ondangwaAvailableQty')].filter(Boolean);
+            if (selects.length === 0) return;
 
-            const summary = getWarehouseProductSummary('country');
-            productSelect.innerHTML = '<option value="">Select Product</option>';
-            productSelect.disabled = summary.size === 0;
+            const sourceValue = document.getElementById('ondangwaSource')?.value || 'country_stock';
+            const sourceKey = sourceValue === 'country' ? 'country_stock' : sourceValue;
+            const summary = getWarehouseProductSummary(sourceKey);
+
+            selects.forEach(select => {
+                select.innerHTML = '<option value="">Select Product</option>';
+                select.disabled = summary.size === 0;
+                summary.forEach((qty, name) => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = `${name} (Available: ${qty} units)`;
+                    select.appendChild(option);
+                });
+            });
 
             if (summary.size === 0) {
-                if (availableQtyField) {
-                    availableQtyField.value = 'No country stock available';
-                    availableQtyField.style.color = '#e74c3c';
-                }
+                availableFields.forEach(field => {
+                    field.value = 'No country stock available';
+                    field.style.color = '#e74c3c';
+                });
                 return;
             }
-
-            summary.forEach((qty, name) => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = `${name} (Available: ${qty} units)`;
-                productSelect.appendChild(option);
-            });
 
             updateOndangwaAvailableQuantity();
         }
@@ -38015,34 +38316,37 @@ function getWalkInCart() {
         function loadShopWarehouseSharing() {
             const shopList = document.getElementById('shopVisibilityList');
             const warehouseList = document.getElementById('warehouseSharingList');
+            const sharing = safeParseFromStorage('dyna_stock_sharing', '[]');
             
             if (shopList) {
-                const sharing = JSON.parse(localStorage.getItem('dyna_stock_sharing') || '[]');
-                const shopSharing = sharing.filter(s => s.type === 'shop_visibility');
-                
+                const shopSharing = sharing.filter(s => (s.type || '').toLowerCase() === 'shop_visibility');
                 if (shopSharing.length === 0) {
                     shopList.innerHTML = '<p style="color: #7f8c8d; text-align: center;">No shop visibility rules configured</p>';
                 } else {
                     shopList.innerHTML = shopSharing.map(s => `
-                        <div style="padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between;">
-                            <span>${s.from} → ${s.to}</span>
-                            <span class="pill ${s.status === 'active' ? 'good' : 'bad'}">${s.status}</span>
+                        <div style="padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items:center;">
+                            <div>
+                                <div>${describeLocationValue(s.from)} → ${describeLocationValue(s.to)}</div>
+                                <div style="font-size:0.75rem; color:#64748b;">Access: ${(s.access || 'view').toUpperCase()}</div>
+                            </div>
+                            <span class="pill ${(s.status || '').toLowerCase() === 'active' ? 'good' : 'bad'}">${(s.status || 'inactive').toUpperCase()}</span>
                         </div>
                     `).join('');
                 }
             }
             
             if (warehouseList) {
-                const sharing = JSON.parse(localStorage.getItem('dyna_stock_sharing') || '[]');
-                const warehouseSharing = sharing.filter(s => s.type === 'warehouse_sharing');
-                
+                const warehouseSharing = sharing.filter(s => (s.type || '').toLowerCase() === 'warehouse_sharing');
                 if (warehouseSharing.length === 0) {
                     warehouseList.innerHTML = '<p style="color: #7f8c8d; text-align: center;">No warehouse sharing rules configured</p>';
                 } else {
                     warehouseList.innerHTML = warehouseSharing.map(s => `
-                        <div style="padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between;">
-                            <span>${s.from} → ${s.to}</span>
-                            <span class="pill ${s.status === 'active' ? 'good' : 'bad'}">${s.status}</span>
+                        <div style="padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items:center;">
+                            <div>
+                                <div>${describeLocationValue(s.from)} → ${describeLocationValue(s.to)}</div>
+                                <div style="font-size:0.75rem; color:#64748b;">Access: ${(s.access || 'view').toUpperCase()}</div>
+                            </div>
+                            <span class="pill ${(s.status || '').toLowerCase() === 'active' ? 'good' : 'bad'}">${(s.status || 'inactive').toUpperCase()}</span>
                         </div>
                     `).join('');
                 }
@@ -38050,11 +38354,19 @@ function getWalkInCart() {
         }
         
         // Orders Tab Functions
+        function getOrderList() {
+            return safeParseFromStorage('dyna_stock_orders', '[]');
+        }
+
+        function persistOrderList(list) {
+            try { localStorage.setItem('dyna_stock_orders', JSON.stringify(Array.isArray(list) ? list : [])); } catch (_) {}
+        }
+
         function loadStockOrders() {
             const autoContainer = document.getElementById('automaticOrdersList');
             const manualContainer = document.getElementById('manualOrdersList');
             
-            const orders = JSON.parse(localStorage.getItem('dyna_stock_orders') || '[]');
+            const orders = getOrderList();
             const automatic = orders.filter(o => o.type === 'automatic');
             const manual = orders.filter(o => o.type === 'manual');
             
@@ -38063,9 +38375,15 @@ function getWalkInCart() {
                     autoContainer.innerHTML = '<p style="color: #7f8c8d; text-align: center;">No automatic orders</p>';
                 } else {
                     autoContainer.innerHTML = automatic.map(o => `
-                        <div style="padding: 10px; border-bottom: 1px solid #ddd;">
-                            <strong>${o.product || 'Unknown'}</strong>
-                            <div style="font-size: 0.85rem; color: #666;">Qty: ${o.quantity || 0} • ${new Date(o.createdAt || Date.now()).toLocaleDateString()}</div>
+                        <div style="padding: 12px; border-bottom: 1px solid #ddd; background:white;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <strong>${o.product || 'Unknown'}</strong>
+                                <span class="pill ${(o.status || 'pending') === 'approved' ? 'good' : (o.status === 'rejected' ? 'bad' : 'warn')}">${(o.status || 'pending').toUpperCase()}</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: #666; margin-top:4px;">
+                                Qty: ${o.quantity || 0} • ${getBranchNameById(o.branchId || o.branch) || 'All branches'}
+                            </div>
+                            <div style="font-size: 0.75rem; color: #999;">Created: ${new Date(o.createdAt || Date.now()).toLocaleString()}</div>
                         </div>
                     `).join('');
                 }
@@ -38076,9 +38394,17 @@ function getWalkInCart() {
                     manualContainer.innerHTML = '<p style="color: #7f8c8d; text-align: center;">No manual orders</p>';
                 } else {
                     manualContainer.innerHTML = manual.map(o => `
-                        <div style="padding: 10px; border-bottom: 1px solid #ddd;">
-                            <strong>${o.product || 'Unknown'}</strong>
-                            <div style="font-size: 0.85rem; color: #666;">Qty: ${o.quantity || 0} • ${new Date(o.createdAt || Date.now()).toLocaleDateString()}</div>
+                        <div style="padding: 12px; border-bottom: 1px solid #ddd; background:white;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <strong>${o.product || 'Unknown'}</strong>
+                                <span class="pill ${(o.status || 'pending') === 'approved' ? 'good' : (o.status === 'rejected' ? 'bad' : 'warn')}">${(o.status || 'pending').toUpperCase()}</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: #666; margin-top:4px;">
+                                Qty: ${o.quantity || 0} • ${getBranchNameById(o.branchId || o.branch) || 'No branch'}
+                            </div>
+                            <div style="font-size:0.8rem; color:#444;">Supplier: ${o.supplier || 'N/A'}${o.eta ? ` • ETA: ${o.eta}` : ''}</div>
+                            <div style="font-size: 0.75rem; color: #999;">Created: ${new Date(o.createdAt || Date.now()).toLocaleString()}</div>
+                            ${o.notes ? `<div style="font-size:0.75rem; color:#64748b; margin-top:4px;">${o.notes}</div>` : ''}
                         </div>
                     `).join('');
                 }
@@ -38221,7 +38547,7 @@ function getWalkInCart() {
                 return;
             }
 
-            const available = calculateAvailableQuantity(productName, 'country');
+            const available = calculateAvailableQuantity(productName, 'country_stock');
             if (quantity > available) {
                 showToast(`Only ${available} unit(s) available in Country Stock.`);
                 return;
@@ -38229,7 +38555,7 @@ function getWalkInCart() {
 
             const reference = `C2W-${Date.now().toString(36).toUpperCase()}`;
             const notes = notesInput?.value?.trim() || '';
-            const result = moveBarcodeStock(productName, quantity, 'country', 'windhoek', {
+            const result = moveBarcodeStock(productName, quantity, 'country_stock', 'warehouse:windhoek', {
                 reference,
                 notes,
                 movementType: 'transfer_country_to_windhoek'
@@ -38261,9 +38587,9 @@ function getWalkInCart() {
 
         function handleTransferToOndangwa(event) {
             event.preventDefault();
-            const productSelect = document.getElementById('ondangwaProductNew');
-            const quantityInput = document.getElementById('ondangwaQuantityNew');
-            const notesInput = document.getElementById('ondangwaNotesNew');
+            const productSelect = document.getElementById('ondangwaProductNew') || document.getElementById('ondangwaProduct');
+            const quantityInput = document.getElementById('ondangwaQuantityNew') || document.getElementById('ondangwaQuantity');
+            const notesInput = document.getElementById('ondangwaNotesNew') || document.getElementById('ondangwaNotes');
             if (!productSelect || !quantityInput) return;
 
             const productName = productSelect.value;
@@ -38277,7 +38603,7 @@ function getWalkInCart() {
                 return;
             }
 
-            const available = calculateAvailableQuantity(productName, 'country');
+            const available = calculateAvailableQuantity(productName, 'country_stock');
             if (quantity > available) {
                 showToast(`Only ${available} unit(s) available in Country Stock.`);
                 return;
@@ -38285,7 +38611,7 @@ function getWalkInCart() {
 
             const reference = `C2O-${Date.now().toString(36).toUpperCase()}`;
             const notes = notesInput?.value?.trim() || '';
-            const result = moveBarcodeStock(productName, quantity, 'country', 'ondangwa', {
+            const result = moveBarcodeStock(productName, quantity, 'country_stock', 'warehouse:ondangwa', {
                 reference,
                 notes,
                 movementType: 'transfer_country_to_ondangwa'
@@ -38309,7 +38635,9 @@ function getWalkInCart() {
             });
 
             showToast(`Transferred ${quantity} unit(s) to Ondangwa Warehouse.`);
-            event.target.reset();
+            if (event.target && typeof event.target.reset === 'function') {
+                event.target.reset();
+            }
             updateOndangwaAvailableQuantity();
             loadOndangwaProducts();
             displayOndangwaStock();
@@ -38319,6 +38647,24 @@ function getWalkInCart() {
             if (!branchId) return '';
             const match = (branches || []).find(b => String(b.id) === String(branchId));
             return match ? match.name : branchId;
+        }
+
+        function describeLocationValue(value) {
+            if (!value) return 'Unknown';
+            const raw = String(value);
+            if (raw.startsWith('branch:')) {
+                return `Branch • ${getBranchNameById(raw.split(':')[1])}`;
+            }
+            if (raw.startsWith('warehouse:')) {
+                const id = raw.split(':')[1];
+                if (id === 'windhoek') return 'Warehouse • Windhoek';
+                if (id === 'ondangwa') return 'Warehouse • Ondangwa';
+                return `Warehouse • ${id}`;
+            }
+            if (raw.startsWith('country')) {
+                return 'Country Stock';
+            }
+            return raw;
         }
 
         function handleBranchDistribution(event) {
@@ -38342,15 +38688,16 @@ function getWalkInCart() {
             if (!productName) { showToast('Select a product.'); return; }
             if (!Number.isFinite(quantity) || quantity <= 0) { showToast('Enter a valid quantity.'); return; }
 
-            const available = calculateAvailableQuantity(productName, source);
+            const sourceKey = source === 'ondangwa' ? 'warehouse:ondangwa' : 'warehouse:windhoek';
+            const available = calculateAvailableQuantity(productName, sourceKey);
             if (quantity > available) {
-                showToast(`Only ${available} unit(s) available in ${source === 'windhoek' ? 'Windhoek' : 'Ondangwa'} Warehouse.`);
+                showToast(`Only ${available} unit(s) available in ${sourceKey.includes('ondangwa') ? 'Ondangwa' : 'Windhoek'} Warehouse.`);
                 return;
             }
 
             const reference = `WH-${source.charAt(0).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
             const notes = notesInput?.value?.trim() || '';
-            const result = moveBarcodeStock(productName, quantity, source, branchId.toLowerCase(), {
+            const result = moveBarcodeStock(productName, quantity, sourceKey, `branch:${branchId}`, {
                 reference,
                 notes,
                 movementType: 'warehouse_to_branch'
@@ -38429,22 +38776,26 @@ function getWalkInCart() {
                 availableField.style.color = '#666';
                 return;
             }
-            const available = calculateAvailableQuantity(productSelect.value, 'country');
+            const available = calculateAvailableQuantity(productSelect.value, 'country_stock');
             availableField.value = `${available} unit(s) available`;
             availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
         }
         function updateOndangwaAvailableQuantity() {
-            const productSelect = document.getElementById('ondangwaProductNew');
-            const availableField = document.getElementById('ondangwaAvailableQtyNew');
-            if (!availableField) return;
+            const productSelect = document.getElementById('ondangwaProductNew') || document.getElementById('ondangwaProduct');
+            const availableFields = [document.getElementById('ondangwaAvailableQtyNew'), document.getElementById('ondangwaAvailableQty')].filter(Boolean);
+            if (availableFields.length === 0) return;
             if (!productSelect || !productSelect.value) {
-                availableField.value = 'Select a product';
-                availableField.style.color = '#666';
+                availableFields.forEach(field => {
+                    field.value = 'Select a product';
+                    field.style.color = '#666';
+                });
                 return;
             }
-            const available = calculateAvailableQuantity(productSelect.value, 'country');
-            availableField.value = `${available} unit(s) available`;
-            availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
+            const available = calculateAvailableQuantity(productSelect.value, 'country_stock');
+            availableFields.forEach(field => {
+                field.value = `${available} unit(s) available`;
+                field.style.color = available > 0 ? '#27ae60' : '#e74c3c';
+            });
         }
         function updateBranchDistAvailableQty() {
             const source = document.getElementById('branchDistSourceWarehouse')?.value;
@@ -38456,7 +38807,8 @@ function getWalkInCart() {
                 availableField.style.color = '#666';
                 return;
             }
-            const available = calculateAvailableQuantity(productSelect.value, source);
+            const sourceKey = source === 'ondangwa' ? 'warehouse:ondangwa' : 'warehouse:windhoek';
+            const available = calculateAvailableQuantity(productSelect.value, sourceKey);
             availableField.value = `${available} unit(s) available`;
             availableField.style.color = available > 0 ? '#27ae60' : '#e74c3c';
         }
@@ -39488,7 +39840,8 @@ function getWalkInCart() {
             const productSelect = document.getElementById('branchDistProduct');
             if (!productSelect) return;
 
-            const source = sourceSelect?.value || '';
+            const sourceValue = sourceSelect?.value || '';
+            const source = sourceValue === 'windhoek' ? 'warehouse:windhoek' : sourceValue === 'ondangwa' ? 'warehouse:ondangwa' : sourceValue;
             productSelect.innerHTML = '<option value="">Select Product</option>';
 
             if (!source) {
