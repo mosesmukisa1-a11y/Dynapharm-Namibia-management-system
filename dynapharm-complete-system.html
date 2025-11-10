@@ -7289,11 +7289,11 @@
                             <p class="hub-section__meta">Jump directly into the flow you need.</p>
                         </div>
                         <div class="hub-action-grid">
-                            <button class="hub-action" onclick="showStockTab('countryImport')">📥 Import Country Stock</button>
-                            <button class="hub-action" onclick="showStockTab('warehouseDistribution')">🏢 Distribute to Warehouse</button>
-                            <button class="hub-action" onclick="showStockTab('branchDistribution')">🏬 Distribute to Branch</button>
-                            <button class="hub-action" onclick="showStockTab('orders')">📋 Manage Orders</button>
-                            <button class="hub-action" onclick="showStockTab('countryInventory')">🌍 Country Inventory</button>
+                            <button class="hub-action" onclick="handleStockQuickAction('countryImport')">📥 Import Country Stock</button>
+                            <button class="hub-action" onclick="handleStockQuickAction('warehouseDistribution')">🏢 Distribute to Warehouse</button>
+                            <button class="hub-action" onclick="handleStockQuickAction('branchDistribution')">🏬 Distribute to Branch</button>
+                            <button class="hub-action" onclick="handleStockQuickAction('orders')">📋 Manage Orders</button>
+                            <button class="hub-action" onclick="handleStockQuickAction('countryInventory')">🌍 Country Inventory</button>
                         </div>
                     </section>
                     <section class="hub-section">
@@ -7865,19 +7865,22 @@
                                 </div>
                                 <div class="form-group">
                                     <label class="required">To Branch</label>
-                                    <select id="distributionBranch" required>
+                                    <select id="distributionBranch" required onchange="updateDistributionGuidance()">
                                         <option value="">Select Branch</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Product</label>
-                                    <select id="distributionProduct" required>
+                                    <select id="distributionProduct" required onchange="updateDistributionGuidance()">
                                         <option value="">Select Product</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Quantity</label>
-                                    <input type="number" id="distributionQuantity" min="1" required>
+                                    <input type="number" id="distributionQuantity" min="1" required oninput="updateDistributionGuidance()">
+                                    <small id="distributionGuidance" style="display:block; margin-top:6px; font-size:0.8rem; color:#64748b;">
+                                        Select warehouse, branch, and product to see suggested quantities.
+                                    </small>
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Date</label>
@@ -12652,6 +12655,36 @@
             };
         }
 
+        function applyBarcodeBatchesToState(batches, options = {}) {
+            if (!Array.isArray(batches)) return;
+            const persist = options.persist !== false;
+            const normalized = batches.map((batch) => ({ ...batch }));
+
+            if (persist) {
+                try { localStorage.setItem('dyna_barcode_stock', JSON.stringify(normalized)); } catch (_) {}
+            }
+
+            const countryBatches = normalized.filter(b => (b.location || '').includes('country'));
+            const windhoekBatches = normalized.filter(b => (b.location || '').includes('windhoek'));
+            const ondangwaBatches = normalized.filter(b => (b.location || '').includes('ondangwa'));
+
+            countryStock = countryBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Country Stock' }));
+            windhoekStock = windhoekBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Windhoek Warehouse' }));
+            ondangwaStock = ondangwaBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Ondangwa Warehouse' }));
+
+            try {
+                localStorage.setItem('dyna_countryStock', JSON.stringify(countryStock));
+                localStorage.setItem('dyna_windhoekStock', JSON.stringify(windhoekStock));
+                localStorage.setItem('dyna_ondangwaStock', JSON.stringify(ondangwaStock));
+            } catch (_) {}
+
+            saveStockData();
+            displayCountryStock();
+            displayWindhoekStock();
+            displayOndangwaStock();
+            displayDistributionHistory();
+        }
+
         async function syncBarcodeStockFromBackend(force = false) {
             try {
                 if (!force && Date.now() - lastBarcodeSyncTs < 20000) return;
@@ -12659,7 +12692,13 @@
                 const apiEndpoint = `${API_BASE}/stock-batches`;
                 const apiData = await fetchJsonFromApi(apiEndpoint, null);
                 const list = Array.isArray(apiData) ? apiData : [];
-                if (!list.length) return;
+                if (!list.length) {
+                    const cached = safeParseFromStorage('dyna_barcode_stock', '[]');
+                    if (cached.length) {
+                        applyBarcodeBatchesToState(cached, { persist: false });
+                    }
+                    return;
+                }
 
                 const normalizedBatches = list.map(batch => {
                     const expiryRaw = batch.expiryDate || batch.expiry_date || batch.expiry || '';
@@ -12692,28 +12731,7 @@
                         metadata: batch.metadata || null
                     };
                 });
-
-                try { localStorage.setItem('dyna_barcode_stock', JSON.stringify(normalizedBatches)); } catch (_) {}
-
-                const countryBatches = normalizedBatches.filter(b => (b.location || '').includes('country'));
-                const windhoekBatches = normalizedBatches.filter(b => (b.location || '').includes('windhoek'));
-                const ondangwaBatches = normalizedBatches.filter(b => (b.location || '').includes('ondangwa'));
-
-                countryStock = countryBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Country Stock' }));
-                windhoekStock = windhoekBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Windhoek Warehouse' }));
-                ondangwaStock = ondangwaBatches.map(batch => mapBatchToPortalStock(batch, { category: 'Ondangwa Warehouse' }));
-
-                try {
-                    localStorage.setItem('dyna_countryStock', JSON.stringify(countryStock));
-                    localStorage.setItem('dyna_windhoekStock', JSON.stringify(windhoekStock));
-                    localStorage.setItem('dyna_ondangwaStock', JSON.stringify(ondangwaStock));
-                } catch (_) {}
-
-                saveStockData();
-                displayCountryStock();
-                displayWindhoekStock();
-                displayOndangwaStock();
-                displayDistributionHistory();
+                applyBarcodeBatchesToState(normalizedBatches);
             } catch (error) {
                 console.warn('Barcode stock synchronisation failed:', error);
             }
@@ -34660,6 +34678,13 @@ function getWalkInCart() {
         let replenishmentSuggestionCache = [];
         let reorderScenarios = [];
 
+        const DISTRIBUTION_GUIDANCE_CONFIG = {
+            demandLookbackDays: 14,
+            horizonDays: 7,
+            dispatchHistoryWindowDays: 30,
+            maxBufferUnits: 5
+        };
+
         const STOCK_STORAGE_KEYS = {
             forecasts: 'dyna_demand_forecasts',
             purchaseOrders: 'dyna_purchase_orders_detailed',
@@ -36230,6 +36255,318 @@ function getWalkInCart() {
             }
         }
         
+        function normalizeInventoryKey(value) {
+            return (value || '').toString().trim().toLowerCase();
+        }
+
+        function loadDistributionProducts() {
+            const productSelect = document.getElementById('distributionProduct');
+            if (!productSelect) {
+                return;
+            }
+            const warehouseSelect = document.getElementById('distributionWarehouse');
+            const warehouse = normalizeInventoryKey(warehouseSelect?.value || '');
+
+            loadStockData();
+
+            const sourceStock = warehouse === 'ondangwa' ? ondangwaStock : windhoekStock;
+            const previousValue = productSelect.value;
+            const added = new Set();
+
+            productSelect.innerHTML = '<option value="">Select Product</option>';
+
+            const candidates = Array.isArray(sourceStock) && sourceStock.length
+                ? sourceStock.slice().sort((a, b) => (a.productName || '').localeCompare(b.productName || ''))
+                : (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)
+                    ? PRICE_LIST.map(p => ({ productName: p.description, quantity: 0 }))
+                    : []);
+
+            candidates.forEach(item => {
+                const name = item.productName || item.product || item.description || '';
+                if (!name) return;
+                const normalized = normalizeInventoryKey(name);
+                if (added.has(normalized)) return;
+                added.add(normalized);
+                const option = document.createElement('option');
+                option.value = name;
+                const qty = Number(item.quantity || 0);
+                option.textContent = qty > 0 ? `${name} (Available: ${qty})` : name;
+                productSelect.appendChild(option);
+            });
+
+            if (previousValue && Array.from(productSelect.options).some(opt => opt.value === previousValue)) {
+                productSelect.value = previousValue;
+            } else {
+                productSelect.value = '';
+            }
+
+            updateDistributionGuidance();
+        }
+
+        function getWarehouseAvailableQuantity(warehouseId, productName) {
+            if (!warehouseId || !productName) return 0;
+            const normalizedWarehouse = normalizeInventoryKey(warehouseId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+            const stockArray = normalizedWarehouse === 'ondangwa' ? ondangwaStock : windhoekStock;
+            if (!Array.isArray(stockArray)) return 0;
+            const match = stockArray.find(entry => normalizeInventoryKey(entry.productName || entry.product || entry.description) === normalizedProduct);
+            return match ? Number(match.quantity || 0) : 0;
+        }
+
+        function getRecentBranchDemand(branchId, productName, days) {
+            const normalizedBranch = normalizeInventoryKey(branchId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+            if (!normalizedBranch || !normalizedProduct) {
+                return { total: 0, days, windowMs: 0 };
+            }
+
+            let sales = [];
+            try {
+                sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
+            } catch (_) {
+                sales = [];
+            }
+
+            const now = Date.now();
+            const windowMs = Number(days || 0) * 24 * 60 * 60 * 1000;
+            let total = 0;
+
+            sales.forEach(sale => {
+                const saleBranch = normalizeInventoryKey(sale.branch || sale.branchId || sale.location || sale.store || '');
+                if (saleBranch !== normalizedBranch) return;
+                const dateStr = sale.date || sale.createdAt || sale.timestamp || sale.saleDate || sale.transactionDate;
+                const date = dateStr ? new Date(dateStr) : null;
+                if (!date || (windowMs && (now - date.getTime()) > windowMs)) return;
+                const items = Array.isArray(sale.items)
+                    ? sale.items
+                    : Array.isArray(sale.products)
+                        ? sale.products
+                        : [];
+                items.forEach(item => {
+                    const itemName = normalizeInventoryKey(item.name || item.productName || item.product || item.description);
+                    if (itemName !== normalizedProduct) return;
+                    total += Number(item.quantity || item.qty || item.units || 0);
+                });
+            });
+
+            return { total, days, windowMs };
+        }
+
+        function getRecentDispatchAverage(branchId, productName, windowDays) {
+            const normalizedBranch = normalizeInventoryKey(branchId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+            if (!normalizedBranch || !normalizedProduct) {
+                return { average: 0, sampleSize: 0, total: 0 };
+            }
+
+            const history = Array.isArray(distributionHistory) ? distributionHistory : [];
+            const now = Date.now();
+            const windowMs = Number(windowDays || 0) * 24 * 60 * 60 * 1000;
+
+            const matches = history.filter(dist => {
+                const branchMatch = normalizeInventoryKey(dist.branch) === normalizedBranch;
+                const productMatch = normalizeInventoryKey(dist.productName || dist.product) === normalizedProduct;
+                if (!branchMatch || !productMatch) return false;
+                const dateStr = dist.date || dist.createdAt;
+                const date = dateStr ? new Date(dateStr) : null;
+                return !windowMs || (date && (now - date.getTime()) <= windowMs);
+            });
+
+            if (!matches.length) {
+                return { average: 0, sampleSize: 0, total: 0 };
+            }
+
+            const recent = matches
+                .slice()
+                .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+                .slice(0, 5);
+
+            const total = recent.reduce((sum, dist) => sum + Number(dist.quantity || 0), 0);
+            return { average: total / recent.length, sampleSize: recent.length, total };
+        }
+
+        function getOpenRequestQuantity(branchId, productName) {
+            const normalizedBranch = normalizeInventoryKey(branchId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+            if (!normalizedBranch || !normalizedProduct) return 0;
+            const requests = Array.isArray(branchReplenishmentRequests) ? branchReplenishmentRequests : [];
+            return requests.reduce((sum, req) => {
+                const branchMatch = normalizeInventoryKey(req.branch || req.branchId) === normalizedBranch;
+                const productMatch = normalizeInventoryKey(req.product || req.productName || req.description) === normalizedProduct;
+                const status = normalizeInventoryKey(req.status || 'open');
+                if (!branchMatch || !productMatch) return sum;
+                if (['closed', 'fulfilled', 'complete', 'completed', 'cancelled'].includes(status)) return sum;
+                return sum + Number(req.quantity || req.approvedQuantity || 0);
+            }, 0);
+        }
+
+        function getPendingDispatchQuantity(branchId, productName) {
+            const normalizedBranch = normalizeInventoryKey(branchId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+            if (!normalizedBranch || !normalizedProduct) return 0;
+            let notes = [];
+            try {
+                notes = JSON.parse(localStorage.getItem('dyna_dispatch_notes') || '[]');
+            } catch (_) {
+                notes = [];
+            }
+            return notes.reduce((sum, note) => {
+                const branchMatch = normalizeInventoryKey(note.toBranch) === normalizedBranch;
+                const status = normalizeInventoryKey(note.status || 'in_transit');
+                if (!branchMatch) return sum;
+                if (!['in_transit', 'pending', 'dispatched'].includes(status)) return sum;
+                const items = Array.isArray(note.items) ? note.items : [];
+                const itemQty = items.reduce((itemSum, item) => {
+                    const itemName = normalizeInventoryKey(item.description || item.productId || item.name);
+                    if (itemName !== normalizedProduct) return itemSum;
+                    return itemSum + Number(item.quantity || 0);
+                }, 0);
+                return sum + itemQty;
+            }, 0);
+        }
+
+        function calculateDispatchGuidance({ warehouseId, branchId, productName, currentQuantity }) {
+            const normalizedWarehouse = normalizeInventoryKey(warehouseId);
+            const normalizedBranch = normalizeInventoryKey(branchId);
+            const normalizedProduct = normalizeInventoryKey(productName);
+
+            loadStockData();
+
+            if (!normalizedWarehouse || !normalizedBranch || !normalizedProduct) {
+                return {
+                    ready: false,
+                    suggestedQuantity: 0,
+                    autoReleaseLimit: 0,
+                    expectedSupply: 0,
+                    recentDemand: 0,
+                    demandWindow: DISTRIBUTION_GUIDANCE_CONFIG.demandLookbackDays,
+                    openRequests: 0,
+                    inTransit: 0,
+                    availableQuantity: 0,
+                    requiresGM: false
+                };
+            }
+
+            const availableQuantity = getWarehouseAvailableQuantity(normalizedWarehouse, normalizedProduct);
+
+            const demandMetrics = getRecentBranchDemand(normalizedBranch, normalizedProduct, DISTRIBUTION_GUIDANCE_CONFIG.demandLookbackDays);
+            const averageDailyDemand = demandMetrics.days
+                ? (demandMetrics.total / demandMetrics.days)
+                : 0;
+            const forecastDemand = Math.ceil(averageDailyDemand * DISTRIBUTION_GUIDANCE_CONFIG.horizonDays);
+
+            const openRequestsQty = getOpenRequestQuantity(normalizedBranch, normalizedProduct);
+            const pendingDispatchQty = getPendingDispatchQuantity(normalizedBranch, normalizedProduct);
+            const recentDispatchMetrics = getRecentDispatchAverage(normalizedBranch, normalizedProduct, DISTRIBUTION_GUIDANCE_CONFIG.dispatchHistoryWindowDays);
+            const historicalAvg = Math.ceil(recentDispatchMetrics.average || 0);
+
+            const baseNeed = Math.max(forecastDemand, openRequestsQty, historicalAvg, 0);
+            const outstandingNeed = Math.max(baseNeed - pendingDispatchQty, 0);
+
+            const autoReleaseLimit = Math.min(
+                availableQuantity,
+                outstandingNeed + DISTRIBUTION_GUIDANCE_CONFIG.maxBufferUnits
+            );
+
+            let baseSuggestion = outstandingNeed > 0 ? outstandingNeed : Math.max(historicalAvg, forecastDemand, openRequestsQty, 0);
+            baseSuggestion = Math.min(baseSuggestion, availableQuantity);
+            const suggestedQuantity = Math.max(0, Math.min(autoReleaseLimit, baseSuggestion));
+
+            const quantity = Number(currentQuantity || document.getElementById('distributionQuantity')?.value || 0);
+            const requiresGM = quantity > 0 && quantity > autoReleaseLimit;
+
+            return {
+                ready: true,
+                suggestedQuantity,
+                autoReleaseLimit,
+                expectedSupply: outstandingNeed,
+                recentDemand: demandMetrics.total,
+                demandWindow: DISTRIBUTION_GUIDANCE_CONFIG.demandLookbackDays,
+                openRequests: openRequestsQty,
+                inTransit: pendingDispatchQty,
+                availableQuantity,
+                forecastDemand,
+                historicalAverageDispatch: historicalAvg,
+                baseNeed,
+                requiresGM
+            };
+        }
+
+        function updateDistributionGuidance() {
+            const guidanceEl = document.getElementById('distributionGuidance');
+            if (!guidanceEl) return;
+
+            const warehouse = document.getElementById('distributionWarehouse')?.value;
+            const branch = document.getElementById('distributionBranch')?.value;
+            const product = document.getElementById('distributionProduct')?.value;
+            const quantityInput = document.getElementById('distributionQuantity');
+            const quantity = quantityInput ? Number(quantityInput.value || 0) : 0;
+
+            const guidance = calculateDispatchGuidance({
+                warehouseId: warehouse,
+                branchId: branch,
+                productName: product,
+                currentQuantity: quantity
+            });
+
+            window.lastDistributionGuidance = guidance;
+
+            if (!guidance.ready) {
+                guidanceEl.textContent = 'Select warehouse, branch, and product to see suggested quantities.';
+                guidanceEl.style.color = '#64748b';
+                guidanceEl.style.background = 'transparent';
+                guidanceEl.style.border = 'none';
+                return;
+            }
+
+            const buffer = Math.max(guidance.autoReleaseLimit - Math.min(guidance.expectedSupply, guidance.autoReleaseLimit), 0);
+            const summary = `Suggested: ${guidance.suggestedQuantity || 0} • Auto-release limit: ${guidance.autoReleaseLimit || 0} • Expected supply: ${guidance.expectedSupply || 0} (buffer up to ${buffer || 0})`;
+            const detail = `Recent demand (${guidance.demandWindow || 0}d): ${guidance.recentDemand || 0} • Open requests: ${guidance.openRequests || 0} • In transit: ${guidance.inTransit || 0}`;
+
+            guidanceEl.innerHTML = `<strong>${summary}</strong><br><span style="opacity:0.85;">${detail}</span>`;
+
+            if (guidance.requiresGM) {
+                guidanceEl.style.color = '#b91c1c';
+                guidanceEl.style.background = 'rgba(248,113,113,0.18)';
+                guidanceEl.style.border = '1px solid rgba(185,28,28,0.45)';
+            } else {
+                guidanceEl.style.color = '#065f46';
+                guidanceEl.style.background = 'rgba(16,185,129,0.18)';
+                guidanceEl.style.border = '1px solid rgba(16,185,129,0.35)';
+            }
+        }
+
+        function createGMDispatchApprovalRecord({ warehouse, branch, productName, quantity, dispatchNumber, notes, guidance }) {
+            const approval = {
+                id: `GM-DISPATCH-${Date.now()}`,
+                type: 'warehouse_dispatch',
+                warehouse,
+                branch,
+                product: productName,
+                quantityRequested: quantity,
+                autoReleaseLimit: guidance?.autoReleaseLimit ?? null,
+                expectedSupply: guidance?.expectedSupply ?? null,
+                recentDemand: guidance?.recentDemand ?? null,
+                openRequests: guidance?.openRequests ?? null,
+                inTransit: guidance?.inTransit ?? null,
+                requestedBy: (window.currentUser && window.currentUser.fullName) || 'System',
+                requestedByRole: (window.currentUser && window.currentUser.role) || 'unknown',
+                dispatchNumber,
+                notes,
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                requiresGMApproval: true
+            };
+            try {
+                const pending = JSON.parse(localStorage.getItem('gm_inventory_approvals') || '[]');
+                pending.push(approval);
+                localStorage.setItem('gm_inventory_approvals', JSON.stringify(pending));
+            } catch (error) {
+                console.warn('Failed to queue GM dispatch approval', error);
+            }
+            return approval;
+        }
+
         // Distribute to branches
         document.getElementById('distributeStockForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -36267,6 +36604,55 @@ function getWalkInCart() {
             if (existingDispatch) {
                 alert(`❌ Dispatch Number "${dispatchNumber}" already exists! Please use a unique dispatch number.`);
                 return;
+            }
+
+            const guidance = calculateDispatchGuidance({
+                warehouseId: warehouse,
+                branchId: branch,
+                productName,
+                currentQuantity: quantity
+            });
+
+            if (!guidance.ready) {
+                alert('Unable to determine dispatch guidance. Please ensure warehouse, branch, and product are selected.');
+                updateDistributionGuidance();
+                return;
+            }
+
+            const autoReleaseLimit = guidance.autoReleaseLimit || 0;
+            const requiresGMApproval = quantity > autoReleaseLimit;
+            const userRole = (window.currentUser && window.currentUser.role ? window.currentUser.role.toLowerCase() : '');
+            const gmOverrideRoles = ['gm', 'director', 'admin'];
+            const hasGMOverride = gmOverrideRoles.includes(userRole);
+            let gmApprovalRecord = null;
+
+            if (requiresGMApproval && !hasGMOverride) {
+                gmApprovalRecord = createGMDispatchApprovalRecord({
+                    warehouse,
+                    branch,
+                    productName,
+                    quantity,
+                    dispatchNumber,
+                    notes,
+                    guidance
+                });
+                alert(`⚠️ GM approval required. Dispatch request ${gmApprovalRecord.id} has been submitted for review.`);
+                updateDistributionGuidance();
+                return;
+            }
+
+            const gmApprovalMeta = {
+                required: requiresGMApproval,
+                autoReleaseLimit,
+                expectedSupply: guidance.expectedSupply || 0,
+                approvedBy: null,
+                approvedAt: null,
+                approvalRequestId: gmApprovalRecord ? gmApprovalRecord.id : null
+            };
+
+            if (requiresGMApproval && hasGMOverride) {
+                gmApprovalMeta.approvedBy = (window.currentUser && window.currentUser.fullName) || 'GM';
+                gmApprovalMeta.approvedAt = new Date().toISOString();
             }
             
             let warehouseStock = warehouse === 'windhoek' ? windhoekStock : ondangwaStock;
@@ -36390,7 +36776,16 @@ function getWalkInCart() {
                 driver: driver,
                 eta: eta,
                 createdBy: currentUser?.username || 'system',
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                gmApproval: gmApprovalMeta,
+                guidanceSnapshot: {
+                    suggestedQuantity: guidance.suggestedQuantity || 0,
+                    autoReleaseLimit: guidance.autoReleaseLimit || 0,
+                    expectedSupply: guidance.expectedSupply || 0,
+                    recentDemand: guidance.recentDemand || 0,
+                    openRequests: guidance.openRequests || 0,
+                    inTransit: guidance.inTransit || 0
+                }
             };
             
             distributionHistory.unshift(distribution);
@@ -36427,6 +36822,7 @@ function getWalkInCart() {
             displayDistributionHistory();
             alert('✅ Stock distributed to branch successfully!');
             document.getElementById('distributeStockForm').reset();
+            updateDistributionGuidance();
         });
         
         // Inventory reporting & invoice helpers
@@ -37288,6 +37684,76 @@ function getWalkInCart() {
         }
 
         // New Stock Management Functions for Modern Tabs
+        function ensureQuickActionStyle() {
+            if (document.getElementById('quick-action-style')) return;
+            const style = document.createElement('style');
+            style.id = 'quick-action-style';
+            style.textContent = `
+                .quick-action-highlight {
+                    outline: 3px solid #f97316;
+                    outline-offset: 4px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        function handleStockQuickAction(action) {
+            const configs = {
+                countryImport: {
+                    tab: 'countryImport',
+                    container: '#countryImportTab',
+                    focus: '#bulkStockImportForm .stock-description, #stockImportTableBody .stock-description'
+                },
+                warehouseDistribution: {
+                    tab: 'warehouseDistribution',
+                    container: '#warehouseDistributionTab',
+                    focus: '#windhoekProduct'
+                },
+                branchDistribution: {
+                    tab: 'branchDistribution',
+                    container: '#branchDistributionTab',
+                    focus: '#branchDistSourceWarehouse'
+                },
+                orders: {
+                    tab: 'orders',
+                    container: '#ordersTab',
+                    focus: '#poSupplier'
+                },
+                countryInventory: {
+                    tab: 'countryInventory',
+                    container: '#countryInventoryTab',
+                    focus: '#countryInvLocationFilter'
+                }
+            };
+
+            const config = configs[action];
+            if (!config) return;
+
+            ensureQuickActionStyle();
+            showStockTab(config.tab);
+
+            setTimeout(() => {
+                const container = config.container ? document.querySelector(config.container) : null;
+                if (container && typeof container.scrollIntoView === 'function') {
+                    container.classList.add('quick-action-highlight');
+                    container.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+                    setTimeout(() => {
+                        container.classList.remove('quick-action-highlight');
+                    }, 1600);
+                }
+
+                if (config.focus) {
+                    const focusEl = document.querySelector(config.focus);
+                    if (focusEl && typeof focusEl.focus === 'function') {
+                        try {
+                            focusEl.focus({ preventScroll: true });
+                        } catch (_) {
+                            focusEl.focus();
+                        }
+                    }
+                }
+            }, 120);
+        }
         
         // Overview Tab Functions
         function refreshStockOverview() {
@@ -44084,6 +44550,8 @@ ${dc.personalInfo.fullName},${dc.personalInfo.idNumber},${dc.personalInfo.dateOf
             await seedIfEmpty();
             populateBranchDropdowns();
             populateProductDropdowns();
+            loadDistributionProducts();
+            updateDistributionGuidance();
             // Populate initial import row product dropdown
             try {
                 const firstRow = document.querySelector('[data-stock-import-body="true"] tr');

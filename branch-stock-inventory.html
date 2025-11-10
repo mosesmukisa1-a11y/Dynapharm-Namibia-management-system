@@ -588,6 +588,55 @@
             }, 2200);
         }
 
+        function resolveGMApprovalState(note) {
+            const gm = note && note.gmApproval ? note.gmApproval : {};
+            const status = typeof gm.status === 'string' ? gm.status.toLowerCase() : '';
+            const required = Boolean(
+                gm.required === true ||
+                gm.requiresGMApproval === true ||
+                status === 'pending' ||
+                status === 'requested'
+            );
+            const approved = Boolean(
+                gm.approvedAt ||
+                gm.approvedBy ||
+                gm.approved === true ||
+                status === 'approved'
+            );
+            const approvalId = gm.approvalRequestId || gm.id || null;
+            return { gm, required, approved, status, approvalId };
+        }
+
+        function buildDispatchGuidanceSummary(note) {
+            const guidance = note && note.guidanceSnapshot ? note.guidanceSnapshot : null;
+            if (!guidance) return '';
+
+            const suggested = Number(guidance.suggestedQuantity || 0);
+            const limit = Number(guidance.autoReleaseLimit || 0);
+            const expected = Number(guidance.expectedSupply || 0);
+            const demand = Number(guidance.recentDemand || 0);
+            const openReq = Number(guidance.openRequests || 0);
+            const inTransit = Number(guidance.inTransit || 0);
+
+            const rows = [
+                `<strong>Suggested:</strong> ${suggested}`,
+                `<strong>Auto-release limit:</strong> ${limit}`,
+                `<strong>Expected supply:</strong> ${expected}`
+            ];
+
+            const meta = [];
+            if (demand) meta.push(`Recent demand: ${demand}`);
+            if (openReq) meta.push(`Open requests: ${openReq}`);
+            if (inTransit) meta.push(`In transit: ${inTransit}`);
+
+            return `
+                <div style="margin-top:10px; font-size:12px; color:#94a3b8;">
+                    <div>${rows.join(' • ')}</div>
+                    ${meta.length ? `<div style="margin-top:4px;">${meta.join(' • ')}</div>` : ''}
+                </div>
+            `;
+        }
+
         function renderIncomingDispatches(branchIdOverride) {
             const list = document.getElementById('incomingDispatchList');
             if (!list) return;
@@ -606,6 +655,21 @@
             list.innerHTML = incomingDispatchNotes.map(note => {
                 const created = new Date(note.createdAt || Date.now()).toLocaleString();
                 const totalQty = (note.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+                const { required: gmRequired, approved: gmApproved, status: gmStatus, approvalId } = resolveGMApprovalState(note);
+                const gmBadgeColor = gmRequired
+                    ? (gmApproved ? '#16a34a' : '#f59e0b')
+                    : '#3b82f6';
+                const gmText = gmRequired
+                    ? (gmApproved ? 'GM approved' : 'GM approval pending')
+                    : 'GM approval not required';
+                const gmMeta = gmRequired && !gmApproved
+                    ? `<div style="font-size:11px; color:#fbbf24;">Approval request ${(approvalId || gmStatus) ? `(${approvalId || gmStatus})` : ''}</div>`
+                    : '';
+                const guidanceSummary = buildDispatchGuidanceSummary(note);
+                const confirmDisabled = gmRequired && !gmApproved;
+                const confirmAttrs = confirmDisabled
+                    ? 'disabled aria-disabled="true" style="opacity:0.55; cursor:not-allowed;" data-gm-blocked="1"'
+                    : 'data-gm-blocked="0"';
                 return `
                     <div style="background:#0f1830; border:1px solid #1e2a44; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;">
                         <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
@@ -618,10 +682,19 @@
                                 <div style="font-family:monospace; letter-spacing:1px;">${note.barcode}</div>
                             </div>
                         </div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-size:11px; background:${gmBadgeColor}1A; color:${gmBadgeColor}; border:1px solid ${gmBadgeColor}33;">
+                                ${gmText}
+                            </span>
+                            ${gmMeta}
+                        </div>
                         <div class="muted" style="font-size:12px;">Items: ${(note.items || []).length} • Total Qty: ${totalQty}</div>
+                        ${guidanceSummary}
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
                             <button class="btn" data-dispatch-action="view" data-dispatch-id="${note.id}">View Note</button>
-                            <button class="btn primary" data-dispatch-action="confirm" data-dispatch-id="${note.id}">Confirm & Receive</button>
+                            <button class="btn primary" data-dispatch-action="confirm" data-dispatch-id="${note.id}" ${confirmAttrs}>
+                                ${confirmDisabled ? 'Awaiting GM Approval' : 'Confirm & Receive'}
+                            </button>
                         </div>
                     </div>
                 `;
@@ -652,6 +725,11 @@
                 showDispatchToast('Dispatch note not found','error');
                 return;
             }
+            const { required: gmRequired, approved: gmApproved } = resolveGMApprovalState(note);
+            if (gmRequired && !gmApproved) {
+                showDispatchToast('GM approval still pending. Please wait for approval before receiving stock.', 'warning');
+                return;
+            }
             const receiver = branchUser.fullName || 'Branch User';
             try {
                 const updateRes = updateDispatchNoteStatus(note.id, { status: 'received', receivedBy: receiver }, { by: 'id' });
@@ -678,6 +756,10 @@
             incomingList.addEventListener('click', (event) => {
                 const actionBtn = event.target.closest('[data-dispatch-action]');
                 if (!actionBtn) return;
+                if (actionBtn.getAttribute('data-gm-blocked') === '1') {
+                    showDispatchToast('GM approval still pending. Please wait for approval before receiving stock.', 'warning');
+                    return;
+                }
                 const action = actionBtn.getAttribute('data-dispatch-action');
                 const noteId = actionBtn.getAttribute('data-dispatch-id');
                 if (!noteId) return;
