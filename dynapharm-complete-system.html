@@ -16708,6 +16708,7 @@
                 console.debug('Unable to populate branch selectors after data load:', e);
             }
         }
+        window.loadData = loadData;
 
         async function saveData() {
             // This function is kept for compatibility but data is now saved via API calls
