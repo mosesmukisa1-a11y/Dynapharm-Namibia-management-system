@@ -12661,6 +12661,1074 @@
         let walkInSaleModalPlaceholder = null;
         let walkInSaleModalDetached = false;
 
+        const HR_STORAGE_KEYS = {
+            warnings: 'hr_warnings',
+            terminations: 'hr_terminations',
+            attendance: 'hr_attendance',
+            performance: 'hr_performance_reviews',
+            cachedEmployees: 'hr_cached_employees'
+        };
+
+        const HR_PORTAL_STATE = {
+            initialized: false,
+            employees: [],
+            employeesLoading: false,
+            leaveRecords: [],
+            warnings: [],
+            terminations: [],
+            attendance: [],
+            performance: []
+        };
+
+        if (typeof window.closeModal !== 'function') {
+            window.closeModal = function(modalId) {
+                const modalEl = document.getElementById(modalId);
+                if (modalEl) modalEl.style.display = 'none';
+            };
+        }
+
+        if (typeof window.escapeHtml !== 'function') {
+            window.escapeHtml = function(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            };
+        }
+
+        function initHRPortal() {
+            if (HR_PORTAL_STATE.initialized) return;
+            HR_PORTAL_STATE.initialized = true;
+
+            const employeeSearchInput = document.getElementById('employeeSearch');
+            if (employeeSearchInput) {
+                employeeSearchInput.addEventListener('input', () => renderEmployeeList());
+            }
+
+            const addEmployeeForm = document.getElementById('addEmployeeForm');
+            if (addEmployeeForm) {
+                addEmployeeForm.addEventListener('submit', handleAddEmployeeSubmit);
+            }
+
+            const applyLeaveForm = document.getElementById('applyLeaveForm');
+            if (applyLeaveForm) {
+                applyLeaveForm.addEventListener('submit', handleApplyLeaveSubmit);
+            }
+
+            const leaveSearchInput = document.getElementById('leaveSearch');
+            if (leaveSearchInput) {
+                leaveSearchInput.addEventListener('input', renderLeaveList);
+            }
+
+            const leaveStatusFilter = document.getElementById('leaveStatusFilter');
+            if (leaveStatusFilter) {
+                leaveStatusFilter.addEventListener('change', renderLeaveList);
+            }
+
+            const warningSearchInput = document.getElementById('warningSearch');
+            if (warningSearchInput) {
+                warningSearchInput.addEventListener('input', refreshWarningList);
+            }
+
+            const warningTypeFilter = document.getElementById('warningTypeFilter');
+            if (warningTypeFilter) {
+                warningTypeFilter.addEventListener('change', refreshWarningList);
+            }
+
+            const issueWarningForm = document.getElementById('issueWarningForm');
+            if (issueWarningForm) {
+                issueWarningForm.addEventListener('submit', handleIssueWarningSubmit);
+            }
+
+            const terminationSearchInput = document.getElementById('terminationSearch');
+            if (terminationSearchInput) {
+                terminationSearchInput.addEventListener('input', refreshTerminationList);
+            }
+
+            const terminationReasonFilter = document.getElementById('terminationReasonFilter');
+            if (terminationReasonFilter) {
+                terminationReasonFilter.addEventListener('change', refreshTerminationList);
+            }
+
+            const terminateEmployeeForm = document.getElementById('terminateEmployeeForm');
+            if (terminateEmployeeForm) {
+                terminateEmployeeForm.addEventListener('submit', handleTerminateEmployeeSubmit);
+            }
+
+            const attendanceSearchInput = document.getElementById('attendanceSearch');
+            if (attendanceSearchInput) {
+                attendanceSearchInput.addEventListener('input', refreshAttendanceList);
+            }
+
+            const attendanceDateFilter = document.getElementById('attendanceDateFilter');
+            if (attendanceDateFilter) {
+                attendanceDateFilter.addEventListener('change', refreshAttendanceList);
+            }
+
+            const attendanceStatusFilter = document.getElementById('attendanceStatusFilter');
+            if (attendanceStatusFilter) {
+                attendanceStatusFilter.addEventListener('change', refreshAttendanceList);
+            }
+
+            const recordAttendanceForm = document.getElementById('recordAttendanceForm');
+            if (recordAttendanceForm) {
+                recordAttendanceForm.addEventListener('submit', handleAttendanceSubmit);
+            }
+
+            const performanceSearchInput = document.getElementById('performanceSearch');
+            if (performanceSearchInput) {
+                performanceSearchInput.addEventListener('input', refreshPerformanceList);
+            }
+
+            const addPerformanceReviewForm = document.getElementById('addPerformanceReviewForm');
+            if (addPerformanceReviewForm) {
+                addPerformanceReviewForm.addEventListener('submit', handlePerformanceReviewSubmit);
+            }
+
+            loadEmployees({ showSpinner: true }).catch(() => {});
+            refreshLeaveList();
+            refreshWarningList();
+            refreshTerminationList();
+            refreshAttendanceList();
+            refreshPerformanceList();
+            showHRSubTab('employee-management');
+        }
+
+        function showHRSubTab(tabId) {
+            const contents = document.querySelectorAll('#hr-portal .hr-tab-content');
+            contents.forEach((section) => {
+                if (section.id === tabId) {
+                    section.classList.add('active');
+                    section.style.display = 'block';
+                } else {
+                    section.classList.remove('active');
+                    section.style.display = 'none';
+                }
+            });
+
+            const buttons = document.querySelectorAll('#hr-portal .hr-tab-btn');
+            buttons.forEach((btn) => {
+                const isActive = (btn.getAttribute('onclick') || '').includes(tabId);
+                btn.classList.toggle('active', isActive);
+            });
+
+            switch (tabId) {
+                case 'employee-management':
+                    loadEmployees().catch(() => {});
+                    break;
+                case 'leave-management':
+                    refreshLeaveList();
+                    break;
+                case 'warnings':
+                    refreshWarningList();
+                    break;
+                case 'terminations':
+                    refreshTerminationList();
+                    break;
+                case 'attendance':
+                    refreshAttendanceList();
+                    break;
+                case 'performance':
+                    refreshPerformanceList();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        async function loadEmployees(options = {}) {
+            if (HR_PORTAL_STATE.employeesLoading) return;
+            const container = document.getElementById('employeeList');
+            if (container && options.showSpinner) {
+                container.innerHTML = '<div class="loading" style="padding: 20px; text-align: center; color: #64748b;">Loading employees…</div>';
+            }
+
+            HR_PORTAL_STATE.employeesLoading = true;
+            try {
+                const response = await apiRequest('/employees', 'GET');
+                const list = Array.isArray(response)
+                    ? response
+                    : Array.isArray(response?.employees)
+                    ? response.employees
+                    : [];
+                HR_PORTAL_STATE.employees = list.map((emp) => ({
+                    id: emp.id || emp.employeeId || emp.employee_id,
+                    employeeId: emp.employeeId || emp.employee_id || emp.user_id || '',
+                    name: emp.name || emp.fullName || emp.full_name || 'Team Member',
+                    department: emp.department || '',
+                    role: emp.role || '',
+                    branch: emp.branch || '',
+                    email: emp.email || '',
+                    phone: emp.phone || '',
+                    hireDate: emp.hireDate || emp.hire_date || '',
+                    employmentType: emp.employmentType || emp.employment_type || '',
+                    position: emp.position || '',
+                    notes: emp.notes || '',
+                    salary: emp.salary ?? null
+                }));
+                try {
+                    localStorage.setItem(HR_STORAGE_KEYS.cachedEmployees, JSON.stringify(HR_PORTAL_STATE.employees));
+                } catch (_) {}
+            } catch (error) {
+                console.warn('Unable to load employees from API:', error?.message || error);
+                try {
+                    const cached = JSON.parse(localStorage.getItem(HR_STORAGE_KEYS.cachedEmployees) || '[]');
+                    if (Array.isArray(cached) && cached.length) {
+                        HR_PORTAL_STATE.employees = cached;
+                    }
+                } catch (_) {}
+                if (container && !HR_PORTAL_STATE.employees.length) {
+                    container.innerHTML =
+                        '<p style="padding: 20px; text-align: center; color: #b91c1c;">Unable to load employees. Please try again.</p>';
+                }
+            } finally {
+                HR_PORTAL_STATE.employeesLoading = false;
+                populateEmployeeSelects();
+                renderEmployeeList();
+            }
+        }
+
+        function renderEmployeeList() {
+            const container = document.getElementById('employeeList');
+            if (!container) return;
+
+            const searchValue = (document.getElementById('employeeSearch')?.value || '').trim().toLowerCase();
+            const rows = HR_PORTAL_STATE.employees.filter((emp) => {
+                if (!searchValue) return true;
+                const haystack = [
+                    emp.name,
+                    emp.employeeId,
+                    emp.department,
+                    emp.role,
+                    emp.branch,
+                    emp.email,
+                    emp.phone
+                ]
+                    .join(' ')
+                    .toLowerCase();
+                return haystack.includes(searchValue);
+            });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #f8fafc; border: 1px dashed #cbd5f5; border-radius: 8px; color: #64748b;">No employees found. Add a new employee to get started.</div>';
+                return;
+            }
+
+            const tableRows = rows
+                .map(
+                    (emp) => `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                            <div style="font-weight: 600; color: #0f172a;">${escapeHtml(emp.name)}</div>
+                            <div style="font-size: 0.8rem; color: #64748b;">${escapeHtml(emp.employeeId || '')}</div>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${escapeHtml(emp.department || '')}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${escapeHtml(emp.role || '')}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${escapeHtml(emp.branch || '')}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                            <div style="font-size: 0.85rem; color: #1e293b;">${escapeHtml(emp.email || '—')}</div>
+                            <div style="font-size: 0.8rem; color: #64748b;">${escapeHtml(emp.phone || '')}</div>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem; color: #475569;">
+                            ${emp.hireDate ? new Date(emp.hireDate).toLocaleDateString() : '—'}
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="btn" data-action="view-employee" data-id="${encodeURIComponent(emp.id)}">View</button>
+                                <button class="btn btn-danger" data-action="delete-employee" data-id="${encodeURIComponent(emp.id)}">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                `
+                )
+                .join('');
+
+            container.innerHTML = `
+                <div class="scroll-x" style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; color: #1e293b;">
+                                <th style="padding: 10px; text-align: left;">Employee</th>
+                                <th style="padding: 10px; text-align: left;">Department</th>
+                                <th style="padding: 10px; text-align: left;">Role</th>
+                                <th style="padding: 10px; text-align: left;">Branch</th>
+                                <th style="padding: 10px; text-align: left;">Contact</th>
+                                <th style="padding: 10px; text-align: left;">Hire Date</th>
+                                <th style="padding: 10px; text-align: left;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            container.querySelectorAll('button[data-action]').forEach((btn) => {
+                const action = btn.getAttribute('data-action');
+                const id = decodeURIComponent(btn.getAttribute('data-id') || '');
+                if (action === 'delete-employee') {
+                    btn.addEventListener('click', () => handleEmployeeDelete(id));
+                }
+                if (action === 'view-employee') {
+                    btn.addEventListener('click', () => handleEmployeeView(id));
+                }
+            });
+        }
+
+        function showAddEmployee() {
+            const modal = document.getElementById('addEmployeeModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('addEmployeeForm');
+            if (form) form.reset();
+            const focusField = document.getElementById('employeeName');
+            if (focusField) setTimeout(() => focusField.focus(), 150);
+        }
+
+        function populateEmployeeSelects() {
+            const options = HR_PORTAL_STATE.employees
+                .map(
+                    (emp) =>
+                        `<option value="${escapeHtml(emp.employeeId || emp.id || '')}">${escapeHtml(emp.name)}${emp.branch ? ` (${escapeHtml(emp.branch)})` : ''}</option>`
+                )
+                .join('');
+
+            const selects = [
+                document.getElementById('leaveEmployeeSelect'),
+                document.getElementById('warningEmployeeSelect'),
+                document.getElementById('terminationEmployeeSelect'),
+                document.getElementById('attendanceEmployeeSelect'),
+                document.getElementById('performanceEmployeeSelect')
+            ];
+
+            selects.forEach((select) => {
+                if (!select) return;
+                const placeholder = select.getAttribute('data-placeholder') || 'Select Employee';
+                select.innerHTML = `<option value="">${placeholder}</option>${options}`;
+            });
+        }
+
+        async function handleAddEmployeeSubmit(event) {
+            event.preventDefault();
+            const btn = event.submitter;
+            if (btn) btn.disabled = true;
+            try {
+                const payload = {
+                    name: document.getElementById('employeeName')?.value.trim(),
+                    employeeId: document.getElementById('employeeId')?.value.trim(),
+                    department: document.getElementById('employeeDepartment')?.value || '',
+                    position: document.getElementById('employeePosition')?.value || '',
+                    email: document.getElementById('employeeEmail')?.value.trim(),
+                    phone: document.getElementById('employeePhone')?.value.trim(),
+                    hireDate: document.getElementById('employeeHireDate')?.value || null,
+                    employmentType: document.getElementById('employmentType')?.value || '',
+                    salary: document.getElementById('employeeSalary')?.value || null,
+                    address: document.getElementById('employeeAddress')?.value || '',
+                    dob: document.getElementById('employeeDOB')?.value || null,
+                    emergencyContactName: document.getElementById('emergencyContactName')?.value || '',
+                    emergencyContactPhone: document.getElementById('emergencyContactPhone')?.value || '',
+                    notes: document.getElementById('employeeNotes')?.value || ''
+                };
+
+                if (!payload.name) {
+                    alert('Employee name is required.');
+                    return;
+                }
+
+                const response = await apiRequest('/employees', 'POST', payload);
+                if (response?.success && response.employee) {
+                    HR_PORTAL_STATE.employees.unshift({
+                        id: response.employee.id || response.employee.employeeId,
+                        employeeId: response.employee.employeeId || response.employee.id,
+                        name: response.employee.name || response.employee.fullName || payload.name,
+                        department: response.employee.department || payload.department,
+                        role: response.employee.role || payload.position,
+                        branch: response.employee.branch || '',
+                        email: response.employee.email || payload.email,
+                        phone: response.employee.phone || payload.phone,
+                        hireDate: response.employee.hireDate || payload.hireDate,
+                        employmentType: response.employee.employmentType || payload.employmentType,
+                        position: response.employee.position || payload.position,
+                        notes: response.employee.notes || payload.notes,
+                        salary: response.employee.salary ?? payload.salary
+                    });
+                    try {
+                        localStorage.setItem(HR_STORAGE_KEYS.cachedEmployees, JSON.stringify(HR_PORTAL_STATE.employees));
+                    } catch (_) {}
+                    renderEmployeeList();
+                    populateEmployeeSelects();
+                    closeModal('addEmployeeModal');
+                } else {
+                    throw new Error(response?.message || 'Unable to save employee.');
+                }
+            } catch (error) {
+                console.error('Add employee failed:', error);
+                alert(error?.message || 'Unable to save employee.');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function handleEmployeeView(id) {
+            const employee = HR_PORTAL_STATE.employees.find((emp) => String(emp.id) === String(id));
+            if (!employee) {
+                alert('Employee not found.');
+                return;
+            }
+            alert(
+                `Employee Details\n\nName: ${employee.name}\nEmployee ID: ${employee.employeeId || '—'}\nDepartment: ${employee.department || '—'}\nRole: ${employee.role || '—'}\nBranch: ${employee.branch || '—'}\nEmail: ${employee.email || '—'}\nPhone: ${employee.phone || '—'}\nHire Date: ${
+                    employee.hireDate ? new Date(employee.hireDate).toLocaleDateString() : '—'
+                }\nEmployment Type: ${employee.employmentType || '—'}\nPosition: ${employee.position || '—'}\nNotes: ${employee.notes || '—'}`
+            );
+        }
+
+        async function handleEmployeeDelete(id) {
+            if (!id) return;
+            if (!confirm('Are you sure you want to remove this employee?')) return;
+            try {
+                await apiRequest(`/employees?id=${encodeURIComponent(id)}`, 'DELETE');
+                HR_PORTAL_STATE.employees = HR_PORTAL_STATE.employees.filter((emp) => String(emp.id) !== String(id));
+                try {
+                    localStorage.setItem(HR_STORAGE_KEYS.cachedEmployees, JSON.stringify(HR_PORTAL_STATE.employees));
+                } catch (_) {}
+                renderEmployeeList();
+                populateEmployeeSelects();
+            } catch (error) {
+                console.error('Delete employee failed:', error);
+                alert(error?.message || 'Unable to delete employee.');
+            }
+        }
+
+        function showApplyLeave() {
+            populateEmployeeSelects();
+            const modal = document.getElementById('applyLeaveModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('applyLeaveForm');
+            if (form) form.reset();
+            const employeeSelect = document.getElementById('leaveEmployeeSelect');
+            if (employeeSelect) setTimeout(() => employeeSelect.focus(), 150);
+        }
+
+        async function handleApplyLeaveSubmit(event) {
+            event.preventDefault();
+            const submitBtn = event.submitter;
+            if (submitBtn) submitBtn.disabled = true;
+
+            const employeeId = document.getElementById('leaveEmployeeSelect')?.value || '';
+            const leaveType = document.getElementById('leaveType')?.value || '';
+            const startDate = document.getElementById('leaveStartDate')?.value || '';
+            const endDate = document.getElementById('leaveEndDate')?.value || '';
+            const reason = document.getElementById('leaveReason')?.value || '';
+
+            if (!employeeId || !leaveType || !startDate || !endDate) {
+                alert('Please complete all required fields.');
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const employee = HR_PORTAL_STATE.employees.find(
+                (emp) => String(emp.employeeId || emp.id) === String(employeeId)
+            );
+
+            const payload = {
+                employeeId,
+                employeeName: employee?.name || employeeId,
+                leaveType,
+                startDate,
+                endDate,
+                reason,
+                status: 'pending'
+            };
+
+            try {
+                const response = await apiRequest(LEAVE_API_ENDPOINT, 'POST', payload);
+                if (!response || response?.success === false) {
+                    throw new Error(response?.message || 'Unable to submit leave request.');
+                }
+                alert('Leave request submitted successfully.');
+            } catch (error) {
+                console.warn('Leave API unavailable, saving offline.', error?.message || error);
+                const normalized = normalizeLeaveRecord(payload, {
+                    defaultStaff: employeeId,
+                    defaultStaffName: employee?.name || employeeId,
+                    defaultBranch: employee?.branch || null,
+                    pendingSync: true,
+                    source: 'offline'
+                });
+                upsertLeaveCacheRecord(normalized);
+                enqueuePendingRequest(LEAVE_PENDING_QUEUE_KEY, {
+                    id: normalized.id,
+                    payload
+                });
+                alert('Leave request stored locally and will sync when back online.');
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+                closeModal('applyLeaveModal');
+                refreshLeaveList();
+            }
+        }
+
+        async function refreshLeaveList() {
+            const container = document.getElementById('leaveList');
+            if (!container) return;
+            container.innerHTML =
+                '<div class="loading" style="padding: 20px; text-align: center; color: #64748b;">Loading leave records…</div>';
+            try {
+                const records = await fetchLeaveRecordsIncludingOffline();
+                HR_PORTAL_STATE.leaveRecords = records;
+                renderLeaveList();
+            } catch (error) {
+                console.error('Unable to load leave records:', error);
+                container.innerHTML =
+                    '<p style="padding: 20px; text-align: center; color: #b91c1c;">Unable to load leave records. Please try again.</p>';
+            }
+        }
+
+        function renderLeaveList() {
+            const container = document.getElementById('leaveList');
+            if (!container) return;
+            const search = (document.getElementById('leaveSearch')?.value || '').trim().toLowerCase();
+            const statusFilter = (document.getElementById('leaveStatusFilter')?.value || 'all').toLowerCase();
+
+            const rows = HR_PORTAL_STATE.leaveRecords.filter((record) => {
+                const matchesStatus =
+                    statusFilter === 'all' ||
+                    statusFilter === (record.statusRaw || record.status || '').toLowerCase();
+                const haystack = [
+                    record.employee,
+                    record.staff,
+                    record.branch,
+                    record.reason,
+                    record.type
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                const matchesSearch = search ? haystack.includes(search) : true;
+                return matchesStatus && matchesSearch;
+            });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #f8fafc; border: 1px dashed #cbd5f5; border-radius: 8px; color: #64748b;">No leave records found.</div>';
+                return;
+            }
+
+            const htmlRows = rows
+                .map((record) => {
+                    const start = record.startDate ? new Date(record.startDate).toLocaleDateString() : '—';
+                    const end = record.endDate ? new Date(record.endDate).toLocaleDateString() : '—';
+                    const status = (record.status || record.statusRaw || 'pending').toLowerCase();
+                    const statusColor =
+                        status === 'approved'
+                            ? '#16a34a'
+                            : status === 'rejected'
+                            ? '#dc2626'
+                            : '#f59e0b';
+                    return `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                            <div style="font-weight: 600; color: #0f172a;">${escapeHtml(record.employee || record.staff || 'Unknown')}</div>
+                            <div style="font-size: 0.75rem; color: #64748b;">${escapeHtml(record.branch || '—')}</div>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${escapeHtml(record.type || 'General Leave')}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${start}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${end}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                            <span style="display: inline-block; padding: 6px 12px; border-radius: 999px; background: ${statusColor}; color: white; font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(record.status || 'Pending')}</span>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem; color: #475569;">${escapeHtml(record.reason || '—')}</td>
+                    </tr>
+                `;
+                })
+                .join('');
+
+            container.innerHTML = `
+                <div class="scroll-x" style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; color: #1e293b;">
+                                <th style="padding: 10px; text-align: left;">Employee</th>
+                                <th style="padding: 10px; text-align: left;">Leave Type</th>
+                                <th style="padding: 10px; text-align: left;">Start</th>
+                                <th style="padding: 10px; text-align: left;">End</th>
+                                <th style="padding: 10px; text-align: left;">Status</th>
+                                <th style="padding: 10px; text-align: left;">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>${htmlRows}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function loadWarningsFromStorage() {
+            try {
+                const raw = localStorage.getItem(HR_STORAGE_KEYS.warnings);
+                return Array.isArray(JSON.parse(raw || '[]')) ? JSON.parse(raw || '[]') : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveWarningsToStorage(list) {
+            try {
+                localStorage.setItem(HR_STORAGE_KEYS.warnings, JSON.stringify(Array.isArray(list) ? list : []));
+            } catch (_) {}
+        }
+
+        function refreshWarningList() {
+            HR_PORTAL_STATE.warnings = loadWarningsFromStorage();
+            const container = document.getElementById('warningList');
+            if (!container) return;
+
+            const search = (document.getElementById('warningSearch')?.value || '').trim().toLowerCase();
+            const typeFilter = (document.getElementById('warningTypeFilter')?.value || '').toLowerCase();
+
+            const rows = HR_PORTAL_STATE.warnings
+                .slice()
+                .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+                .filter((warning) => {
+                    const matchesType = !typeFilter || (warning.type || '').toLowerCase() === typeFilter;
+                    const haystack = `${warning.employee || ''} ${warning.reason || ''} ${warning.issuedBy || ''}`.toLowerCase();
+                    const matchesSearch = search ? haystack.includes(search) : true;
+                    return matchesType && matchesSearch;
+                });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #fefce8; border: 1px dashed #facc15; border-radius: 8px; color: #ca8a04;">No warnings recorded yet.</div>';
+                return;
+            }
+
+            const htmlRows = rows
+                .map((warning) => {
+                    const type = warning.type || 'General';
+                    const color =
+                        type === 'Final' ? '#ef4444' : type === 'Written' ? '#f59e0b' : '#3b82f6';
+                    return `
+                        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+                                <div>
+                                    <div style="font-weight: 600; color: #0f172a;">${escapeHtml(warning.employee || 'Unknown')}</div>
+                                    <div style="font-size: 0.8rem; color: #64748b;">Issued by ${escapeHtml(warning.issuedBy || '—')} • ${
+                        warning.date ? new Date(warning.date).toLocaleDateString() : 'Date not set'
+                    }</div>
+                                </div>
+                                <span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: ${color}; color: white; font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(type)}</span>
+                            </div>
+                            <p style="margin: 12px 0 0; color: #475569;">${escapeHtml(warning.reason || '')}</p>
+                            ${warning.notes ? `<p style="margin: 8px 0 0; color: #64748b; font-size: 0.85rem;">${escapeHtml(warning.notes)}</p>` : ''}
+                            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="btn" data-warning-action="view" data-warning-id="${escapeHtml(warning.id)}">View</button>
+                                <button class="btn btn-danger" data-warning-action="delete" data-warning-id="${escapeHtml(warning.id)}">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                })
+                .join('');
+
+            container.innerHTML = htmlRows;
+            container.querySelectorAll('[data-warning-action]').forEach((btn) => {
+                const action = btn.getAttribute('data-warning-action');
+                const id = btn.getAttribute('data-warning-id');
+                if (action === 'view') {
+                    btn.addEventListener('click', () => viewWarning(id));
+                } else if (action === 'delete') {
+                    btn.addEventListener('click', () => deleteWarning(id));
+                }
+            });
+        }
+
+        function showIssueWarning() {
+            populateEmployeeSelects();
+            const modal = document.getElementById('issueWarningModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('issueWarningForm');
+            if (form) form.reset();
+            const issuedBy = document.getElementById('warningIssuedBy');
+            if (issuedBy && currentUser?.fullName) {
+                issuedBy.value = currentUser.fullName;
+            }
+            const select = document.getElementById('warningEmployeeSelect');
+            if (select) setTimeout(() => select.focus(), 150);
+        }
+
+        function handleIssueWarningSubmit(event) {
+            event.preventDefault();
+            const employeeId = document.getElementById('warningEmployeeSelect')?.value || '';
+            const employee = HR_PORTAL_STATE.employees.find(
+                (emp) => String(emp.employeeId || emp.id) === String(employeeId)
+            );
+            const warning = {
+                id: `WARN-${Date.now()}`,
+                employeeId,
+                employee: employee?.name || employeeId,
+                type: document.getElementById('warningType')?.value || 'General',
+                date: document.getElementById('warningDate')?.value || new Date().toISOString().slice(0, 10),
+                issuedBy: document.getElementById('warningIssuedBy')?.value || currentUser?.fullName || 'HR',
+                reason: document.getElementById('warningReason')?.value || '',
+                notes: document.getElementById('warningNotes')?.value || '',
+                createdAt: new Date().toISOString()
+            };
+            HR_PORTAL_STATE.warnings = loadWarningsFromStorage();
+            HR_PORTAL_STATE.warnings.push(warning);
+            saveWarningsToStorage(HR_PORTAL_STATE.warnings);
+            closeModal('issueWarningModal');
+            refreshWarningList();
+            alert('Warning recorded successfully.');
+        }
+
+        function viewWarning(id) {
+            const warning = HR_PORTAL_STATE.warnings.find((item) => String(item.id) === String(id));
+            if (!warning) {
+                alert('Warning not found.');
+                return;
+            }
+            alert(
+                `Warning Details\n\nEmployee: ${warning.employee}\nType: ${warning.type}\nDate: ${
+                    warning.date ? new Date(warning.date).toLocaleDateString() : '—'
+                }\nIssued By: ${warning.issuedBy || '—'}\n\nReason:\n${warning.reason || '—'}\n\nNotes:\n${warning.notes || 'None'}`
+            );
+        }
+
+        function deleteWarning(id) {
+            if (!confirm('Delete this warning?')) return;
+            HR_PORTAL_STATE.warnings = HR_PORTAL_STATE.warnings.filter((item) => String(item.id) !== String(id));
+            saveWarningsToStorage(HR_PORTAL_STATE.warnings);
+            refreshWarningList();
+        }
+
+        function loadTerminationsFromStorage() {
+            try {
+                return JSON.parse(localStorage.getItem(HR_STORAGE_KEYS.terminations) || '[]');
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveTerminationsToStorage(list) {
+            try {
+                localStorage.setItem(HR_STORAGE_KEYS.terminations, JSON.stringify(Array.isArray(list) ? list : []));
+            } catch (_) {}
+        }
+
+        function showTerminateEmployee() {
+            populateEmployeeSelects();
+            const modal = document.getElementById('terminateEmployeeModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('terminateEmployeeForm');
+            if (form) form.reset();
+            const select = document.getElementById('terminationEmployeeSelect');
+            if (select) setTimeout(() => select.focus(), 150);
+        }
+
+        function handleTerminateEmployeeSubmit(event) {
+            event.preventDefault();
+            HR_PORTAL_STATE.terminations = loadTerminationsFromStorage();
+            const employeeId = document.getElementById('terminationEmployeeSelect')?.value || '';
+            const employee = HR_PORTAL_STATE.employees.find(
+                (emp) => String(emp.employeeId || emp.id) === String(employeeId)
+            );
+            const termination = {
+                id: `TERM-${Date.now()}`,
+                employeeId,
+                employee: employee?.name || employeeId,
+                date: document.getElementById('terminationDate')?.value || new Date().toISOString().slice(0, 10),
+                type: document.getElementById('terminationType')?.value || 'Resignation',
+                reason: document.getElementById('terminationReason')?.value || '',
+                noticePeriod: document.getElementById('noticePeriod')?.value || '',
+                notes: document.getElementById('terminationNotes')?.value || '',
+                createdAt: new Date().toISOString()
+            };
+            HR_PORTAL_STATE.terminations.push(termination);
+            saveTerminationsToStorage(HR_PORTAL_STATE.terminations);
+            closeModal('terminateEmployeeModal');
+            refreshTerminationList();
+            alert('Termination recorded successfully.');
+        }
+
+        function refreshTerminationList() {
+            HR_PORTAL_STATE.terminations = loadTerminationsFromStorage();
+            const container = document.getElementById('terminationList');
+            if (!container) return;
+
+            const search = (document.getElementById('terminationSearch')?.value || '').trim().toLowerCase();
+            const typeFilter = (document.getElementById('terminationReasonFilter')?.value || '').toLowerCase();
+
+            const rows = HR_PORTAL_STATE.terminations
+                .slice()
+                .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+                .filter((record) => {
+                    const matchesType = !typeFilter || (record.type || '').toLowerCase() === typeFilter;
+                    const haystack = `${record.employee || ''} ${record.reason || ''}`.toLowerCase();
+                    const matchesSearch = search ? haystack.includes(search) : true;
+                    return matchesType && matchesSearch;
+                });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #fef2f2; border: 1px dashed #fca5a5; border-radius: 8px; color: #b91c1c;">No terminations recorded.</div>';
+                return;
+            }
+
+            container.innerHTML = rows
+                .map(
+                    (record) => `
+                    <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white;">
+                        <div style="display:flex; justify-content: space-between; align-items: start; gap: 12px;">
+                            <div>
+                                <div style="font-weight: 600; color: #0f172a;">${escapeHtml(record.employee || 'Unknown')}</div>
+                                <div style="font-size: 0.8rem; color: #64748b;">${record.date ? new Date(record.date).toLocaleDateString() : '—'} • ${escapeHtml(record.type || 'Termination')}</div>
+                            </div>
+                            <button class="btn btn-danger" data-termination-id="${escapeHtml(record.id)}">Delete</button>
+                        </div>
+                        <p style="margin: 12px 0 0; color: #475569;">${escapeHtml(record.reason || '')}</p>
+                        ${record.notes ? `<p style="margin: 8px 0 0; color: #64748b; font-size: 0.85rem;">${escapeHtml(record.notes)}</p>` : ''}
+                    </div>
+                `
+                )
+                .join('');
+
+            container.querySelectorAll('button[data-termination-id]').forEach((btn) => {
+                const id = btn.getAttribute('data-termination-id');
+                btn.addEventListener('click', () => deleteTermination(id));
+            });
+        }
+
+        function deleteTermination(id) {
+            if (!confirm('Delete this termination record?')) return;
+            HR_PORTAL_STATE.terminations = HR_PORTAL_STATE.terminations.filter((item) => String(item.id) !== String(id));
+            saveTerminationsToStorage(HR_PORTAL_STATE.terminations);
+            refreshTerminationList();
+        }
+
+        function loadAttendanceFromStorage() {
+            try {
+                return JSON.parse(localStorage.getItem(HR_STORAGE_KEYS.attendance) || '[]');
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveAttendanceToStorage(list) {
+            try {
+                localStorage.setItem(HR_STORAGE_KEYS.attendance, JSON.stringify(Array.isArray(list) ? list : []));
+            } catch (_) {}
+        }
+
+        function showRecordAttendance() {
+            populateEmployeeSelects();
+            const modal = document.getElementById('recordAttendanceModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('recordAttendanceForm');
+            if (form) form.reset();
+            const select = document.getElementById('attendanceEmployeeSelect');
+            if (select) setTimeout(() => select.focus(), 150);
+        }
+
+        function handleAttendanceSubmit(event) {
+            event.preventDefault();
+            HR_PORTAL_STATE.attendance = loadAttendanceFromStorage();
+
+            const employeeId = document.getElementById('attendanceEmployeeSelect')?.value || '';
+            const employee = HR_PORTAL_STATE.employees.find(
+                (emp) => String(emp.employeeId || emp.id) === String(employeeId)
+            );
+            const attendance = {
+                id: `ATT-${Date.now()}`,
+                employeeId,
+                employee: employee?.name || employeeId,
+                date: document.getElementById('attendanceDate')?.value || new Date().toISOString().slice(0, 10),
+                status: document.getElementById('attendanceStatus')?.value || 'Present',
+                checkIn: document.getElementById('checkInTime')?.value || '',
+                checkOut: document.getElementById('checkOutTime')?.value || '',
+                notes: document.getElementById('attendanceNotes')?.value || '',
+                createdAt: new Date().toISOString()
+            };
+
+            HR_PORTAL_STATE.attendance.push(attendance);
+            saveAttendanceToStorage(HR_PORTAL_STATE.attendance);
+            closeModal('recordAttendanceModal');
+            refreshAttendanceList();
+            alert('Attendance recorded.');
+        }
+
+        function refreshAttendanceList() {
+            HR_PORTAL_STATE.attendance = loadAttendanceFromStorage();
+            const container = document.getElementById('attendanceList');
+            if (!container) return;
+
+            const search = (document.getElementById('attendanceSearch')?.value || '').trim().toLowerCase();
+            const dateFilter = document.getElementById('attendanceDateFilter')?.value || '';
+            const statusFilter = (document.getElementById('attendanceStatusFilter')?.value || 'all').toLowerCase();
+
+            const rows = HR_PORTAL_STATE.attendance
+                .slice()
+                .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+                .filter((record) => {
+                    const matchesStatus =
+                        statusFilter === 'all' || (record.status || '').toLowerCase() === statusFilter;
+                    const matchesDate = !dateFilter || record.date === dateFilter;
+                    const haystack = `${record.employee || ''} ${record.notes || ''}`.toLowerCase();
+                    const matchesSearch = search ? haystack.includes(search) : true;
+                    return matchesStatus && matchesDate && matchesSearch;
+                });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #eff6ff; border: 1px dashed #93c5fd; border-radius: 8px; color: #2563eb;">No attendance records.</div>';
+                return;
+            }
+
+            container.innerHTML = rows
+                .map(
+                    (record) => `
+                    <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white;">
+                        <div style="display:flex; justify-content: space-between; align-items: start; gap: 12px;">
+                            <div>
+                                <div style="font-weight: 600; color: #0f172a;">${escapeHtml(record.employee || 'Unknown')}</div>
+                                <div style="font-size: 0.8rem; color: #64748b;">${record.date ? new Date(record.date).toLocaleDateString() : '—'}</div>
+                            </div>
+                            <span style="display: inline-flex; padding: 6px 10px; border-radius: 999px; background: #0ea5e9; color: white; font-size: 0.75rem;">${escapeHtml(record.status || 'present')}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #475569; margin-top: 6px;">${record.checkIn ? `In: ${escapeHtml(record.checkIn)}` : ''} ${record.checkOut ? `• Out: ${escapeHtml(record.checkOut)}` : ''}</div>
+                        ${record.notes ? `<p style="margin-top: 8px; color: #64748b; font-size: 0.85rem;">${escapeHtml(record.notes)}</p>` : ''}
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-danger" data-attendance-id="${escapeHtml(record.id)}">Delete</button>
+                        </div>
+                    </div>
+                `
+                )
+                .join('');
+
+            container.querySelectorAll('button[data-attendance-id]').forEach((btn) => {
+                const id = btn.getAttribute('data-attendance-id');
+                btn.addEventListener('click', () => deleteAttendanceRecord(id));
+            });
+        }
+
+        function deleteAttendanceRecord(id) {
+            if (!confirm('Delete this attendance record?')) return;
+            HR_PORTAL_STATE.attendance = HR_PORTAL_STATE.attendance.filter((item) => String(item.id) !== String(id));
+            saveAttendanceToStorage(HR_PORTAL_STATE.attendance);
+            refreshAttendanceList();
+        }
+
+        function loadPerformanceFromStorage() {
+            try {
+                return JSON.parse(localStorage.getItem(HR_STORAGE_KEYS.performance) || '[]');
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function savePerformanceToStorage(list) {
+            try {
+                localStorage.setItem(HR_STORAGE_KEYS.performance, JSON.stringify(Array.isArray(list) ? list : []));
+            } catch (_) {}
+        }
+
+        function showAddPerformanceReview() {
+            populateEmployeeSelects();
+            const modal = document.getElementById('addPerformanceReviewModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const form = document.getElementById('addPerformanceReviewForm');
+            if (form) form.reset();
+            const select = document.getElementById('performanceEmployeeSelect');
+            if (select) setTimeout(() => select.focus(), 150);
+        }
+
+        function handlePerformanceReviewSubmit(event) {
+            event.preventDefault();
+            HR_PORTAL_STATE.performance = loadPerformanceFromStorage();
+            const employeeId = document.getElementById('performanceEmployeeSelect')?.value || '';
+            const employee = HR_PORTAL_STATE.employees.find(
+                (emp) => String(emp.employeeId || emp.id) === String(employeeId)
+            );
+
+            const review = {
+                id: `PERF-${Date.now()}`,
+                employeeId,
+                employee: employee?.name || employeeId,
+                reviewStart: document.getElementById('reviewStartDate')?.value || null,
+                reviewEnd: document.getElementById('reviewEndDate')?.value || null,
+                reviewedBy: document.getElementById('reviewedBy')?.value || currentUser?.fullName || 'Supervisor',
+                rating: document.getElementById('overallRating')?.value || 'Average',
+                strengths: document.getElementById('strengths')?.value || '',
+                improvements: document.getElementById('improvements')?.value || '',
+                goals: document.getElementById('goals')?.value || '',
+                comments: document.getElementById('reviewComments')?.value || '',
+                createdAt: new Date().toISOString()
+            };
+
+            HR_PORTAL_STATE.performance.push(review);
+            savePerformanceToStorage(HR_PORTAL_STATE.performance);
+            closeModal('addPerformanceReviewModal');
+            refreshPerformanceList();
+            alert('Performance review saved.');
+        }
+
+        function refreshPerformanceList() {
+            HR_PORTAL_STATE.performance = loadPerformanceFromStorage();
+            const container = document.getElementById('performanceList');
+            if (!container) return;
+            const search = (document.getElementById('performanceSearch')?.value || '').trim().toLowerCase();
+
+            const rows = HR_PORTAL_STATE.performance
+                .slice()
+                .sort((a, b) => new Date(b.reviewEnd || b.createdAt || 0) - new Date(a.reviewEnd || a.createdAt || 0))
+                .filter((record) => {
+                    const haystack = `${record.employee || ''} ${record.reviewedBy || ''} ${record.comments || ''}`.toLowerCase();
+                    return search ? haystack.includes(search) : true;
+                });
+
+            if (!rows.length) {
+                container.innerHTML =
+                    '<div style="padding: 18px; background: #f8fafc; border: 1px dashed #cbd5f5; border-radius: 8px; color: #64748b;">No performance reviews logged.</div>';
+                return;
+            }
+
+            container.innerHTML = rows
+                .map(
+                    (record) => `
+                        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white;">
+                            <div style="display:flex; justify-content: space-between; align-items: start; gap: 12px;">
+                                <div>
+                                    <div style="font-weight: 600; color: #0f172a;">${escapeHtml(record.employee || 'Unknown')}</div>
+                                    <div style="font-size: 0.8rem; color: #64748b;">Reviewed by ${escapeHtml(record.reviewedBy || '—')}</div>
+                                </div>
+                                <span style="display:inline-flex; padding:6px 10px; border-radius: 999px; background:#6366f1; color:white; font-size:0.75rem;">${escapeHtml(record.rating || 'Average')}</span>
+                            </div>
+                            <p style="margin: 10px 0 0; color: #475569;">
+                                ${record.reviewStart ? new Date(record.reviewStart).toLocaleDateString() : '—'} to
+                                ${record.reviewEnd ? new Date(record.reviewEnd).toLocaleDateString() : '—'}
+                            </p>
+                            ${record.comments ? `<p style="margin: 8px 0 0; color: #64748b; font-size: 0.85rem;">${escapeHtml(record.comments)}</p>` : ''}
+                        </div>
+                    `
+                )
+                .join('');
+        }
+
+        window.showAddEmployee = showAddEmployee;
+        window.refreshEmployeeList = () => loadEmployees({ force: true });
+        window.showApplyLeave = showApplyLeave;
+        window.showIssueWarning = showIssueWarning;
+        window.showTerminateEmployee = showTerminateEmployee;
+        window.showRecordAttendance = showRecordAttendance;
+        window.showAddPerformanceReview = showAddPerformanceReview;
+        window.initHRPortal = initHRPortal;
+        window.showHRSubTab = showHRSubTab;
+
         function setGlobalDistributor(info) {
             try {
                 globalDistributor = {
