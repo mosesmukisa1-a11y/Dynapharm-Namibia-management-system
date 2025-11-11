@@ -5,6 +5,27 @@ let filteredDistributors = [];
 let distributorIndex = {};
 let currentDistributorSelection = null;
 let distributorAuthMode = "login";
+
+const LOGIN_REQUEST_TIMEOUT_MS = Number(window.DYNAPHARM_LOGIN_TIMEOUT_MS || 9000);
+
+function prewarmAuthEndpoint() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  fetch("/api/health?scope=auth", {
+    method: "GET",
+    cache: "no-store",
+    credentials: "omit",
+    signal: controller.signal
+  }).catch(() => {
+    /* Prewarm best-effort */
+  }).finally(() => clearTimeout(timeout));
+}
+
+if (document.readyState === "complete") {
+  setTimeout(prewarmAuthEndpoint, 1500);
+} else {
+  window.addEventListener("load", () => setTimeout(prewarmAuthEndpoint, 1500));
+}
 let users = [];
 
 function normaliseApiBase(base) {
@@ -755,6 +776,9 @@ function findLocalUserByCredentials(username, password) {
 }
 
 async function authenticateViaApi(username, password) {
+  const startedAt = performance.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LOGIN_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch("/api/auth/login", {
       method: "POST",
@@ -762,15 +786,24 @@ async function authenticateViaApi(username, password) {
         "Content-Type": "application/json"
       },
       credentials: "include",
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password }),
+      signal: controller.signal
     });
 
     if (response.ok) {
       const payload = await response.json().catch(() => null);
       if (payload?.success && payload.user) {
-        return { success: true, user: payload.user };
+        return {
+          success: true,
+          user: payload.user,
+          durationMs: performance.now() - startedAt
+        };
       }
-      return { success: false, message: "Unexpected authentication response." };
+      return {
+        success: false,
+        message: "Unexpected authentication response.",
+        durationMs: performance.now() - startedAt
+      };
     }
 
     let message = "Unable to sign in. Please check your credentials.";
@@ -784,7 +817,12 @@ async function authenticateViaApi(username, password) {
     }
 
     const transientStatuses = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
-    const result = { success: false, message, status: response.status };
+    const result = {
+      success: false,
+      message,
+      status: response.status,
+      durationMs: performance.now() - startedAt
+    };
     if (response.status >= 500 || transientStatuses.has(response.status)) {
       result.networkError = true;
       result.message =
@@ -792,12 +830,25 @@ async function authenticateViaApi(username, password) {
     }
     return result;
   } catch (error) {
+    if (error.name === "AbortError") {
+      const duration = performance.now() - startedAt;
+      return {
+        success: false,
+        message: `Login request timed out after ${Math.round(duration / 1000)}s. Trying cached credentials if available.`,
+        networkError: true,
+        timeout: true,
+        durationMs: duration
+      };
+    }
     console.warn("Authentication service unreachable, falling back to local cache.", error);
     return {
       success: false,
       message: "Unable to reach authentication service. Please try again.",
-      networkError: true
+      networkError: true,
+      durationMs: performance.now() - startedAt
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -1643,6 +1694,18 @@ async function handleStaffLogin() {
   }
 
   const apiResult = await authenticateViaApi(username, password);
+  if (Number.isFinite(apiResult.durationMs)) {
+    console.info(
+      `Staff auth attempt completed in ${Math.round(apiResult.durationMs)}ms`,
+      apiResult.success ? "✅" : "⚠️"
+    );
+  }
+  if (Number.isFinite(apiResult.durationMs)) {
+    console.info(
+      `Admin auth attempt completed in ${Math.round(apiResult.durationMs)}ms`,
+      apiResult.success ? "✅" : "⚠️"
+    );
+  }
 
   if (apiResult.success && apiResult.user) {
     finalizeUserSession(apiResult.user);
