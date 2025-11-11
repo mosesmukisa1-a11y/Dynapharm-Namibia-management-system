@@ -4178,6 +4178,7 @@
                                 <input type="text" id="landingShopSearch" placeholder="Search products..." onkeyup="filterShopProducts()" style="padding: 12px; width: 100%; border: 2px solid #ddd; border-radius: 8px; font-size: 1rem;">
                             </div>
                         </div>
+                        <div id="landingShopCategoryFilters" class="shop-category-bar"></div>
                     </div>
                     
                     <!-- Products Grid -->
@@ -4245,6 +4246,173 @@
         input, select, textarea { min-height: 44px; font-size: 16px; /* Prevents iOS zoom */ }
         /* Scroll wrappers for wide content on mobile */
         .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .shop-category-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 18px;
+        }
+        .shop-category-chip {
+            border: 1px solid #c41e3a;
+            background: white;
+            color: #c41e3a;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .shop-category-chip:hover,
+        .shop-category-chip.active {
+            background: #c41e3a;
+            color: white;
+            box-shadow: 0 4px 12px rgba(196, 30, 58, 0.25);
+        }
+        .product-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #eee;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+        }
+        .product-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 32px rgba(0,0,0,0.12);
+        }
+        .product-media {
+            position: relative;
+            background: linear-gradient(135deg, #f6f8fb 0%, #ffffff 100%);
+        }
+        .product-image {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.25s ease;
+        }
+        .product-card:hover .product-image {
+            transform: scale(1.03);
+        }
+        .product-info {
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .product-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .product-name {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #1f2933;
+            flex: 1;
+        }
+        .product-category-pill {
+            background: #eef2ff;
+            color: #3730a3;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+        .product-availability {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: #f1f5f9;
+            color: #1f2937;
+        }
+        .product-availability::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .availability-in_stock {
+            background: #ecfdf5;
+            color: #047857;
+        }
+        .availability-low_stock {
+            background: #fff7ed;
+            color: #c2410c;
+        }
+        .availability-out_of_stock {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        .availability-unknown {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+        .product-expiry {
+            font-size: 0.85rem;
+            color: #92400e;
+            background: #fff7ed;
+            padding: 6px 10px;
+            border-radius: 8px;
+        }
+        .product-price {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #c41e3a;
+        }
+        .product-ribbons {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 2;
+        }
+        .product-ribbon {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .product-ribbon.new { background: #2563eb; }
+        .product-ribbon.trending { background: #7c3aed; }
+        .product-ribbon.warning { background: #b91c1c; }
+        .product-cart-button {
+            width: 100%;
+            margin-top: 10px;
+            background: var(--brand-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+        .product-cart-button:hover {
+            background: #a4162d;
+            transform: translateY(-1px);
+        }
         
         /* Enhanced Mobile Responsive Styles */
         @media (max-width: 768px) {
@@ -4645,6 +4813,7 @@
                             <input type="text" id="shopSearch" placeholder="Search products..." onkeyup="filterShopProducts()" style="padding: 10px; width: 100%;">
                         </div>
                     </div>
+                    <div id="shopCategoryFilters" class="shop-category-bar"></div>
                 </div>
                 
                 <!-- Media Preview Widget -->
@@ -26320,39 +26489,55 @@ async function reverseLastPrescriptionPayment(reportId){
             const resultsDiv = document.getElementById('uplineSearchResults');
             if (!input || !resultsDiv) return;
 
-            await renderDistributorSearchResults(input, resultsDiv, {
-                limit: 5,
-                onSelect: (record) => {
-                    const code = record.distributorCode || record.id || '';
-                    const name = record.distributorName || record.name || code;
-                    const phone = record.mobileNo || record.mobile_no || record.mobile || '';
-                    selectUplineDistributor(code, name, phone, record.id || code);
-                    resultsDiv.style.display = 'none';
-                }
-            });
-        }
+            const searchTerm = (input.value || '').trim();
+            if (typeof renderDistributorSearchResults === 'function') {
+                await renderDistributorSearchResults(input, resultsDiv, {
+                    limit: 5,
+                    onSelect: (record) => {
+                        const code = record.distributorCode || record.id || '';
+                        const name = record.distributorName || record.name || code;
+                        const phone =
+                            record.mobileNo || record.mobile_no || record.mobile || '';
+                        selectUplineDistributor(code, name, phone, record.id || code);
+                        resultsDiv.style.display = 'none';
+                    }
+                });
+                return;
+            }
+
+            const normalizedTerm = searchTerm.toUpperCase();
+            if (normalizedTerm.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
 
             try {
-                const response = await fetch(`/api/distributors?search=${encodeURIComponent(searchTerm)}`);
+                const response = await fetch(
+                    `/api/distributors?search=${encodeURIComponent(searchTerm)}`
+                );
                 if (!response.ok) throw new Error('Search failed');
-                
+
                 const distributors = await response.json();
-                const filtered = distributors.filter(d => {
-                    const code = (d.distributor_code || d.distributorCode || '').toUpperCase();
-                    const name = (d.distributor_name || d.distributorName || '').toUpperCase();
-                    return code.includes(searchTerm) || name.includes(searchTerm);
-                }).slice(0, 5);
-                
+                const filtered = distributors
+                    .filter((d) => {
+                        const code = (d.distributor_code || d.distributorCode || '').toUpperCase();
+                        const name = (d.distributor_name || d.distributorName || '').toUpperCase();
+                        return code.includes(normalizedTerm) || name.includes(normalizedTerm);
+                    })
+                    .slice(0, 5);
+
                 if (filtered.length === 0) {
                     resultsDiv.style.display = 'none';
                     return;
                 }
-                
-                resultsDiv.innerHTML = filtered.map(dist => {
-                    const code = dist.distributor_code || dist.distributorCode || '';
-                    const name = dist.distributor_name || dist.distributorName || '';
-                    return `<div style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onclick="selectUplineDistributor('${code}', '${name.replace(/'/g, "\\'")}')">${code} - ${name}</div>`;
-                }).join('');
+
+                resultsDiv.innerHTML = filtered
+                    .map((dist) => {
+                        const code = dist.distributor_code || dist.distributorCode || '';
+                        const name = dist.distributor_name || dist.distributorName || '';
+                        return `<div style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onclick="selectUplineDistributor('${code}', '${name.replace(/'/g, "\\'")}')">${code} - ${name}</div>`;
+                    })
+                    .join('');
                 resultsDiv.style.display = 'block';
             } catch (error) {
                 console.error('Error searching upline:', error);
@@ -26371,44 +26556,61 @@ async function reverseLastPrescriptionPayment(reportId){
             if (resultsDiv) resultsDiv.style.display = 'none';
         }
         
+        
         async function searchSponsorDistributor() {
             const input = document.getElementById('sponsorIdNo');
             const resultsDiv = document.getElementById('sponsorSearchResults');
             if (!input || !resultsDiv) return;
 
-            await renderDistributorSearchResults(input, resultsDiv, {
-                limit: 5,
-                onSelect: (record) => {
-                    const code = record.distributorCode || record.id || '';
-                    const name = record.distributorName || record.name || code;
-                    const phone = record.mobileNo || record.mobile_no || record.mobile || '';
-                    selectSponsorDistributor(code, name, phone, record.id || code);
-                    resultsDiv.style.display = 'none';
-                }
-            });
-        }
+            const searchTerm = (input.value || '').trim();
+            if (typeof renderDistributorSearchResults === 'function') {
+                await renderDistributorSearchResults(input, resultsDiv, {
+                    limit: 5,
+                    onSelect: (record) => {
+                        const code = record.distributorCode || record.id || '';
+                        const name = record.distributorName || record.name || code;
+                        const phone =
+                            record.mobileNo || record.mobile_no || record.mobile || '';
+                        selectSponsorDistributor(code, name, phone, record.id || code);
+                        resultsDiv.style.display = 'none';
+                    }
+                });
+                return;
+            }
+
+            const normalizedTerm = searchTerm.toUpperCase();
+            if (normalizedTerm.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
 
             try {
-                const response = await fetch(`/api/distributors?search=${encodeURIComponent(searchTerm)}`);
+                const response = await fetch(
+                    `/api/distributors?search=${encodeURIComponent(searchTerm)}`
+                );
                 if (!response.ok) throw new Error('Search failed');
-                
+
                 const distributors = await response.json();
-                const filtered = distributors.filter(d => {
-                    const code = (d.distributor_code || d.distributorCode || '').toUpperCase();
-                    const name = (d.distributor_name || d.distributorName || '').toUpperCase();
-                    return code.includes(searchTerm) || name.includes(searchTerm);
-                }).slice(0, 5);
-                
+                const filtered = distributors
+                    .filter((d) => {
+                        const code = (d.distributor_code || d.distributorCode || '').toUpperCase();
+                        const name = (d.distributor_name || d.distributorName || '').toUpperCase();
+                        return code.includes(normalizedTerm) || name.includes(normalizedTerm);
+                    })
+                    .slice(0, 5);
+
                 if (filtered.length === 0) {
                     resultsDiv.style.display = 'none';
                     return;
                 }
-                
-                resultsDiv.innerHTML = filtered.map(dist => {
-                    const code = dist.distributor_code || dist.distributorCode || '';
-                    const name = dist.distributor_name || dist.distributorName || '';
-                    return `<div style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onclick="selectSponsorDistributor('${code}', '${name.replace(/'/g, "\\'")}')">${code} - ${name}</div>`;
-                }).join('');
+
+                resultsDiv.innerHTML = filtered
+                    .map((dist) => {
+                        const code = dist.distributor_code || dist.distributorCode || '';
+                        const name = dist.distributor_name || dist.distributorName || '';
+                        return `<div style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onclick="selectSponsorDistributor('${code}', '${name.replace(/'/g, "\\'")}')">${code} - ${name}</div>`;
+                    })
+                    .join('');
                 resultsDiv.style.display = 'block';
             } catch (error) {
                 console.error('Error searching sponsor:', error);
@@ -27192,10 +27394,6 @@ async function reverseLastPrescriptionPayment(reportId){
                         selectFieldProgramDistributor(code, name, phone, record.id || code);
                     }
                     dropdown.style.display = 'none';
-                }
-            });
-        }
-
                 }
             });
         }
@@ -33053,7 +33251,7 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
         });
         }
 
-        async async function addBranch() {
+        async function addBranch() {
             const nameInput = document.getElementById('newBranchName');
             const locationInput = document.getElementById('newBranchLocation');
             const phoneInput = document.getElementById('newBranchPhone');
@@ -33103,7 +33301,7 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
             });
         }
 
-        async async function deleteBranch(branchId) {
+        async function deleteBranch(branchId) {
             if (!branchId) return;
             if (!confirm('Delete branch?')) return;
             try {
@@ -33121,5 +33319,3 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 alert('Failed to delete branch. Please try again.');
             }
         }
-
-        >

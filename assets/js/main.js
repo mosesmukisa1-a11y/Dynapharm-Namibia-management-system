@@ -1812,6 +1812,446 @@ function getShopCartViews() {
   ].filter((view) => view.section && view.items && view.total);
 }
 
+const SHOP_INTERACTION_STORAGE_KEY = "dyna_shop_interactions";
+const SHOP_CATEGORY_BAR_IDS = ["landingShopCategoryFilters", "shopCategoryFilters"];
+const SHOP_IMAGE_CACHE = new Map();
+const shopProductIndex = new Map();
+const shopNameIndex = new Map();
+const shopFilterState = {
+  search: "",
+  category: ""
+};
+let trendingProductIds = new Set();
+
+function buildTrackingKey(value) {
+  if (!value) {
+    return `product-${Math.random().toString(36).slice(2, 10)}`;
+  }
+  const normalized = value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  return normalized || `product-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toValidDataUrl(data, fallbackType = "image/jpeg") {
+  if (!data || typeof data !== "string") return null;
+  const trimmed = data.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("data:image/")) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/\//.test(trimmed)) {
+    return `${window.location?.protocol || "https:"}${trimmed}`;
+  }
+  const base64Pattern = /^[A-Za-z0-9+/=]+$/;
+  if (trimmed.length > 50 && base64Pattern.test(trimmed.replace(/\s+/g, ""))) {
+    return `data:${fallbackType};base64,${trimmed}`;
+  }
+  return trimmed;
+}
+
+function resolveProductImage(raw) {
+  if (!raw) return null;
+  const cacheKey =
+    raw.id ||
+    raw.product_id ||
+    raw.sku ||
+    raw.code ||
+    raw.name ||
+    raw.product_name ||
+    raw.description;
+  if (cacheKey) {
+    const cached = SHOP_IMAGE_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached || null;
+  }
+
+  const candidates = [];
+  if (raw.image_url || raw.imageUrl) candidates.push(raw.image_url || raw.imageUrl);
+  if (raw.image) candidates.push(raw.image);
+  if (raw.photo) candidates.push(raw.photo);
+  if (raw.thumbnail_url) candidates.push(raw.thumbnail_url);
+  if (raw.images && Array.isArray(raw.images)) {
+    const primary = raw.images.find((img) => img.is_primary);
+    if (primary) {
+      candidates.push(primary.image_data || primary.image_url || primary.url);
+    }
+    raw.images.forEach((img) => {
+      candidates.push(img.image_data || img.image_url || img.url);
+    });
+  }
+  if (raw.image_data || raw.imageData) candidates.push(raw.image_data || raw.imageData);
+  if (raw.picture) candidates.push(raw.picture);
+
+  let resolved = null;
+  for (const candidate of candidates) {
+    const url = toValidDataUrl(candidate);
+    if (url) {
+      resolved = url;
+      break;
+    }
+  }
+
+  if (cacheKey) {
+    SHOP_IMAGE_CACHE.set(cacheKey, resolved || "");
+  }
+  return resolved;
+}
+
+function registerProductIndex(product) {
+  if (!product) return;
+  const keys = new Set([
+    product.trackingKey,
+    product.id ? product.id.toString().toLowerCase() : null,
+    product.name ? product.name.toLowerCase() : null,
+    product.raw?.sku ? product.raw.sku.toString().toLowerCase() : null,
+    product.raw?.code ? product.raw.code.toString().toLowerCase() : null
+  ]);
+  keys.forEach((key) => {
+    if (!key) return;
+    shopProductIndex.set(key, product);
+    if (product.name && key === product.name.toLowerCase()) {
+      shopNameIndex.set(key, product.trackingKey);
+    }
+  });
+}
+
+function normalizeShopProduct(raw) {
+  if (!raw) return null;
+  const name =
+    raw.name ||
+    raw.product_name ||
+    raw.description ||
+    raw.product_description ||
+    raw.sku ||
+    "Product";
+  const description =
+    raw.description || raw.product_description || raw.detailed_description || name;
+  const cp = Number(
+    raw.cp ?? raw.customer_price ?? raw.price ?? raw.retail_price ?? raw.amount ?? 0
+  );
+  const dp = Number(
+    raw.dp ?? raw.distributor_price ?? raw.wholesale_price ?? raw.price ?? cp
+  );
+  const bv = Number(raw.bv ?? raw.business_volume ?? raw.pv ?? raw.points ?? 0);
+  const categoryRaw =
+    raw.category ||
+    raw.product_category ||
+    raw.group ||
+    raw.department ||
+    raw.section ||
+    "General";
+  const category = (categoryRaw || "General").toString().trim() || "General";
+  const createdAt = raw.created_at || raw.createdAt || raw.added_at || null;
+  const metadata = raw.metadata || raw.meta || null;
+  const trackingSource = raw.id || raw.product_id || raw.sku || raw.code || name;
+  const trackingKey = buildTrackingKey(trackingSource);
+
+  const product = {
+    id: raw.id || raw.product_id || raw.sku || null,
+    trackingKey,
+    name,
+    description,
+    cp,
+    dp,
+    bv,
+    category,
+    createdAt,
+    metadata,
+    imageUrl: resolveProductImage(raw),
+    raw,
+    availabilityStatus: "unknown",
+    availabilityClass: "availability-unknown",
+    availabilityLabel: "Checking availability…",
+    availableQuantity: null,
+    expiryDate: null,
+    expiryAlert: false,
+    expiryLabel: "",
+    reorderLevel: Number(raw.reorder_level || raw.reorderLevel || 0)
+  };
+
+  registerProductIndex(product);
+  return product;
+}
+
+function refreshTrendingProducts(existingStats) {
+  let stats = existingStats;
+  if (!stats) {
+    try {
+      stats = JSON.parse(localStorage.getItem(SHOP_INTERACTION_STORAGE_KEY) || "{}");
+    } catch (_) {
+      stats = {};
+    }
+  }
+  const entries = Object.entries(stats || {}).filter(([, value]) =>
+    Number.isFinite(Number(value))
+  );
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+  trendingProductIds = new Set(entries.slice(0, 5).map(([key]) => key));
+}
+
+refreshTrendingProducts();
+
+function recordProductInteraction(trackingKey) {
+  if (!trackingKey) return;
+  try {
+    const stats = JSON.parse(localStorage.getItem(SHOP_INTERACTION_STORAGE_KEY) || "{}");
+    stats[trackingKey] = (Number(stats[trackingKey]) || 0) + 1;
+    localStorage.setItem(SHOP_INTERACTION_STORAGE_KEY, JSON.stringify(stats));
+    refreshTrendingProducts(stats);
+  } catch (error) {
+    console.debug("Unable to record product interaction", error);
+  }
+}
+
+function findTrackingKeyByName(productName) {
+  if (!productName) return null;
+  const normalized = productName.toString().trim().toLowerCase();
+  if (shopNameIndex.has(normalized)) {
+    return shopNameIndex.get(normalized);
+  }
+  if (shopProductIndex.has(normalized)) {
+    return shopProductIndex.get(normalized)?.trackingKey || null;
+  }
+  for (const product of shopProductIndex.values()) {
+    if (product.name && product.name.toLowerCase() === normalized) {
+      return product.trackingKey;
+    }
+  }
+  return null;
+}
+
+function extractShopCategories(products) {
+  const map = new Map();
+  (products || []).forEach((product) => {
+    if (!product) return;
+    const label = (product.category || "General").toString().trim() || "General";
+    const value = label.toLowerCase();
+    if (!map.has(value)) {
+      map.set(value, label);
+    }
+  });
+  return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+}
+
+function renderShopCategoryFilters(products) {
+  const categories = extractShopCategories(products).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
+  const containers = SHOP_CATEGORY_BAR_IDS.map((id) => document.getElementById(id)).filter(
+    Boolean
+  );
+  if (containers.length === 0) return;
+
+  containers.forEach((container) => {
+    container.innerHTML = "";
+    const createChip = (label, value) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `shop-category-chip${
+        (shopFilterState.category || "") === value ? " active" : ""
+      }`;
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        if ((shopFilterState.category || "") === value) {
+          shopFilterState.category = "";
+        } else {
+          shopFilterState.category = value;
+        }
+        displayProducts(getFilteredProducts());
+        renderShopCategoryFilters(allProducts);
+      });
+      return button;
+    };
+
+    container.appendChild(createChip("All products", ""));
+    categories.forEach(({ value, label }) => {
+      container.appendChild(createChip(label, value));
+    });
+  });
+}
+
+function getFilteredProducts() {
+  if (!Array.isArray(allProducts)) return [];
+  let products = [...allProducts];
+  if (shopFilterState.category) {
+    const categoryValue = shopFilterState.category.toLowerCase();
+    products = products.filter(
+      (product) => (product.category || "").toLowerCase() === categoryValue
+    );
+  }
+  if (shopFilterState.search) {
+    const tokens = shopFilterState.search
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (tokens.length > 0) {
+      products = products.filter((product) => {
+        const haystack = [
+          product.name,
+          product.description,
+          product.category,
+          product.raw?.sku,
+          product.raw?.code
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return tokens.every((token) => haystack.includes(token));
+      });
+    }
+  }
+  return products;
+}
+
+function formatDisplayDate(dateLike) {
+  if (!dateLike) return "";
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
+
+async function enrichProductsWithAvailability(products) {
+  if (!Array.isArray(products) || products.length === 0) return;
+  try {
+    const response = await fetch("/api/warehouse/inventory");
+    if (!response.ok) return;
+    const payload = await response.json();
+    const inventory = Array.isArray(payload?.inventory) ? payload.inventory : payload;
+    if (!Array.isArray(inventory)) return;
+
+    const aggregateByKey = new Map();
+    const pushAggregate = (key, row) => {
+      if (!key) return;
+      const total =
+        Number(row.availableQuantity ?? row.available_quantity ?? row.quantity ?? 0) || 0;
+      const reorder = Number(row.reorderLevel ?? row.reorder_level ?? 0) || 0;
+      const status = row.status || (total <= 0 ? "depleted" : "available");
+      const expiryCandidate = row.expiryDate || row.expiry_date || null;
+      const metadata = row.metadata || row.meta || null;
+
+      const existing = aggregateByKey.get(key) || {
+        total: 0,
+        reorderLevel: 0,
+        lowStock: false,
+        outOfStock: false,
+        earliestExpiry: null,
+        metadataSamples: []
+      };
+
+      existing.total += total;
+      existing.reorderLevel = Math.max(existing.reorderLevel, reorder);
+      if (status === "low_stock" || status === "reserve") {
+        existing.lowStock = true;
+      }
+      if (status === "depleted" || total <= 0) {
+        existing.outOfStock = true;
+      }
+      if (metadata) existing.metadataSamples.push(metadata);
+      if (expiryCandidate) {
+        const expiryDate = new Date(expiryCandidate);
+        if (!Number.isNaN(expiryDate.getTime())) {
+          if (!existing.earliestExpiry || expiryDate < existing.earliestExpiry) {
+            existing.earliestExpiry = expiryDate;
+          }
+        }
+      }
+      aggregateByKey.set(key, existing);
+    };
+
+    inventory.forEach((row) => {
+      const idKey = row.productId || row.product_id;
+      const nameKey = row.productName || row.product_name;
+      if (idKey) pushAggregate(`id:${String(idKey).toLowerCase()}`, row);
+      if (nameKey) pushAggregate(`name:${String(nameKey).toLowerCase()}`, row);
+    });
+
+    const now = new Date();
+    products.forEach((product) => {
+      if (!product) return;
+      const possibleKeys = [
+        product.id ? `id:${String(product.id).toLowerCase()}` : null,
+        product.name ? `name:${product.name.toLowerCase()}` : null,
+        product.trackingKey ? `name:${product.trackingKey.replace(/^product-/, "")}` : null
+      ].filter(Boolean);
+
+      let aggregate = null;
+      for (const key of possibleKeys) {
+        if (aggregateByKey.has(key)) {
+          aggregate = aggregateByKey.get(key);
+          break;
+        }
+      }
+      if (!aggregate) return;
+
+      product.availableQuantity = Math.max(0, Math.round(aggregate.total));
+      product.reorderLevel = aggregate.reorderLevel;
+
+      let status = "in_stock";
+      if (aggregate.outOfStock || product.availableQuantity <= 0) {
+        status = "out_of_stock";
+      } else if (
+        aggregate.lowStock ||
+        (aggregate.reorderLevel > 0 && product.availableQuantity <= aggregate.reorderLevel)
+      ) {
+        status = "low_stock";
+      }
+
+      product.availabilityStatus = status;
+      product.availabilityClass = `availability-${status}`;
+      if (status === "out_of_stock") {
+        product.availabilityLabel = "Out of stock";
+      } else if (status === "low_stock") {
+        product.availabilityLabel = "Low stock";
+      } else {
+        product.availabilityLabel = "In stock";
+      }
+
+      if (product.availableQuantity !== null && Number.isFinite(product.availableQuantity)) {
+        const qtyLabel =
+          product.availableQuantity === 1
+            ? "1 unit available"
+            : `${product.availableQuantity} units available`;
+        product.availabilityLabel = `${product.availabilityLabel} · ${qtyLabel}`;
+      }
+
+      if (aggregate.earliestExpiry) {
+        product.expiryDate = aggregate.earliestExpiry.toISOString();
+        const daysUntil = Math.round(
+          (aggregate.earliestExpiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysUntil <= 60) {
+          product.expiryAlert = true;
+        }
+        product.expiryLabel = `Earliest expiry: ${formatDisplayDate(
+          aggregate.earliestExpiry
+        )}`;
+      }
+    });
+  } catch (error) {
+    console.debug("Unable to enrich product availability", error);
+  }
+}
+
+function prefetchProductImages(products, limit = 12) {
+  if (!Array.isArray(products) || products.length === 0) return;
+  const subset = products.filter((p) => p?.imageUrl).slice(0, limit);
+  subset.forEach((product) => {
+    try {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = product.imageUrl;
+    } catch (error) {
+      console.debug("Image prefetch failed", error);
+    }
+  });
+}
+
 // Load Shop Products
 async function loadShopProducts() {
   const containers = getShopProductContainers();
@@ -1834,14 +2274,9 @@ async function loadShopProducts() {
       if (response.ok) {
         const apiProducts = await response.json();
         if (Array.isArray(apiProducts) && apiProducts.length > 0) {
-          products = apiProducts.map((p) => ({
-            description: p.name || p.description || p.product_name,
-            name: p.name || p.description || p.product_name,
-            dp: p.dp || p.distributor_price || p.price,
-            cp: p.cp || p.customer_price,
-            bv: p.bv || p.business_volume,
-            image: p.image || p.image_url || p.photo
-          }));
+          products = apiProducts
+            .map((p) => normalizeShopProduct(p))
+            .filter(Boolean);
         }
       }
     } catch (e) {
@@ -1853,7 +2288,7 @@ async function loadShopProducts() {
       try {
         const priceList = JSON.parse(localStorage.getItem("dyna_price_list") || "[]");
         if (priceList.length > 0) {
-          products = priceList;
+          products = priceList.map((p) => normalizeShopProduct(p)).filter(Boolean);
         }
       } catch (e) {
         console.debug("localStorage price list not available");
@@ -1865,9 +2300,13 @@ async function loadShopProducts() {
       try {
         // Check if we can access the main system
         if (window.opener && window.opener.PRICE_LIST) {
-          products = window.opener.PRICE_LIST;
+          products = window.opener.PRICE_LIST.map((p) => normalizeShopProduct(p)).filter(
+            Boolean
+          );
         } else if (window.parent !== window && window.parent.PRICE_LIST) {
-          products = window.parent.PRICE_LIST;
+          products = window.parent.PRICE_LIST.map((p) => normalizeShopProduct(p)).filter(
+            Boolean
+          );
         }
       } catch (e) {
         console.debug("Cannot access parent window");
@@ -1889,10 +2328,14 @@ async function loadShopProducts() {
           });
 
           // Attach images to products
-          products = products.map((p) => {
-            const productName = (p.description || p.name || "").toLowerCase();
+          products = products.map((product) => {
+            if (!product) return product;
+            const productName = (product.name || product.description || "").toLowerCase();
             const image = imageMap.get(productName);
-            return { ...p, image: image || p.image || p.photo };
+            if (image) {
+              product.imageUrl = toValidDataUrl(image) || product.imageUrl;
+            }
+            return product;
           });
         }
       } catch (e) {
@@ -1903,8 +2346,10 @@ async function loadShopProducts() {
     // Display products
     if (products.length > 0) {
       allProducts = products;
-      displayProducts(products);
-      filterShopProducts();
+      await enrichProductsWithAvailability(allProducts);
+      renderShopCategoryFilters(allProducts);
+      displayProducts(getFilteredProducts());
+      prefetchProductImages(allProducts);
     } else {
       const emptyMarkup =
         '<div class="loading"><p>No products available at the moment. Please check back later.</p></div>';
@@ -1941,13 +2386,14 @@ function displayProducts(products) {
     return;
   }
 
+  const now = Date.now();
   const markup = products
     .map((product) => {
-      const name = product.description || product.name || "Product";
-      const cp = Number(product.cp || product.price || 0);
-      const dp = Number(product.dp || product.cp || product.price || 0);
+      if (!product) return "";
+      const name = product.name || product.description || "Product";
+      const cp = Number(product.cp || 0);
+      const dp = Number(product.dp || cp);
       const bv = Number(product.bv || 0);
-      const image = product.image || product.photo || "";
       const displayPrice =
         shopCustomerTypeSelected &&
         shopCart.length > 0 &&
@@ -1955,17 +2401,64 @@ function displayProducts(products) {
           ? dp
           : cp;
 
+      const imageSrc =
+        product.imageUrl ||
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='200'%3E%3Crect fill='%23f6f8fb' width='250' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%2364748b' font-family='sans-serif' font-size='14'%3ENo Image%3C/text%3E%3C/svg%3E";
+
+      const availabilityBadge = `
+        <span class="product-availability ${product.availabilityClass || "availability-unknown"}">
+            ${product.availabilityLabel || "Availability unknown"}
+        </span>
+      `;
+
+      const ribbons = [];
+      if (product.createdAt) {
+        const createdTime = new Date(product.createdAt).getTime();
+        if (!Number.isNaN(createdTime) && now - createdTime <= 1000 * 60 * 60 * 24 * 30) {
+          ribbons.push('<span class="product-ribbon new">New</span>');
+        }
+      }
+      if (trendingProductIds.has(product.trackingKey)) {
+        ribbons.push('<span class="product-ribbon trending">Trending</span>');
+      }
+      if (product.expiryAlert) {
+        ribbons.push('<span class="product-ribbon warning">Expiring Soon</span>');
+      }
+      const ribbonsMarkup =
+        ribbons.length > 0 ? `<div class="product-ribbons">${ribbons.join("")}</div>` : "";
+
+      const expiryMarkup = product.expiryLabel
+        ? `<div class="product-expiry">${product.expiryLabel}</div>`
+        : "";
+
+      const categoryMarkup = product.category
+        ? `<div class="product-category-pill">${product.category}</div>`
+        : "";
+
+      const trackingAttr = (product.trackingKey || "").replace(/'/g, "\\'");
+      const safeName = name.replace(/'/g, "\\'");
+
       return `
             <div class="product-card">
-                <img src="${image || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='200'%3E%3Crect fill='%23f6f8fb' width='250' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%2364748b' font-family='sans-serif' font-size='14'%3ENo Image%3C/text%3E%3C/svg%3E"}" 
-                     alt="${name}" 
-                     class="product-image"
-                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'250\' height=\'200\'%3E%3Crect fill=\'%23f6f8fb\' width=\'250\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'%3ENo Image%3C/text%3E%3C/svg%3E'">
+                <div class="product-media">
+                    ${ribbonsMarkup}
+                    <img src="${imageSrc}"
+                         alt="${name}"
+                         class="product-image"
+                         loading="lazy"
+                         decoding="async"
+                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'250\' height=\'200\'%3E%3Crect fill=\'%23f6f8fb\' width=\'250\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'%3ENo Image%3C/text%3E%3C/svg%3E'">
+                </div>
                 <div class="product-info">
-                    <div class="product-name">${name}</div>
+                    <div class="product-header">
+                        <div class="product-name">${name}</div>
+                        ${categoryMarkup}
+                    </div>
+                    ${availabilityBadge}
+                    ${expiryMarkup}
                     <div class="product-price">N$ ${parseFloat(displayPrice).toFixed(2)}</div>
-                    <button onclick="addToShopCart('${name.replace(/'/g, "\\'")}', ${cp}, ${dp}, ${bv})" 
-                            style="width: 100%; margin-top: 10px; background: var(--brand-color); color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                    <button onclick="addToShopCart('${safeName}', ${cp}, ${dp}, ${bv}, '${trackingAttr}')"
+                            class="product-cart-button">
                         ➕ Add to Cart
                     </button>
                 </div>
@@ -1998,30 +2491,12 @@ function filterShopProducts() {
   if (portalSearch && portalSearch.value !== query) portalSearch.value = query;
   if (legacySearch && legacySearch.value !== query) legacySearch.value = query;
 
-  if (!query) {
-    displayProducts(allProducts);
-    return;
-  }
-
-  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const filtered = allProducts.filter((product) => {
-    const haystack = [
-      product.name,
-      product.description,
-      product.category,
-      product.sku
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return tokens.every((token) => haystack.includes(token));
-  });
-
-  displayProducts(filtered);
+  shopFilterState.search = query;
+  displayProducts(getFilteredProducts());
 }
 
-function addToShopCart(productName, cp, dp, bv) {
-  pendingCartItem = { productName, cp, dp, bv };
+function addToShopCart(productName, cp, dp, bv, trackingKey) {
+  pendingCartItem = { productName, cp, dp, bv, trackingKey };
 
   if (shopCart.length === 0) {
     showCustomerTypeModal();
@@ -2030,7 +2505,14 @@ function addToShopCart(productName, cp, dp, bv) {
 
   const firstItemCustomerType = shopCart[0].customerType;
   if (firstItemCustomerType) {
-    addToCartWithCustomerType(productName, cp, dp, bv, firstItemCustomerType);
+    addToCartWithCustomerType(
+      productName,
+      cp,
+      dp,
+      bv,
+      firstItemCustomerType,
+      trackingKey
+    );
   } else {
     showCustomerTypeModal();
   }
@@ -2086,18 +2568,29 @@ function confirmCustomerTypeSelection() {
     pendingCartItem.cp,
     pendingCartItem.dp,
     pendingCartItem.bv,
-    customerType
+    customerType,
+    pendingCartItem.trackingKey
   );
 
   closeCustomerTypeModal();
-  displayProducts(allProducts); // Refresh to show correct prices
+  displayProducts(getFilteredProducts()); // Refresh to show correct prices
 }
 
-function addToCartWithCustomerType(productName, cp, dp, bv, customerType) {
+function addToCartWithCustomerType(
+  productName,
+  cp,
+  dp,
+  bv,
+  customerType,
+  trackingKey
+) {
   const price = customerType === "distributor" ? dp : cp;
+  const targetKey = trackingKey || findTrackingKeyByName(productName);
 
   const existingItem = shopCart.find(
-    (item) => item.name === productName && item.customerType === customerType
+    (item) =>
+      (targetKey && item.trackingKey === targetKey && item.customerType === customerType) ||
+      (item.name === productName && item.customerType === customerType)
   );
 
   if (existingItem) {
@@ -2110,11 +2603,13 @@ function addToCartWithCustomerType(productName, cp, dp, bv, customerType) {
       dp: dp,
       bv: bv,
       quantity: 1,
-      customerType: customerType
+      customerType: customerType,
+      trackingKey: targetKey || null
     });
   }
 
   updateShopCart();
+  recordProductInteraction(targetKey || findTrackingKeyByName(productName));
 }
 
 function updateShopCart() {
