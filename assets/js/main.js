@@ -1787,15 +1787,43 @@ async function handleAdminLogin() {
   finalizeUserSession(fallbackUser);
 }
 
+function getShopProductContainers() {
+  return [
+    document.getElementById("productsContainer"),
+    document.getElementById("landingShopProductsGrid"),
+    document.getElementById("shopProductsGrid")
+  ].filter(Boolean);
+}
+
+function getShopCartViews() {
+  return [
+    {
+      section: document.getElementById("landingShopCartSection"),
+      items: document.getElementById("landingShopCartItems"),
+      total: document.getElementById("landingShopCartTotal"),
+      typeDisplay: document.getElementById("landingShopCartCustomerType")
+    },
+    {
+      section: document.getElementById("shopCartSection"),
+      items: document.getElementById("shopCartItems"),
+      total: document.getElementById("shopCartTotal"),
+      typeDisplay: document.getElementById("shopCartCustomerType")
+    }
+  ].filter((view) => view.section && view.items && view.total);
+}
+
 // Load Shop Products
 async function loadShopProducts() {
-  const container = document.getElementById("productsContainer");
-  if (!container) {
-    console.debug("Products container not found, skipping shop load.");
+  const containers = getShopProductContainers();
+  if (containers.length === 0) {
+    console.debug("Shop product containers not found, skipping shop load.");
     return;
   }
-  container.innerHTML =
+  const loadingMarkup =
     '<div class="loading"><div class="spinner"></div><p>Loading products...</p></div>';
+  containers.forEach((container) => {
+    container.innerHTML = loadingMarkup;
+  });
 
   try {
     let products = [];
@@ -1876,14 +1904,21 @@ async function loadShopProducts() {
     if (products.length > 0) {
       allProducts = products;
       displayProducts(products);
+      filterShopProducts();
     } else {
-      container.innerHTML =
+      const emptyMarkup =
         '<div class="loading"><p>No products available at the moment. Please check back later.</p></div>';
+      containers.forEach((container) => {
+        container.innerHTML = emptyMarkup;
+      });
     }
   } catch (error) {
     console.error("Error loading products:", error);
-    container.innerHTML =
+    const errorMarkup =
       '<div class="loading"><p>Error loading products. Please refresh the page.</p></div>';
+    containers.forEach((container) => {
+      container.innerHTML = errorMarkup;
+    });
   }
 }
 
@@ -1893,22 +1928,25 @@ let shopCustomerTypeSelected = false;
 let pendingCartItem = null;
 
 function displayProducts(products) {
-  const container = document.getElementById("productsContainer");
-  if (!container) {
-    console.debug("Products container not found, unable to render products.");
+  const containers = getShopProductContainers();
+  if (containers.length === 0) {
+    console.debug("Shop product containers not found, unable to render products.");
     return;
   }
-  if (products.length === 0) {
-    container.innerHTML = '<div class="loading"><p>No products found.</p></div>';
+  if (!Array.isArray(products) || products.length === 0) {
+    const emptyMarkup = '<div class="loading"><p>No products found.</p></div>';
+    containers.forEach((container) => {
+      container.innerHTML = emptyMarkup;
+    });
     return;
   }
 
-  container.innerHTML = products
+  const markup = products
     .map((product) => {
       const name = product.description || product.name || "Product";
-      const cp = product.cp || product.price || 0;
-      const dp = product.dp || product.cp || product.price || 0;
-      const bv = product.bv || 0;
+      const cp = Number(product.cp || product.price || 0);
+      const dp = Number(product.dp || product.cp || product.price || 0);
+      const bv = Number(product.bv || 0);
       const image = product.image || product.photo || "";
       const displayPrice =
         shopCustomerTypeSelected &&
@@ -1935,6 +1973,51 @@ function displayProducts(products) {
         `;
     })
     .join("");
+
+  containers.forEach((container) => {
+    container.innerHTML = markup;
+  });
+}
+
+function filterShopProducts() {
+  if (!Array.isArray(allProducts) || allProducts.length === 0) {
+    return;
+  }
+
+  const landingSearch = document.getElementById("landingShopSearch");
+  const portalSearch = document.getElementById("shopSearch");
+  const legacySearch = document.getElementById("productsSearch");
+
+  const landingValue = landingSearch ? landingSearch.value.trim() : "";
+  const portalValue = portalSearch ? portalSearch.value.trim() : "";
+  const legacyValue = legacySearch ? legacySearch.value.trim() : "";
+
+  const query = landingValue || portalValue || legacyValue || "";
+
+  if (landingSearch && landingSearch.value !== query) landingSearch.value = query;
+  if (portalSearch && portalSearch.value !== query) portalSearch.value = query;
+  if (legacySearch && legacySearch.value !== query) legacySearch.value = query;
+
+  if (!query) {
+    displayProducts(allProducts);
+    return;
+  }
+
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = allProducts.filter((product) => {
+    const haystack = [
+      product.name,
+      product.description,
+      product.category,
+      product.sku
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return tokens.every((token) => haystack.includes(token));
+  });
+
+  displayProducts(filtered);
 }
 
 function addToShopCart(productName, cp, dp, bv) {
@@ -2035,31 +2118,30 @@ function addToCartWithCustomerType(productName, cp, dp, bv, customerType) {
 }
 
 function updateShopCart() {
-  const cartSection = document.getElementById("shopCartSection");
-  const cartItems = document.getElementById("shopCartItems");
-  const cartTotal = document.getElementById("shopCartTotal");
+  const cartViews = getShopCartViews();
   const cartCount = document.getElementById("cartCount");
 
-  if (!cartSection || !cartItems || !cartTotal) return;
+  if (cartViews.length === 0) return;
 
   if (shopCart.length === 0) {
-    cartSection.style.display = "none";
+    cartViews.forEach((view) => {
+      view.section.style.display = "none";
+      if (view.items) view.items.innerHTML = "";
+      if (view.total) view.total.textContent = "N$ 0.00";
+      if (view.typeDisplay) view.typeDisplay.textContent = "";
+    });
     shopCustomerTypeSelected = false;
     if (cartCount) cartCount.textContent = "0";
     return;
   }
 
-  cartSection.style.display = "block";
-
   const customerType = shopCart[0]?.customerType;
   const typeLabel =
     customerType === "distributor" ? "Distributor (DP Pricing)" : "Customer (CP Pricing)";
 
-  cartItems.innerHTML = `
-        <p style="color: var(--text-light); margin-bottom: 15px;">Customer Type: <strong>${typeLabel}</strong></p>
-        ${shopCart
-          .map(
-            (item, index) => `
+  const itemsMarkup = shopCart
+    .map(
+      (item, index) => `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); background: var(--bg-light); border-radius: 8px; margin-bottom: 10px;">
                 <div style="flex: 1;">
                     <strong>${item.name}</strong>
@@ -2071,12 +2153,21 @@ function updateShopCart() {
                 </div>
             </div>
         `
-          )
-          .join("")}
-    `;
+    )
+    .join("");
 
   const total = shopCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  cartTotal.textContent = `N$ ${total.toFixed(2)}`;
+  cartViews.forEach((view) => {
+    view.section.style.display = "block";
+    const content = view.typeDisplay
+      ? itemsMarkup
+      : `<p style="color: var(--text-light); margin-bottom: 15px;">Customer Type: <strong>${typeLabel}</strong></p>${itemsMarkup}`;
+    if (view.typeDisplay) {
+      view.typeDisplay.innerHTML = `Customer Type: <strong>${typeLabel}</strong>`;
+    }
+    view.items.innerHTML = content;
+    view.total.textContent = `N$ ${total.toFixed(2)}`;
+  });
 
   const countVal = shopCart.reduce((sum, item) => sum + (item.quantity || 0), 0);
   if (cartCount) cartCount.textContent = String(countVal);
@@ -2089,11 +2180,18 @@ function removeFromShopCart(index) {
 }
 
 function openCart() {
-  const cartSection = document.getElementById("shopCartSection");
-  if (cartSection && shopCart.length > 0) {
-    cartSection.scrollIntoView({ behavior: "smooth" });
-  } else {
+  if (shopCart.length === 0) {
     alert("Your cart is empty. Add products to your cart first.");
+    return;
+  }
+  const cartViews = getShopCartViews();
+  if (cartViews.length === 0) return;
+  const visibleView = cartViews.find(
+    (view) => view.section && view.section.style.display !== "none"
+  );
+  const targetSection = visibleView?.section || cartViews[0].section;
+  if (targetSection) {
+    targetSection.scrollIntoView({ behavior: "smooth" });
   }
 }
 
