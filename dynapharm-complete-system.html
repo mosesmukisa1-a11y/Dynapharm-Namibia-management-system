@@ -3040,6 +3040,9 @@
         .preferred-calendar-day.today {
             border: 2px solid #1f2937;
         }
+        .preferred-calendar-day.placeholder {
+            visibility: hidden;
+        }
         .resource-selector {
             margin: 15px 0;
         }
@@ -3369,10 +3372,21 @@
         }
         
         function showMedia() {
-            // Scroll to media section or show media tab
             showLandingPage();
-            // TODO: Add media section to landing page
-            alert('Media section coming soon!');
+            showLandingTab('shop');
+            setTimeout(() => {
+                if (typeof loadMediaPreviewWidget === 'function') {
+                    loadMediaPreviewWidget().catch(() => {});
+                }
+                if (typeof openMediaOverlay === 'function') {
+                    openMediaOverlay();
+                } else {
+                    const widget = document.getElementById('mediaPreviewWidget');
+                    if (widget) {
+                        widget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            }, 150);
         }
         
         function showLandingPage() {
@@ -4412,6 +4426,124 @@
         .product-cart-button:hover {
             background: #a4162d;
             transform: translateY(-1px);
+        }
+        .media-preview-card {
+            display: flex;
+            gap: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px;
+            backdrop-filter: blur(4px);
+            align-items: center;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 1px solid rgba(255,255,255,0.25);
+        }
+        .media-preview-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+        }
+        .media-preview-thumb {
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            background-size: cover;
+            background-position: center;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4);
+        }
+        .media-preview-meta h4 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        .media-preview-meta p {
+            margin: 6px 0 0 0;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.85);
+        }
+        .landing-media-modal {
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+        .landing-media-modal .modal-content.media-gallery-content {
+            max-width: 1040px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .media-gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 18px;
+        }
+        .media-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e5e9f2;
+            box-shadow: 0 10px 25px rgba(36,38,43,0.08);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .media-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 16px 32px rgba(36,38,43,0.12);
+        }
+        .media-card img {
+            width: 100%;
+            height: 140px;
+            object-fit: cover;
+        }
+        .media-card-body {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .media-card-body h4 {
+            margin: 0;
+            font-size: 1rem;
+            color: #1f2933;
+        }
+        .media-card-body p {
+            margin: 0;
+            color: #52606d;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .media-card-footer {
+            padding: 0 15px 15px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .media-card-footer button {
+            background: #c41e3a;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s ease;
+        }
+        .media-card-footer button:hover {
+            background: #9f182f;
+        }
+        .media-gallery-empty {
+            padding: 40px;
+            text-align: center;
+            color: #64748b;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px dashed #cbd5e1;
+            margin-top: 20px;
         }
         
         /* Enhanced Mobile Responsive Styles */
@@ -11818,6 +11950,19 @@
         </div>
     </div>
 
+    <!-- Media Gallery Overlay -->
+    <div class="modal landing-media-modal" id="mediaGalleryOverlay" style="display: none;">
+        <div class="modal-content media-gallery-content">
+            <span class="close" onclick="closeMediaOverlay()">&times;</span>
+            <h2 style="margin-bottom: 10px; color: #c41e3a;">🎬 Media & News</h2>
+            <p id="mediaGallerySubtitle" style="color: #64748b; margin-bottom: 20px;">Highlights, updates, and training resources from Dynapharm Namibia.</p>
+            <div id="mediaGalleryGrid" class="media-gallery-grid"></div>
+            <div id="mediaGalleryEmpty" class="media-gallery-empty" style="display: none;">
+                <p>No media items are available yet. Check back soon!</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Modal -->
     <div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle" aria-describedby="loginModalDescription" aria-hidden="true">
         <div class="modal-content" role="document">
@@ -12628,6 +12773,555 @@
             return [];
         }
         
+        const MEDIA_LIBRARY_STORAGE_KEY = 'dyna_media_library';
+        const DEFAULT_MEDIA_ITEMS = [
+            {
+                id: 'media-wellness-summit',
+                title: 'Wellness Summit Highlights',
+                summary: 'Key takeaways and announcements from the 2025 Wellness Summit.',
+                category: 'Events',
+                type: 'video',
+                url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                thumbnailColor: '#c41e3a',
+                publishedAt: '2025-06-10T08:00:00.000Z'
+            },
+            {
+                id: 'media-product-training',
+                title: 'Product Training: Immune Support',
+                summary: 'Consultant-led session on immune support packages for winter.',
+                category: 'Training',
+                type: 'article',
+                url: 'https://dynapharm.com.na/training/immune-support',
+                thumbnailColor: '#2563eb',
+                publishedAt: '2025-05-28T10:30:00.000Z'
+            },
+            {
+                id: 'media-field-outreach',
+                title: 'Field Outreach Success Stories',
+                summary: 'Stories from the Ondangwa and Windhoek outreach programmes.',
+                category: 'Community',
+                type: 'article',
+                url: 'https://dynapharm.com.na/blog/outreach-success',
+                thumbnailColor: '#16a34a',
+                publishedAt: '2025-05-15T09:00:00.000Z'
+            },
+            {
+                id: 'media-product-launch',
+                title: 'New Product Launch: Herbal Nutrition Pack',
+                summary: 'Introducing the latest additions to the Herbal Nutrition range.',
+                category: 'Product',
+                type: 'article',
+                url: 'https://dynapharm.com.na/products/herbal-nutrition-pack',
+                thumbnailColor: '#7c3aed',
+                publishedAt: '2025-04-30T14:00:00.000Z'
+            },
+            {
+                id: 'media-consultant-spotlight',
+                title: 'Consultant Spotlight: Maria Johannes',
+                summary: 'Celebrating top-performing consultant Maria Johannes and her team.',
+                category: 'People',
+                type: 'video',
+                url: 'https://dynapharm.com.na/news/consultant-spotlight-maria',
+                thumbnailColor: '#0ea5e9',
+                publishedAt: '2025-04-18T07:30:00.000Z'
+            }
+        ];
+        let mediaLibraryCache = [];
+        let mediaLibraryLoadedAt = 0;
+        
+        function isLandingPageActive() {
+            const landingPage = document.getElementById('landingPage');
+            return landingPage && landingPage.style.display !== 'none';
+        }
+        
+        async function ensureBranchesHydrated(force = false) {
+            if (!force && Array.isArray(branches) && branches.length > 0) {
+                return branches;
+            }
+            if (typeof syncBranchesFromBackend === 'function') {
+                try {
+                    await syncBranchesFromBackend(force);
+                } catch (error) {
+                    console.debug('ensureBranchesHydrated: sync failed', error);
+                }
+            }
+            branches = getCachedBranches();
+            return branches;
+        }
+        
+        function populateCheckupBranchSelectors(preferredValue) {
+            const branchList = getCachedBranches();
+            if (!Array.isArray(branchList)) return;
+            const selects = [
+                document.getElementById('landingCheckupBranchSelect'),
+                document.getElementById('checkupBranchSelect'),
+                document.getElementById('preferredBranchSelect'),
+                document.getElementById('branchSelect')
+            ];
+            const resolvedValue = preferredValue || currentBranch || '';
+            selects.forEach(select => {
+                if (!select) return;
+                const existingValue = select.value;
+                const placeholder = select.getAttribute('data-placeholder') || select.querySelector('option')?.value || '';
+                const isPreferredSelect = select.id === 'preferredBranchSelect';
+                const allowBlank = !isPreferredSelect;
+                const defaultOption = allowBlank ? (placeholder || '') : '';
+                const label = allowBlank ? (placeholder ? 'Select Branch' : '') : '';
+                select.innerHTML = allowBlank ? `<option value="${defaultOption}">${label || 'Select Branch'}</option>` : '';
+                branchList.forEach(branch => {
+                    if (!branch) return;
+                    const option = document.createElement('option');
+                    const value = branch.id || branch.branchId || branch.code || branch.name || '';
+                    option.value = value;
+                    option.textContent = branch.name || branch.branchName || branch.displayName || branch.code || value || 'Unnamed Branch';
+                    select.appendChild(option);
+                });
+                const targetValue = resolvedValue && select.querySelector(`option[value="${resolvedValue}"]`) ? resolvedValue : existingValue;
+                if (targetValue && select.querySelector(`option[value="${targetValue}"]`)) {
+                    select.value = targetValue;
+                } else if (!allowBlank && select.options.length > 0) {
+                    select.value = select.options[0].value;
+                }
+            });
+        }
+        
+        function generateMediaPlaceholder(title, accent = '#c41e3a') {
+            const safeTitle = (title || 'Dynapharm').slice(0, 26);
+            const escapedTitle = safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='225' viewBox='0 0 400 225'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='${accent}'/><stop offset='100%' stop-color='#111827'/></linearGradient></defs><rect width='400' height='225' rx='18' fill='url(#g)'/><text x='50%' y='50%' fill='white' font-size='26' font-family='Arial, sans-serif' font-weight='600' dominant-baseline='middle' text-anchor='middle'>${escapedTitle}</text></svg>`;
+            return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+        }
+        
+        function normalizeMediaItem(raw = {}, index = 0) {
+            const fallback = DEFAULT_MEDIA_ITEMS[index % DEFAULT_MEDIA_ITEMS.length];
+            const source = raw || fallback;
+            const id = source.id || fallback.id || `media-${Date.now()}-${index}`;
+            const title = source.title || fallback.title || 'Dynapharm Media';
+            const summary = source.summary || source.description || fallback.summary || '';
+            const category = source.category || fallback.category || 'Updates';
+            const url = source.url || fallback.url || '#';
+            const thumbnail = source.thumbnail || source.image || generateMediaPlaceholder(title, source.thumbnailColor || fallback.thumbnailColor || '#c41e3a');
+            const type = source.type || fallback.type || 'article';
+            const publishedAt = source.publishedAt || source.createdAt || fallback.publishedAt || new Date().toISOString();
+            return {
+                id,
+                title,
+                summary,
+                category,
+                url,
+                thumbnail,
+                type,
+                publishedAt
+            };
+        }
+        
+        async function loadMediaLibrary(force = false) {
+            if (!force && mediaLibraryCache.length > 0) {
+                return mediaLibraryCache;
+            }
+            if (!force) {
+                try {
+                    const cached = localStorage.getItem(MEDIA_LIBRARY_STORAGE_KEY);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            mediaLibraryCache = parsed.map(normalizeMediaItem);
+                            mediaLibraryLoadedAt = Date.now();
+                            return mediaLibraryCache;
+                        }
+                    }
+                } catch (storageError) {
+                    console.debug('loadMediaLibrary: unable to read cache', storageError);
+                }
+            }
+            
+            let fetchedItems = [];
+            try {
+                const response = await fetch('/api/media');
+                if (response.ok) {
+                    const payload = await response.json();
+                    if (Array.isArray(payload)) {
+                        fetchedItems = payload;
+                    } else if (Array.isArray(payload?.items)) {
+                        fetchedItems = payload.items;
+                    }
+                }
+            } catch (apiError) {
+                console.debug('loadMediaLibrary: API fetch failed', apiError);
+            }
+            
+            if (!fetchedItems.length && Array.isArray(window.MEDIA_LIBRARY)) {
+                fetchedItems = window.MEDIA_LIBRARY;
+            }
+            if (!fetchedItems.length) {
+                fetchedItems = DEFAULT_MEDIA_ITEMS;
+            }
+            mediaLibraryCache = fetchedItems.map(normalizeMediaItem);
+            mediaLibraryLoadedAt = Date.now();
+            try {
+                localStorage.setItem(MEDIA_LIBRARY_STORAGE_KEY, JSON.stringify(mediaLibraryCache));
+            } catch (cacheError) {
+                console.debug('loadMediaLibrary: unable to cache media', cacheError);
+            }
+            return mediaLibraryCache;
+        }
+        
+        function detachClientRegModalToBody() {
+            const modal = document.getElementById('clientRegModal');
+            if (!modal) return null;
+            if (!clientRegModalLandingActive) {
+                if (!clientRegModalOriginalParent) {
+                    clientRegModalOriginalParent = modal.parentElement;
+                }
+                if (!clientRegModalPlaceholder) {
+                    clientRegModalPlaceholder = document.createElement('div');
+                    clientRegModalPlaceholder.style.display = 'none';
+                    clientRegModalPlaceholder.id = 'clientRegModalPlaceholder';
+                    if (modal.parentElement) {
+                        modal.parentElement.insertBefore(clientRegModalPlaceholder, modal);
+                    }
+                }
+                document.body.appendChild(modal);
+                clientRegModalLandingActive = true;
+            }
+            return modal;
+        }
+        
+        function restoreClientRegModal(modal) {
+            const target = modal || document.getElementById('clientRegModal');
+            if (!target) return;
+            if (clientRegModalLandingActive && clientRegModalOriginalParent && clientRegModalPlaceholder) {
+                clientRegModalOriginalParent.insertBefore(target, clientRegModalPlaceholder);
+                clientRegModalLandingActive = false;
+            }
+        }
+        
+        function softResetClientForm(mode) {
+            const form = document.getElementById('clientForm');
+            if (!form) return;
+            form.reset();
+            const signaturePad = document.getElementById('signaturePad');
+            const signatureField = document.getElementById('signatureField');
+            if (signatureField) signatureField.value = '';
+            if (signaturePad) {
+                signaturePad.innerHTML = 'Tap to sign electronically';
+                signaturePad.style.background = '#fff6f8';
+            }
+            const memberDetails = document.getElementById('memberDetails');
+            const referralDetails = document.getElementById('referralDetails');
+            if (memberDetails) memberDetails.style.display = 'none';
+            if (referralDetails) referralDetails.style.display = 'none';
+            document.querySelectorAll('.membership-option').forEach(option => option.classList.remove('active'));
+            const visitBadge = document.getElementById('visitTypeBadge');
+            if (visitBadge) {
+                visitBadge.textContent = '—';
+            }
+            const referencePreview = document.getElementById('referencePreview');
+            if (referencePreview) referencePreview.textContent = 'Generated on save';
+            const refNumberDisplay = document.getElementById('clientRefNumber');
+            if (refNumberDisplay) refNumberDisplay.style.display = 'none';
+            const landingRef = document.getElementById('landingClientRefNumber');
+            if (landingRef) landingRef.style.display = 'none';
+            const preferredTime = document.getElementById('preferredTime');
+            if (preferredTime && !preferredTime.value) {
+                preferredTime.value = '09:00';
+            }
+            initializeAppointmentPreferences();
+            form.dataset.activeMode = mode;
+        }
+        
+        const appointmentCalendarState = {
+            year: null,
+            month: null,
+            selected: null
+        };
+        
+        function initializeAppointmentPreferences(baseDate) {
+            const dateInput = document.getElementById('preferredDate');
+            const display = document.getElementById('preferredDateDisplay');
+            const grid = document.getElementById('preferredCalendarGrid');
+            const label = document.getElementById('preferredCalendarLabel');
+            const prevBtn = document.getElementById('preferredPrevMonth');
+            const nextBtn = document.getElementById('preferredNextMonth');
+            if (!dateInput || !display || !grid || !label || !prevBtn || !nextBtn) return;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            let initial = baseDate ? new Date(baseDate) : (dateInput.value ? new Date(dateInput.value) : new Date());
+            if (Number.isNaN(initial.getTime())) {
+                initial = new Date();
+            }
+            initial.setHours(0, 0, 0, 0);
+            appointmentCalendarState.year = initial.getFullYear();
+            appointmentCalendarState.month = initial.getMonth();
+            appointmentCalendarState.selected = new Date(initial);
+            prevBtn.onclick = () => {
+                appointmentCalendarState.month -= 1;
+                if (appointmentCalendarState.month < 0) {
+                    appointmentCalendarState.month = 11;
+                    appointmentCalendarState.year -= 1;
+                }
+                renderAppointmentCalendar();
+            };
+            nextBtn.onclick = () => {
+                appointmentCalendarState.month += 1;
+                if (appointmentCalendarState.month > 11) {
+                    appointmentCalendarState.month = 0;
+                    appointmentCalendarState.year += 1;
+                }
+                renderAppointmentCalendar();
+            };
+            renderAppointmentCalendar();
+            selectAppointmentDate(initial);
+        }
+        
+        function renderAppointmentCalendar() {
+            const dateInput = document.getElementById('preferredDate');
+            const display = document.getElementById('preferredDateDisplay');
+            const grid = document.getElementById('preferredCalendarGrid');
+            const label = document.getElementById('preferredCalendarLabel');
+            if (!dateInput || !display || !grid || !label) return;
+            const year = appointmentCalendarState.year ?? new Date().getFullYear();
+            const month = appointmentCalendarState.month ?? new Date().getMonth();
+            const selectedDate = appointmentCalendarState.selected ? new Date(appointmentCalendarState.selected) : null;
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            label.textContent = `${monthNames[month]} ${year}`;
+            grid.innerHTML = '';
+            const startOfMonth = new Date(year, month, 1);
+            const paddingDays = startOfMonth.getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            for (let i = 0; i < paddingDays; i++) {
+                const placeholder = document.createElement('button');
+                placeholder.type = 'button';
+                placeholder.className = 'preferred-calendar-day placeholder';
+                placeholder.disabled = true;
+                placeholder.style.visibility = 'hidden';
+                grid.appendChild(placeholder);
+            }
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            for (let day = 1; day <= daysInMonth; day++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'preferred-calendar-day';
+                btn.textContent = day;
+                const currentDate = new Date(year, month, day);
+                currentDate.setHours(0, 0, 0, 0);
+                if (selectedDate && currentDate.toDateString() === selectedDate.toDateString()) {
+                    btn.classList.add('selected');
+                }
+                if (currentDate.toDateString() === today.toDateString()) {
+                    btn.classList.add('today');
+                }
+                if (currentDate < today) {
+                    btn.disabled = true;
+                }
+                btn.addEventListener('click', () => selectAppointmentDate(currentDate));
+                grid.appendChild(btn);
+            }
+            if (dateInput.value) {
+                const formatted = new Date(dateInput.value);
+                if (!Number.isNaN(formatted.getTime())) {
+                    display.textContent = formatted.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                }
+            }
+        }
+        
+        function selectAppointmentDate(date) {
+            const normalized = new Date(date);
+            if (Number.isNaN(normalized.getTime())) return;
+            normalized.setHours(0, 0, 0, 0);
+            appointmentCalendarState.selected = normalized;
+            const dateInput = document.getElementById('preferredDate');
+            const display = document.getElementById('preferredDateDisplay');
+            if (dateInput) {
+                dateInput.value = normalized.toISOString().slice(0, 10);
+            }
+            if (display) {
+                display.textContent = normalized.toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+            }
+            const grid = document.getElementById('preferredCalendarGrid');
+            if (grid) {
+                grid.querySelectorAll('.preferred-calendar-day').forEach(btn => {
+                    const day = Number(btn.textContent);
+                    const isSelected = !btn.disabled && !btn.classList.contains('placeholder') && day === normalized.getDate();
+                    btn.classList.toggle('selected', isSelected);
+                });
+            }
+        }
+        
+        async function loadMediaPreviewWidget(force = false) {
+            const container = document.getElementById('mediaPreviewContent');
+            if (!container) return;
+            container.innerHTML = '<p style="grid-column: 1 / -1; color: rgba(255,255,255,0.85); text-align: center;">Loading highlights...</p>';
+            try {
+                const items = await loadMediaLibrary(force);
+                if (!items.length) {
+                    container.innerHTML = '<p style="grid-column: 1 / -1; color: rgba(255,255,255,0.85); text-align: center;">Media updates will appear here soon.</p>';
+                    return;
+                }
+                container.innerHTML = items
+                    .slice(0, 6)
+                    .map(item => {
+                        const published = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : '';
+                        return `
+                            <div class="media-preview-card" onclick="openMediaOverlay('${item.id}')">
+                                <div class="media-preview-thumb" style="background-image: url('${item.thumbnail}');"></div>
+                                <div class="media-preview-meta">
+                                    <h4>${item.title}</h4>
+                                    <p>${item.category} • ${published}</p>
+                                </div>
+                            </div>
+                        `;
+                    })
+                    .join('');
+            } catch (error) {
+                console.error('loadMediaPreviewWidget error:', error);
+                container.innerHTML = '<p style="grid-column: 1 / -1; color: rgba(255,255,255,0.85); text-align: center;">Unable to load media highlights.</p>';
+            }
+        }
+        
+        function renderMediaGallery(items, selectedId) {
+            const grid = document.getElementById('mediaGalleryGrid');
+            const emptyState = document.getElementById('mediaGalleryEmpty');
+            if (!grid || !emptyState) return;
+            if (!Array.isArray(items) || items.length === 0) {
+                grid.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+            emptyState.style.display = 'none';
+            grid.innerHTML = items
+                .map(item => {
+                    const published = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                    return `
+                        <div class="media-card" data-media-id="${item.id}">
+                            <img src="${item.thumbnail}" alt="${item.title}">
+                            <div class="media-card-body">
+                                <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:#c41e3a;">${item.category || 'Update'}</span>
+                                <h4>${item.title}</h4>
+                                <p>${item.summary || ''}</p>
+                            </div>
+                            <div class="media-card-footer">
+                                <span>${published}</span>
+                                <button type="button" onclick="window.open('${item.url}', '_blank')">View</button>
+                            </div>
+                        </div>
+                    `;
+                })
+                .join('');
+            if (selectedId) {
+                const selectedCard = grid.querySelector(`[data-media-id="${selectedId}"]`);
+                if (selectedCard) {
+                    selectedCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+        
+        async function openMediaOverlay(mediaId) {
+            const overlay = document.getElementById('mediaGalleryOverlay');
+            if (!overlay) return;
+            try {
+                const items = await loadMediaLibrary();
+                renderMediaGallery(items, mediaId);
+                overlay.style.display = 'flex';
+                document.body.classList.add('modal-open');
+            } catch (error) {
+                console.error('openMediaOverlay error:', error);
+            }
+        }
+        
+        function closeMediaOverlay() {
+            const overlay = document.getElementById('mediaGalleryOverlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+            document.body.classList.remove('modal-open');
+        }
+        
+        async function openClientReg(mode = 'appointment', options = {}) {
+            const normalizedMode = (mode || 'appointment').toString().toLowerCase() === 'walkin' ? 'walkin' : 'appointment';
+            const isLandingContext = options?.landing !== undefined ? !!options.landing : isLandingPageActive();
+            const modal = isLandingContext ? detachClientRegModalToBody() : document.getElementById('clientRegModal');
+            if (!modal) return;
+            if (!isLandingContext) {
+                restoreClientRegModal(modal);
+            }
+            const form = document.getElementById('clientForm');
+            if (!form) {
+                modal.style.display = 'flex';
+                return;
+            }
+            const previousMode = form.dataset.activeMode;
+            const shouldReset = options?.reset !== false && previousMode !== normalizedMode;
+            if (shouldReset) {
+                softResetClientForm(normalizedMode);
+            }
+            const branchList = await ensureBranchesHydrated(options?.forceBranchRefresh);
+            const landingBranchSelect = document.getElementById('landingCheckupBranchSelect');
+            let selectedBranch = options?.branch || (landingBranchSelect && landingBranchSelect.value) || currentBranch;
+            if (!selectedBranch && Array.isArray(branchList) && branchList.length > 0) {
+                const firstBranch = branchList[0];
+                selectedBranch = firstBranch.id || firstBranch.branchId || firstBranch.code || firstBranch.name;
+            }
+            populateCheckupBranchSelectors(selectedBranch);
+            if (selectedBranch) {
+                currentBranch = selectedBranch;
+            }
+            const visitInput = document.getElementById('visitType');
+            if (visitInput) {
+                visitInput.value = normalizedMode;
+            }
+            form.dataset.activeMode = normalizedMode;
+            modal.classList.toggle('mode-appointment', normalizedMode === 'appointment');
+            modal.classList.toggle('mode-walkin', normalizedMode === 'walkin');
+            const appointmentSection = modal.querySelector('.appointment-preferences');
+            const preferredTime = document.getElementById('preferredTime');
+            if (normalizedMode === 'walkin') {
+                if (appointmentSection) appointmentSection.style.display = 'none';
+                if (preferredTime) preferredTime.required = false;
+            } else {
+                if (appointmentSection) appointmentSection.style.display = 'block';
+                if (preferredTime) preferredTime.required = true;
+                initializeAppointmentPreferences();
+            }
+            const badge = document.getElementById('visitTypeBadge');
+            if (badge) {
+                badge.textContent = normalizedMode === 'walkin' ? 'Walk-in Visit' : 'Scheduled Appointment';
+            }
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                const focusTarget = form.querySelector('input[name="fullName"]');
+                if (focusTarget) focusTarget.focus();
+            }, 120);
+        }
+        
+        function openMediaTab(mediaId) {
+            showLandingPage();
+            showLandingTab('shop');
+            loadMediaPreviewWidget().catch(() => {});
+            openMediaOverlay(mediaId);
+        }
+        
+        window.openClientReg = openClientReg;
+        window.openMediaTab = openMediaTab;
+        window.openMediaOverlay = openMediaOverlay;
+        window.closeMediaOverlay = closeMediaOverlay;
+        window.loadMediaPreviewWidget = loadMediaPreviewWidget;
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMediaPreviewWidget().catch(() => {});
+        });
+        
         function normalizeDistributorRecord(raw) {
             if (!raw) return null;
             const id = raw.id || raw.distributor_id || raw.uuid || raw.code || raw.distributor_code || `DIST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -12853,6 +13547,23 @@
             window.closeModal = function(modalId) {
                 const modalEl = document.getElementById(modalId);
                 if (modalEl) modalEl.style.display = 'none';
+                if (modalId === 'clientRegModal' && clientRegModalLandingActive) {
+                    restoreClientRegModal(modalEl);
+                }
+                if (modalId === 'mediaGalleryOverlay') {
+                    closeMediaOverlay();
+                }
+            };
+        } else {
+            const previousCloseModal = window.closeModal;
+            window.closeModal = function(modalId) {
+                previousCloseModal(modalId);
+                if (modalId === 'clientRegModal' && clientRegModalLandingActive) {
+                    restoreClientRegModal(document.getElementById('clientRegModal'));
+                }
+                if (modalId === 'mediaGalleryOverlay') {
+                    closeMediaOverlay();
+                }
             };
         }
 
