@@ -386,6 +386,19 @@ export async function updateTransferStatus(id, status, meta = {}) {
       body.receivedBy = actor;
     }
 
+    if (meta.metadata) {
+      body.metadata = meta.metadata;
+    }
+    if (meta.dispatchedAt) {
+      body.dispatchedAt = meta.dispatchedAt;
+    }
+    if (meta.deliveredAt) {
+      body.deliveredAt = meta.deliveredAt;
+    }
+    if (meta.receivedAt) {
+      body.receivedAt = meta.receivedAt;
+    }
+
     const response = await apiFetch('/api/stock/transfers', { method: 'PUT', body });
     return { success: true, data: response?.transfer || null };
   } catch (error) {
@@ -406,10 +419,82 @@ export async function createStockTransfer(payload = {}) {
       metadata: payload.metadata || null,
       dispatchNotes: payload.dispatchNotes || null,
     };
+    if (payload.dispatchedBy) {
+      body.dispatchedBy = payload.dispatchedBy;
+    }
+    if (payload.dispatchedAt) {
+      body.dispatchedAt = payload.dispatchedAt;
+    }
+    if (payload.createdBy) {
+      body.createdBy = payload.createdBy;
+    }
+    if (payload.dispatchMeta) {
+      body.dispatchMeta = payload.dispatchMeta;
+    }
     const response = await apiFetch('/api/stock/transfers', { method: 'POST', body });
     return { success: true, data: response?.transfer || null };
   } catch (error) {
     console.error('createStockTransfer failed:', error);
+    return normalizeFetchError(error);
+  }
+}
+
+export async function getTransferById(id) {
+  if (!id) return { success: false, error: 'MISSING_ID' };
+  const cached = cache.transfers.find((tr) => tr.id === id);
+  if (cached) {
+    return { success: true, data: cached };
+  }
+  try {
+    const response = await apiFetch(`/api/stock/transfers?id=${encodeURIComponent(id)}`);
+    const transfer = Array.isArray(response?.transfers) ? response.transfers[0] : null;
+    if (transfer) {
+      const existingIndex = cache.transfers.findIndex((tr) => tr.id === transfer.id);
+      if (existingIndex >= 0) {
+        cache.transfers.splice(existingIndex, 1, transfer);
+      } else {
+        cache.transfers.unshift(transfer);
+      }
+      computeStats();
+    }
+    return { success: true, data: transfer };
+  } catch (error) {
+    console.error('getTransferById failed:', error);
+    return normalizeFetchError(error);
+  }
+}
+
+export async function getInventoryMovements(filters = {}) {
+  try {
+    const params = new URLSearchParams();
+    params.set('includeMovements', '1');
+
+    if (filters.warehouse && filters.warehouse !== 'all') {
+      params.set('warehouse', filters.warehouse);
+    }
+    if (filters.productId) {
+      params.set('productId', filters.productId);
+    } else if (filters.productName) {
+      params.set('productName', filters.productName);
+    }
+    if (filters.type && filters.type !== 'all') {
+      params.set('types', filters.type);
+    }
+    if (filters.from) {
+      params.set('from', filters.from);
+    }
+    if (filters.to) {
+      params.set('to', filters.to);
+    }
+    if (filters.limit) {
+      params.set('limit', filters.limit);
+    }
+
+    const response = await apiFetch(`/api/warehouse/inventory?${params.toString()}`);
+    const movements = Array.isArray(response?.movements) ? response.movements : [];
+    return { success: true, data: movements };
+  } catch (error) {
+    console.error('getInventoryMovements failed:', error);
     return normalizeFetchError(error);
   }
 }

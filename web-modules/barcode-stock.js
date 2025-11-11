@@ -289,6 +289,74 @@ async function saveBatchToCloud(payload) {
     }
 }
 
+async function updateBatchInCloud(identifier, updates = {}) {
+    const payload = { ...updates };
+    if (identifier && typeof identifier === 'object') {
+        if (identifier.id) payload.id = identifier.id;
+        if (identifier.barcode) payload.barcode = identifier.barcode;
+    } else if (typeof identifier === 'string') {
+        if (identifier.startsWith('BC-')) {
+            payload.barcode = identifier;
+        } else {
+            payload.id = identifier;
+        }
+    }
+
+    if (!payload.id && !payload.barcode) {
+        return null;
+    }
+
+    try {
+        const response = await fetch('/api/stock-batches', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            return null;
+        }
+        const body = await response.json().catch(() => null);
+        if (body?.success && body?.batch) {
+            return body.batch;
+        }
+        if (body?.batch) {
+            return body.batch;
+        }
+        return null;
+    } catch (error) {
+        console.warn('Failed to update stock batch in cloud', error);
+        return null;
+    }
+}
+
+async function deleteBatchInCloud(identifier) {
+    const params = new URLSearchParams();
+    if (identifier && typeof identifier === 'object') {
+        if (identifier.id) params.set('id', identifier.id);
+        if (identifier.barcode) params.set('barcode', identifier.barcode);
+    } else if (typeof identifier === 'string') {
+        if (identifier.startsWith('BC-')) {
+            params.set('barcode', identifier);
+        } else {
+            params.set('id', identifier);
+        }
+    }
+    if (!params.toString()) {
+        return false;
+    }
+    try {
+        const response = await fetch(`/api/stock-batches?${params.toString()}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        return response.ok;
+    } catch (error) {
+        console.warn('Failed to delete stock batch in cloud', error);
+        return false;
+    }
+}
+
 function adaptCloudBatch(cloud) {
     if (!cloud) return null;
     return {
@@ -398,6 +466,7 @@ export function dispatchStockByBarcode(barcode, quantity, destination, meta = {}
 
     batch.remainingQuantity -= qty;
     batch.updatedAt = nowIso();
+    batch.dispatchedQuantity = Number(batch.dispatchedQuantity || 0) + qty;
     batch.dispatches = batch.dispatches || [];
     batch.dispatches.push({
         quantity: qty,
@@ -408,7 +477,26 @@ export function dispatchStockByBarcode(barcode, quantity, destination, meta = {}
     if (batch.remainingQuantity === 0) {
         batch.status = 'exhausted';
     }
+    batch.metadata = batch.metadata || {};
+    batch.metadata.lastDispatchAt = batch.updatedAt;
+    batch.metadata.lastDispatchMeta = meta;
     saveBatches(batches);
+
+    updateBatchInCloud({ barcode: batch.barcode || barcode }, {
+        barcode: batch.barcode || barcode,
+        remainingQuantity: batch.remainingQuantity,
+        dispatchedQuantity: batch.dispatchedQuantity,
+        status: batch.status,
+        location: batch.location,
+        metadata: batch.metadata
+    }).then((cloudBatch) => {
+        const refreshed = adaptCloudBatch(cloudBatch);
+        if (refreshed) {
+            batches[idx] = refreshed;
+            saveBatches(batches);
+        }
+    }).catch((error) => console.warn('dispatchStockByBarcode cloud sync failed', error));
+
     return { success: true, data: batch };
 }
 
@@ -428,6 +516,9 @@ export function receiveStockByBarcode(barcode, quantity, location, meta = {}) {
     batch.location = location || batch.location;
     batch.status = 'available';
     batch.updatedAt = nowIso();
+    batch.metadata = batch.metadata || {};
+    batch.metadata.lastReceiptAt = batch.updatedAt;
+    batch.metadata.lastReceiptMeta = meta;
     batch.receipts = batch.receipts || [];
     batch.receipts.push({
         quantity: qty,
@@ -436,6 +527,22 @@ export function receiveStockByBarcode(barcode, quantity, location, meta = {}) {
         metadata: meta
     });
     saveBatches(batches);
+
+    updateBatchInCloud({ barcode: batch.barcode || barcode }, {
+        barcode: batch.barcode || barcode,
+        remainingQuantity: batch.remainingQuantity,
+        quantity: batch.quantity,
+        status: batch.status,
+        location: batch.location,
+        metadata: batch.metadata
+    }).then((cloudBatch) => {
+        const refreshed = adaptCloudBatch(cloudBatch);
+        if (refreshed) {
+            batches[idx] = refreshed;
+            saveBatches(batches);
+        }
+    }).catch((error) => console.warn('receiveStockByBarcode cloud sync failed', error));
+
     return { success: true, data: batch };
 }
 
@@ -447,6 +554,9 @@ export function removeStockBatch(barcodeOrId) {
     }
     const [removed] = batches.splice(idx, 1);
     saveBatches(batches);
+    deleteBatchInCloud(removed.barcode || removed.id || barcodeOrId).catch((error) => {
+        console.warn('removeStockBatch cloud sync failed', error);
+    });
     return { success: true, data: removed };
 }
 
