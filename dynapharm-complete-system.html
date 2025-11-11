@@ -421,7 +421,341 @@
                 `;
                 const shouldShow = localStorage.getItem('dyna_show_cat') !== 'false';
                 wrap.style.display = shouldShow ? 'flex' : 'none';
-                document.addEventListener('DOMContentLoaded', () => { document.body.appendChild(wrap); });
+                
+        const SYNC_SETTINGS_STORAGE_KEY = 'dyna_sync_settings';
+        const SYNC_EVENTS_STORAGE_KEY = 'dyna_sync_events';
+        let cachedSyncSettings = null;
+        let cachedSyncEvents = null;
+        let lastRealtimeStatusCheck = 0;
+        let realtimeStatusSnapshot = {};
+
+        function getDefaultSyncSettings() {
+            const origin = window.location.origin || '';
+            return {
+                frequency: 'realtime',
+                autoSync: true,
+                syncStockChanges: true,
+                syncOrderChanges: true,
+                endpoints: {
+                    stock: `${API_BASE}/health`,
+                    branch: `${origin}/branch-stock-inventory.html`,
+                    gm: `${API_BASE}/health?realm=gm`
+                },
+                updatedAt: null
+            };
+        }
+
+        function mergeSyncSettings(baseSettings, override = {}) {
+            const merged = { ...baseSettings, ...override };
+            merged.endpoints = { ...baseSettings.endpoints, ...(override.endpoints || {}) };
+            return merged;
+        }
+
+        function getSyncSettings(force = false) {
+            if (!force && cachedSyncSettings) {
+                return mergeSyncSettings(getDefaultSyncSettings(), cachedSyncSettings);
+            }
+            let stored = null;
+            try {
+                const raw = localStorage.getItem(SYNC_SETTINGS_STORAGE_KEY);
+                stored = raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                console.debug('Sync settings unavailable', error);
+            }
+            cachedSyncSettings = mergeSyncSettings(getDefaultSyncSettings(), stored || {});
+            return cachedSyncSettings;
+        }
+
+        function persistSyncSettings(settings) {
+            try {
+                localStorage.setItem(SYNC_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+            } catch (error) {
+                console.warn('Failed to persist sync settings', error);
+            }
+            cachedSyncSettings = settings;
+        }
+
+        function getSyncEvents(force = false) {
+            if (!force && Array.isArray(cachedSyncEvents)) {
+                return cachedSyncEvents.slice();
+            }
+            let events = [];
+            try {
+                const raw = localStorage.getItem(SYNC_EVENTS_STORAGE_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                if (Array.isArray(parsed)) {
+                    events = parsed;
+                }
+            } catch (error) {
+                console.debug('Sync events unavailable', error);
+            }
+            cachedSyncEvents = events;
+            return events.slice();
+        }
+
+        function persistSyncEvents(events) {
+            const normalised = (events || []).slice(0, 100);
+            try {
+                localStorage.setItem(SYNC_EVENTS_STORAGE_KEY, JSON.stringify(normalised));
+            } catch (error) {
+                console.warn('Failed to persist sync events', error);
+            }
+            cachedSyncEvents = normalised;
+            renderRealtimeSyncEvents(normalised);
+        }
+
+        function formatSyncTimestamp(value) {
+            try {
+                const date = value ? new Date(value) : new Date();
+                if (Number.isNaN(date.getTime())) return 'Just now';
+                return date.toLocaleString();
+            } catch (_) {
+                return new Date().toLocaleString();
+            }
+        }
+
+        function updateRealtimeBanner(settings) {
+            const banner = document.getElementById('realtimeStatus');
+            if (!banner) return;
+            if (!settings?.autoSync) {
+                banner.textContent = '⏸️ Real-time sync paused';
+                banner.style.display = 'block';
+                banner.classList.add('paused');
+                banner.classList.remove('active');
+                return;
+            }
+            banner.textContent = '🔄 Real-time sync active';
+            banner.style.display = 'block';
+            banner.classList.add('active');
+            banner.classList.remove('paused');
+        }
+
+        function setSyncStatusPill(elementId, state, message) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            el.classList.remove('good', 'warn', 'bad');
+            switch (state) {
+                case 'connected':
+                    el.classList.add('good');
+                    el.textContent = message || '🟢 Connected';
+                    break;
+                case 'degraded':
+                    el.classList.add('warn');
+                    el.textContent = message || '🟡 Checking';
+                    break;
+                case 'checking':
+                    el.classList.add('warn');
+                    el.textContent = message || '🟡 Checking';
+                    break;
+                default:
+                    el.classList.add('bad');
+                    el.textContent = message || '🔴 Offline';
+                    break;
+            }
+        }
+
+        function renderRealtimeSyncEvents(events = []) {
+            const container = document.getElementById('realtimeSyncEvents');
+            if (!container) return;
+            if (!events.length) {
+                container.innerHTML = '<p style="color:#7f8c8d; text-align:center;">No sync activity recorded yet.</p>';
+                return;
+            }
+            const fragments = events.slice(0, 50).map((event) => {
+                const success = event.success !== false;
+                const border = success ? '#27ae60' : '#e74c3c';
+                const badge = success ? '🟢' : '🔴';
+                const when = formatSyncTimestamp(event.timestamp);
+                const actor = event.initiatedBy || 'system';
+                const target = event.target ? `• ${event.target.toUpperCase()}` : '';
+                const latency = event.latencyMs ? ` • ${event.latencyMs}ms` : '';
+                return `
+                <div class="client-card" style="border-left:4px solid ${border};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                        <div>
+                            <div style="font-weight:700; color:#2c3e50;">${badge} ${event.message || 'Sync event'}</div>
+                            <div style="font-size:.85rem; color:#666;">${when} • ${actor} ${target}${latency}</div>
+                        </div>
+                        ${event.type ? `<span style="font-size:.75rem; color:#888;">${event.type.toUpperCase()}</span>` : ''}
+                    </div>
+                </div>`;
+            });
+            container.innerHTML = fragments.join('');
+        }
+
+        function logSyncEvent(type, message, options = {}) {
+            const events = getSyncEvents(true);
+            const event = {
+                id: `SYNC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                type: type || 'status',
+                message,
+                success: options.success !== false,
+                target: options.target || null,
+                detail: options.detail || null,
+                latencyMs: options.latencyMs ?? null,
+                initiatedBy: options.initiatedBy || (window.currentUser && window.currentUser.fullName) || 'system',
+                timestamp: new Date().toISOString()
+            };
+            events.unshift(event);
+            persistSyncEvents(events);
+            return event;
+        }
+
+        function applySyncSettings(settings) {
+            const current = settings ? mergeSyncSettings(getDefaultSyncSettings(), settings) : getSyncSettings();
+            const frequencySelect = document.getElementById('syncFrequency');
+            if (frequencySelect) {
+                frequencySelect.value = current.frequency || 'realtime';
+            }
+            const autoSync = document.getElementById('autoSyncEnabled');
+            if (autoSync) {
+                autoSync.checked = current.autoSync !== false;
+            }
+            const syncStock = document.getElementById('syncStockChanges');
+            if (syncStock) {
+                syncStock.checked = current.syncStockChanges !== false;
+            }
+            const syncOrders = document.getElementById('syncOrderChanges');
+            if (syncOrders) {
+                syncOrders.checked = current.syncOrderChanges !== false;
+            }
+            updateRealtimeBanner(current);
+            renderRealtimeSyncEvents(getSyncEvents());
+            return current;
+        }
+
+        async function saveSyncSettings() {
+            const settings = getSyncSettings();
+            const frequencySelect = document.getElementById('syncFrequency');
+            const autoSync = document.getElementById('autoSyncEnabled');
+            const syncStock = document.getElementById('syncStockChanges');
+            const syncOrders = document.getElementById('syncOrderChanges');
+            if (frequencySelect) settings.frequency = frequencySelect.value || settings.frequency;
+            if (autoSync) settings.autoSync = !!autoSync.checked;
+            if (syncStock) settings.syncStockChanges = !!syncStock.checked;
+            if (syncOrders) settings.syncOrderChanges = !!syncOrders.checked;
+            settings.updatedAt = new Date().toISOString();
+            persistSyncSettings(settings);
+            applySyncSettings(settings);
+            logSyncEvent('settings', `Sync settings updated (${settings.frequency})`, { success: true, detail: settings });
+            if (typeof showToast === 'function') {
+                showToast('Realtime sync settings saved ✅');
+            } else {
+                console.info('Realtime sync settings saved');
+            }
+        }
+
+        async function pingSyncEndpoint(url, label) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const started = performance.now();
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                const latency = Math.round(performance.now() - started);
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    latency,
+                    label
+                };
+            } catch (error) {
+                clearTimeout(timeout);
+                const latency = Math.round(performance.now() - started);
+                return {
+                    ok: false,
+                    error: error && error.message ? error.message : 'Network error',
+                    latency,
+                    label
+                };
+            }
+        }
+
+        async function loadRealtimeSyncStatus(force = false) {
+            const now = Date.now();
+            if (!force && now - lastRealtimeStatusCheck < 15000) {
+                renderRealtimeSyncEvents(getSyncEvents());
+                return realtimeStatusSnapshot;
+            }
+            lastRealtimeStatusCheck = now;
+            const settings = getSyncSettings();
+            const endpoints = settings.endpoints || {};
+            const targets = [
+                { id: 'syncStockPortal', key: 'stock', url: endpoints.stock },
+                { id: 'syncBranchPortal', key: 'branch', url: endpoints.branch },
+                { id: 'syncGMPortal', key: 'gm', url: endpoints.gm }
+            ];
+            targets.forEach((target) => setSyncStatusPill(target.id, 'checking'));
+            const results = await Promise.all(targets.map(async (target) => {
+                if (!target.url) {
+                    setSyncStatusPill(target.id, 'offline', '⚪ Unknown');
+                    return { key: target.key, ok: false, error: 'No endpoint configured' };
+                }
+                const result = await pingSyncEndpoint(target.url, target.key);
+                if (result.ok) {
+                    setSyncStatusPill(target.id, 'connected', `🟢 ${result.latency || 0}ms`);
+                } else {
+                    const isOffline = result.error === 'Network error' || result.error === 'Failed to fetch';
+                    const message = isOffline ? '🔴 Offline' : '🟠 Issue';
+                    const state = isOffline ? 'offline' : 'degraded';
+                    setSyncStatusPill(target.id, state, message);
+                }
+                const previous = realtimeStatusSnapshot[target.key];
+                const statusChanged = !previous || previous.ok !== result.ok || previous.error !== result.error;
+                if (statusChanged) {
+                    logSyncEvent('status', `${target.key.toUpperCase()} portal ${result.ok ? 'responded' : 'failed'}`, {
+                        success: result.ok,
+                        target: target.key,
+                        latencyMs: result.latency,
+                        detail: result
+                    });
+                }
+                return { key: target.key, ...result };
+            }));
+            realtimeStatusSnapshot = results.reduce((acc, entry) => {
+                if (entry && entry.key) {
+                    acc[entry.key] = entry;
+                }
+                return acc;
+            }, {});
+            return realtimeStatusSnapshot;
+        }
+
+        async function testSyncConnection() {
+            logSyncEvent('diagnostic', 'Manual sync test triggered', { detail: { source: 'manual' } });
+            await loadRealtimeSyncStatus(true);
+            if (typeof showToast === 'function') {
+                showToast('Realtime sync test completed');
+            }
+        }
+
+        window.addEventListener('cloud-sync:updated', (event) => {
+            const detail = event && event.detail ? event.detail : {};
+            logSyncEvent('stock', 'Stock data synchronised', {
+                success: true,
+                target: detail.scope || 'stock',
+                detail
+            });
+        });
+
+        window.addEventListener('orders:updated', (event) => {
+            const detail = event && event.detail ? event.detail : {};
+            const order = detail.order || {};
+            const action = detail.action || 'updated';
+            const ref = order.id || order.orderNumber || 'order';
+            logSyncEvent('orders', `Order ${ref} ${action}`, {
+                success: true,
+                target: 'orders',
+                detail
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => { document.body.appendChild(wrap); });
                 const btn = wrap.querySelector('.toggle');
                 btn.addEventListener('click', () => {
                     const visible = wrap.style.display !== 'none';
@@ -13188,7 +13522,8 @@
         updateTransferAvailableQty();
     });
 
-        window.addEventListener('stock:updated', () => {
+        window.addEventListener('stock:updated', (event) => {
+            logSyncEvent('stock', 'Stock portal broadcast update', { success: true, target: 'stock', detail: event && event.detail ? event.detail : null });
             syncBarcodeStockFromBackend(true).catch(err => console.debug('Barcode stock sync (event) error', err));
         });
 
