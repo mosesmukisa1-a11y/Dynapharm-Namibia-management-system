@@ -3896,16 +3896,12 @@
                 const currentValue = select.value;
                 select.innerHTML = '<option value="all">All Branches</option>';
                 branchList.forEach(branch => {
-                    if (!branch) return;
                     const option = document.createElement('option');
-                    const value = branch.id || branch.branchId || branch.code || branch.name;
-                    option.value = value || '';
-                    option.textContent = branch.name || branch.branchName || branch.displayName || branch.code || value || 'Unnamed Branch';
+                    option.value = branch.id || branch.name;
+                    option.textContent = branch.name || branch.id;
                     select.appendChild(option);
                 });
-                if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
-                    select.value = currentValue;
-                }
+                if (currentValue) select.value = currentValue;
             });
         }
         
@@ -8136,12 +8132,6 @@
                                 </div>
                             </form>
                         </div>
-                        <div id="importSummaryPanel" class="hub-card hub-card--surface" style="display: none; margin-top: 20px;">
-                            <h4 class="hub-card__title" style="margin-bottom: 12px;">📊 Latest Import Summary</h4>
-                            <div id="importSummaryContent" style="font-size: 0.9rem; color: #1f2937;">
-                                <p style="margin: 0; color: #64748b;">Import stock to see a quick health check for the destination location.</p>
-                            </div>
-                        </div>
                     </section>
 
                     <section class="hub-section">
@@ -10141,7 +10131,6 @@
                                     <h4 style="margin: 0;">Pending Inventory Approvals</h4>
                                     <button class="btn btn-success" onclick="loadGMPendingInventoryApprovals()">🔄 Refresh</button>
                                 </div>
-                                <div id="gmApprovalAlerts" style="display: none; margin-bottom: 15px;"></div>
                                 <div id="gmPendingInventoryApprovalsList" style="max-height: 600px; overflow-y: auto;"></div>
                             </div>
                         </div>
@@ -17142,17 +17131,14 @@
             const branchList = getCachedBranches();
             const container = document.getElementById('branchCheckboxes');
             if (!container) return;
-
+            
             container.innerHTML = '';
             branchList.forEach(branch => {
-                if (!branch) return;
-                const value = branch.id || branch.branchId || branch.code || branch.name;
-                const label = branch.name || branch.branchName || branch.displayName || branch.code || value || 'Unnamed Branch';
                 const div = document.createElement('div');
                 div.innerHTML = `
                     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="checkbox" name="campaignBranches" value="${value || ''}" style="width: auto;">
-                        <span>${label}</span>
+                        <input type="checkbox" name="campaignBranches" value="${branch.id || branch.name}" style="width: auto;">
+                        <span>${branch.name || branch.id}</span>
                     </label>
                 `;
                 container.appendChild(div);
@@ -19786,148 +19772,6 @@ async function logout() {
 			try { calendar.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
 		}
 
-		function renderGMApprovalAlerts(pending = []) {
-			const alertEl = document.getElementById('gmApprovalAlerts');
-			if (!alertEl) return;
-
-			if (!Array.isArray(pending) || pending.length === 0) {
-				alertEl.style.display = 'none';
-				alertEl.innerHTML = '';
-				return;
-			}
-
-			const now = Date.now();
-			const hourMs = 60 * 60 * 1000;
-			const warningThreshold = 24;
-			const staleThreshold = 48;
-
-			const stale = [];
-			const nearing = [];
-
-			pending.forEach(transfer => {
-				const gmMeta = transfer?.metadata?.gmApproval || {};
-				const createdRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || null;
-				if (!createdRaw) return;
-				const createdDate = new Date(createdRaw);
-				if (Number.isNaN(createdDate.getTime())) return;
-				const ageHours = (now - createdDate.getTime()) / hourMs;
-				if (ageHours >= staleThreshold) {
-					stale.push({ transfer, ageHours: Math.floor(ageHours) });
-				} else if (ageHours >= warningThreshold) {
-					nearing.push({ transfer, ageHours: Math.floor(ageHours) });
-				}
-			});
-
-			if (!stale.length && !nearing.length) {
-				alertEl.style.display = 'none';
-				alertEl.innerHTML = '';
-				return;
-			}
-
-			const summaryParts = [];
-			if (stale.length) {
-				summaryParts.push(`<strong>${stale.length}</strong> request${stale.length === 1 ? '' : 's'} over 48h pending`);
-			}
-			if (nearing.length) {
-				summaryParts.push(`${nearing.length} approaching 48h`);
-			}
-
-			const previewEntries = [...stale.slice(0, 2), ...nearing.slice(0, Math.max(0, 3 - stale.length))];
-			const previewList = previewEntries.map(({ transfer, ageHours }) => {
-				const gmMeta = transfer?.metadata?.gmApproval || {};
-				const branch = gmMeta.branch || transfer?.toBranch || 'Branch';
-				const product = gmMeta.product || transfer?.items?.[0]?.productName || 'Item';
-				return `<li style="margin:4px 0; font-size:.78rem; color:#1f2937;">${escapeHtml(branch)} • ${escapeHtml(product)} <span style="color:#b91c1c; font-weight:600;">${ageHours}h</span></li>`;
-			}).join('');
-
-			alertEl.innerHTML = `
-				<div style="background:#fff7ed; border:1px solid #fb923c; border-radius:8px; padding:12px 14px;">
-					<div style="font-weight:700; color:#b45309; margin-bottom:6px;">⏰ ${summaryParts.join(' • ')}</div>
-					${previewList ? `<ul style="margin:0; padding-left:16px; list-style:disc;">${previewList}</ul>` : ''}
-				</div>
-			`;
-			alertEl.style.display = 'block';
-		}
-
-		function formatImportQuantity(value) {
-			const num = Number(value ?? 0);
-			return Number.isFinite(num) ? num.toLocaleString() : '0';
-		}
-
-		function formatImportExpiry(days) {
-			if (days === null || days === undefined) return 'Unknown expiry';
-			if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} past expiry`;
-			if (days === 0) return 'Expires today';
-			if (days === 1) return '1 day remaining';
-			return `${days} days remaining`;
-		}
-
-		function renderImportSummaryPanel(detail) {
-			const panel = document.getElementById('importSummaryPanel');
-			const content = document.getElementById('importSummaryContent');
-			if (!panel || !content) return;
-
-			if (!detail || !detail.entry) {
-				panel.style.display = 'none';
-				content.innerHTML = '';
-				return;
-			}
-
-			const entry = detail.entry;
-			const summary = detail.summary || {};
-			const locationSummary = summary.location || {};
-			const networkSummary = summary.network || {};
-			const locationName = escapeHtml(locationSummary.location || entry.location || 'country_stock');
-			const expiringSoon = Array.isArray(locationSummary.topExpiring) ? locationSummary.topExpiring : [];
-			const horizon = locationSummary.horizonDays || 60;
-
-			const expiringHtml = expiringSoon.length
-				? `<ul style="margin:0; padding-left:18px;">
-					${expiringSoon.map(item => {
-						const days = item.daysUntil ?? null;
-						const highlight = days !== null && days <= 14 ? '#dc2626' : '#b45309';
-						return `<li style="margin:4px 0; font-size:.85rem; color:#334155;">
-							${escapeHtml(item.product || 'Item')} • Batch ${escapeHtml(item.batchNo || '')}
-							<span style="color:${highlight}; font-weight:600; margin-left:6px;">${formatImportExpiry(days)}</span>
-							<span style="color:#475569; margin-left:6px;">${formatImportQuantity(item.remainingQuantity)} units</span>
-						</li>`;
-					}).join('')}
-				</ul>`
-				: `<p style="margin:0; font-size:.85rem; color:#64748b;">No batches approaching expiry in the next ${horizon} days.</p>`;
-
-			content.innerHTML = `
-				<div style="display:flex; flex-wrap:wrap; gap:16px;">
-					<div style="flex:1 1 240px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-weight:700; color:#0f172a;">${escapeHtml(entry.description || 'New batch')}</div>
-						<div style="font-size:.85rem; color:#475569;">Batch ${escapeHtml(entry.batchNo || 'N/A')}</div>
-						<div style="margin-top:10px; font-size:.9rem; color:#1f2937;">
-							<strong>${formatImportQuantity(entry.remainingQuantity ?? entry.quantity)}</strong> units now available in <strong>${locationName}</strong>.
-						</div>
-					</div>
-					<div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Location totals</div>
-						<div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(locationSummary.totalQuantity)}</div>
-						<div style="font-size:.8rem; color:#64748b;">${locationSummary.uniqueProducts || 0} products • ${locationSummary.totalBatches || 0} batches</div>
-					</div>
-					<div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Network snapshot</div>
-						<div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(networkSummary.totalQuantity)}</div>
-						<div style="font-size:.8rem; color:#64748b;">${networkSummary.uniqueProducts || 0} products • ${networkSummary.totalBatches || 0} batches</div>
-					</div>
-				</div>
-				<div style="margin-top:16px;">
-					<h5 style="margin:0 0 8px 0; font-size:.95rem; color:#0f172a;">Expiring within ${horizon} days</h5>
-					${expiringHtml}
-				</div>
-			`;
-
-			panel.style.display = 'block';
-		}
-
-		window.addEventListener('barcode-stock:imported', (event) => {
-			renderImportSummaryPanel(event.detail);
-		});
-
 		function showAppointmentBookingModal() {
 			if (typeof openClientReg === 'function') {
 				openClientReg('appointment');
@@ -20262,8 +20106,6 @@ async function logout() {
 				}
 			}
 
-			renderGMApprovalAlerts(pending);
-
 			if (!pending.length) {
 				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending inventory approvals.</p>';
 				return;
@@ -20285,22 +20127,7 @@ async function logout() {
 			const branchName = transfer?.toBranch || gmMeta.branch || 'Unknown Branch';
 			const warehouseName = transfer?.fromWarehouse || gmMeta.warehouse || 'Warehouse';
 			const dispatchNumber = gmMeta.dispatchNumber || transfer?.dispatchNotes || transfer?.dispatchReference || '';
-			const createdAtRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || Date.now();
-			const createdAtDate = new Date(createdAtRaw);
-			const createdAt = Number.isNaN(createdAtDate.getTime()) ? 'Pending' : createdAtDate.toLocaleString();
-			const ageMs = Number.isNaN(createdAtDate.getTime()) ? null : Date.now() - createdAtDate.getTime();
-			const ageHours = ageMs !== null ? Math.max(0, ageMs / (60 * 60 * 1000)) : null;
-			const staleThresholdHours = 48;
-			const warningThresholdHours = 24;
-			let ageBadge = '';
-			if (ageHours !== null) {
-				const roundedHours = Math.floor(ageHours);
-				if (roundedHours >= staleThresholdHours) {
-					ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fee2e2; color:#b91c1c; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
-				} else if (roundedHours >= warningThresholdHours) {
-					ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fef3c7; color:#b45309; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
-				}
-			}
+			const createdAt = new Date(transfer?.createdAt || gmMeta.requestedAt || Date.now()).toLocaleString();
 			const notes = gmMeta.notes || transfer?.dispatchNotes || '';
 			const guidance = transfer?.metadata?.guidanceSnapshot || {};
 
@@ -20322,7 +20149,6 @@ async function logout() {
 							<div style="font-size:.8rem; color:#999;">${escapeHtml(warehouseName)} ➜ ${escapeHtml(branchName)}</div>
 							</div>
 							<div style="text-align:right;">
-							${ageBadge ? `<div style="margin-bottom:6px;">${ageBadge}</div>` : ''}
 							<div style="font-weight:700; color:#1f2937;">${requestedQuantity} units</div>
 							<div style="font-size:.75rem; color:#999;">${escapeHtml(createdAt)}</div>
 							</div>
@@ -25250,19 +25076,13 @@ async function reverseLastPrescriptionPayment(reportId){
             const input = document.getElementById('uplineIdNo');
             const resultsDiv = document.getElementById('uplineSearchResults');
             if (!input || !resultsDiv) return;
-
-            await renderDistributorSearchResults(input, resultsDiv, {
-                limit: 5,
-                onSelect: (record) => {
-                    const code = record.distributorCode || record.id || '';
-                    const name = record.distributorName || record.name || code;
-                    const phone = record.mobileNo || record.mobile_no || record.mobile || '';
-                    selectUplineDistributor(code, name, phone, record.id || code);
-                    resultsDiv.style.display = 'none';
-                }
-            });
-        }
-
+            
+            const searchTerm = input.value.trim().toUpperCase();
+            if (searchTerm.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
             try {
                 const response = await fetch(`/api/distributors?search=${encodeURIComponent(searchTerm)}`);
                 if (!response.ok) throw new Error('Search failed');
@@ -25291,34 +25111,23 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
         
-        function selectUplineDistributor(code, name, mobile = '', id = '') {
-            const idInput = document.getElementById('uplineIdNo');
-            const nameInput = document.getElementById('uplineName');
-            const phoneInput = document.getElementById('uplineMobile');
-            const resultsDiv = document.getElementById('uplineSearchResults');
-            if (idInput) idInput.value = code || '';
-            if (nameInput) nameInput.value = name || '';
-            if (phoneInput && mobile) phoneInput.value = mobile;
-            if (resultsDiv) resultsDiv.style.display = 'none';
+        function selectUplineDistributor(code, name) {
+            document.getElementById('uplineIdNo').value = code;
+            document.getElementById('uplineName').value = name;
+            document.getElementById('uplineSearchResults').style.display = 'none';
         }
         
         async function searchSponsorDistributor() {
             const input = document.getElementById('sponsorIdNo');
             const resultsDiv = document.getElementById('sponsorSearchResults');
             if (!input || !resultsDiv) return;
-
-            await renderDistributorSearchResults(input, resultsDiv, {
-                limit: 5,
-                onSelect: (record) => {
-                    const code = record.distributorCode || record.id || '';
-                    const name = record.distributorName || record.name || code;
-                    const phone = record.mobileNo || record.mobile_no || record.mobile || '';
-                    selectSponsorDistributor(code, name, phone, record.id || code);
-                    resultsDiv.style.display = 'none';
-                }
-            });
-        }
-
+            
+            const searchTerm = input.value.trim().toUpperCase();
+            if (searchTerm.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
             try {
                 const response = await fetch(`/api/distributors?search=${encodeURIComponent(searchTerm)}`);
                 if (!response.ok) throw new Error('Search failed');
@@ -25347,15 +25156,10 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
         
-        function selectSponsorDistributor(code, name, mobile = '', id = '') {
-            const idInput = document.getElementById('sponsorIdNo');
-            const nameInput = document.getElementById('sponsorName');
-            const phoneInput = document.getElementById('sponsorMobile');
-            const resultsDiv = document.getElementById('sponsorSearchResults');
-            if (idInput) idInput.value = code || '';
-            if (nameInput) nameInput.value = name || '';
-            if (phoneInput && mobile) phoneInput.value = mobile;
-            if (resultsDiv) resultsDiv.style.display = 'none';
+        function selectSponsorDistributor(code, name) {
+            document.getElementById('sponsorIdNo').value = code;
+            document.getElementById('sponsorName').value = name;
+            document.getElementById('sponsorSearchResults').style.display = 'none';
         }
         
         async function submitDistributorAgreement(event) {
@@ -26111,42 +25915,65 @@ async function reverseLastPrescriptionPayment(reportId){
         async function searchFieldProgramDistributor() {
             const searchInput = document.getElementById('fieldProgramDistributorSearch');
             const dropdown = document.getElementById('fieldProgramDistributorDropdown');
-            if (!searchInput || !dropdown) return;
-
-            await renderDistributorSearchResults(searchInput, dropdown, {
-                limit: 8,
-                onSelect: (record) => {
-                    const code = record.distributorCode || record.id || '';
-                    const name = record.distributorName || record.name || code;
-                    const phone = record.mobileNo || record.mobile_no || record.mobile || '';
-                    if (typeof selectFieldProgramDistributor === 'function') {
-                        selectFieldProgramDistributor(code, name, phone, record.id || code);
+            const query = searchInput.value.trim().toUpperCase();
+            
+            if (query.length < 2) {
+                dropdown.style.display = 'none';
+                return;
+            }
+            
+            try {
+                // Try to load distributors from API
+                let distributors = [];
+                try {
+                    const response = await fetch('/api/distributors');
+                    if (response.ok) {
+                        distributors = await response.json();
                     }
-                    dropdown.style.display = 'none';
+                } catch (e) {
+                    console.debug('API not available, trying localStorage');
                 }
-            });
+                
+                // Fallback to localStorage
+                if (distributors.length === 0) {
+                    const stored = localStorage.getItem('dyna_distributors') || localStorage.getItem('dyna_distributors_cache');
+                    if (stored) {
+                        const data = JSON.parse(stored);
+                        distributors = Array.isArray(data) ? data : (data.data || []);
+                    }
+                }
+                
+                // Filter distributors
+                const matches = distributors.filter(d => {
+                    const code = (d.distributorCode || d.code || d.distributor_code || '').toString().toUpperCase();
+                    const name = (d.distributorName || d.name || d.distributor_name || '').toString().toUpperCase();
+                    return code.includes(query) || name.includes(query);
+                }).slice(0, 10);
+                
+                if (matches.length === 0) {
+                    dropdown.innerHTML = '<div style="padding: 10px; color: #666;">No distributors found</div>';
+                } else {
+                    dropdown.innerHTML = matches.map(d => {
+                        const code = d.distributorCode || d.code || d.distributor_code || 'N/A';
+                        const name = d.distributorName || d.name || d.distributor_name || 'N/A';
+                        return `<div onclick="selectFieldProgramDistributor('${code}', '${name.replace(/'/g, "\\'")}', '${d.mobileNo || d.mobile || d.mobile_no || ''}', '${d.id || code}')" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='white'">${code} - ${name}</div>`;
+                    }).join('');
+                }
+                dropdown.style.display = 'block';
+            } catch (error) {
+                console.error('Error searching distributors:', error);
+                dropdown.style.display = 'none';
+            }
         }
 
-                }
-            });
-        }
-
-function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
-            const searchInput = document.getElementById('fieldProgramDistributorSearch');
-            const idInput = document.getElementById('fieldProgramDistributorId');
-            const codeField = document.getElementById('fieldProgramDistributorCode');
-            const nameField = document.getElementById('fieldProgramDistributorName');
-            const mobileField = document.getElementById('fieldProgramDistributorMobile');
-            const infoPanel = document.getElementById('fieldProgramDistributorInfo');
-            const dropdown = document.getElementById('fieldProgramDistributorDropdown');
-
-            if (searchInput) searchInput.value = code && name ? `${code} - ${name}` : (code || name || '');
-            if (idInput) idInput.value = id || code || '';
-            if (codeField) codeField.textContent = code || 'N/A';
-            if (nameField) nameField.textContent = name || 'N/A';
-            if (mobileField) mobileField.textContent = mobile || 'N/A';
-            if (infoPanel) infoPanel.style.display = 'block';
-            if (dropdown) dropdown.style.display = 'none';
+        function selectFieldProgramDistributor(code, name, mobile, id) {
+            document.getElementById('fieldProgramDistributorSearch').value = `${code} - ${name}`;
+            document.getElementById('fieldProgramDistributorId').value = id;
+            document.getElementById('fieldProgramDistributorCode').textContent = code;
+            document.getElementById('fieldProgramDistributorName').textContent = name;
+            document.getElementById('fieldProgramDistributorMobile').textContent = mobile;
+            document.getElementById('fieldProgramDistributorInfo').style.display = 'block';
+            document.getElementById('fieldProgramDistributorDropdown').style.display = 'none';
         }
 
         function submitFieldProgramRequest(event) {

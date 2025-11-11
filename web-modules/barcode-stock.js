@@ -176,6 +176,69 @@ function persistInventoryAggregate(batches) {
     return aggregate;
 }
 
+function buildLocationSummary(location) {
+    const batches = loadBatches();
+    const now = Date.now();
+    const horizonDays = 60;
+    const horizonMs = horizonDays * 24 * 60 * 60 * 1000;
+    const filtered = batches.filter(batch => {
+        if (!location) return true;
+        const batchLocation = batch.location || 'country_stock';
+        return batchLocation === location;
+    });
+
+    let totalQuantity = 0;
+    const productTotals = new Map();
+    const expiringSoon = [];
+
+    filtered.forEach(batch => {
+        const qty = Number(batch.remainingQuantity ?? batch.quantity ?? 0) || 0;
+        totalQuantity += qty;
+
+        const productKey = (batch.description || batch.productId || batch.barcode || 'unknown').toString();
+        if (productKey) {
+            const existing = productTotals.get(productKey) || {
+                name: batch.description || batch.productId || 'Item',
+                quantity: 0
+            };
+            existing.quantity += qty;
+            productTotals.set(productKey, existing);
+        }
+
+        const expiryTimestamp = batch.expiryTimestamp || toExpiryTimestamp(batch.expiryDate);
+        if (expiryTimestamp) {
+            const diff = expiryTimestamp - now;
+            if (diff <= horizonMs) {
+                const daysUntil = Math.floor(diff / (24 * 60 * 60 * 1000));
+                expiringSoon.push({
+                    product: batch.description || batch.productId || 'Item',
+                    batchNo: batch.batchNo,
+                    expiryDate: batch.expiryDate,
+                    remainingQuantity: qty,
+                    daysUntil
+                });
+            }
+        }
+    });
+
+    expiringSoon.sort((a, b) => (a.daysUntil ?? Infinity) - (b.daysUntil ?? Infinity));
+    const topExpiring = expiringSoon.slice(0, 5);
+    const topProducts = Array.from(productTotals.values())
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 5);
+
+    return {
+        location: location || 'all',
+        totalBatches: filtered.length,
+        totalQuantity,
+        uniqueProducts: productTotals.size,
+        topExpiring,
+        horizonDays,
+        topProducts,
+        generatedAt: nowIso()
+    };
+}
+
 function saveBatches(batches) {
     writeJson(STORAGE_KEY, batches);
     touchTimestamp(LAST_UPDATED_KEY);
@@ -443,7 +506,20 @@ export async function importStockWithBarcode(payload) {
             createdAt: entry.createdAt
         });
 
-        return { success: true, data: entry, cloudSynced: Boolean(cloudBatch) };
+        const summary = {
+            location: buildLocationSummary(entry.location),
+            network: buildLocationSummary(null)
+        };
+
+        try {
+            window.dispatchEvent(new CustomEvent('barcode-stock:imported', {
+                detail: { entry, summary }
+            }));
+        } catch (_) {
+            /* ignore */
+        }
+
+        return { success: true, data: entry, cloudSynced: Boolean(cloudBatch), summary };
     } catch (error) {
         return { success: false, error: error.message || 'IMPORT_FAILED' };
     }
@@ -619,5 +695,6 @@ export default {
     dispatchStockByBarcode,
     receiveStockByBarcode,
     removeStockBatch,
-    resetBarcodeStock
+    resetBarcodeStock,
+    getLocationStockSummary: buildLocationSummary
 };
