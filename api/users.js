@@ -52,9 +52,9 @@ function buildUserResponse(user) {
   if (!sanitized) return null;
   return {
     ...sanitized,
-    password: user.password || null,
     isActive: user.is_active ?? true,
     mustChangePassword: user.must_change_password ?? false,
+    hasPassword: Boolean(user.password_hash),
     metadata: user.metadata || null
   };
 }
@@ -121,7 +121,7 @@ async function handlePost(req, res) {
     [
       id,
       username.toLowerCase(),
-      password,
+      passwordHash,
       passwordHash,
       role.toLowerCase(),
       body.fullName || body.full_name || null,
@@ -162,7 +162,7 @@ async function handlePut(req, res) {
   if (body.password) {
     const hashed = await bcrypt.hash(body.password, 10);
     updates.push(`password = $${updates.length + 1}`);
-    params.push(body.password);
+    params.push(hashed);
     updates.push(`password_hash = $${updates.length + 1}`);
     params.push(hashed);
   }

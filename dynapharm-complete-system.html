@@ -3565,85 +3565,40 @@
                 return;
             }
             
-            // Load users from multiple sources to ensure we have all registered users
-            await loadData();
-            
-            // Ensure users array is populated - try multiple fallbacks
-            if (!users || users.length === 0) {
-                try {
-                    users = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
-                    if (users.length === 0) {
-                        users = JSON.parse(DEFAULT_USERS_JSON);
-                    }
-                } catch (e) {
-                    console.error('Error loading users:', e);
-                    users = JSON.parse(DEFAULT_USERS_JSON);
+            try {
+                const data = await loginPortalRequest(username, password);
+                const user = data?.user;
+                if (!user) {
+                    throw new Error('Unexpected response from server.');
                 }
-            }
-            
-            // Find user by username and password (case-sensitive for username, case-sensitive for password)
-            const user = users.find(u => {
-                const usernameMatch = u.username && u.username.trim().toLowerCase() === username.toLowerCase();
-                const passwordMatch = u.password === password; // Exact password match
-                return usernameMatch && passwordMatch;
-            });
-            
-            if (!user) {
-                // Provide helpful error message
-                const userExists = users.find(u => u.username && u.username.trim().toLowerCase() === username.toLowerCase());
-                if (userExists) {
-                    alert('Invalid password. Please check your password and try again.');
-                } else {
-                    alert('Invalid username or password. Please check your credentials and try again.');
+                
+                if (user.role === 'distributor') {
+                    alert('Distributors should use the Distributor Portal link');
+                    window.open('distributor-portal.html', '_blank');
+                    return;
                 }
-                return;
-            }
-            
-            // Check if user is a distributor
-            if (user.role === 'distributor' || username.toLowerCase().includes('distributor')) {
-                alert('Distributors should use the Distributor Portal link');
-                window.open('distributor-portal.html', '_blank');
-                return;
-            }
-            
-            // Login successful
-            currentUser = user;
-            window.currentUser = user;
-            const role = user.role.toLowerCase();
-            setCurrentUserRole(role);
-            
-            // Save session
-            localStorage.setItem('currentUser', JSON.stringify(user));
-            localStorage.setItem('currentUserRole', role);
-            
-            // For admin role, ensure full access to all portals
-            const finalRole = role === 'admin' ? 'admin' : role;
-            
-            // Hide landing page and login modal, show authorized portals
-            hideLandingPage();
-            hideStaffLoginModal();
-            updateNavigationForUser(user, finalRole);
-            showAuthorizedPortals(finalRole);
-            
-            // Load shop products if client portal is available
-            setTimeout(() => {
-                if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[finalRole]?.includes('client')) {
-                    loadShopProducts();
+                
+                const role = (user.role || '').toLowerCase();
+                const allowedPortals = ROLE_PORTAL_ACCESS[role] || [];
+                if (!currentPortal || !allowedPortals.includes(currentPortal)) {
+                    const fallbackPortal = allowedPortals[0] || 'client';
+                    currentPortal = fallbackPortal;
+                    window.currentPortal = fallbackPortal;
                 }
-            }, 500);
-            
-            // Show welcome message with portal count
-            const portalCount = ROLE_PORTAL_ACCESS[finalRole]?.length || 0;
-            const portalList = ROLE_PORTAL_ACCESS[finalRole]?.join(', ') || 'none';
-            console.log(`✅ Login successful: ${user.fullName || user.username} (${finalRole})`);
-            console.log(`📋 Accessible portals (${portalCount}): ${portalList}`);
-            
-            // Show success message
-            const welcomeMsg = role === 'admin' 
-                ? `Welcome, ${user.fullName || user.username}!\n\n🔑 Master Admin Access\nYou have full access to all ${portalCount} portals:\n${portalList}`
-                : `Welcome, ${user.fullName || user.username}!\n\nYou have access to ${portalCount} portal(s):\n${portalList}`;
-            
-            alert(welcomeMsg);
+                
+                handlePortalLoginSuccess(user, { silent: true });
+                hideStaffLoginModal();
+                
+                const portalCount = allowedPortals.length;
+                const portalList = portalCount ? allowedPortals.join(', ') : 'none';
+                const welcomeMsg = role === 'admin'
+                    ? `Welcome, ${user.fullName || user.username}!\n\n🔑 Master Admin Access\nYou have full access to all ${portalCount} portals:\n${portalList}`
+                    : `Welcome, ${user.fullName || user.username}!\n\nYou have access to ${portalCount} portal(s):\n${portalList}`;
+                alert(welcomeMsg);
+            } catch (error) {
+                console.error('Staff login error:', error);
+                alert(error.message || 'Unable to login. Please try again.');
+            }
         }
 
         // Action-level guards
@@ -10660,8 +10615,12 @@
                 </div>
                 <div class="form-section">
                     <h3>Branch Management</h3>
-                    <input type="text" id="newBranchName" placeholder="Branch name" style="padding: 10px; margin-right: 10px;">
-                    <button class="btn btn-success" onclick="addBranch()">Add Branch</button>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                        <input type="text" id="newBranchName" placeholder="Branch name" style="padding: 10px;">
+                        <input type="text" id="newBranchLocation" placeholder="Location / Address (optional)" style="padding: 10px;">
+                        <input type="text" id="newBranchPhone" placeholder="Contact phone (optional)" style="padding: 10px;">
+                    </div>
+                    <button class="btn btn-success" onclick="addBranch()" style="margin-bottom: 15px;">Add Branch</button>
                     <div id="branchList"></div>
                 </div>
                 
@@ -12754,6 +12713,11 @@
         let distributors = [];
         let distributorsLoadedAt = 0;
         let distributorsLoadInFlight = null;
+        let productPhotos = [];
+        let productPhotosLoadedAt = 0;
+        let productPhotosLoadInFlight = null;
+        let adminProducts = [];
+        let adminProductIndex = {};
         
         function getCachedBranches() {
             if (Array.isArray(branches) && branches.length > 0) {
@@ -13329,6 +13293,7 @@
             const name = raw.distributor_name || raw.distributorName || raw.name || '';
             const phone = raw.mobile_no || raw.mobile || raw.phone || raw.telephone || null;
             const email = raw.email || raw.mail || null;
+            if (!code && !name) return null;
             return {
                 id,
                 distributorCode: code || id,
@@ -13336,9 +13301,11 @@
                 mobileNo: phone,
                 email,
                 status: raw.status || 'active',
-                branch: raw.branch || raw.branch_id || raw.branchId || null,
+                branch: raw.branch || raw.branch_id || raw.branchId || raw.location || null,
                 metadata: raw.metadata || null,
                 agreementData: raw.agreement_data || raw.agreementData || null,
+                entityType: raw.entity_type || raw.entityType || raw.type || 'distributor',
+                hasPassword: Boolean(raw.hasPassword ?? raw.passwordSet ?? raw.password_hash ?? raw.passwordHash)
             };
         }
         
@@ -13403,15 +13370,10 @@
                         if (forceRefresh) params.set('ts', String(Date.now()));
                         if (search) params.set('search', search);
                         const url = params.toString() ? `/api/distributors?${params}` : '/api/distributors';
-                        const response = await fetch(url, { credentials: 'include' });
-                        if (response.ok) {
-                            const payload = await response.json();
-                            const rawList = Array.isArray(payload) ? payload : payload?.distributors;
-                            if (Array.isArray(rawList)) {
-                                list = rawList.map(normalizeDistributorRecord).filter(Boolean);
-                            }
-                        } else {
-                            console.debug('loadDistributors: backend responded with', response.status);
+                        const response = await apiRequest(url, 'GET');
+                        const rawList = Array.isArray(response) ? response : response?.distributors;
+                        if (Array.isArray(rawList)) {
+                            list = rawList.map(normalizeDistributorRecord).filter(Boolean);
                         }
                     } catch (error) {
                         console.debug('loadDistributors: backend unavailable', error);
@@ -13435,11 +13397,403 @@
         
         async function saveDistributors(list) {
             const next = Array.isArray(list) ? list.map(normalizeDistributorRecord).filter(Boolean) : distributors;
-            distributors = next;
-            distributorsLoadedAt = Date.now();
-            window.distributors = distributors;
-            persistDistributorsToCache(distributors);
-            return distributors;
+            if (!next.length) {
+                distributors = [];
+                persistDistributorsToCache([]);
+                return distributors;
+            }
+            try {
+                const payload = next.map((record) => ({
+                    id: record.id,
+                    distributor_code: record.distributorCode,
+                    distributor_name: record.distributorName,
+                    mobile_no: record.mobileNo,
+                    email: record.email,
+                    status: record.status,
+                    branch: record.branch,
+                    location: record.location,
+                    agreement_data: record.agreementData || record.agreement_data,
+                    metadata: record.metadata,
+                    entity_type: record.entityType || 'distributor'
+                }));
+                await apiRequest('/distributors', 'POST', payload);
+                distributors = next;
+                distributorsLoadedAt = Date.now();
+                window.distributors = distributors;
+                persistDistributorsToCache(distributors);
+                return distributors;
+            } catch (error) {
+                console.error('saveDistributors: failed to persist to backend', error);
+                distributors = next;
+                persistDistributorsToCache(distributors);
+                return distributors;
+            }
+        }
+
+        function distributorIsBranch(record) {
+            return (record?.entityType || 'distributor') !== 'distributor';
+        }
+
+        function getDistributorSummary(record) {
+            if (!record) return '';
+            const parts = [];
+            if (record.branch) parts.push(`Branch: ${escapeHtml(record.branch)}`);
+            if (record.mobileNo) parts.push(`Phone: ${escapeHtml(record.mobileNo)}`);
+            if (record.email) parts.push(escapeHtml(record.email));
+            if (record.status && record.status !== 'active') {
+                parts.push(`Status: ${escapeHtml(record.status)}`);
+            }
+            return parts.join(' • ');
+        }
+
+        function renderAdminDistributorList(list = distributors) {
+            const container = document.getElementById('distributorList');
+            if (!container) return;
+            const records = Array.isArray(list) ? list.filter((record) => record && !distributorIsBranch(record)) : [];
+            if (!records.length) {
+                container.innerHTML = `
+                    <div style="padding: 18px; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5f5; color: #475569;">
+                        No distributors found. Upload a CSV/Excel export or register new distributors to populate this list.
+                    </div>
+                `;
+                return;
+            }
+            const rows = records.map((record) => `
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                        <div style="font-weight: 600; color: #0f172a;">${escapeHtml(record.distributorName)}</div>
+                        <div style="font-size: 0.85rem; color: #64748b;">${escapeHtml(record.distributorCode)}</div>
+                    </td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${escapeHtml(record.branch || '—')}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${getDistributorSummary(record) || '—'}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                        ${record.hasPassword ? '<span style="color:#16a34a;font-size:0.85rem;">Password set</span>' : '<span style="color:#dc2626;font-size:0.85rem;">No password</span>'}
+                    </td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <div class="scroll-x" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#f1f5f9; color:#1e293b;">
+                                <th style="padding:10px; text-align:left;">Distributor</th>
+                                <th style="padding:10px; text-align:left;">Branch</th>
+                                <th style="padding:10px; text-align:left;">Contact</th>
+                                <th style="padding:10px; text-align:left;">Access</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function updateDistributorUploadStatus(message, tone = 'info') {
+            const statusDiv = document.getElementById('distributorUploadStatus');
+            if (!statusDiv) return;
+            if (!message) {
+                statusDiv.innerHTML = '';
+                return;
+            }
+            const colors = {
+                success: '#15803d',
+                error: '#b91c1c',
+                warning: '#b45309',
+                info: '#1d4ed8'
+            };
+            const color = colors[tone] || colors.info;
+            statusDiv.innerHTML = `<span style="color:${color};">${message}</span>`;
+        }
+
+        async function loadAdminDistributorDirectory(force = false) {
+            const info = document.getElementById('adminDistributorResetInfo');
+            const datalist = document.getElementById('adminDistributorResetOptions');
+            try {
+                const list = await loadDistributors({ forceRefresh: force });
+                renderAdminDistributorList(list);
+                if (info) {
+                    info.textContent = `${list.filter((item) => !distributorIsBranch(item)).length} distributors available (${force ? 'refreshed' : 'cached'})`;
+                }
+                if (datalist) {
+                    datalist.innerHTML = list
+                        .filter((item) => !distributorIsBranch(item))
+                        .slice(0, 100)
+                        .map((item) => `<option value="${escapeHtml(item.distributorCode)}">${escapeHtml(item.distributorName)}</option>`)
+                        .join('');
+                }
+                return list;
+            } catch (error) {
+                console.error('loadAdminDistributorDirectory error', error);
+                if (info) {
+                    info.textContent = 'Unable to refresh distributor directory. Showing cached results if available.';
+                }
+                const cached = readCachedDistributors();
+                renderAdminDistributorList(cached);
+                if (datalist) {
+                    datalist.innerHTML = cached
+                        .filter((item) => !distributorIsBranch(item))
+                        .slice(0, 100)
+                        .map((item) => `<option value="${escapeHtml(item.distributorCode)}">${escapeHtml(item.distributorName)}</option>`)
+                        .join('');
+                }
+                updateDistributorUploadStatus(`❌ ${error.message || 'Failed to load distributors from backend.'}`, 'error');
+                return cached;
+            }
+        }
+
+        function findDistributorMatch(value, source = distributors) {
+            if (!value) return null;
+            const needle = value.toString().trim().toUpperCase();
+            const list = Array.isArray(source) ? source : [];
+            return list.find((record) => {
+                if (!record || distributorIsBranch(record)) return false;
+                return record.distributorCode.toUpperCase() === needle || (record.distributorName || '').toUpperCase() === needle;
+            }) || null;
+        }
+
+        async function handleDistributorResetInput(value) {
+            const datalist = document.getElementById('adminDistributorResetOptions');
+            const info = document.getElementById('adminDistributorResetInfo');
+            if (!value || value.trim().length < 2) {
+                if (datalist) datalist.innerHTML = '';
+                if (info) info.textContent = 'Begin typing to search the central distributor directory.';
+                return;
+            }
+            const query = value.trim();
+            try {
+                const list = await loadDistributors({ search: query, forceRefresh: false });
+                const matches = filterDistributorsByQuery(list, query.toUpperCase()).slice(0, 25);
+                if (datalist) {
+                    datalist.innerHTML = matches
+                        .map((item) => `<option value="${escapeHtml(item.distributorCode)}">${escapeHtml(item.distributorName)}</option>`)
+                        .join('');
+                }
+                if (info) {
+                    if (matches.length === 0) {
+                        info.textContent = 'No distributors matched that search term.';
+                    } else if (matches.length === 1) {
+                        const match = matches[0];
+                        info.textContent = `${match.distributorName} • ${getDistributorSummary(match) || 'No contact details'}`;
+                    } else {
+                        info.textContent = `${matches.length} distributors match "${query}".`;
+                    }
+                }
+            } catch (error) {
+                console.error('handleDistributorResetInput error', error);
+                if (info) info.textContent = 'Unable to search distributors right now.';
+            }
+        }
+
+        function generateDistributorResetPassword() {
+            const input = document.getElementById('adminDistributorResetPassword');
+            if (!input) return '';
+            const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+            let password = '';
+            for (let i = 0; i < 12; i += 1) {
+                const index = Math.floor(Math.random() * charset.length);
+                password += charset[index];
+            }
+            input.value = password;
+            return password;
+        }
+
+        function clearDistributorResetForm() {
+            const searchInput = document.getElementById('adminDistributorResetInput');
+            const passwordInput = document.getElementById('adminDistributorResetPassword');
+            const statusEl = document.getElementById('adminDistributorResetStatus');
+            const datalist = document.getElementById('adminDistributorResetOptions');
+            const info = document.getElementById('adminDistributorResetInfo');
+            if (searchInput) searchInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            if (statusEl) statusEl.innerHTML = '';
+            if (datalist) datalist.innerHTML = '';
+            if (info) info.textContent = 'Begin typing to search the central distributor directory.';
+        }
+
+        async function setDistributorPassword(distributorId, password, distributorCode) {
+            return apiRequest('/distributors/set-password', 'POST', {
+                id: distributorId,
+                password,
+                distributorCode
+            });
+        }
+
+        async function submitDistributorPasswordReset() {
+            const searchInput = document.getElementById('adminDistributorResetInput');
+            const passwordInput = document.getElementById('adminDistributorResetPassword');
+            const statusEl = document.getElementById('adminDistributorResetStatus');
+            if (!searchInput || !passwordInput || !statusEl) return;
+
+            const lookup = searchInput.value.trim();
+            const password = passwordInput.value.trim();
+            if (!lookup) {
+                statusEl.innerHTML = '<span style="color:#b91c1c;">Please enter a distributor code or name.</span>';
+                return;
+            }
+            if (!password || password.length < 8) {
+                statusEl.innerHTML = '<span style="color:#b91c1c;">Password must be at least 8 characters long.</span>';
+                return;
+            }
+
+            statusEl.innerHTML = '<span style="color:#1d4ed8;">Updating password...</span>';
+            let record = findDistributorMatch(lookup);
+            if (!record) {
+                const results = await loadDistributors({ search: lookup, forceRefresh: true });
+                record = findDistributorMatch(lookup, results);
+            }
+            if (!record) {
+                statusEl.innerHTML = `<span style="color:#b91c1c;">Distributor "${escapeHtml(lookup)}" not found.</span>`;
+                return;
+            }
+
+            try {
+                await setDistributorPassword(record.id, password, record.distributorCode);
+                record.hasPassword = true;
+                statusEl.innerHTML = `<span style="color:#15803d;">✅ Password updated for ${escapeHtml(record.distributorName)} (${escapeHtml(record.distributorCode)})</span>`;
+                passwordInput.value = '';
+                renderAdminDistributorList();
+            } catch (error) {
+                console.error('submitDistributorPasswordReset error', error);
+                statusEl.innerHTML = `<span style="color:#b91c1c;">❌ ${escapeHtml(error.message || 'Failed to reset password')}</span>`;
+            }
+        }
+
+        async function searchDistributors() {
+            const input = document.getElementById('distributorSearch');
+            if (!input) return;
+            const query = input.value.trim();
+            if (!query) {
+                renderAdminDistributorList(distributors);
+                return;
+            }
+            const subset = filterDistributorsByQuery(distributors, query.toUpperCase());
+            renderAdminDistributorList(subset);
+        }
+
+        async function showAllDistributors() {
+            const input = document.getElementById('distributorSearch');
+            if (input) input.value = '';
+            await loadAdminDistributorDirectory(true);
+        }
+
+        async function exportDistributors() {
+            try {
+                const list = await loadDistributors({ forceRefresh: true });
+                const records = list.filter((record) => record && !distributorIsBranch(record));
+                if (!records.length) {
+                    updateDistributorUploadStatus('No distributors available to export.', 'warning');
+                    return;
+                }
+                const header = ['Distributor Code', 'Name', 'Branch', 'Phone', 'Email', 'Status'];
+                const lines = [
+                    header.join(',')
+                ];
+                records.forEach((record) => {
+                    const row = [
+                        record.distributorCode || '',
+                        record.distributorName || '',
+                        record.branch || '',
+                        record.mobileNo || '',
+                        record.email || '',
+                        record.status || ''
+                    ].map((value) => `"${String(value).replace(/"/g, '""')}"`);
+                    lines.push(row.join(','));
+                });
+                const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `distributors-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                updateDistributorUploadStatus(`✅ Exported ${records.length} distributors.`, 'success');
+            } catch (error) {
+                console.error('exportDistributors error', error);
+                updateDistributorUploadStatus(`❌ ${error.message || 'Failed to export distributors.'}`, 'error');
+            }
+        }
+
+        async function uploadDistributorFile() {
+            const input = document.getElementById('distributorFile');
+            if (!input) return;
+            const file = input.files && input.files[0];
+            if (!file) {
+                updateDistributorUploadStatus('Please choose a CSV file to upload.', 'warning');
+                return;
+            }
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext !== 'csv' && ext !== 'txt') {
+                updateDistributorUploadStatus('Only CSV files are supported at the moment.', 'warning');
+                return;
+            }
+            updateDistributorUploadStatus('Parsing distributor file...', 'info');
+            try {
+                const text = await file.text();
+                const delimiter = text.includes('\t') ? '\t' : ',';
+                const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+                if (!lines.length) {
+                    throw new Error('The file appears to be empty.');
+                }
+                const records = [];
+                const headerLine = lines[0].toLowerCase();
+                const hasHeader = headerLine.includes('drn') || headerLine.includes('code') || headerLine.includes('name');
+                const dataLines = hasHeader ? lines.slice(1) : lines;
+                dataLines.forEach((line, index) => {
+                    const columns = line.split(delimiter).map((col) => col.trim());
+                    if (columns.length < 2) return;
+                    const [code, name, branch, phone, email, status] = columns;
+                    if (!code || !name) {
+                        console.warn(`Skipping row ${index + 1}: missing code or name`);
+                        return;
+                    }
+                    records.push({
+                        distributor_code: code,
+                        distributor_name: name,
+                        branch: branch || null,
+                        mobile_no: phone || null,
+                        email: email || null,
+                        status: status || 'active'
+                    });
+                });
+                if (!records.length) {
+                    throw new Error('No valid distributor rows were found.');
+                }
+                await saveDistributors(records);
+                await loadAdminDistributorDirectory(true);
+                updateDistributorUploadStatus(`✅ Imported ${records.length} distributors successfully.`, 'success');
+                input.value = '';
+            } catch (error) {
+                console.error('uploadDistributorFile error', error);
+                updateDistributorUploadStatus(`❌ ${error.message || 'Failed to import distributors.'}`, 'error');
+            }
+        }
+
+        async function clearAllDistributors() {
+            if (!confirm('Are you sure you want to remove all distributors? This cannot be undone.')) {
+                return;
+            }
+            updateDistributorUploadStatus('Deleting distributors...', 'info');
+            try {
+                const current = await loadDistributors({ forceRefresh: true });
+                const targets = current.filter((record) => record && !distributorIsBranch(record));
+                for (const record of targets) {
+                    try {
+                        await apiRequest(`/distributors?id=${encodeURIComponent(record.id)}`, 'DELETE');
+                    } catch (error) {
+                        console.warn('Failed to delete distributor', record.distributorCode, error);
+                    }
+                }
+                distributors = [];
+                persistDistributorsToCache([]);
+                renderAdminDistributorList([]);
+                updateDistributorUploadStatus('✅ All distributors removed from shared database.', 'success');
+                await loadDistributors({ forceRefresh: true });
+            } catch (error) {
+                console.error('clearAllDistributors error', error);
+                updateDistributorUploadStatus(`❌ ${error.message || 'Failed to clear distributors.'}`, 'error');
+            }
         }
 
         async function renderDistributorSearchResults(inputEl, dropdownEl, { limit = 5, onSelect, emptyMessage = 'No distributors found' } = {}) {
@@ -13484,6 +13838,398 @@
             } catch (error) {
                 console.error('Distributor search failed:', error);
                 dropdownEl.innerHTML = '<div style="padding: 10px; color: #e74c3c;">Unable to load distributors. Please try again.</div>';
+            }
+        }
+
+        function normalizeProductPhoto(raw) {
+            if (!raw) return null;
+            const imageUrl = raw.image_url || raw.imageUrl || raw.url || raw.file_url || raw.fileUrl || '';
+            if (!imageUrl) return null;
+            const productId = raw.product_id || raw.productId || raw.id_product || null;
+            return {
+                id: raw.id || raw.photo_id || raw.uuid || `${productId || 'photo'}-${Date.now()}`,
+                productId,
+                productName: raw.product_name || raw.productName || '',
+                imageUrl,
+                thumbnailUrl: raw.thumbnail_url || raw.thumbnail || imageUrl,
+                isPrimary: Boolean(raw.is_primary || raw.isPrimary),
+                createdAt: raw.created_at || raw.uploaded_at || raw.createdAt || null,
+                meta: raw
+            };
+        }
+
+        async function populatePhotoProductSelect(force = false) {
+            const select = document.getElementById('photoProductSelect');
+            if (!select) return;
+            if (!force && adminProducts.length) {
+                renderPhotoProductOptions(select, adminProducts);
+                return;
+            }
+            try {
+                const response = await apiRequest('/products');
+                const list = extractArray(response, []);
+                adminProducts = list;
+                adminProductIndex = {};
+                list.forEach((product) => {
+                    const productId = product.id || product.product_id || product.uuid;
+                    if (!productId) return;
+                    adminProductIndex[productId] = product;
+                });
+                renderPhotoProductOptions(select, list);
+            } catch (error) {
+                console.error('populatePhotoProductSelect error', error);
+            }
+        }
+
+        function renderPhotoProductOptions(select, list) {
+            if (!select) return;
+            const options = ['<option value="">Select Product</option>'];
+            (Array.isArray(list) ? list : []).forEach((product) => {
+                const productId = product.id || product.product_id || product.uuid;
+                const name = product.name || product.description || product.code || productId;
+                if (!productId) return;
+                options.push(`<option value="${escapeHtml(productId)}">${escapeHtml(name)}</option>`);
+            });
+            select.innerHTML = options.join('');
+        }
+
+        function previewProductPhoto(event) {
+            const files = Array.from(event?.target?.files || []);
+            const preview = document.getElementById('photoPreview');
+            if (!preview) return;
+            if (!files.length) {
+                preview.innerHTML = '';
+                return;
+            }
+            preview.innerHTML = files
+                .slice(0, 4)
+                .map((file) => {
+                    const url = URL.createObjectURL(file);
+                    return `
+                        <div style="display:inline-flex; flex-direction:column; align-items:center; margin:6px;">
+                            <div style="width:120px;height:120px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#f8fafc;">
+                                <img src="${url}" alt="${escapeHtml(file.name)}" style="max-width:100%; max-height:100%; object-fit:cover;">
+                            </div>
+                            <small style="margin-top:6px;color:#64748b;">${escapeHtml(file.name)}</small>
+                        </div>
+                    `;
+                })
+                .join('');
+        }
+
+        function updatePhotoUploadStatus(message, tone = 'info') {
+            const status = document.getElementById('photoUploadStatus');
+            if (!status) return;
+            if (!message) {
+                status.innerHTML = '';
+                return;
+            }
+            const colors = {
+                success: '#15803d',
+                error: '#b91c1c',
+                warning: '#b45309',
+                info: '#1d4ed8'
+            };
+            status.innerHTML = `<span style="color:${colors[tone] || colors.info};">${message}</span>`;
+        }
+
+        async function uploadProductPhoto() {
+            const select = document.getElementById('photoProductSelect');
+            const input = document.getElementById('productPhotoInput');
+            if (!select || !input) return;
+            const productId = select.value;
+            if (!productId) {
+                updatePhotoUploadStatus('Please choose a product before uploading photos.', 'warning');
+                return;
+            }
+            const files = Array.from(input.files || []);
+            if (!files.length) {
+                updatePhotoUploadStatus('Select one or more image files to upload.', 'warning');
+                return;
+            }
+            updatePhotoUploadStatus('Uploading photos...', 'info');
+            let uploaded = 0;
+            for (const file of files.slice(0, 4)) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('type', 'product');
+                formData.append('entityId', productId);
+                const label = select.options[select.selectedIndex]?.text || '';
+                formData.append('entityName', label);
+                try {
+                    const response = await fetch('/api/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || payload?.error) {
+                        throw new Error(payload?.error || payload?.message || 'Upload failed.');
+                    }
+                    uploaded += 1;
+                } catch (error) {
+                    console.error('uploadProductPhoto error', error);
+                    updatePhotoUploadStatus(`❌ ${error.message || 'An upload failed.'}`, 'error');
+                }
+            }
+            if (uploaded > 0) {
+                await loadProductPhotos(true);
+                renderProductPhotos();
+                updatePhotoUploadStatus(`✅ Uploaded ${uploaded} photo${uploaded === 1 ? '' : 's'} successfully.`, 'success');
+                input.value = '';
+                const preview = document.getElementById('photoPreview');
+                if (preview) preview.innerHTML = '';
+            }
+        }
+
+        async function loadProductPhotos(force = false) {
+            if (!force && productPhotos.length && Date.now() - productPhotosLoadedAt < 30000) {
+                return productPhotos;
+            }
+            if (productPhotosLoadInFlight && !force) {
+                return productPhotosLoadInFlight;
+            }
+            productPhotosLoadInFlight = (async () => {
+                try {
+                    const response = await apiRequest('/product_images');
+                    const list = Array.isArray(response) ? response : response?.images || [];
+                    productPhotos = list.map(normalizeProductPhoto).filter(Boolean);
+                    productPhotosLoadedAt = Date.now();
+                    renderProductPhotos();
+                } catch (error) {
+                    console.error('loadProductPhotos error', error);
+                } finally {
+                    productPhotosLoadInFlight = null;
+                }
+                return productPhotos;
+            })();
+            return productPhotosLoadInFlight;
+        }
+
+        function resolveProductName(productId, fallback) {
+            if (!productId) return fallback || '';
+            const product = adminProductIndex[productId];
+            if (product) {
+                return product.name || product.description || product.code || fallback || productId;
+            }
+            return fallback || productId;
+        }
+
+        function renderProductPhotos(list = productPhotos) {
+            const grid = document.getElementById('productPhotosGrid');
+            if (!grid) return;
+            const records = Array.isArray(list) ? list : [];
+            if (!records.length) {
+                grid.innerHTML = `
+                    <p style="text-align:center; color:#64748b; padding:20px;">
+                        No product photos uploaded yet. Use the form above to add images for catalog items.
+                    </p>
+                `;
+                return;
+            }
+            grid.innerHTML = records
+                .map((photo) => {
+                    const name = resolveProductName(photo.productId, photo.productName);
+                    const createdAt = photo.createdAt ? new Date(photo.createdAt).toLocaleString() : 'Unknown';
+                    return `
+                        <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#fff;">
+                            <div style="position:relative; padding-top:66%; background:#f8fafc;">
+                                <img src="${photo.thumbnailUrl || photo.imageUrl}" alt="${escapeHtml(name)}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover;">
+                                ${photo.isPrimary ? '<span style="position:absolute; top:10px; left:10px; background:#2563eb; color:#fff; padding:4px 8px; border-radius:9999px; font-size:0.75rem;">Primary</span>' : ''}
+                            </div>
+                            <div style="padding:12px;">
+                                <div style="font-weight:600; color:#0f172a;">${escapeHtml(name || 'Product')}</div>
+                                <div style="font-size:0.8rem; color:#64748b;">ID: ${escapeHtml(photo.productId || 'N/A')}</div>
+                                <div style="font-size:0.8rem; color:#94a3b8; margin-top:4px;">Uploaded: ${escapeHtml(createdAt)}</div>
+                            </div>
+                        </div>
+                    `;
+                })
+                .join('');
+        }
+
+        function filterProductPhotos() {
+            const input = document.getElementById('photoSearch');
+            if (!input) return;
+            const query = input.value.trim().toLowerCase();
+            if (!query) {
+                renderProductPhotos(productPhotos);
+                return;
+            }
+            const filtered = productPhotos.filter((photo) => {
+                const name = resolveProductName(photo.productId, photo.productName).toLowerCase();
+                const code = (photo.productId || '').toString().toLowerCase();
+                return name.includes(query) || code.includes(query);
+            });
+            renderProductPhotos(filtered);
+        }
+
+        function clearPhotoForm() {
+            const input = document.getElementById('productPhotoInput');
+            const preview = document.getElementById('photoPreview');
+            if (input) input.value = '';
+            if (preview) preview.innerHTML = '';
+            updatePhotoUploadStatus('', 'info');
+        }
+
+        function updateDownloadProgress(current, total, statusText) {
+            const status = document.getElementById('downloadStatus');
+            const stats = document.getElementById('downloadStats');
+            const bar = document.getElementById('downloadProgressBar');
+            if (status && statusText) status.textContent = statusText;
+            if (stats) stats.textContent = `${current}/${total}`;
+            if (bar) {
+                const percent = total ? Math.min(100, Math.round((current / total) * 100)) : 0;
+                bar.style.width = `${percent}%`;
+            }
+        }
+
+        async function startDownloadProductImages() {
+            const container = document.getElementById('downloadProgress');
+            const log = document.getElementById('downloadLog');
+            if (container) container.style.display = 'block';
+            if (log) log.innerHTML = '';
+            const list = await loadProductPhotos();
+            if (!list.length) {
+                updateDownloadProgress(0, 0, 'No product images available.');
+                return;
+            }
+            let processed = 0;
+            for (const photo of list) {
+                processed += 1;
+                updateDownloadProgress(processed, list.length, 'Downloading images...');
+                if (!photo.imageUrl) continue;
+                try {
+                    const response = await fetch(photo.imageUrl);
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const baseName = resolveProductName(photo.productId, photo.productName) || 'product';
+                    const safeName = baseName.replace(/[^a-z0-9_\-]+/gi, '_').toLowerCase();
+                    const filename = `${safeName}_${photo.id || processed}.png`;
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setTimeout(() => URL.revokeObjectURL(url), 2000);
+                    if (log) {
+                        const entry = document.createElement('div');
+                        entry.textContent = `⬇️ ${filename}`;
+                        log.appendChild(entry);
+                    }
+                } catch (error) {
+                    console.error('startDownloadProductImages error', error);
+                    if (log) {
+                        const entry = document.createElement('div');
+                        entry.style.color = '#b91c1c';
+                        entry.textContent = `❌ Failed to download image for ${resolveProductName(photo.productId, photo.productName)}`;
+                        log.appendChild(entry);
+                    }
+                }
+            }
+            updateDownloadProgress(list.length, list.length, 'Download complete. Check your downloads folder.');
+        }
+
+        function updateDataStatus(message, tone = 'info') {
+            const status = document.getElementById('dataStatus');
+            if (!status) return;
+            if (!message) {
+                status.innerHTML = '';
+                return;
+            }
+            const colors = {
+                success: '#15803d',
+                error: '#b91c1c',
+                warning: '#b45309',
+                info: '#1d4ed8'
+            };
+            status.innerHTML = `<span style="color:${colors[tone] || colors.info};">${message}</span>`;
+        }
+
+        async function exportData() {
+            updateDataStatus('Preparing export...', 'info');
+            try {
+                const [clientsData, usersData, branchesData, distributorsData, productsData, productImagesData] = await Promise.all([
+                    apiRequest('/clients'),
+                    apiRequest('/users'),
+                    apiRequest('/branches'),
+                    apiRequest('/distributors'),
+                    apiRequest('/products'),
+                    apiRequest('/product_images')
+                ]);
+                const payload = {
+                    exportedAt: new Date().toISOString(),
+                    clients: extractArray(clientsData, []),
+                    users: extractArray(usersData, []),
+                    branches: extractArray(branchesData, []),
+                    distributors: extractArray(distributorsData, []),
+                    products: extractArray(productsData, []),
+                    productImages: Array.isArray(productImagesData) ? productImagesData : productImagesData?.images || []
+                };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `dynapharm-backup-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                updateDataStatus('✅ Export complete. A backup file was downloaded to your device.', 'success');
+            } catch (error) {
+                console.error('exportData error', error);
+                updateDataStatus(`❌ ${error.message || 'Failed to export data.'}`, 'error');
+            }
+        }
+
+        function importData() {
+            const input = document.getElementById('importFile');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+
+        async function handleFileImport(event) {
+            const file = event?.target?.files?.[0];
+            if (!file) return;
+            updateDataStatus('Importing data...', 'info');
+            try {
+                const text = await file.text();
+                const payload = JSON.parse(text);
+                if (Array.isArray(payload.clients) && payload.clients.length) {
+                    await apiRequest('/clients', 'POST', payload.clients);
+                }
+                if (Array.isArray(payload.users) && payload.users.length) {
+                    for (const user of payload.users) {
+                        try {
+                            await apiRequest('/users', 'POST', user);
+                        } catch (error) {
+                            console.warn('User import skipped:', error.message || error);
+                        }
+                    }
+                }
+                if (Array.isArray(payload.branches) && payload.branches.length) {
+                    await apiRequest('/branches', 'POST', payload.branches);
+                    await syncBranchesFromBackend(true);
+                }
+                if (Array.isArray(payload.distributors) && payload.distributors.length) {
+                    await saveDistributors(payload.distributors);
+                }
+                if (Array.isArray(payload.products) && payload.products.length) {
+                    await apiRequest('/products', 'POST', payload.products);
+                }
+                if (Array.isArray(payload.productImages) && payload.productImages.length) {
+                    await apiRequest('/product_images', 'POST', payload.productImages);
+                }
+                updateDataStatus('✅ Import completed successfully.', 'success');
+                await refreshAllData();
+                await loadProductPhotos(true);
+                renderProductPhotos();
+            } catch (error) {
+                console.error('handleFileImport error', error);
+                updateDataStatus(`❌ ${error.message || 'Failed to import data.'}`, 'error');
+            } finally {
+                if (event?.target) event.target.value = '';
             }
         }
         
@@ -15075,9 +15821,260 @@
         
         // Appointments tracking
         let appointments = [];
+        const APPOINTMENT_CACHE_KEY = 'dyna_appointments';
+        const APPOINTMENTS_SYNC_TTL = 60 * 1000;
+        let appointmentsSyncMeta = {
+            lastLoaded: 0,
+            loadingPromise: null
+        };
         
         // Visits tracking (created at check-in)
         let visits = [];
+        
+        function normalizeAppointmentTime(value) {
+            if (value === undefined || value === null) return '09:00';
+            const str = value.toString();
+            if (str.includes(':')) {
+                const parts = str.split(':');
+                return `${parts[0].padStart(2, '0')}:${(parts[1] || '00').padStart(2, '0')}`;
+            }
+            if (str.length === 4) {
+                return `${str.slice(0, 2)}:${str.slice(2)}`;
+            }
+            if (str.length === 3) {
+                return `0${str[0]}:${str.slice(1)}`;
+            }
+            return str;
+        }
+
+        function normalizeAppointmentRecord(raw) {
+            if (!raw) return null;
+            let payload = raw;
+            if (raw && typeof raw.data === 'string') {
+                try {
+                    payload = { ...raw, data: JSON.parse(raw.data || '{}') };
+                } catch (_) {
+                    payload = { ...raw, data: {} };
+                }
+            }
+            const data = (payload && payload.data && typeof payload.data === 'object') ? payload.data : {};
+            const fallbackDate = new Date().toISOString().split('T')[0];
+            const createdAt = payload.created_at || data.createdAt || data.created_at || data.timestamp || new Date().toISOString();
+            const normalized = {
+                id: payload.id || data.id || `APT-${Date.now()}`,
+                clientReference: payload.client_reference || data.clientReference || data.client_reference || null,
+                clientName: payload.full_name || data.fullName || data.clientName || 'Client',
+                phone: payload.phone || data.phone || null,
+                email: payload.email || data.email || null,
+                date: (payload.date || data.date || fallbackDate).toString().slice(0, 10),
+                time: normalizeAppointmentTime(payload.time || data.time || '09:00'),
+                branch: payload.branch || data.branch || null,
+                serviceType: payload.type || data.type || data.serviceType || 'Full Body Check-Up',
+                status: payload.status || data.status || 'pending',
+                notes: payload.notes || data.notes || '',
+                createdAt,
+                updatedAt: payload.updated_at || data.updatedAt || data.updated_at || null,
+                consultant: data.consultant || data.consultantName || payload.consultant || data.createdBy || null,
+                consultantId: data.consultantId || data.consultant_id || data.consultantID || null,
+                consultantUsername: data.consultantUsername || data.consultant_username || data.createdBy || null,
+                metadata: data.metadata || {},
+                pendingSync: Boolean(data.pendingSync),
+                data: data
+            };
+            return normalized;
+        }
+
+        function mergeAppointmentIntoState(record) {
+            if (!record || !record.id) return;
+            const index = appointments.findIndex(apt => apt.id === record.id);
+            if (index >= 0) {
+                appointments[index] = { ...appointments[index], ...record };
+            } else {
+                appointments.push(record);
+            }
+        }
+
+        function removeAppointmentFromState(id) {
+            const index = appointments.findIndex(apt => apt.id === id);
+            if (index !== -1) {
+                appointments.splice(index, 1);
+            }
+        }
+
+        function persistAppointmentsCache() {
+            try {
+                localStorage.setItem(APPOINTMENT_CACHE_KEY, JSON.stringify(appointments));
+            } catch (_) {}
+        }
+
+        function hydrateAppointmentsFromCache() {
+            try {
+                const stored = localStorage.getItem(APPOINTMENT_CACHE_KEY);
+                if (!stored) return;
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                    appointments.length = 0;
+                    parsed.forEach(item => {
+                        const normalized = normalizeAppointmentRecord(item);
+                        if (normalized) {
+                            appointments.push(normalized);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.debug('Failed to hydrate appointments cache', error);
+            }
+        }
+
+        function composeAppointmentPayload(base, overrides = {}) {
+            const merged = Object.assign({}, base || {}, overrides || {});
+            const consultantMeta = {
+                consultant: merged.consultant || (currentUser && currentUser.fullName) || null,
+                consultantId: merged.consultantId || (currentUser && currentUser.id) || null,
+                consultantUsername: merged.consultantUsername || (currentUser && currentUser.username) || null
+            };
+            const data = Object.assign({}, merged.data || {}, consultantMeta, {
+                pendingSync: Boolean(merged.pendingSync),
+                branch: merged.branch || merged.data?.branch || currentBranch || (currentUser && currentUser.branch) || null,
+                lastUpdatedBy: (currentUser && currentUser.username) || merged.consultantUsername || null,
+                lastUpdatedAt: new Date().toISOString()
+            });
+            return {
+                id: merged.id,
+                client_reference: merged.clientReference || merged.client_reference || null,
+                full_name: merged.clientName || merged.full_name,
+                phone: merged.phone || null,
+                email: merged.email || null,
+                date: merged.date,
+                time: normalizeAppointmentTime(merged.time),
+                branch: merged.branch || data.branch || null,
+                type: merged.serviceType || merged.type || 'Full Body Check-Up',
+                status: merged.status || 'pending',
+                notes: merged.notes || null,
+                created_at: merged.createdAt || merged.created_at || new Date().toISOString(),
+                updated_at: merged.updatedAt || merged.updated_at || new Date().toISOString(),
+                data
+            };
+        }
+
+        async function syncConsultantAppointments(options = {}) {
+            const { force = false } = options || {};
+            if (!force && appointments.length && Date.now() - appointmentsSyncMeta.lastLoaded < APPOINTMENTS_SYNC_TTL) {
+                return appointments;
+            }
+            if (!force && appointmentsSyncMeta.loadingPromise) {
+                return appointmentsSyncMeta.loadingPromise;
+            }
+            const fetchPromise = (async () => {
+                try {
+                    const response = await apiRequest('/appointments');
+                    if (Array.isArray(response)) {
+                        appointments.length = 0;
+                        response.forEach(raw => {
+                            const normalized = normalizeAppointmentRecord(raw);
+                            if (normalized) {
+                                appointments.push(normalized);
+                            }
+                        });
+                        appointmentsSyncMeta.lastLoaded = Date.now();
+                        persistAppointmentsCache();
+                        window.dispatchEvent(new CustomEvent('appointments:hydrated', {
+                            detail: { count: appointments.length, ts: Date.now() }
+                        }));
+                    } else if (!appointments.length) {
+                        hydrateAppointmentsFromCache();
+                    }
+                } catch (error) {
+                    console.debug('Remote appointment sync failed, falling back to cache', error);
+                    if (!appointments.length) {
+                        hydrateAppointmentsFromCache();
+                    }
+                } finally {
+                    appointmentsSyncMeta.loadingPromise = null;
+                }
+                return appointments;
+            })();
+            appointmentsSyncMeta.loadingPromise = fetchPromise;
+            return fetchPromise;
+        }
+
+        async function persistAppointmentCreate(baseAppointment) {
+            const prepared = composeAppointmentPayload(baseAppointment, {
+                id: baseAppointment.id || `APT-${Date.now()}`
+            });
+            try {
+                const saved = await apiRequest('/appointments', 'POST', prepared);
+                const normalized = normalizeAppointmentRecord(saved || prepared);
+                mergeAppointmentIntoState(normalized);
+                appointmentsSyncMeta.lastLoaded = Date.now();
+                persistAppointmentsCache();
+                window.dispatchEvent(new CustomEvent('appointments:updated', {
+                    detail: { action: 'created', appointment: normalized }
+                }));
+                return normalized;
+            } catch (error) {
+                console.error('Appointment create fell back to offline cache', error);
+                const normalized = normalizeAppointmentRecord(Object.assign({}, prepared, {
+                    data: Object.assign({}, prepared.data || {}, { pendingSync: true })
+                }));
+                if (normalized) {
+                    normalized.pendingSync = true;
+                    mergeAppointmentIntoState(normalized);
+                    persistAppointmentsCache();
+                }
+                return normalized;
+            }
+        }
+
+        async function persistAppointmentUpdate(id, changes = {}) {
+            const existing = appointments.find(apt => apt.id === id);
+            if (!existing) return null;
+            const merged = Object.assign({}, existing, changes || {});
+            const payload = composeAppointmentPayload(existing, merged);
+            try {
+                const saved = await apiRequest('/appointments', 'PUT', payload);
+                const normalized = normalizeAppointmentRecord(saved || payload);
+                mergeAppointmentIntoState(normalized);
+                appointmentsSyncMeta.lastLoaded = Date.now();
+                persistAppointmentsCache();
+                window.dispatchEvent(new CustomEvent('appointments:updated', {
+                    detail: { action: 'updated', appointment: normalized }
+                }));
+                return normalized;
+            } catch (error) {
+                console.warn('Appointment update deferred to offline cache', error);
+                const offline = normalizeAppointmentRecord(Object.assign({}, payload, {
+                    data: Object.assign({}, payload.data || {}, { pendingSync: true, pendingChanges: changes || {} })
+                }));
+                if (offline) {
+                    offline.pendingSync = true;
+                    mergeAppointmentIntoState(offline);
+                    persistAppointmentsCache();
+                }
+                return offline;
+            }
+        }
+
+        async function persistAppointmentDelete(id) {
+            try {
+                await apiRequest(`/appointments?id=${encodeURIComponent(id)}`, 'DELETE');
+            } catch (error) {
+                console.warn('Appointment delete deferred to offline cache', error);
+                const existing = appointments.find(apt => apt.id === id);
+                if (existing) {
+                    existing.pendingSync = true;
+                    existing.data = Object.assign({}, existing.data || {}, { pendingSync: true, pendingDelete: true });
+                }
+            }
+            removeAppointmentFromState(id);
+            persistAppointmentsCache();
+            appointmentsSyncMeta.lastLoaded = Date.now();
+            window.dispatchEvent(new CustomEvent('appointments:updated', {
+                detail: { action: 'deleted', id }
+            }));
+        }
+
+        hydrateAppointmentsFromCache();
         
         // Time slots configuration
         let timeSlots = {
@@ -16546,10 +17543,6 @@
 
         // Load persisted appointments/visits on startup (if present)
         try {
-            const storedAppointments = localStorage.getItem('dyna_appointments');
-            if (storedAppointments) { appointments = JSON.parse(storedAppointments) || []; }
-        } catch(e) {}
-        try {
             const storedVisits = localStorage.getItem('dyna_visits');
             if (storedVisits) { visits = JSON.parse(storedVisits) || []; }
         } catch(e) {}
@@ -17402,24 +18395,92 @@
                     return { success: true, message: 'Client saved (offline)' };
                 }
             }
+            if (endpoint.startsWith('/appointments')) {
+                const cached = safeParseFromStorage(APPOINTMENT_CACHE_KEY, '[]');
+                const records = Array.isArray(cached) ? cached.map(item => normalizeAppointmentRecord(item)).filter(Boolean) : [];
+                const persist = (list) => {
+                    try { localStorage.setItem(APPOINTMENT_CACHE_KEY, JSON.stringify(list)); } catch (_) {}
+                };
+                if (method === 'GET') {
+                    return records;
+                } else if (method === 'POST') {
+                    const payloadData = typeof data?.data === 'string' ? (() => { try { return JSON.parse(data.data); } catch (_) { return {}; } })() : (data?.data || {});
+                    const normalized = normalizeAppointmentRecord({
+                        ...data,
+                        data: Object.assign({}, payloadData, { pendingSync: true })
+                    });
+                    if (normalized) {
+                        normalized.pendingSync = true;
+                        records.push(normalized);
+                        persist(records);
+                    }
+                    return normalized;
+                } else if (method === 'PUT') {
+                    const payloadData = typeof data?.data === 'string' ? (() => { try { return JSON.parse(data.data); } catch (_) { return {}; } })() : (data?.data || {});
+                    const normalized = normalizeAppointmentRecord({
+                        ...data,
+                        data: Object.assign({}, payloadData, { pendingSync: true })
+                    });
+                    if (normalized) {
+                        normalized.pendingSync = true;
+                        const idx = records.findIndex(item => item.id === normalized.id);
+                        if (idx >= 0) {
+                            records[idx] = normalized;
+                        } else {
+                            records.push(normalized);
+                        }
+                        persist(records);
+                    }
+                    return normalized;
+                } else if (method === 'DELETE') {
+                    const queryString = endpoint.includes('?') ? endpoint.split('?')[1] : '';
+                    const params = new URLSearchParams(queryString);
+                    const id = params.get('id') || data?.id;
+                    if (id) {
+                        const next = records.filter(item => item.id !== id);
+                        persist(next);
+                    }
+                    return { success: true, offline: true };
+                }
+            }
             if (endpoint === '/users') {
                 if (method === 'GET') {
                     const parsed = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
                     if (!Array.isArray(parsed) || parsed.length === 0) {
                         localStorage.setItem('dyna_users', DEFAULT_USERS_JSON);
-                        return JSON.parse(DEFAULT_USERS_JSON);
+                        return JSON.parse(DEFAULT_USERS_JSON).map(user => {
+                            const clone = { ...user };
+                            clone.hasPassword = clone.hasPassword ?? Boolean(clone.password_hash || clone.password);
+                            delete clone.password;
+                            delete clone.password_hash;
+                            return clone;
+                        });
                     }
-                    return parsed;
+                    return parsed.map(user => {
+                        const clone = { ...user };
+                        clone.hasPassword = clone.hasPassword ?? Boolean(clone.password_hash || clone.password);
+                        delete clone.password;
+                        delete clone.password_hash;
+                        return clone;
+                    });
                 } else if (method === 'POST') {
                     const usersLocal = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
-                    usersLocal.push(data);
+                    const clone = { ...data };
+                    clone.hasPassword = true;
+                    delete clone.password;
+                    delete clone.password_hash;
+                    usersLocal.push(clone);
                     localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
                     return { success: true, message: 'User saved (offline)' };
                 } else if (method === 'PUT') {
                     const usersLocal = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
                     const idx = usersLocal.findIndex(u => u.id === data.id);
                     if (idx !== -1) {
-                        usersLocal[idx] = data;
+                        const clone = { ...usersLocal[idx], ...data };
+                        clone.hasPassword = clone.hasPassword ?? true;
+                        delete clone.password;
+                        delete clone.password_hash;
+                        usersLocal[idx] = clone;
                         localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
                         return { success: true, message: 'User updated (offline)' };
                     }
@@ -19357,8 +20418,10 @@
             // Refresh current portal data if user is logged in
             if (currentUser) {
                 if (currentPortal === 'consultant') {
-                    await displayClients();
+                    await syncConsultantAppointments();
+                    await displayClients({ skipLoad: true });
                     await displayFollowUps();
+                    viewTodayAppointments();
                 } else if (currentPortal === 'dispenser') {
                     await displayPrescriptions();
                 } else if (currentPortal === 'stock') {
@@ -19387,6 +20450,9 @@
                 } else if (currentPortal === 'admin') {
                     loadUserList();
                     loadBranchListAdmin();
+                    await populatePhotoProductSelect();
+                    await loadProductPhotos();
+                    renderProductPhotos();
                     loadAdminDistributorDirectory();
                 }
             }
@@ -20646,38 +21712,32 @@
                             clientForm: client
                         };
                         
-                        // PRIMARY: Save to backend database
-                        try {
-                            const response = await fetch('/api/appointments', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    id: appointment.id,
-                                    client_reference: referenceNumber,
-                                    full_name: fullName,
-                                    phone: client.phone,
-                                    email: client.email,
-                                    date: preferredDate,
-                                    time: preferredTime,
-                                    branch: preferredBranch,
-                                    type: 'Full Body Check-Up',
-                                    status: 'pending',
-                                    data: JSON.stringify({ clientForm: client })
-                                })
-                            });
-                            
-                            if (response.ok) {
-                                console.log('✅ Appointment saved to backend database');
+                        const appointmentRecord = {
+                            id: appointment.id,
+                            date: preferredDate,
+                            time: normalizeAppointmentTime(preferredTime),
+                            clientName: fullName,
+                            clientReference: referenceNumber,
+                            consultant: currentUser?.fullName || 'Consultant',
+                            consultantId: currentUser?.id || null,
+                            consultantUsername: currentUser?.username || null,
+                            phone: client.phone,
+                            email: client.email,
+                            branch: preferredBranch || currentBranch || currentUser?.branch || null,
+                            serviceType: 'Full Body Check-Up',
+                            status: 'pending',
+                            createdAt: appointment.createdAt,
+                            data: {
+                                source: 'portal:client-form',
+                                clientForm: client,
+                                consultant: currentUser?.fullName || null,
+                                consultantId: currentUser?.id || null,
+                                consultantUsername: currentUser?.username || null,
+                                branch: preferredBranch || currentBranch || currentUser?.branch || null,
+                                pendingSync: false
                             }
-                        } catch (apiError) {
-                            console.warn('Backend save failed, using local storage:', apiError);
-                        }
-                        
-                        // FALLBACK: Also save to local storage as cache
-                        try {
-                            appointments.push(appointment);
-                            localStorage.setItem('dyna_appointments', JSON.stringify(appointments));
-                        } catch(_){ }
+                        };
+                        await persistAppointmentCreate(appointmentRecord);
                         
                         // Also save to dyna_consult_appointments for appointments-admin.html
                         try {
@@ -20688,8 +21748,8 @@
                                 phone: client.phone,
                                 email: client.email,
                                 date: preferredDate,
-                                time: preferredTime,
-                                branch: preferredBranch,
+                                time: normalizeAppointmentTime(preferredTime),
+                                branch: preferredBranch || currentBranch || currentUser?.branch || null,
                                 type: 'Full Body Check-Up',
                                 status: 'pending',
                                 createdAt: new Date().toISOString(),
@@ -20941,11 +22001,20 @@ function isPortalAllowedForRole(role, portal) {
 
 function setAuthenticatedUser(user) {
     currentUser = { ...user };
+    if (currentUser && typeof currentUser === 'object') {
+        try {
+            delete currentUser.password;
+            delete currentUser.password_hash;
+        } catch (_) {}
+    }
     window.currentUser = currentUser;
     if (Array.isArray(users)) {
         const existingIndex = users.findIndex(u => u.id === currentUser.id);
         if (existingIndex >= 0) {
-            users[existingIndex] = { ...users[existingIndex], ...currentUser };
+            const merged = { ...users[existingIndex], ...currentUser };
+            delete merged.password;
+            delete merged.password_hash;
+            users[existingIndex] = merged;
                 } else {
             users.push({ ...currentUser });
         }
@@ -21007,9 +22076,9 @@ function handlePortalLoginSuccess(user, options = {}) {
             }
             
     if (portal === 'consultant') {
-                displayClients();
-                displayMyReports();
-                displayFollowUps();
+                refreshConsultantData({ forceAppointments: true }).catch(err => {
+                    console.debug('refreshConsultantData error', err);
+                });
     } else if (portal === 'dispenser') {
                 displayPrescriptions();
                 displayPriceList();
@@ -21020,6 +22089,9 @@ function handlePortalLoginSuccess(user, options = {}) {
     } else if (portal === 'admin') {
                 loadUserList();
                 loadBranchListAdmin();
+                populatePhotoProductSelect();
+                loadProductPhotos().then(() => renderProductPhotos());
+                loadAdminDistributorDirectory();
             }
             
     if (!options.silent) {
@@ -21130,9 +22202,11 @@ async function logout() {
     }, 500);
         }
 
-        async function displayClients() {
-            // Refresh data from API
-            await loadData();
+        async function displayClients(options = {}) {
+            const { skipLoad = false } = options || {};
+            if (!skipLoad) {
+                await loadData();
+            }
             
             const list = document.getElementById('clientList');
             
@@ -21214,13 +22288,17 @@ async function logout() {
         }
 
         // Search functionality for consultant portal
-        function searchClients(portal) {
+        async function searchClients(portal) {
             const searchTerm = document.getElementById('consultantSearch').value.toLowerCase();
             const list = document.getElementById('clientList');
             const branchFilter = document.getElementById('consultantBranchFilter')?.value || '';
             
+            if (!clients || !clients.length || searchTerm.length >= 3) {
+                try { await loadData(); } catch (e) { console.debug('searchClients loadData error', e); }
+            }
+            
             if (!searchTerm) {
-                displayClients();
+                displayClients({ skipLoad: true });
                 return;
             }
             
@@ -21324,12 +22402,15 @@ async function logout() {
             cashStatusId: 'staffCashStatus-consultant'
         });
 
-        async function refreshConsultantData() {
+        async function refreshConsultantData(options = {}) {
+            const { forceAppointments = false } = options || {};
             await loadData();
-            await displayClients();
+            await syncConsultantAppointments({ force: forceAppointments });
+            await displayClients({ skipLoad: true });
             await displayMyReports();
             await displayFollowUps();
             await refreshAnalytics();
+            viewTodayAppointments();
         }
 
         async function refreshAnalytics() {
@@ -21727,11 +22808,12 @@ async function logout() {
             `;
         }
 
-		function initFullCalendar() {
+			async function initFullCalendar() {
 			const calendar = document.getElementById('appointmentCalendar');
 			if (!calendar) return;
-			calendar.style.display = 'block';
-			renderCalendar(window.currentCalendarDate || new Date());
+				calendar.style.display = 'block';
+				try { await syncConsultantAppointments(); } catch (e) { console.debug('initFullCalendar sync error', e); }
+				renderCalendar(window.currentCalendarDate || new Date());
 			try { calendar.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
 		}
 
@@ -23081,7 +24163,7 @@ async function logout() {
 			}
 		}
 
-        function bookAppointment() {
+        async function bookAppointment() {
             const date = prompt('Enter appointment date (YYYY-MM-DD or leave blank for today):');
             const appointmentDate = date || new Date().toISOString().split('T')[0];
             
@@ -23092,20 +24174,32 @@ async function logout() {
             if (!clientName) return;
             
             const notes = prompt('Notes (optional):') || '';
-            
-            appointments.push({
+            const baseAppointment = {
                 id: 'APT' + Date.now(),
                 date: appointmentDate,
-                time: time,
-                clientName: clientName,
-                consultant: currentUser.fullName,
-                notes: notes,
+                time: normalizeAppointmentTime(time),
+                clientName,
+                consultant: currentUser?.fullName || 'Consultant',
+                consultantId: currentUser?.id || null,
+                consultantUsername: currentUser?.username || null,
+                notes,
                 serviceType: 'Full Body Check-Up',
                 status: 'scheduled',
-                createdAt: new Date().toISOString()
-            });
+                branch: currentBranch || currentUser?.branch || null,
+                createdAt: new Date().toISOString(),
+                data: {
+                    source: 'portal:manual',
+                    consultant: currentUser?.fullName || null,
+                    consultantId: currentUser?.id || null,
+                    consultantUsername: currentUser?.username || null,
+                    branch: currentBranch || currentUser?.branch || null,
+                    notes
+                }
+            };
             
-            alert(`✅ Appointment booked\nDate: ${new Date(appointmentDate).toLocaleDateString('en-GB')}\nTime: ${time}\nClient: ${clientName}`);
+            await persistAppointmentCreate(baseAppointment);
+            
+            alert(`✅ Appointment booked\nDate: ${new Date(appointmentDate).toLocaleDateString('en-GB')}\nTime: ${normalizeAppointmentTime(time)}\nClient: ${clientName}`);
             
             if (document.getElementById('appointmentCalendar').style.display !== 'none') {
                 renderCalendar(window.currentCalendarDate || new Date());
@@ -23113,7 +24207,7 @@ async function logout() {
             viewTodayAppointments();
         }
 
-        function quickBookAppointment(dateStr) {
+        async function quickBookAppointment(dateStr) {
             const time = prompt(`Book appointment for ${new Date(dateStr).toLocaleDateString('en-GB')}\n\nEnter time (HH:MM in 24-hour format):`);
             if (!time) return;
             
@@ -23122,33 +24216,43 @@ async function logout() {
             
             const notes = prompt('Notes (optional):') || '';
             
-            appointments.push({
+            const baseAppointment = {
                 id: 'APT' + Date.now(),
                 date: dateStr,
-                time: time,
-                clientName: clientName,
-                consultant: currentUser.fullName,
-                notes: notes,
+                time: normalizeAppointmentTime(time),
+                clientName,
+                consultant: currentUser?.fullName || 'Consultant',
+                consultantId: currentUser?.id || null,
+                consultantUsername: currentUser?.username || null,
+                notes,
                 serviceType: 'Full Body Check-Up',
                 status: 'scheduled',
-                createdAt: new Date().toISOString()
-            });
+                branch: currentBranch || currentUser?.branch || null,
+                createdAt: new Date().toISOString(),
+                data: {
+                    source: 'portal:calendar',
+                    consultant: currentUser?.fullName || null,
+                    consultantId: currentUser?.id || null,
+                    consultantUsername: currentUser?.username || null,
+                    branch: currentBranch || currentUser?.branch || null,
+                    notes
+                }
+            };
+            
+            await persistAppointmentCreate(baseAppointment);
             
             alert(`✅ Appointment booked\nTime: ${time}\nClient: ${clientName}`);
             renderCalendar(window.currentCalendarDate || new Date());
             selectCalendarDate(dateStr);
         }
 
-        function cancelAppointment(aptId) {
+        async function cancelAppointment(aptId) {
             if (!confirm('Cancel this appointment?')) return;
             
-            const index = appointments.findIndex(apt => apt.id === aptId);
-            if (index !== -1) {
-                appointments.splice(index, 1);
-                alert('✅ Appointment cancelled');
-                renderCalendar(window.currentCalendarDate || new Date());
-                viewTodayAppointments();
-            }
+            await persistAppointmentDelete(aptId);
+            alert('✅ Appointment cancelled');
+            renderCalendar(window.currentCalendarDate || new Date());
+            viewTodayAppointments();
         }
 
         function viewTodayAppointments() {
@@ -23190,86 +24294,106 @@ async function logout() {
             `;
         }
 
-        function markAppointmentComplete(aptId) {
-            const index = appointments.findIndex(apt => apt.id === aptId);
-            if (index !== -1) {
-                appointments[index].status = 'completed';
-                appointments[index].completedAt = new Date().toISOString();
-                // If a visit exists, close it
-                try {
-                    if (appointments[index].visitId) {
-                        const vIdx = (visits || []).findIndex(v => v.id === appointments[index].visitId);
-                        if (vIdx !== -1) {
-                            visits[vIdx].status = 'completed';
-                            visits[vIdx].completedAt = new Date().toISOString();
-                        }
-                        localStorage.setItem('dyna_visits', JSON.stringify(visits));
+        async function markAppointmentComplete(aptId) {
+            const appointment = appointments.find(apt => apt.id === aptId);
+            if (!appointment) return;
+            const completedAt = new Date().toISOString();
+            const updates = {
+                status: 'completed',
+                completedAt,
+                data: Object.assign({}, appointment.data || {}, {
+                    status: 'completed',
+                    completedAt,
+                    pendingSync: appointment.pendingSync || false
+                })
+            };
+            await persistAppointmentUpdate(aptId, updates);
+            // If a visit exists, close it
+            try {
+                if (appointment.visitId) {
+                    const vIdx = (visits || []).findIndex(v => v.id === appointment.visitId);
+                    if (vIdx !== -1) {
+                        visits[vIdx].status = 'completed';
+                        visits[vIdx].completedAt = completedAt;
                     }
-                } catch(e) {}
-                try { localStorage.setItem('dyna_appointments', JSON.stringify(appointments)); } catch (e) {}
-                try { recordDepartmentEvent('appointment_completed', appointments[index]); } catch(e){}
-                alert('✅ Appointment marked as complete');
-                viewTodayAppointments();
-                // Optional quick follow-up prompt
-                if (confirm('Create a follow-up appointment?')) {
-                    createFollowUpAppointment(appointments[index].id);
+                    localStorage.setItem('dyna_visits', JSON.stringify(visits));
                 }
+            } catch(e) {}
+            try { recordDepartmentEvent('appointment_completed', Object.assign({}, appointment, updates)); } catch(e){}
+            alert('✅ Appointment marked as complete');
+            viewTodayAppointments();
+            // Optional quick follow-up prompt
+            if (confirm('Create a follow-up appointment?')) {
+                await createFollowUpAppointment(aptId);
             }
         }
 
-        function checkInAppointment(aptId) {
-            const index = appointments.findIndex(apt => apt.id === aptId);
-            if (index !== -1) {
-                appointments[index].status = 'checked_in';
-                appointments[index].checkInAt = new Date().toISOString();
-                appointments[index].serviceType = appointments[index].serviceType || 'Full Body Check-Up';
-                // Create Visit record
-                const visit = {
-                    id: 'VIS' + Date.now(),
-                    appointmentId: appointments[index].id,
-                    clientName: appointments[index].clientName,
-                    consultant: appointments[index].consultant || (currentUser && currentUser.fullName) || 'Unknown',
-                    serviceType: appointments[index].serviceType,
-                    branch: appointments[index].branch || (currentUser && currentUser.branch) || 'unknown',
+        async function checkInAppointment(aptId) {
+            const appointment = appointments.find(apt => apt.id === aptId);
+            if (!appointment) return;
+            const checkInAt = new Date().toISOString();
+            const visit = {
+                id: 'VIS' + Date.now(),
+                appointmentId: appointment.id,
+                clientName: appointment.clientName,
+                consultant: appointment.consultant || (currentUser && currentUser.fullName) || 'Unknown',
+                serviceType: appointment.serviceType || 'Full Body Check-Up',
+                branch: appointment.branch || (currentUser && currentUser.branch) || 'unknown',
+                status: 'checked_in',
+                createdAt: checkInAt,
+                checkInAt
+            };
+            try {
+                visits.push(visit);
+                localStorage.setItem('dyna_visits', JSON.stringify(visits));
+            } catch(e) {}
+            const updates = {
+                status: 'checked_in',
+                checkInAt,
+                visitId: visit.id,
+                serviceType: appointment.serviceType || 'Full Body Check-Up',
+                data: Object.assign({}, appointment.data || {}, {
                     status: 'checked_in',
-                    createdAt: new Date().toISOString(),
-                    checkInAt: appointments[index].checkInAt
-                };
+                    checkInAt,
+                    visitId: visit.id,
+                    pendingSync: appointment.pendingSync || false
+                })
+            };
+            await persistAppointmentUpdate(aptId, updates);
+            try { recordDepartmentEvent('appointment_checkin', Object.assign({}, appointment, updates)); } catch(e){}
+            viewTodayAppointments();
+        }
+
+        async function startFullBodyCheckup(aptId) {
+            const appointment = appointments.find(apt => apt.id === aptId);
+            if (!appointment) return;
+            const startedAt = new Date().toISOString();
+            if (appointment.visitId) {
                 try {
-                    visits.push(visit);
-                    appointments[index].visitId = visit.id;
+                    const vIdx = (visits || []).findIndex(v => v.id === appointment.visitId);
+                    if (vIdx !== -1) {
+                        visits[vIdx].status = 'in_progress';
+                        visits[vIdx].startedAt = startedAt;
+                    }
                     localStorage.setItem('dyna_visits', JSON.stringify(visits));
                 } catch(e) {}
-                try { localStorage.setItem('dyna_appointments', JSON.stringify(appointments)); } catch (e) {}
-                try { recordDepartmentEvent('appointment_checkin', appointments[index]); } catch(e){}
-                viewTodayAppointments();
             }
+            const updates = {
+                status: 'in_progress',
+                startedAt,
+                serviceType: appointment.serviceType || 'Full Body Check-Up',
+                data: Object.assign({}, appointment.data || {}, {
+                    status: 'in_progress',
+                    startedAt,
+                    pendingSync: appointment.pendingSync || false
+                })
+            };
+            await persistAppointmentUpdate(aptId, updates);
+            try { recordDepartmentEvent('appointment_started', Object.assign({}, appointment, updates)); } catch(e){}
+            viewTodayAppointments();
         }
 
-        function startFullBodyCheckup(aptId) {
-            const index = appointments.findIndex(apt => apt.id === aptId);
-            if (index !== -1) {
-                appointments[index].status = 'in_progress';
-                appointments[index].startedAt = new Date().toISOString();
-                appointments[index].serviceType = appointments[index].serviceType || 'Full Body Check-Up';
-                // Update related visit
-                try {
-                    if (appointments[index].visitId) {
-                        const vIdx = (visits || []).findIndex(v => v.id === appointments[index].visitId);
-                        if (vIdx !== -1) {
-                            visits[vIdx].status = 'in_progress';
-                            visits[vIdx].startedAt = appointments[index].startedAt;
-                        }
-                        localStorage.setItem('dyna_visits', JSON.stringify(visits));
-                    }
-                } catch(e) {}
-                try { localStorage.setItem('dyna_appointments', JSON.stringify(appointments)); } catch (e) {}
-                try { recordDepartmentEvent('appointment_started', appointments[index]); } catch(e){}
-                viewTodayAppointments();
-            }
-        }
-
-        function createFollowUpAppointment(sourceAptId) {
+        async function createFollowUpAppointment(sourceAptId) {
             const source = appointments.find(a => a.id === sourceAptId);
             const date = prompt('Enter follow-up date (YYYY-MM-DD):', new Date(Date.now()+7*24*60*60*1000).toISOString().split('T')[0]);
             if (!date) return;
@@ -23278,17 +24402,27 @@ async function logout() {
             const followUp = {
                 id: 'APT' + Date.now(),
                 date: date,
-                time: time,
+                time: normalizeAppointmentTime(time),
                 clientName: source ? source.clientName : 'Client',
                 consultant: (source && source.consultant) || (currentUser && currentUser.fullName) || 'Consultant',
+                consultantId: (source && source.consultantId) || currentUser?.id || null,
+                consultantUsername: (source && source.consultantUsername) || currentUser?.username || null,
                 notes: 'Follow-up appointment',
                 serviceType: (source && source.serviceType) || 'Full Body Check-Up',
                 status: 'scheduled',
                 createdAt: new Date().toISOString(),
-                followUpOf: sourceAptId
+                followUpOf: sourceAptId,
+                branch: source?.branch || currentBranch || currentUser?.branch || null,
+                data: Object.assign({}, source?.data || {}, {
+                    followUpOf: sourceAptId,
+                    source: 'portal:followup',
+                    consultant: (source && source.consultant) || currentUser?.fullName || null,
+                    consultantId: (source && source.consultantId) || currentUser?.id || null,
+                    consultantUsername: (source && source.consultantUsername) || currentUser?.username || null,
+                    pendingSync: false
+                })
             };
-            appointments.push(followUp);
-            try { localStorage.setItem('dyna_appointments', JSON.stringify(appointments)); } catch (e) {}
+            await persistAppointmentCreate(followUp);
             try { recordDepartmentEvent('appointment_followup_created', followUp); } catch(e){}
             alert('✅ Follow-up appointment scheduled');
             viewTodayAppointments();
@@ -23435,11 +24569,15 @@ async function logout() {
             }
         }
 
-        function searchMyReports() {
+        async function searchMyReports() {
             const searchTerm = document.getElementById('reportSearch').value.toLowerCase();
             if (!searchTerm) {
                 displayMyReports();
                 return;
+            }
+            
+            if (!reports || !reports.length || searchTerm.length >= 3) {
+                try { await loadData(); } catch (e) { console.debug('searchMyReports loadData error', e); }
             }
             
             const list = document.getElementById('myReportsList');
@@ -33495,7 +34633,12 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 photo: photoBase64,
                 createdAt: new Date().toISOString()
             };
+            const requestPayload = { ...newUser };
+            delete requestPayload.photo; // handled separately below
+            requestPayload.photo = photoBase64;
             
+            delete newUser.password;
+
             if (users.find(u => (u.username || '').toLowerCase() === newUser.username.toLowerCase())) {
                 if (statusEl) {
                     statusEl.innerHTML = '<span style="color: #dc2626;">A user with that username already exists.</span>';
@@ -33510,7 +34653,7 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                     statusEl.innerHTML = '<span style="color: #0f172a;">⏳ Creating user...</span>';
                 }
 
-                const result = await apiRequest('/users', 'POST', newUser);
+                const result = await apiRequest('/users', 'POST', requestPayload);
 
                 if (result && result.success === false) {
                     throw new Error(result.message || 'Server rejected the request');
@@ -33539,6 +34682,9 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 createdUser.portalAccess = createdUser.portalAccess || newUser.portalAccess;
                 createdUser.branches = createdUser.branches || newUser.branches;
                 createdUser.branch = createdUser.branch || newUser.branch;
+                createdUser.hasPassword = createdUser.hasPassword ?? true;
+                delete createdUser.password;
+                delete createdUser.password_hash;
 
                 users = users.filter(u => u.id !== createdUser.id).concat([createdUser]);
                 try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {
@@ -33593,11 +34739,17 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
             const list = document.getElementById('userList');
             list.innerHTML = '';
             users.forEach(user => {
-                const branchName = branches.find(b => b.id === user.branch)?.name || user.branch;
-                const userBranches = user.branches || [user.branch];
-                const branchNames = userBranches.map(branchId => 
-                    branches.find(b => b.id === branchId)?.name || branchId
-                ).join(', ');
+                if (user && typeof user === 'object') {
+                    delete user.password;
+                    delete user.password_hash;
+                }
+                const branchName = branches.find(b => b.id === user.branch)?.name || user.branch || 'Unassigned';
+                const userBranches = Array.isArray(user.branches) ? user.branches : [user.branch].filter(Boolean);
+                const branchNames = userBranches.length
+                    ? userBranches.map(branchId =>
+                        branches.find(b => b.id === branchId)?.name || branchId
+                      ).join(', ')
+                    : branchName;
                 
                 const card = document.createElement('div');
                 card.className = 'client-card';
@@ -33605,47 +34757,34 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 
                 // Check if current user is admin
                 const isAdmin = currentUser && currentUser.role === 'admin';
+                const hasPassword = Boolean(user.hasPassword);
+                const passwordBadge = hasPassword
+                    ? '<span style="color:#15803d;">Password set</span>'
+                    : '<span style="color:#b91c1c;">Password not set</span>';
                 
                 card.innerHTML = `
                     <div style="display: flex; gap: 15px; align-items: start;">
-                        ${userPhoto ? `<img src="${userPhoto}" alt="${user.fullName}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd;">` : '<div style="width: 80px; height: 80px; background: #e0e0e0; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px;">👤</div>'}
+                        ${userPhoto ? `<img src="${userPhoto}" alt="${escapeHtml(user.fullName || user.username || 'User')}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd;">` : '<div style="width: 80px; height: 80px; background: #e0e0e0; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px;">👤</div>'}
                         <div style="flex: 1;">
-                    <h4>${user.fullName} (${user.username})</h4>
-                    <p>Role: ${user.role} | Primary Branch: ${branchName}</p>
-                    <p>All Branches: ${branchNames}</p>
-                    <p>Email: ${user.email || 'Not provided'} | Phone: ${user.phone || 'Not provided'}</p>
-                    ${isAdmin ? `<p id="password-display-${user.id}" style="margin-top: 5px; font-family: monospace; color: #666; display: none;">Password: <span id="password-value-${user.id}">${user.password || 'N/A'}</span></p>` : ''}
-                    <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
-                        ${isAdmin ? `
-                            <button class="btn btn-info" onclick="togglePasswordView('${user.id}', this)" id="password-toggle-${user.id}" style="font-size: 0.85rem; padding: 6px 12px;">👁️ View Password</button>
-                            <button class="btn btn-primary" onclick="showResetPasswordModal('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">🔑 Reset Password</button>
-                        ` : ''}
-                        ${user.username !== 'admin' ? `
-                            <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">Edit Branches</button>
-                            <button class="btn btn-danger" onclick="deleteUser('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">🗑️ Delete</button>
-                        ` : '<p style="color: #27ae60; margin: 0;">Protected</p>'}
+                            <h4>${escapeHtml(user.fullName || user.username || 'User')}</h4>
+                            <p>Role: ${escapeHtml(user.role || 'unknown')} | Primary Branch: ${escapeHtml(branchName || 'Unassigned')}</p>
+                            <p>All Branches: ${escapeHtml(branchNames || '—')}</p>
+                            <p>Email: ${escapeHtml(user.email || 'Not provided')} | Phone: ${escapeHtml(user.phone || 'Not provided')}</p>
+                            <div style="margin-top: 6px; font-size: 0.85rem;">${passwordBadge}</div>
+                            <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
+                                ${isAdmin ? `
+                                    <button class="btn btn-primary" onclick="showResetPasswordModal('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">🔑 Reset Password</button>
+                                ` : ''}
+                                ${user.username !== 'admin' ? `
+                                    <button class="btn btn-warning" onclick="editUserBranches('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">Edit Branches</button>
+                                    <button class="btn btn-danger" onclick="deleteUser('${user.id}')" style="font-size: 0.85rem; padding: 6px 12px;">🗑️ Delete</button>
+                                ` : '<p style="color: #27ae60; margin: 0;">Protected</p>'}
                             </div>
                         </div>
                     </div>
                 `;
                 list.appendChild(card);
             });
-        }
-
-        function togglePasswordView(userId, buttonElement) {
-            const passwordDisplay = document.getElementById(`password-display-${userId}`);
-            const passwordValue = document.getElementById(`password-value-${userId}`);
-            const button = buttonElement || document.getElementById(`password-toggle-${userId}`);
-            
-            if (!passwordDisplay || !passwordValue) return;
-            
-            if (passwordDisplay.style.display === 'none' || passwordDisplay.style.display === '') {
-                passwordDisplay.style.display = 'block';
-                if (button) button.textContent = '🙈 Hide Password';
-            } else {
-                passwordDisplay.style.display = 'none';
-                if (button) button.textContent = '👁️ View Password';
-            }
         }
 
         function showResetPasswordModal(userId) {
@@ -33851,34 +34990,66 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
         document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const formData = new FormData(this);
+    if (!currentUser || !currentUser.username) {
+        alert('No user is currently logged in.');
+        return;
+    }
             
-            if (formData.get('currentPassword') !== currentUser.password) {
-                alert('Current password incorrect');
+    const currentPassword = formData.get('currentPassword') || '';
+    const newPassword = formData.get('newPassword') || '';
+    const confirmPassword = formData.get('confirmPassword') || '';
+
+    if (!currentPassword) {
+        alert('Please enter your current password.');
+        return;
+    }
+
+    if (!newPassword || newPassword.length < 8) {
+        alert('New password must be at least 8 characters long.');
                 return;
             }
             
-            if (formData.get('newPassword') !== formData.get('confirmPassword')) {
+    if (newPassword !== confirmPassword) {
                 alert('Passwords do not match');
                 return;
             }
-            
-            currentUser.password = formData.get('newPassword');
-            
+
             try {
-                const result = await apiRequest('/users', 'PUT', currentUser);
-                if (result.success) {
-            const index = users.findIndex(u => u.id === currentUser.id);
-            users[index] = currentUser;
-            try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
-                    alert('✅ Password changed successfully');
-            closeModal('changePasswordModal');
-            this.reset();
-                } else {
-                    alert('Error changing password: ' + result.message);
-                }
+        await loginPortalRequest(currentUser.username, currentPassword);
             } catch (error) {
-                console.error('Error changing password:', error);
-                alert('Error changing password. Please try again.');
+        alert('Current password incorrect. Please try again.');
+        return;
+    }
+
+    try {
+        const payload = { id: currentUser.id, password: newPassword };
+        const result = await apiRequest('/users', 'PUT', payload);
+        if (result && result.success === false) {
+            alert('Error changing password: ' + (result.message || 'Unknown error'));
+            return;
+        }
+        const updatedUser = result?.user || result || {};
+        delete updatedUser.password;
+        delete updatedUser.password_hash;
+        if (updatedUser && updatedUser.id) {
+            currentUser = { ...currentUser, ...updatedUser };
+            window.currentUser = currentUser;
+            const index = users.findIndex(u => u.id === updatedUser.id);
+            if (index !== -1) {
+                users[index] = { ...users[index], ...updatedUser };
+                delete users[index].password;
+                delete users[index].password_hash;
+            }
+            try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
+            try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (_) {}
+        }
+        alert('✅ Password changed successfully');
+        closeModal('changePasswordModal');
+        this.reset();
+        loadUserList();
+    } catch (error) {
+        console.error('Error changing password:', error);
+        alert(error.message || 'Error changing password. Please try again.');
             }
         });
 
@@ -33915,49 +35086,53 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 return;
             }
             
-            // Update user password
-            const updatedUser = {
-                ...user,
-                password: newPassword
+            const payload = {
+                id: userId,
+                password: newPassword,
+                mustChangePassword: false
             };
             
             try {
-                const result = await apiRequest('/users', 'PUT', updatedUser);
-                if (result.success) {
-                    // Update local users array
-                    const userIndex = users.findIndex(u => u.id === userId);
-                    if (userIndex !== -1) {
-                        users[userIndex] = updatedUser;
-                    }
-                    try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
-                    
-                    // Broadcast user update event for real-time sync
-                    try {
-                        window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: updatedUser, action: 'password_reset' } }));
-                        const m = document.querySelector('meta[name="rt-base"]');
-                        const rtBase = m && m.content && m.content.trim();
-                        if (rtBase) {
-                            fetch(rtBase.replace(/\/$/, '') + '/publish', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ event: { type: 'users:updated', user: updatedUser, action: 'password_reset', ts: Date.now() } })
-                            }).catch(_ => {});
-                        }
-                        fetch('/api/realtime_publish', { 
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                            body: JSON.stringify({ channel: 'users', event: { user: updatedUser, action: 'password_reset', ts: Date.now() } }) 
-                        }).catch(_ => {});
-                    } catch (_) {}
-                    
-                    alert(`✅ Password reset successfully for ${user.fullName} (${user.username})`);
-                    closeModal('resetPasswordModal');
-                    this.reset();
-                    loadUserList(); // Refresh user list to show updated password
-                } else {
-                    alert('Error resetting password: ' + result.message);
+                const result = await apiRequest('/users', 'PUT', payload);
+                if (result && result.success === false) {
+                    alert('Error resetting password: ' + (result.message || 'Unknown error'));
+                    return;
                 }
+                const updatedUser = result?.user || result || {};
+                delete updatedUser.password;
+                delete updatedUser.password_hash;
+                updatedUser.hasPassword = true;
+                const userIndex = users.findIndex(u => u.id === userId);
+                if (userIndex !== -1) {
+                    users[userIndex] = { ...users[userIndex], ...updatedUser };
+                    delete users[userIndex].password;
+                    delete users[userIndex].password_hash;
+                }
+                try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
+                
+                try {
+                    window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: updatedUser, action: 'password_reset' } }));
+                    const m = document.querySelector('meta[name="rt-base"]');
+                    const rtBase = m && m.content && m.content.trim();
+                    if (rtBase) {
+                        fetch(rtBase.replace(/\/$/, '') + '/publish', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event: { type: 'users:updated', user: updatedUser, action: 'password_reset', ts: Date.now() } })
+                        }).catch(_ => {});
+                    }
+                    fetch('/api/realtime_publish', { 
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ channel: 'users', event: { user: updatedUser, action: 'password_reset', ts: Date.now() } }) 
+                    }).catch(_ => {});
+                } catch (_) {}
+                
+                alert(`✅ Password reset successfully for ${user.fullName} (${user.username})`);
+                closeModal('resetPasswordModal');
+                this.reset();
+                loadUserList();
             } catch (error) {
                 console.error('Error resetting password:', error);
-                alert('Error resetting password. Please try again.');
+                alert(error.message || 'Error resetting password. Please try again.');
             }
         });
         }
@@ -34005,8 +35180,17 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 const card = document.createElement('div');
                 card.className = 'client-card';
                 card.innerHTML = `
-                    <h4>${branch.name}</h4>
-                    <button class="btn btn-danger" onclick="deleteBranch('${branch.id}')">Delete</button>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                        <div>
+                            <h4 style="margin-bottom:6px;">${escapeHtml(branch.name || branch.id || 'Branch')}</h4>
+                            <div style="font-size:0.85rem; color:#64748b;">
+                                ${branch.location ? `<div>📍 ${escapeHtml(branch.location)}</div>` : ''}
+                                ${branch.phone ? `<div>📞 ${escapeHtml(branch.phone)}</div>` : ''}
+                                ${(!branch.location && !branch.phone) ? '<div style="color:#94a3b8;">No additional details</div>' : ''}
+                            </div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteBranch('${branch.id}')">Delete</button>
+                    </div>
                 `;
                 list.appendChild(card);
             });

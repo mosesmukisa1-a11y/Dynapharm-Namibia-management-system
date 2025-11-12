@@ -1487,19 +1487,17 @@ async function submitDistributorPassword() {
         throw new Error("Passwords do not match. Please re-enter.");
       }
 
-      const response = await fetch(
-        `/api/distributors/${encodeURIComponent(currentDistributorSelection.id)}/set-password`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            password: newPassword,
-            distributorCode: currentDistributorSelection.code
-          })
-        }
-      );
+      const response = await fetch('/api/distributors/set-password', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: currentDistributorSelection.id,
+          password: newPassword,
+          distributorCode: currentDistributorSelection.code
+        })
+      });
 
       if (!response.ok) {
         let message = "Failed to save password. Please try again.";
