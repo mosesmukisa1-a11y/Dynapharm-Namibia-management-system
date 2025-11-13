@@ -489,6 +489,135 @@
         let gmPendingRequests = [];
         const gmUser = (window.parent && window.parent.currentUser) ? window.parent.currentUser : { fullName: 'General Manager', role: 'general_manager' };
         
+        // GM Portal Real-Time Sync Implementation
+        let gmWebSocket = null;
+        let gmRealtimeInitialized = false;
+        let gmAutoRefreshInterval = null;
+
+        // WebSocket Connection for Real-Time Updates
+        function connectGMPortalWebSocket() {
+            // Try to get Railway gateway URL from meta tag or use default
+            const metaTag = document.querySelector('meta[name="rt-base"]');
+            const rtBase = metaTag?.content?.trim() || '';
+            const wsUrl = rtBase 
+                ? rtBase.replace(/^https?:\/\//, 'wss://').replace(/\/$/, '') + '/ws'
+                : 'wss://web-production-40cac.up.railway.app/ws';
+            
+            if (gmWebSocket && gmWebSocket.readyState === WebSocket.OPEN) {
+                return; // Already connected
+            }
+
+            try {
+                gmWebSocket = new WebSocket(wsUrl);
+
+                gmWebSocket.onopen = () => {
+                    console.log('✅ GM Portal: Connected to realtime gateway');
+                    // Subscribe to relevant channels
+                    gmWebSocket.send(JSON.stringify({
+                        type: 'subscribe',
+                        channels: ['reports', 'orders', 'sales', 'stock']
+                    }));
+                    updateGMPortalConnectionStatus(true);
+                };
+
+                gmWebSocket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'event') {
+                            handleGMPortalRealtimeEvent(data);
+                        } else if (data.type === 'subscribed') {
+                            console.log('✅ GM Portal: Subscribed to channels:', data.channels);
+                        }
+                    } catch (error) {
+                        console.debug('GM Portal WebSocket message parse error:', error);
+                    }
+                };
+
+                gmWebSocket.onerror = (error) => {
+                    console.error('❌ GM Portal WebSocket error:', error);
+                    updateGMPortalConnectionStatus(false);
+                };
+
+                gmWebSocket.onclose = () => {
+                    console.log('⚠️ GM Portal: WebSocket closed, reconnecting in 5s...');
+                    updateGMPortalConnectionStatus(false);
+                    setTimeout(connectGMPortalWebSocket, 5000);
+                };
+            } catch (error) {
+                console.error('Failed to connect GM Portal WebSocket:', error);
+                updateGMPortalConnectionStatus(false);
+            }
+        }
+
+        function handleGMPortalRealtimeEvent(data) {
+            const { resource, action } = data;
+            
+            // Refresh dashboard on relevant events
+            if (resource === 'reports' || resource === 'orders' || resource === 'sales') {
+                console.log(`🔄 GM Portal: ${resource}:${action} event received, refreshing dashboard...`);
+                refreshData();
+            } else if (resource === 'stock') {
+                console.log('📦 GM Portal: Stock update received, refreshing stock requests...');
+                loadGmStockRequests();
+            }
+        }
+
+        function updateGMPortalConnectionStatus(connected) {
+            // Add connection status indicator
+            let statusIndicator = document.getElementById('gmRealtimeStatus');
+            if (!statusIndicator) {
+                statusIndicator = document.createElement('div');
+                statusIndicator.id = 'gmRealtimeStatus';
+                statusIndicator.style.cssText = 'position:fixed; bottom:20px; right:20px; padding:8px 12px; border-radius:8px; font-size:0.75rem; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+                document.body.appendChild(statusIndicator);
+            }
+            
+            if (connected) {
+                statusIndicator.textContent = '🟢 Real-time Connected';
+                statusIndicator.style.background = '#10b981';
+                statusIndicator.style.color = 'white';
+            } else {
+                statusIndicator.textContent = '🔴 Real-time Disconnected';
+                statusIndicator.style.background = '#ef4444';
+                statusIndicator.style.color = 'white';
+            }
+        }
+
+        function initializeGMPortalRealtime() {
+            if (gmRealtimeInitialized) return;
+            gmRealtimeInitialized = true;
+
+            // Connect to WebSocket
+            connectGMPortalWebSocket();
+
+            // Set up auto-refresh fallback (every 30 seconds) - reduced frequency since we have real-time
+            if (gmAutoRefreshInterval) {
+                clearInterval(gmAutoRefreshInterval);
+            }
+            gmAutoRefreshInterval = setInterval(() => {
+                // Only refresh if WebSocket is not connected
+                if (!gmWebSocket || gmWebSocket.readyState !== WebSocket.OPEN) {
+                    refreshData();
+                }
+            }, 30000);
+
+            // Listen to custom events (for local updates)
+            window.addEventListener('reports:updated', () => {
+                refreshData();
+            });
+
+            window.addEventListener('orders:updated', () => {
+                refreshData();
+            });
+
+            window.addEventListener('sale:updated', () => {
+                refreshData();
+            });
+
+            console.log('✅ GM Portal real-time sync initialized');
+        }
+
         // Initialize the portal
         async function initializePortal() {
             try {
@@ -498,10 +627,8 @@
                 loadRecentActivity();
                 loadGmStockRequests();
                 
-                // Auto-refresh every 30 seconds
-                setInterval(() => {
-                    refreshData();
-                }, 30000);
+                // Initialize real-time sync
+                initializeGMPortalRealtime();
                 
             } catch (error) {
                 console.error('Error initializing portal:', error);
