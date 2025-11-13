@@ -22219,6 +22219,8 @@
         let frontDeskWebSocket = null;
         let frontDeskRealtimeInitialized = false;
         let frontDeskAutoRefreshInterval = null;
+        let frontDeskPendingOrderCount = 0;
+        let frontDeskOrderCountInterval = null;
 
         // Browser Notification Support
         function requestNotificationPermission() {
@@ -22229,7 +22231,39 @@
             }
         }
 
-        function showBrowserNotification(title, message, icon = '/favicon.ico') {
+        function playOrderNotificationSound() {
+            try {
+                // Create audio context for notification sound
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                // Pleasant notification sound (two-tone chime)
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.debug('Sound notification error:', error);
+                // Fallback: try HTML5 audio if available
+                try {
+                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBlou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC');
+                    audio.volume = 0.3;
+                    audio.play().catch(() => {});
+                } catch (e) {
+                    // Silent fail if audio not supported
+                }
+            }
+        }
+
+        function showBrowserNotification(title, message, icon = '/favicon.ico', playSound = true) {
             if ('Notification' in window && Notification.permission === 'granted') {
                 try {
                     const notification = new Notification(title, {
@@ -22239,6 +22273,11 @@
                         tag: 'frontdesk-order',
                         requireInteraction: false
                     });
+                    
+                    // Play sound notification
+                    if (playSound) {
+                        playOrderNotificationSound();
+                    }
                     
                     // Auto-close after 5 seconds
                     setTimeout(() => {
@@ -22253,6 +22292,9 @@
                 } catch (error) {
                     console.debug('Browser notification error:', error);
                 }
+            } else if (playSound) {
+                // Play sound even if notifications are not allowed
+                playOrderNotificationSound();
             }
         }
 
@@ -22319,22 +22361,26 @@
                 if (action === 'created') {
                     console.log('📥 Front Desk: New order received', eventData);
                     refreshAllFrontDeskOrderTabs();
+                    updatePendingOrderCount();
                     showBrowserNotification(
                         '🆕 New Order Received',
                         `Order #${eventData?.order_number || eventData?.id || 'N/A'} from ${eventData?.customer_name || 'Customer'}`,
-                        '/favicon.ico'
+                        '/favicon.ico',
+                        true // Play sound
                     );
                     // Show visual indicator
                     showNewOrderIndicator();
                 } else if (action === 'updated') {
                     console.log('🔄 Front Desk: Order updated', eventData);
                     refreshAllFrontDeskOrderTabs();
-                    // Show notification for status changes
+                    updatePendingOrderCount();
+                    // Show notification for status changes (no sound for updates)
                     if (eventData?.status) {
                         showBrowserNotification(
                             '📦 Order Status Updated',
                             `Order #${eventData?.order_number || eventData?.id || 'N/A'} is now ${eventData.status}`,
-                            '/favicon.ico'
+                            '/favicon.ico',
+                            false // No sound for updates
                         );
                     }
                 }
@@ -22356,7 +22402,8 @@
                     showBrowserNotification(
                         '🚪 New Visitor',
                         `${eventData?.name || 'Visitor'} - ${eventData?.purpose || 'Visit'}`,
-                        '/favicon.ico'
+                        '/favicon.ico',
+                        false // No sound for visitors
                     );
                 }
             }
@@ -22369,6 +22416,82 @@
             if (typeof refreshShippedOrders === 'function') refreshShippedOrders();
             if (typeof refreshDeliveredOrders === 'function') refreshDeliveredOrders();
             if (typeof refreshAllOrders === 'function') refreshAllOrders();
+            // Update order count after refresh
+            setTimeout(updatePendingOrderCount, 500);
+        }
+
+        async function updatePendingOrderCount() {
+            try {
+                // Get pending orders count from API or localStorage
+                let pendingCount = 0;
+                
+                // Try API first
+                try {
+                    const response = await fetch('/api/orders?status=pending');
+                    if (response.ok) {
+                        const orders = await response.json();
+                        pendingCount = Array.isArray(orders) ? orders.length : 0;
+                    }
+                } catch (error) {
+                    console.debug('Failed to fetch pending orders from API:', error);
+                }
+                
+                // Fallback to localStorage
+                if (pendingCount === 0) {
+                    try {
+                        const localOrders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
+                        pendingCount = Array.isArray(localOrders) 
+                            ? localOrders.filter(o => (o.status || '').toLowerCase() === 'pending').length 
+                            : 0;
+                    } catch (error) {
+                        console.debug('Failed to get orders from localStorage:', error);
+                    }
+                }
+                
+                frontDeskPendingOrderCount = pendingCount;
+                updateOrderCountBadge(pendingCount);
+            } catch (error) {
+                console.debug('Error updating pending order count:', error);
+            }
+        }
+
+        function updateOrderCountBadge(count) {
+            // Update tab title with order count
+            const frontDeskTab = document.querySelector('[onclick*="openTab(\'frontdesk\'"]') || 
+                               document.querySelector('[onclick*="openTab(\"frontdesk\""]');
+            
+            if (frontDeskTab) {
+                const baseText = 'Front Desk Portal';
+                if (count > 0) {
+                    frontDeskTab.textContent = `${baseText} (${count})`;
+                    frontDeskTab.style.position = 'relative';
+                    
+                    // Add/update badge
+                    let badge = frontDeskTab.querySelector('.order-count-badge');
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'order-count-badge';
+                        badge.style.cssText = 'position:absolute; top:-8px; right:-8px; background:#ef4444; color:white; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:bold; border:2px solid white;';
+                        frontDeskTab.appendChild(badge);
+                    }
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = 'flex';
+                } else {
+                    frontDeskTab.textContent = baseText;
+                    const badge = frontDeskTab.querySelector('.order-count-badge');
+                    if (badge) {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+            
+            // Also update document title
+            const baseTitle = document.title.replace(/\(\d+\)\s*$/, '').trim();
+            if (count > 0) {
+                document.title = `(${count}) ${baseTitle}`;
+            } else {
+                document.title = baseTitle;
+            }
         }
 
         function showNewOrderIndicator() {
@@ -22423,6 +22546,17 @@
             // Connect to WebSocket
             connectFrontDeskWebSocket();
 
+            // Initial order count update
+            updatePendingOrderCount();
+
+            // Set up order count refresh (every 60 seconds)
+            if (frontDeskOrderCountInterval) {
+                clearInterval(frontDeskOrderCountInterval);
+            }
+            frontDeskOrderCountInterval = setInterval(() => {
+                updatePendingOrderCount();
+            }, 60000);
+
             // Set up auto-refresh fallback (every 30 seconds)
             if (frontDeskAutoRefreshInterval) {
                 clearInterval(frontDeskAutoRefreshInterval);
@@ -22437,7 +22571,7 @@
             // Listen to custom events (for local updates)
             window.addEventListener('orders:created', () => {
                 refreshAllFrontDeskOrderTabs();
-                showBrowserNotification('🆕 New Order', 'A new order has been created', '/favicon.ico');
+                showBrowserNotification('🆕 New Order', 'A new order has been created', '/favicon.ico', true);
             });
 
             window.addEventListener('orders:updated', () => {

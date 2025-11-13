@@ -163,8 +163,8 @@ export default async function handler(req, res) {
         items: JSON.stringify(items),
       });
 
-      // Publish realtime event
-      await publishRealtimeEvent('online_orders', 'created', order);
+      // Publish realtime event (use 'orders' as resource name for WebSocket compatibility)
+      await publishRealtimeEvent('orders', 'created', order);
 
       return res.status(201).json(order);
     }
@@ -199,8 +199,8 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Order not found' });
       }
 
-      // Publish realtime event
-      await publishRealtimeEvent('online_orders', 'updated', order);
+      // Publish realtime event (use 'orders' as resource name for WebSocket compatibility)
+      await publishRealtimeEvent('orders', 'updated', order);
 
       return res.json(order);
     }
