@@ -102,6 +102,11 @@
             if(tab==='attendance') renderAttendance();
             if(tab==='leave') renderLeave();
             if(tab==='employees') renderEmployees();
+            
+            // Initialize real-time listeners when attendance tab is active
+            if(tab==='attendance' && !window.hrRealtimeInitialized) {
+                initializeHRRealtimeSync();
+            }
             if(tab==='warnings') renderWarnings();
             if(tab==='terminations') renderTerminations();
             if(tab==='performance') renderPerformance();
@@ -204,8 +209,10 @@
                 status: 'present'
             };
             if(!payload.userId || !payload.fullName){ alert('Enter employee name and user ID'); return; }
-            await api('/attendance', { method:'POST', body: JSON.stringify(payload) });
+            const result = await api('/attendance', { method:'POST', body: JSON.stringify(payload) });
             renderAttendance();
+            // Broadcast real-time attendance update
+            await broadcastAttendanceUpdate('created', result || payload);
         }
         async function checkOut(){
             const branch = document.getElementById('attCIBranch').value;
@@ -216,8 +223,11 @@
             const list = await api(`/attendance?${qs.toString()}`);
             const latest = list.sort((a,b)=> (a.createdAt||'').localeCompare(b.createdAt||'' )).pop();
             if(!latest){ alert('No check-in found for that user/date/branch'); return; }
-            await api('/attendance', { method:'PUT', body: JSON.stringify({ id: latest.id, checkOut: new Date().toTimeString().slice(0,8) }) });
+            const update = { id: latest.id, checkOut: new Date().toTimeString().slice(0,8) };
+            const result = await api('/attendance', { method:'PUT', body: JSON.stringify(update) });
             renderAttendance();
+            // Broadcast real-time attendance update
+            await broadcastAttendanceUpdate('updated', { ...latest, ...update, ...(result || {}) });
         }
         async function requestCorrection(){
             const id = document.getElementById('corrId').value.trim();
@@ -225,8 +235,11 @@
             const corrOut = document.getElementById('corrOut').value.trim();
             const reason = document.getElementById('corrReason').value.trim();
             if(!id || (!corrIn && !corrOut) || !reason){ alert('Fill ID, a time, and reason'); return; }
-            await api('/attendance', { method:'PUT', body: JSON.stringify({ id, correctionRequested: true, correctionReason: reason, proposedCheckIn: corrIn||undefined, proposedCheckOut: corrOut||undefined }) });
+            const update = { id, correctionRequested: true, correctionReason: reason, proposedCheckIn: corrIn||undefined, proposedCheckOut: corrOut||undefined };
+            const result = await api('/attendance', { method:'PUT', body: JSON.stringify(update) });
             renderAttendance();
+            // Broadcast real-time attendance update
+            await broadcastAttendanceUpdate('updated', { id, ...update, ...(result || {}) });
         }
         async function approveCorrection(id){
             // Fetch record to see proposed fields
@@ -235,13 +248,62 @@
             const update = { id, correctionRequested: false, correctionApprovedBy: (getCurrentUser()?.fullName||'HR') };
             if(rec.proposedCheckIn) update.checkIn = rec.proposedCheckIn;
             if(rec.proposedCheckOut) update.checkOut = rec.proposedCheckOut;
-            await api('/attendance', { method:'PUT', body: JSON.stringify(update) });
+            const result = await api('/attendance', { method:'PUT', body: JSON.stringify(update) });
             renderAttendance();
+            // Broadcast real-time attendance update
+            await broadcastAttendanceUpdate('updated', { ...rec, ...update, ...(result || {}) });
         }
         async function deleteAttendance(id){
             if(!confirm('Delete this attendance record?')) return;
+            // Fetch record before deletion for broadcast
+            const rec = (await api(`/attendance`)).find(x=>x.id===id);
             await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
             renderAttendance();
+            // Broadcast real-time attendance deletion
+            if(rec) {
+                await broadcastAttendanceUpdate('deleted', rec);
+            }
+        }
+
+        // Broadcast attendance updates to real-time gateway
+        async function broadcastAttendanceUpdate(action, data) {
+            try {
+                const REALTIME_GATEWAY_URL = 'https://web-production-40cac.up.railway.app';
+                await fetch(`${REALTIME_GATEWAY_URL}/publish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event: {
+                            type: `attendance:${action}`,
+                            resource: 'attendance',
+                            action: action,
+                            data: data,
+                            timestamp: Date.now()
+                        }
+                    })
+                });
+                
+                // Also dispatch local event
+                window.dispatchEvent(new CustomEvent('attendance:updated', { detail: { action, data } }));
+            } catch (error) {
+                console.debug('Failed to broadcast attendance update:', error);
+            }
+        }
+
+        // Initialize real-time sync for HR Portal
+        function initializeHRRealtimeSync() {
+            if (window.hrRealtimeInitialized) return;
+            window.hrRealtimeInitialized = true;
+
+            // Listen to custom events for local updates
+            window.addEventListener('attendance:updated', () => {
+                const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+                if (activeTab === 'attendance') {
+                    renderAttendance();
+                }
+            });
+
+            console.log('✅ HR Portal real-time sync initialized');
         }
 
         async function renderLeave(){
