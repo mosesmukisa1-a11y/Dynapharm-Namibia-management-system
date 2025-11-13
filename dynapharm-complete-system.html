@@ -3589,34 +3589,359 @@
             openTab(defaultPortal, null);
         }
         
-        function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                currentUser = null;
-                window.currentUser = null;
-                localStorage.removeItem('currentUser');
-                localStorage.removeItem('currentUserRole');
-                hideAllPortalTabs();
-                const portalTabs = document.getElementById('portalTabs');
-                if (portalTabs) portalTabs.style.display = 'none';
-                
-                // Reset navigation
-                const navLoginSection = document.getElementById('navLoginSection');
-                const navUserSection = document.getElementById('navUserSection');
-                if (navLoginSection) navLoginSection.style.display = 'block';
-                if (navUserSection) navUserSection.style.display = 'none';
-                
-                // Show landing page
-                showLandingPage();
-                
-                // Clear any portal-specific auth states
-                document.querySelectorAll('[id$="Auth"]').forEach(el => {
-                    el.style.display = 'block';
-                });
-                document.querySelectorAll('[id$="Content"]').forEach(el => {
-                    el.style.display = 'none';
-                });
+        // Session Management
+        let sessionTimeoutWarning = null;
+        let sessionTimeoutTimer = null;
+        let lastActivityTime = Date.now();
+        const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+        const SESSION_WARNING_TIME = 5 * 60 * 1000; // 5 minutes before timeout
+        
+        function resetSessionTimer() {
+            lastActivityTime = Date.now();
+            clearTimeout(sessionTimeoutWarning);
+            clearTimeout(sessionTimeoutTimer);
+            
+            // Set warning timer (5 minutes before timeout)
+            sessionTimeoutWarning = setTimeout(() => {
+                showSessionTimeoutWarning();
+            }, SESSION_TIMEOUT - SESSION_WARNING_TIME);
+            
+            // Set actual timeout
+            sessionTimeoutTimer = setTimeout(() => {
+                performAutoLogout();
+            }, SESSION_TIMEOUT);
+        }
+        
+        function showSessionTimeoutWarning() {
+            const modal = document.createElement('div');
+            modal.id = 'sessionTimeoutModal';
+            modal.className = 'modal-overlay';
+            modal.style.cssText = 'display: flex; z-index: 10003;';
+            modal.innerHTML = `
+                <div class="modal-card" style="max-width: 450px;">
+                    <h2 style="margin-bottom: 20px; color: #f59e0b;">⏰ Session Expiring Soon</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Your session will expire in 5 minutes due to inactivity.</p>
+                    <div id="sessionCountdown" style="text-align: center; font-size: 1.5rem; font-weight: bold; color: #c41e3a; margin: 20px 0;">5:00</div>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="extendSession()" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1;">Extend Session</button>
+                        <button onclick="performLogout()" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Logout Now</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Countdown timer
+            let timeLeft = 300; // 5 minutes in seconds
+            const countdownEl = document.getElementById('sessionCountdown');
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                if (countdownEl) {
+                    countdownEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+        }
+        
+        function extendSession() {
+            const modal = document.getElementById('sessionTimeoutModal');
+            if (modal) modal.remove();
+            resetSessionTimer();
+            showToast('Session extended for 30 minutes', 'success');
+        }
+        
+        function performAutoLogout() {
+            const modal = document.getElementById('sessionTimeoutModal');
+            if (modal) modal.remove();
+            showToast('Session expired due to inactivity', 'warning');
+            performLogout(true);
+        }
+        
+        function performLogout(isAutoLogout = false) {
+            const modal = document.getElementById('sessionTimeoutModal');
+            if (modal) modal.remove();
+            
+            // Clear session timers
+            clearTimeout(sessionTimeoutWarning);
+            clearTimeout(sessionTimeoutTimer);
+            
+            // Clear user data
+            currentUser = null;
+            window.currentUser = null;
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('currentUserRole');
+            localStorage.removeItem('rememberedSession');
+            
+            // Call logout API if available
+            if (typeof logoutRequest === 'function') {
+                logoutRequest().catch(err => console.error('Logout API error:', err));
+            }
+            
+            // Hide portal tabs
+            hideAllPortalTabs();
+            const portalTabs = document.getElementById('portalTabs');
+            if (portalTabs) portalTabs.style.display = 'none';
+            
+            // Reset navigation
+            const navLoginSection = document.getElementById('navLoginSection');
+            const navUserSection = document.getElementById('navUserSection');
+            if (navLoginSection) navLoginSection.style.display = 'block';
+            if (navUserSection) navUserSection.style.display = 'none';
+            
+            // Show landing page
+            showLandingPage();
+            
+            // Clear any portal-specific auth states
+            document.querySelectorAll('[id$="Auth"]').forEach(el => {
+                el.style.display = 'block';
+            });
+            document.querySelectorAll('[id$="Content"]').forEach(el => {
+                el.style.display = 'none';
+            });
+            
+            if (!isAutoLogout) {
+                showToast('Logged out successfully', 'success');
             }
         }
+        
+        function logout() {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.style.cssText = 'display: flex; z-index: 10001;';
+            modal.innerHTML = `
+                <div class="modal-card" style="max-width: 450px;">
+                    <h2 style="margin-bottom: 20px; color: #c41e3a;">🚪 Confirm Logout</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Are you sure you want to logout?</p>
+                    ${currentUser ? `<p style="color: #999; font-size: 0.9rem; margin-bottom: 20px;">Logged in as: <strong>${currentUser.fullName || currentUser.username}</strong></p>` : ''}
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="performLogout(); this.closest('.modal-overlay').remove();" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1;">Logout</button>
+                        <button onclick="this.closest('.modal-overlay').remove();" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        // Track user activity to reset session timer
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
+            document.addEventListener(event, () => {
+                if (currentUser) {
+                    resetSessionTimer();
+                }
+            }, { passive: true });
+        });
+        
+        // Initialize session timer when user logs in
+        const originalHandlePortalLoginSuccess = window.handlePortalLoginSuccess;
+        if (originalHandlePortalLoginSuccess) {
+            window.handlePortalLoginSuccess = function(user, options) {
+                originalHandlePortalLoginSuccess(user, options);
+                resetSessionTimer();
+            };
+        }
+        
+        // Portal Quick Access, Favorites, and Search
+        const PORTAL_INFO = {
+            'client': { name: 'Distributor / Guest', icon: '🛒', category: 'Client' },
+            'frontdesk': { name: 'Front Desk Portal', icon: '🏢', category: 'Operations' },
+            'consultant': { name: 'Consultant Portal', icon: '👨‍⚕️', category: 'Operations' },
+            'dispenser': { name: 'Branch Portal', icon: '💊', category: 'Operations' },
+            'hr-portal': { name: 'HR Portal', icon: '👔', category: 'Management' },
+            'finance': { name: 'Finance Portal', icon: '💰', category: 'Management' },
+            'gm': { name: 'GM Portal', icon: '👑', category: 'Executive' },
+            'director': { name: 'Director Portal', icon: '🎯', category: 'Executive' },
+            'mis': { name: 'MIS Portal', icon: '📊', category: 'Management' },
+            'stock': { name: 'Stock Management', icon: '📦', category: 'Operations' },
+            'admin': { name: 'Admin Portal', icon: '⚙️', category: 'Administration' }
+        };
+        
+        function getFavoritePortals() {
+            return JSON.parse(localStorage.getItem('favoritePortals') || '[]');
+        }
+        
+        function setFavoritePortals(favorites) {
+            localStorage.setItem('favoritePortals', JSON.stringify(favorites));
+        }
+        
+        function toggleFavorite(portalId) {
+            const favorites = getFavoritePortals();
+            const index = favorites.indexOf(portalId);
+            if (index > -1) {
+                favorites.splice(index, 1);
+            } else {
+                favorites.push(portalId);
+            }
+            setFavoritePortals(favorites);
+            renderPortalQuickAccess();
+        }
+        
+        function getRecentPortals() {
+            return JSON.parse(localStorage.getItem('recentPortals') || '[]');
+        }
+        
+        function addRecentPortal(portalId) {
+            const recent = getRecentPortals();
+            const index = recent.indexOf(portalId);
+            if (index > -1) {
+                recent.splice(index, 1);
+            }
+            recent.unshift(portalId);
+            if (recent.length > 5) {
+                recent.pop();
+            }
+            localStorage.setItem('recentPortals', JSON.stringify(recent));
+        }
+        
+        function renderPortalQuickAccess() {
+            const quickAccess = document.getElementById('portalQuickAccess');
+            if (!quickAccess) return;
+            
+            const favorites = getFavoritePortals();
+            const recent = getRecentPortals();
+            const role = getCurrentUserRole()?.toLowerCase() || 'guest';
+            const allowedPortals = ROLE_PORTAL_ACCESS[role] || ['client'];
+            
+            // Render favorites
+            const favoritesList = document.getElementById('favoritePortalsList');
+            if (favoritesList) {
+                if (favorites.length === 0) {
+                    favoritesList.innerHTML = '<div style="color: #999; font-size: 0.85rem; padding: 8px;">No favorites yet. Click ⭐ to add.</div>';
+                } else {
+                    favoritesList.innerHTML = favorites
+                        .filter(id => allowedPortals.includes(id))
+                        .map(id => {
+                            const info = PORTAL_INFO[id] || { name: id, icon: '📋' };
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 6px; cursor: pointer; background: #f8f9fa;" 
+                                     onmouseover="this.style.background='#e9ecef'" 
+                                     onmouseout="this.style.background='#f8f9fa'"
+                                     onclick="openTab('${id}', event); togglePortalQuickAccess();">
+                                    <span>${info.icon} ${info.name}</span>
+                                    <button onclick="event.stopPropagation(); toggleFavorite('${id}');" style="background: none; border: none; cursor: pointer; font-size: 1rem;">⭐</button>
+                                </div>
+                            `;
+                        }).join('');
+                }
+            }
+            
+            // Render recent
+            const recentList = document.getElementById('recentPortalsList');
+            if (recentList) {
+                if (recent.length === 0) {
+                    recentList.innerHTML = '<div style="color: #999; font-size: 0.85rem; padding: 8px;">No recent portals.</div>';
+                } else {
+                    recentList.innerHTML = recent
+                        .filter(id => allowedPortals.includes(id) && !favorites.includes(id))
+                        .slice(0, 3)
+                        .map(id => {
+                            const info = PORTAL_INFO[id] || { name: id, icon: '📋' };
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 6px; cursor: pointer; background: #f8f9fa;" 
+                                     onmouseover="this.style.background='#e9ecef'" 
+                                     onmouseout="this.style.background='#f8f9fa'"
+                                     onclick="openTab('${id}', event); togglePortalQuickAccess();">
+                                    <span>${info.icon} ${info.name}</span>
+                                    <button onclick="event.stopPropagation(); toggleFavorite('${id}');" style="background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #999;">☆</button>
+                                </div>
+                            `;
+                        }).join('');
+                }
+            }
+            
+            // Render all portals
+            const allPortalsList = document.getElementById('allPortalsList');
+            if (allPortalsList) {
+                const filtered = allowedPortals.filter(id => !favorites.includes(id) && !recent.slice(0, 3).includes(id));
+                if (filtered.length === 0) {
+                    allPortalsList.innerHTML = '<div style="color: #999; font-size: 0.85rem; padding: 8px;">All portals shown above.</div>';
+                } else {
+                    allPortalsList.innerHTML = filtered.map(id => {
+                        const info = PORTAL_INFO[id] || { name: id, icon: '📋', category: 'Other' };
+                        return `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 6px; cursor: pointer; background: #f8f9fa;" 
+                                 onmouseover="this.style.background='#e9ecef'" 
+                                 onmouseout="this.style.background='#f8f9fa'"
+                                 onclick="openTab('${id}', event); togglePortalQuickAccess();">
+                                <span>${info.icon} ${info.name}</span>
+                                <button onclick="event.stopPropagation(); toggleFavorite('${id}');" style="background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #999;">☆</button>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+        }
+        
+        function togglePortalQuickAccess() {
+            const quickAccess = document.getElementById('portalQuickAccess');
+            if (!quickAccess) return;
+            
+            if (quickAccess.style.display === 'none' || !quickAccess.style.display) {
+                quickAccess.style.display = 'block';
+                renderPortalQuickAccess();
+            } else {
+                quickAccess.style.display = 'none';
+            }
+        }
+        
+        function filterPortals() {
+            const searchTerm = document.getElementById('portalSearchInput')?.value.toLowerCase() || '';
+            const role = getCurrentUserRole()?.toLowerCase() || 'guest';
+            const allowedPortals = ROLE_PORTAL_ACCESS[role] || ['client'];
+            
+            const allPortalsList = document.getElementById('allPortalsList');
+            if (!allPortalsList) return;
+            
+            const favorites = getFavoritePortals();
+            const recent = getRecentPortals();
+            const filtered = allowedPortals.filter(id => {
+                const info = PORTAL_INFO[id] || { name: id };
+                return info.name.toLowerCase().includes(searchTerm) && 
+                       !favorites.includes(id) && 
+                       !recent.slice(0, 3).includes(id);
+            });
+            
+            if (filtered.length === 0) {
+                allPortalsList.innerHTML = '<div style="color: #999; font-size: 0.85rem; padding: 8px;">No portals found.</div>';
+            } else {
+                allPortalsList.innerHTML = filtered.map(id => {
+                    const info = PORTAL_INFO[id] || { name: id, icon: '📋' };
+                    return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 6px; cursor: pointer; background: #f8f9fa;" 
+                             onmouseover="this.style.background='#e9ecef'" 
+                             onmouseout="this.style.background='#f8f9fa'"
+                             onclick="openTab('${id}', event); togglePortalQuickAccess();">
+                            <span>${info.icon} ${info.name}</span>
+                            <button onclick="event.stopPropagation(); toggleFavorite('${id}');" style="background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #999;">☆</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        // Override openTab to track recent portals
+        const originalOpenTab = window.openTab;
+        if (originalOpenTab) {
+            window.openTab = function(tabName, event) {
+                if (tabName && tabName !== 'client') {
+                    addRecentPortal(tabName);
+                }
+                return originalOpenTab(tabName, event);
+            };
+        }
+        
+        // Close quick access when clicking outside
+        document.addEventListener('click', function(e) {
+            const quickAccess = document.getElementById('portalQuickAccess');
+            const quickAccessBtn = document.querySelector('[onclick="togglePortalQuickAccess()"]');
+            if (quickAccess && quickAccess.style.display !== 'none' && 
+                !quickAccess.contains(e.target) && 
+                !quickAccessBtn?.contains(e.target)) {
+                quickAccess.style.display = 'none';
+            }
+        });
         
         function continueAsGuest() {
             // Guest access - show landing page with shop (already visible)
@@ -3673,26 +3998,184 @@
             }
         });
         
+        // Password Visibility Toggle
+        function togglePasswordVisibility(inputId, button) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                button.textContent = '🙈';
+                button.setAttribute('aria-label', 'Hide password');
+            } else {
+                input.type = 'password';
+                button.textContent = '👁️';
+                button.setAttribute('aria-label', 'Show password');
+            }
+        }
+        
+        // Forgot Password Functions
+        function showForgotPassword() {
+            hideStaffLoginModal();
+            const modal = document.getElementById('forgotPasswordModal');
+            if (modal) modal.style.display = 'flex';
+        }
+        
+        function hideForgotPasswordModal() {
+            const modal = document.getElementById('forgotPasswordModal');
+            if (modal) modal.style.display = 'none';
+            document.getElementById('forgotPasswordUsername').value = '';
+            document.getElementById('forgotPasswordError').style.display = 'none';
+            document.getElementById('forgotPasswordSuccess').style.display = 'none';
+        }
+        
+        async function submitForgotPassword() {
+            const username = document.getElementById('forgotPasswordUsername').value.trim();
+            const errorDiv = document.getElementById('forgotPasswordError');
+            const successDiv = document.getElementById('forgotPasswordSuccess');
+            
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            
+            if (!username) {
+                errorDiv.textContent = 'Please enter your username or email';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                // TODO: Implement API endpoint for password reset
+                // For now, show a message
+                successDiv.innerHTML = 'Password reset instructions have been sent to your email (if account exists).<br>Please check your inbox or contact your administrator.';
+                successDiv.style.display = 'block';
+                
+                setTimeout(() => {
+                    hideForgotPasswordModal();
+                    showStaffLogin();
+                }, 3000);
+            } catch (error) {
+                errorDiv.textContent = error.message || 'Failed to send reset instructions. Please contact your administrator.';
+                errorDiv.style.display = 'block';
+            }
+        }
+        
+        // Track login attempts
+        let loginAttempts = JSON.parse(localStorage.getItem('loginAttempts') || '{}');
+        const MAX_LOGIN_ATTEMPTS = 5;
+        const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+        
+        function checkLoginLockout(username) {
+            const attempts = loginAttempts[username] || { count: 0, lastAttempt: 0 };
+            const timeSinceLastAttempt = Date.now() - attempts.lastAttempt;
+            
+            if (attempts.count >= MAX_LOGIN_ATTEMPTS && timeSinceLastAttempt < LOCKOUT_DURATION) {
+                const remainingMinutes = Math.ceil((LOCKOUT_DURATION - timeSinceLastAttempt) / 60000);
+                throw new Error(`Account locked due to too many failed attempts. Please try again in ${remainingMinutes} minute(s) or contact your administrator.`);
+            }
+            
+            if (timeSinceLastAttempt >= LOCKOUT_DURATION) {
+                attempts.count = 0;
+            }
+            
+            return attempts;
+        }
+        
+        function recordLoginAttempt(username, success) {
+            if (!loginAttempts[username]) {
+                loginAttempts[username] = { count: 0, lastAttempt: 0 };
+            }
+            
+            if (success) {
+                loginAttempts[username].count = 0;
+            } else {
+                loginAttempts[username].count++;
+            }
+            
+            loginAttempts[username].lastAttempt = Date.now();
+            localStorage.setItem('loginAttempts', JSON.stringify(loginAttempts));
+        }
+        
+        function showLoginError(message, showAttempts = false) {
+            const errorDiv = document.getElementById('staffLoginError');
+            if (!errorDiv) return;
+            
+            let errorMessage = message;
+            const username = document.getElementById('unifiedUsername').value.trim();
+            if (showAttempts && username) {
+                const attempts = loginAttempts[username] || { count: 0 };
+                const remaining = MAX_LOGIN_ATTEMPTS - attempts.count;
+                if (remaining > 0) {
+                    errorMessage += ` (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)`;
+                }
+            }
+            
+            errorDiv.textContent = errorMessage;
+            errorDiv.style.display = 'block';
+            
+            // Scroll to error
+            errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
         async function unifiedStaffLogin() {
             const username = document.getElementById('unifiedUsername').value.trim();
             const password = document.getElementById('unifiedPassword').value;
+            const rememberMe = document.getElementById('rememberMe')?.checked || false;
+            const loginBtn = document.getElementById('staffLoginBtn');
+            const errorDiv = document.getElementById('staffLoginError');
             
+            // Clear previous errors
+            if (errorDiv) errorDiv.style.display = 'none';
+            
+            // Validation
             if (!username || !password) {
-                alert('Please enter username and password');
+                showLoginError('Please enter both username and password');
                 return;
+            }
+            
+            // Check for lockout
+            try {
+                checkLoginLockout(username);
+            } catch (error) {
+                showLoginError(error.message);
+                return;
+            }
+            
+            // Show loading state
+            if (loginBtn) {
+                const btnText = loginBtn.querySelector('.btn-text');
+                const btnLoading = loginBtn.querySelector('.btn-loading');
+                if (btnText) btnText.style.display = 'none';
+                if (btnLoading) btnLoading.style.display = 'inline';
+                loginBtn.disabled = true;
             }
             
             try {
                 const data = await loginPortalRequest(username, password);
                 const user = data?.user;
+                
                 if (!user) {
-                    throw new Error('Unexpected response from server.');
+                    recordLoginAttempt(username, false);
+                    throw new Error('Invalid username or password. Please check your credentials.');
                 }
                 
+                // Success - reset attempts
+                recordLoginAttempt(username, true);
+                
                 if (user.role === 'distributor') {
-                    alert('Distributors should use the Distributor Portal link');
+                    showLoginError('Distributors should use the Distributor Portal link');
                     window.open('distributor-portal.html', '_blank');
                     return;
+                }
+                
+                // Handle remember me
+                if (rememberMe) {
+                    const sessionData = {
+                        username: username,
+                        rememberUntil: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 days
+                    };
+                    localStorage.setItem('rememberedSession', JSON.stringify(sessionData));
+                } else {
+                    localStorage.removeItem('rememberedSession');
                 }
                 
                 const role = (user.role || '').toLowerCase();
@@ -3706,6 +4189,7 @@
                 handlePortalLoginSuccess(user, { silent: true });
                 hideStaffLoginModal();
                 
+                // Show welcome message with portal access
                 const portalCount = allowedPortals.length;
                 const portalList = portalCount ? allowedPortals.join(', ') : 'none';
                 const welcomeMsg = role === 'admin'
@@ -3714,7 +4198,29 @@
                 alert(welcomeMsg);
             } catch (error) {
                 console.error('Staff login error:', error);
-                alert(error.message || 'Unable to login. Please try again.');
+                const errorMessage = error.message || 'Unable to login. Please try again.';
+                
+                // Determine specific error type
+                let specificError = errorMessage;
+                if (errorMessage.includes('401') || errorMessage.includes('Invalid') || errorMessage.includes('password')) {
+                    specificError = 'Invalid username or password. Please check your credentials.';
+                    recordLoginAttempt(username, false);
+                    showLoginError(specificError, true);
+                } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+                    specificError = 'Network error. Please check your connection and try again.';
+                    showLoginError(specificError);
+                } else {
+                    showLoginError(specificError);
+                }
+            } finally {
+                // Restore button state
+                if (loginBtn) {
+                    const btnText = loginBtn.querySelector('.btn-text');
+                    const btnLoading = loginBtn.querySelector('.btn-loading');
+                    if (btnText) btnText.style.display = 'inline';
+                    if (btnLoading) btnLoading.style.display = 'none';
+                    loginBtn.disabled = false;
+                }
             }
         }
 
@@ -4195,9 +4701,10 @@
     <nav id="mainNavbar" style="background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 9999; padding: 15px 0;">
         <div style="max-width: 1400px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
             <div style="display: flex; align-items: center; gap: 15px;">
+                <button id="mobileMenuToggle" onclick="toggleMobileMenu()" class="mobile-menu-btn" style="display: none; background: none; border: none; font-size: 1.8rem; cursor: pointer; color: #c41e3a; padding: 8px; min-width: 44px; min-height: 44px;">☰</button>
                 <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='50' viewBox='0 0 200 50'%3E%3Crect width='200' height='50' rx='8' fill='%23c41e3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial, sans-serif' font-size='16' font-weight='bold'%3EDynapharm%3C/text%3E%3C/svg%3E" alt="Dynapharm Logo" style="height: 40px; width: auto;">
             </div>
-            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+            <div id="desktopNavLinks" class="desktop-nav" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <a href="#home" onclick="showLandingPage()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Home</a>
                 <a href="#guest-portal" onclick="showGuestPortal()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Guest Portal</a>
                 <a href="#about" onclick="showAboutUs()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">About Us</a>
@@ -4211,7 +4718,80 @@
                 </span>
             </div>
         </div>
+        
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="mobile-menu" style="display: none; background: white; border-top: 2px solid #f0f0f0; margin-top: 15px; padding: 20px; flex-direction: column; gap: 15px;">
+            <a href="#home" onclick="showLandingPage(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Home</a>
+            <a href="#guest-portal" onclick="showGuestPortal(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Guest Portal</a>
+            <a href="#about" onclick="showAboutUs(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">About Us</a>
+            <a href="#media" onclick="showMedia(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Media</a>
+            <div id="mobileLoginSection">
+                <button onclick="showStaffLogin(); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
+                <a href="distributor-portal.html" target="_blank" class="btn" style="width: 100%; background: #f0f0f0; color: #333; padding: 12px 20px; font-weight: 600; text-decoration: none; border-radius: 8px; display: block; text-align: center; margin-top: 10px; min-height: 44px; line-height: 20px;">📊 Distributor Portal</a>
+                <button onclick="continueAsGuest(); toggleMobileMenu();" class="btn" style="width: 100%; background: #f8f9fa; color: #333; padding: 12px 20px; font-weight: 600; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; margin-top: 10px; min-height: 44px;">🛒 Guest Access</button>
+            </div>
+            <div id="mobileUserSection" style="display: none; flex-direction: column; gap: 10px;">
+                <span id="mobileUserDisplay" style="color: #666; font-size: 0.9rem; padding: 12px;"></span>
+                <button onclick="logout(); toggleMobileMenu();" class="btn btn-danger" style="width: 100%; padding: 12px; font-size: 0.9rem; min-height: 44px;">Logout</button>
+            </div>
+        </div>
     </nav>
+    
+    <style>
+        @media (max-width: 768px) {
+            .mobile-menu-btn { display: block !important; }
+            .desktop-nav { display: none !important; }
+            #mobileMenu.active { display: flex !important; }
+            #portalTabs { flex-wrap: wrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            #portalTabs .tab-button { min-width: fit-content; font-size: 0.85rem; padding: 8px 12px; min-height: 44px; }
+            #portalQuickAccess { top: 60px !important; right: 10px !important; left: 10px !important; max-width: none !important; }
+            #landingPage h1 { font-size: 2rem !important; }
+            #landingPage .quick-access-buttons { flex-direction: column; }
+            #landingPage .quick-access-buttons button, #landingPage .quick-access-buttons a { width: 100%; }
+        }
+        .mobile-menu { display: none; }
+        .mobile-menu.active { display: flex; }
+    </style>
+    
+    <script>
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobileMenu');
+            const toggle = document.getElementById('mobileMenuToggle');
+            if (menu && toggle) {
+                menu.classList.toggle('active');
+                toggle.textContent = menu.classList.contains('active') ? '✕' : '☰';
+            }
+        }
+        
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('mobileMenu');
+            const toggle = document.getElementById('mobileMenuToggle');
+            if (menu && toggle && !menu.contains(e.target) && !toggle.contains(e.target)) {
+                menu.classList.remove('active');
+                toggle.textContent = '☰';
+            }
+        });
+        
+        // Update mobile menu when user logs in/out
+        const originalUpdateNav = window.updateNavigationForUser;
+        if (originalUpdateNav) {
+            window.updateNavigationForUser = function(user, role) {
+                originalUpdateNav(user, role);
+                const mobileLoginSection = document.getElementById('mobileLoginSection');
+                const mobileUserSection = document.getElementById('mobileUserSection');
+                const mobileUserDisplay = document.getElementById('mobileUserDisplay');
+                if (user) {
+                    if (mobileLoginSection) mobileLoginSection.style.display = 'none';
+                    if (mobileUserSection) mobileUserSection.style.display = 'flex';
+                    if (mobileUserDisplay) mobileUserDisplay.textContent = `${user.fullName || user.username} (${role})`;
+                } else {
+                    if (mobileLoginSection) mobileLoginSection.style.display = 'block';
+                    if (mobileUserSection) mobileUserSection.style.display = 'none';
+                }
+            };
+        }
+    </script>
 
     <!-- Staff Login Modal -->
     <div id="staffLoginModal" class="modal-overlay" style="display: none; z-index: 10001;">
@@ -4219,13 +4799,44 @@
             <h2 style="margin-bottom: 20px; color: #c41e3a;">👔 Staff Login</h2>
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                 <input type="text" id="unifiedUsername" placeholder="Username" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;">
-                <input type="password" id="unifiedPassword" placeholder="Password" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;">
+                <div style="position: relative;">
+                    <input type="password" id="unifiedPassword" placeholder="Password" style="padding: 12px; padding-right: 45px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem; width: 100%; box-sizing: border-box;">
+                    <button type="button" onclick="togglePasswordVisibility('unifiedPassword', this)" class="password-toggle-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; color: #666; font-size: 1.2rem;" aria-label="Toggle password visibility">👁️</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="rememberMe" style="width: auto; margin: 0;">
+                    <label for="rememberMe" style="font-size: 0.9rem; color: #666; cursor: pointer; margin: 0;">Remember me for 30 days</label>
+                </div>
+                <div style="text-align: right;">
+                    <a href="#" onclick="showForgotPassword(); return false;" style="color: #c41e3a; text-decoration: none; font-size: 0.9rem;">Forgot Password?</a>
+                </div>
+                <div id="staffLoginError" class="login-error" style="display: none; background: #fee; border: 1px solid #fcc; color: #c33; padding: 10px; border-radius: 6px; font-size: 0.9rem;"></div>
                 <div style="display: flex; gap: 10px;">
-                    <button onclick="unifiedStaffLogin()" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1;">Login</button>
+                    <button onclick="unifiedStaffLogin()" id="staffLoginBtn" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1; position: relative;">
+                        <span class="btn-text">Login</span>
+                        <span class="btn-loading" style="display: none;">⏳ Logging in...</span>
+                    </button>
                     <button onclick="hideStaffLoginModal()" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
                 </div>
                 <div style="margin-top: 10px; text-align: center;">
                     <a href="distributor-portal.html" target="_blank" style="color: #c41e3a; text-decoration: none; font-size: 0.9rem;">📊 Distributor Portal</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Forgot Password Modal -->
+    <div id="forgotPasswordModal" class="modal-overlay" style="display: none; z-index: 10002;">
+        <div class="modal-card" style="max-width: 450px;">
+            <h2 style="margin-bottom: 20px; color: #c41e3a;">🔑 Reset Password</h2>
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <p style="color: #666; font-size: 0.95rem;">Enter your username or email to receive password reset instructions.</p>
+                <input type="text" id="forgotPasswordUsername" placeholder="Username or Email" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;">
+                <div id="forgotPasswordError" class="login-error" style="display: none; background: #fee; border: 1px solid #fcc; color: #c33; padding: 10px; border-radius: 6px; font-size: 0.9rem;"></div>
+                <div id="forgotPasswordSuccess" style="display: none; background: #efe; border: 1px solid #cfc; color: #3c3; padding: 10px; border-radius: 6px; font-size: 0.9rem;"></div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="submitForgotPassword()" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1;">Send Reset Link</button>
+                    <button onclick="hideForgotPasswordModal()" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -4238,7 +4849,26 @@
             <div style="max-width: 1200px; margin: 0 auto;">
                 <h1 style="font-size: 3rem; margin-bottom: 15px; color: white;">Welcome to Dynapharm Namibia</h1>
                 <p style="font-size: 1.5rem; margin-bottom: 10px; opacity: 0.95;">Your Trusted Wellness Partner</p>
-                <p style="font-size: 1rem; opacity: 0.9;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
+                <p style="font-size: 1rem; opacity: 0.9; margin-bottom: 30px;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
+                
+                <!-- Quick Access Buttons -->
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 30px;">
+                    <button onclick="showStaffLogin()" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
+                            onmouseover="this.style.transform='translateY(-2px)'" 
+                            onmouseout="this.style.transform='translateY(0)'">
+                        👔 Staff Login
+                    </button>
+                    <a href="distributor-portal.html" target="_blank" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; text-decoration: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s; display: inline-block;"
+                       onmouseover="this.style.transform='translateY(-2px)'" 
+                       onmouseout="this.style.transform='translateY(0)'">
+                        📊 Distributor Portal
+                    </a>
+                    <button onclick="continueAsGuest()" class="btn" style="background: rgba(255,255,255,0.2); color: white; padding: 14px 28px; border-radius: 8px; border: 2px solid white; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;"
+                            onmouseover="this.style.transform='translateY(-2px); background: rgba(255,255,255,0.3)'" 
+                            onmouseout="this.style.transform='translateY(0); background: rgba(255,255,255,0.2)'">
+                        🛒 Guest Access
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -4959,12 +5589,35 @@
             </div>
         </div>
 
-        <div class="tabs" id="portalTabs" style="display: none;">
-            <button class="tab-button active" onclick="openTab('client', event)">Distributor / Guest</button>
-            <button class="tab-button" onclick="openTab('frontdesk', event)">Front Desk Portal</button>
-            <button class="tab-button" onclick="openTab('consultant', event)">Consultant Portal</button>
-            <button class="tab-button" onclick="openTab('dispenser', event)">Branch Portal</button>
-            <button class="tab-button" onclick="openTab('hr-portal', event)">HR Portal</button>
+        <!-- Portal Quick Access Menu -->
+        <div id="portalQuickAccess" style="display: none; position: fixed; top: 80px; right: 20px; z-index: 1000; background: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 16px; min-width: 280px; max-width: 400px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #f0f0f0; padding-bottom: 12px;">
+                <h3 style="margin: 0; color: #c41e3a; font-size: 1.1rem;">🚀 Quick Access</h3>
+                <button onclick="togglePortalQuickAccess()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">✕</button>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <input type="text" id="portalSearchInput" placeholder="Search portals..." onkeyup="filterPortals()" style="width: 100%; padding: 8px 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box;">
+            </div>
+            <div id="favoritePortals" style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0;">
+                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">⭐ Favorites</div>
+                <div id="favoritePortalsList" style="display: flex; flex-direction: column; gap: 4px;"></div>
+            </div>
+            <div id="recentPortals" style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0;">
+                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🕐 Recent</div>
+                <div id="recentPortalsList" style="display: flex; flex-direction: column; gap: 4px;"></div>
+            </div>
+            <div id="allPortalsList" style="max-height: 300px; overflow-y: auto;">
+                <!-- Portals will be populated here -->
+            </div>
+        </div>
+        
+        <div class="tabs" id="portalTabs" style="display: none; position: relative;">
+            <button onclick="togglePortalQuickAccess()" class="btn" style="background: #c41e3a; color: white; padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; margin-right: 8px;" title="Quick Access Menu">🚀</button>
+            <button class="tab-button active" onclick="openTab('client', event)" data-portal-id="client">Distributor / Guest</button>
+            <button class="tab-button" onclick="openTab('frontdesk', event)" data-portal-id="frontdesk">Front Desk Portal</button>
+            <button class="tab-button" onclick="openTab('consultant', event)" data-portal-id="consultant">Consultant Portal</button>
+            <button class="tab-button" onclick="openTab('dispenser', event)" data-portal-id="dispenser">Branch Portal</button>
+            <button class="tab-button" onclick="openTab('hr-portal', event)" data-portal-id="hr-portal">HR Portal</button>
             <button class="tab-button" onclick="openTab('finance', event)">Finance Portal</button>
             
             <button class="tab-button" onclick="openTab('gm', event)">GM Portal</button>
