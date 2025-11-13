@@ -4773,6 +4773,63 @@
             }
         });
         
+        // Toast Notification Function
+        function showToast(message, type = 'info') {
+            const colors = {
+                success: { bg: '#10b981', icon: '✅' },
+                error: { bg: '#ef4444', icon: '❌' },
+                warning: { bg: '#f59e0b', icon: '⚠️' },
+                info: { bg: '#3b82f6', icon: 'ℹ️' }
+            };
+            const config = colors[type] || colors.info;
+            
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: ${config.bg};
+                color: white;
+                padding: 14px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                max-width: 400px;
+                animation: slideInRight 0.3s ease-out;
+            `;
+            toast.innerHTML = `<span>${config.icon}</span><span>${message}</span>`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        // Add toast animations if not already present
+        if (!document.querySelector('style[data-toast-animations]')) {
+            const style = document.createElement('style');
+            style.setAttribute('data-toast-animations', 'true');
+            style.textContent = `
+                @keyframes slideInRight {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes slideOutRight {
+                    from { transform: translateX(0); opacity: 1; }
+                    to { transform: translateX(100%); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         // Update mobile menu when user logs in/out
         const originalUpdateNav = window.updateNavigationForUser;
         if (originalUpdateNav) {
