@@ -19013,6 +19013,82 @@
             window.PRICE_LIST = PRICE_LIST;
         }
 
+        // Load products dynamically from API with fallback to PRICE_LIST
+        async function loadProductsFromAPI() {
+            try {
+                const response = await fetch('/api/products');
+                if (response.ok) {
+                    const products = await response.json();
+                    if (Array.isArray(products) && products.length > 0) {
+                        // Transform API products to PRICE_LIST format
+                        const transformedProducts = products.map(p => ({
+                            description: p.name || p.description || '',
+                            dp: parseFloat(p.dp || p.retail_price || 0),
+                            cp: parseFloat(p.cp || p.cost_price || 0),
+                            bv: parseFloat(p.bv || p.business_volume || 0),
+                            id: p.id,
+                            sku: p.sku,
+                            category: p.category,
+                            unit: p.unit,
+                            is_active: p.is_active !== false
+                        })).filter(p => p.is_active && p.description);
+                        
+                        if (transformedProducts.length > 0) {
+                            console.log(`✅ Loaded ${transformedProducts.length} products from API`);
+                            // Update global PRICE_LIST
+                            if (typeof window !== 'undefined') {
+                                window.PRICE_LIST = transformedProducts;
+                            }
+                            // Cache in localStorage
+                            try {
+                                localStorage.setItem('dyna_products_cache', JSON.stringify({
+                                    data: transformedProducts,
+                                    timestamp: Date.now()
+                                }));
+                            } catch (e) {
+                                console.debug('Could not cache products:', e);
+                            }
+                            return transformedProducts;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.debug('Failed to load products from API:', error);
+            }
+            
+            // Fallback: Try cached products (if less than 1 hour old)
+            try {
+                const cached = localStorage.getItem('dyna_products_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    const age = Date.now() - (parsed.timestamp || 0);
+                    if (age < 3600000 && parsed.data && parsed.data.length > 0) {
+                        console.log(`✅ Loaded ${parsed.data.length} products from cache`);
+                        if (typeof window !== 'undefined') {
+                            window.PRICE_LIST = parsed.data;
+                        }
+                        return parsed.data;
+                    }
+                }
+            } catch (e) {
+                console.debug('Cache read error:', e);
+            }
+            
+            // Final fallback: Use hardcoded PRICE_LIST
+            console.log(`✅ Using hardcoded PRICE_LIST (${PRICE_LIST.length} products)`);
+            return PRICE_LIST;
+        }
+
+        // Initialize products on page load
+        if (typeof window !== 'undefined') {
+            window.loadProductsFromAPI = loadProductsFromAPI;
+            // Load products immediately
+            loadProductsFromAPI().then(() => {
+                // Dispatch event to notify that products are loaded
+                window.dispatchEvent(new CustomEvent('products:loaded'));
+            });
+        }
+
         // Price lookup function with package support
         function findProductPrice(productName) {
             if (!productName) return {description: productName, dp: 0, cp: 0, bv: 0};
