@@ -11637,6 +11637,17 @@
                     <span id="misBranchSummary" style="margin-left: 20px;">Branch Breakdown: Loading...</span>
                     <span id="misStockSummary" style="margin-left: 20px;">Stock: Loading...</span>
                 </div>
+                <div style="margin-top: 12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <label for="misComparisonPeriod" style="font-weight:600; color:#1e293b;">Compare performance:</label>
+                    <select id="misComparisonPeriod" onchange="renderMISAnalytics()" style="padding:8px 12px; border:2px solid #c4d4e0; border-radius:6px;">
+                        <option value="none">No comparison</option>
+                        <option value="yesterday" selected>vs Yesterday</option>
+                        <option value="lastWeek">vs Last 7 days</option>
+                        <option value="lastMonth">vs Last 30 days</option>
+                    </select>
+                </div>
+                <div id="misComparisonAlerts" style="margin-top: 12px;"></div>
+                <div id="misTrendChart" style="margin-top: 12px;"></div>
             </div>
 
             <div class="form-section">
@@ -14349,6 +14360,15 @@
                 totalAmount: 0,
                 branchBreakdown: []
             }
+        };
+        const MIS_ALERT_THRESHOLD = 15;
+        const MIS_ALERT_THROTTLE_MS = 60 * 60 * 1000;
+        const MIS_ALERT_STATE = {
+            recent: new Map()
+        };
+        const MIS_METRIC_NAMES = {
+            totalAmount: 'Sales total',
+            receiptCount: 'Receipt volume'
         };
 
         function parseFinanceDate(value) {
@@ -22298,6 +22318,45 @@
             return list.filter((receipt) => matchesMISSearch(receipt, term));
         }
 
+        function getReceiptTimestamp(receipt) {
+            if (!receipt) return null;
+            const candidates = [
+                receipt.timestamp,
+                receipt.saleDate,
+                receipt.sale_date,
+                receipt.createdAt,
+                receipt.created_at
+            ];
+            for (const value of candidates) {
+                if (!value) continue;
+                const date = new Date(value);
+                if (!Number.isNaN(date.getTime())) {
+                    return date;
+                }
+            }
+            return null;
+        }
+
+        function sumReceiptsForWindow(receipts, windowFn, selector) {
+            if (!Array.isArray(receipts) || typeof windowFn !== 'function') return 0;
+            return receipts.reduce((sum, receipt) => {
+                const timestamp = getReceiptTimestamp(receipt);
+                if (!timestamp || !windowFn(timestamp)) return sum;
+                const value = selector ? selector(receipt) : receipt.totalAmount || receipt.total || 0;
+                const numeric = Number(value);
+                return Number.isFinite(numeric) ? sum + numeric : sum;
+            }, 0);
+        }
+
+        function countReceiptsForWindow(receipts, windowFn) {
+            if (!Array.isArray(receipts) || typeof windowFn !== 'function') return 0;
+            return receipts.reduce((count, receipt) => {
+                const timestamp = getReceiptTimestamp(receipt);
+                if (!timestamp || !windowFn(timestamp)) return count;
+                return count + 1;
+            }, 0);
+        }
+
         async function loadMISReceipts({ force = false } = {}) {
             ensureMISPortalInitialized();
             const now = Date.now();
@@ -22364,8 +22423,233 @@
             const filtered = applyMISSearchFilter(MIS_PORTAL_STATE.receipts || []);
             displayMISReportsTable(filtered);
             updateMISSummary(filtered);
+            renderMISAnalytics(filtered);
         }
 
+        function renderMISAnalytics(receiptsList) {
+            ensureMISPortalInitialized();
+            const list = Array.isArray(receiptsList)
+                ? receiptsList
+                : applyMISSearchFilter(MIS_PORTAL_STATE.receipts || []);
+            const select = document.getElementById('misComparisonPeriod');
+            const mode = select ? select.value : 'none';
+            const summary = applyMISComparisons(mode, list);
+            renderMISComparisonAlerts(summary);
+            renderMISTrendChart(summary, list);
+        }
+
+        function applyMISComparisons(mode, receipts) {
+            if (!Array.isArray(receipts)) {
+                return { mode: 'none', label: null, items: [] };
+            }
+            if (!mode || mode === 'none') {
+                return { mode: 'none', label: null, items: [] };
+            }
+            const windowFn = buildComparisonWindow(mode);
+            if (typeof windowFn !== 'function') {
+                return { mode: 'none', label: null, items: [] };
+            }
+            const label = FINANCE_COMPARISON_LABELS[mode] || 'previous period';
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const todayReceipts = receipts.filter((receipt) => extractFinanceDateKey(receipt) === todayKey);
+            const currentAmount = todayReceipts.reduce(
+                (sum, receipt) =>
+                    sum + Number(receipt.totalAmount ?? receipt.total ?? receipt.subtotal ?? 0),
+                0
+            );
+            const currentCount = todayReceipts.length;
+            const baselineAmount = sumReceiptsForWindow(receipts, windowFn, (receipt) =>
+                Number(receipt.totalAmount ?? receipt.total ?? receipt.subtotal ?? 0)
+            );
+            const baselineCount = countReceiptsForWindow(receipts, windowFn);
+
+            const amountSummary = buildComparisonData(currentAmount, baselineAmount, label, 'totalAmount');
+            amountSummary.metricName = MIS_METRIC_NAMES.totalAmount;
+            amountSummary.mode = mode;
+
+            const countSummary = buildComparisonData(currentCount, baselineCount, label, 'receiptCount');
+            countSummary.metricName = MIS_METRIC_NAMES.receiptCount;
+            countSummary.mode = mode;
+
+            return {
+                mode,
+                label,
+                items: [amountSummary, countSummary],
+                metrics: {
+                    totalAmount: currentAmount,
+                    receiptCount: currentCount
+                }
+            };
+        }
+
+        function renderMISComparisonAlerts(summary) {
+            const container = document.getElementById('misComparisonAlerts');
+            if (!container) return;
+            if (!summary || summary.mode === 'none') {
+                container.innerHTML =
+                    '<div style="padding:10px; border:1px dashed #cbd5f5; border-radius:8px; background:#f8fafc; color:#475569;">Select a comparison period to see MIS performance trends.</div>';
+                return;
+            }
+            const items = Array.isArray(summary.items) ? summary.items : [];
+            if (!items.length) {
+                container.innerHTML =
+                    '<div style="padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f1f5f9; color:#475569;">No receipts recorded for today yet.</div>';
+                return;
+            }
+
+            const alerts = items
+                .map((item) => {
+                    if (!item || !item.text) return null;
+                    if (item.direction === 'down' && Math.abs(item.deltaPercent || 0) >= MIS_ALERT_THRESHOLD) {
+                        dispatchMISAlert(item);
+                    }
+                    const color = item.color || '#475569';
+                    const badgeColor = item.direction === 'down' ? '#dc2626' : item.direction === 'up' ? '#16a34a' : '#475569';
+                    const icon = item.direction === 'down' ? '⬇️' : item.direction === 'up' ? '⬆️' : '⏺️';
+                    const metricName = item.metricName || MIS_METRIC_NAMES[item.key] || item.key || 'Metric';
+                    const deltaValue = formatCurrencyNAD(item.diff || 0);
+                    const card = `
+                        <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:10px; background:#ffffff;">
+                            <div style="font-size:1.25rem;">${icon}</div>
+                            <div style="flex:1;">
+                                <div style="font-weight:600; color:${color};">${escapeHtml(metricName)} ${escapeHtml(item.text || '')}</div>
+                                <div style="font-size:0.85rem; color:#475569;">Δ ${deltaValue} (previous ${formatCurrencyNAD(item.previous || 0)})</div>
+                            </div>
+                            <span style="padding:4px 10px; border-radius:999px; background:${badgeColor}20; color:${badgeColor}; font-size:0.75rem; font-weight:600;">
+                                ${item.direction === 'down' ? 'Attention' : item.direction === 'up' ? 'Growth' : 'Stable'}
+                            </span>
+                        </div>
+                    `;
+                    return card;
+                })
+                .filter(Boolean)
+                .join('');
+
+            container.innerHTML =
+                alerts ||
+                `<div style="padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f1f5f9; color:#475569;">No significant changes vs ${escapeHtml(summary.label || 'previous period')}.</div>`;
+        }
+
+        function dispatchMISAlert(summary) {
+            if (!summary || summary.direction !== 'down') return;
+            const percent = Math.abs(summary.deltaPercent || 0);
+            if (percent < MIS_ALERT_THRESHOLD) return;
+            const key = `${summary.key || 'metric'}:${summary.mode || 'none'}`;
+            const last = MIS_ALERT_STATE.recent.get(key) || 0;
+            const now = Date.now();
+            if (now - last < MIS_ALERT_THROTTLE_MS) return;
+            MIS_ALERT_STATE.recent.set(key, now);
+            const metricName = summary.metricName || MIS_METRIC_NAMES[summary.key] || summary.key;
+            const percentText = formatPercentValue(summary.deltaPercent || 0);
+            const message = `${metricName} down ${percentText}% vs ${summary.label || 'previous period'}`;
+            try {
+                recordDepartmentEvent &&
+                    recordDepartmentEvent('mis_alert', {
+                        metric: summary.key,
+                        metricName,
+                        dropPercent: summary.deltaPercent,
+                        dropValue: summary.diff,
+                        comparison: summary.label,
+                        currentValue: summary.current,
+                        previousValue: summary.previous,
+                        triggeredAt: new Date().toISOString()
+                    });
+            } catch (error) {
+                console.debug('recordDepartmentEvent mis_alert failed', error);
+            }
+            try {
+                logSyncEvent && logSyncEvent('mis-alert', message, { severity: 'warning', scope: 'mis' });
+            } catch (_) {}
+        }
+
+        function aggregateReceiptsByDate(records) {
+            const map = new Map();
+            if (!Array.isArray(records)) return map;
+            records.forEach((receipt) => {
+                const key = extractFinanceDateKey(receipt);
+                if (!key) return;
+                const amount = Number(receipt.totalAmount ?? receipt.total ?? receipt.subtotal ?? 0);
+                if (!Number.isFinite(amount)) return;
+                map.set(key, (map.get(key) || 0) + amount);
+            });
+            return map;
+        }
+
+        function renderMISTrendChart(summary, receipts) {
+            const container = document.getElementById('misTrendChart');
+            if (!container) return;
+            if (!Array.isArray(receipts) || receipts.length === 0) {
+                container.innerHTML =
+                    '<div style="padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; color:#475569;">No receipts available to chart yet.</div>';
+                return;
+            }
+            const comparisonLabel =
+                summary && summary.mode !== 'none'
+                    ? `Comparison: ${summary.label || 'previous period'}`
+                    : '14-day sales trend';
+
+            const days = [];
+            const today = new Date();
+            for (let offset = 13; offset >= 0; offset -= 1) {
+                const date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                date.setDate(date.getDate() - offset);
+                const key = date.toISOString().slice(0, 10);
+                const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                days.push({ key, label });
+            }
+
+            const totalsByDate = aggregateReceiptsByDate(receipts);
+            const totals = days.map(({ key, label }) => ({
+                key,
+                label,
+                amount: totalsByDate.get(key) || 0
+            }));
+
+            const values = totals.map((item) => item.amount);
+            const maxValue = values.length ? Math.max(...values, 0) : 0;
+            const minValue = values.length ? Math.min(...values, 0) : 0;
+            const range = Math.max(maxValue - minValue, 1);
+            const points = totals
+                .map((item, index) => {
+                    const x = totals.length > 1 ? (index / (totals.length - 1)) * 100 : 0;
+                    const y = 100 - ((item.amount - minValue) / range) * 100;
+                    return `${x.toFixed(2)},${y.toFixed(2)}`;
+                })
+                .join(' ');
+            const zeroY = 100 - ((0 - minValue) / range) * 100;
+            const latest = totals[totals.length - 1] || { amount: 0 };
+            const earliest = totals[0] || { amount: 0 };
+            const delta = latest.amount - earliest.amount;
+            const deltaColor = delta >= 0 ? '#16a34a' : '#dc2626';
+            const deltaText = `${delta >= 0 ? '▲' : '▼'} ${formatCurrencyNAD(Math.abs(delta))}`;
+
+            const labels = totals
+                .map((item, index) => {
+                    if (index === 0 || index === totals.length - 1 || index === Math.floor(totals.length / 2)) {
+                        const align =
+                            index === 0 ? 'left' : index === totals.length - 1 ? 'right' : 'center';
+                        return `<div style="flex:1; text-align:${align}; font-size:0.75rem; color:#64748b;">${escapeHtml(item.label)}</div>`;
+                    }
+                    return '<div style="flex:1;"></div>';
+                })
+                .join('');
+
+            container.innerHTML = `
+                <div style="border:1px solid #e2e8f0; border-radius:12px; padding:16px; background:#ffffff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                        <div style="font-weight:600; color:#1e293b;">14-Day Sales Trend</div>
+                        <div style="font-size:0.85rem; color:#475569;">${escapeHtml(comparisonLabel)}</div>
+                        <div style="font-size:0.85rem; color:${deltaColor}; font-weight:600;">${deltaText} vs first day</div>
+                    </div>
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%; height:160px; background:linear-gradient(180deg,#f8fafc,#ffffff); border-radius:8px;">
+                        <polyline points="${points}" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                        <polygon points="${points} 100,100 0,100" fill="rgba(14,165,233,0.12)"></polygon>
+                        <line x1="0" y1="${zeroY}" x2="100" y2="${zeroY}" stroke="#e2e8f0" stroke-dasharray="4,4"></line>
+                    </svg>
+                    <div style="display:flex; margin-top:6px;">${labels}</div>
+                </div>
+            `;
+        }
         function filterMISReports() {
             ensureMISPortalInitialized();
             const branchId = document.getElementById('misBranchSelect')?.value || 'all';
@@ -22842,6 +23126,7 @@
         // Make function globally accessible for inline event handlers
         if (typeof window !== 'undefined') {
             window.toggleDietOptions = toggleDietOptions;
+            window.renderMISAnalytics = renderMISAnalytics;
         }
 
         // Enhanced signature with camera support
