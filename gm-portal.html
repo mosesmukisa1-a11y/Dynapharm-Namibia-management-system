@@ -347,6 +347,11 @@
             .btn { min-height: 44px; }
             * { -webkit-tap-highlight-color: rgba(102, 126, 234, 0.2); }
         }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
     <script defer src="./cloud-sync.js"></script>
     <script defer src="./auto-cloud-sync.js"></script>
@@ -1005,8 +1010,73 @@
             });
         }
         
+        // Loading Indicator Utility Functions (for GM Portal standalone)
+        function showLoadingIndicator(element, message = 'Loading...') {
+            if (!element) return null;
+            const loadingId = 'loading_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const loadingEl = document.createElement('div');
+            loadingEl.id = loadingId;
+            loadingEl.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; background: #f8f9fa; border-radius: 8px; color: #495057; font-size: 0.9rem;';
+            loadingEl.innerHTML = `
+                <div style="width: 20px; height: 20px; border: 3px solid #e9ecef; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <span>${message}</span>
+            `;
+            if (element.parentNode) {
+                element.parentNode.insertBefore(loadingEl, element);
+                element.style.display = 'none';
+            } else {
+                element.innerHTML = '';
+                element.appendChild(loadingEl);
+            }
+            return loadingId;
+        }
+        
+        function hideLoadingIndicator(element, loadingId = null) {
+            if (!element) return;
+            if (loadingId) {
+                const loadingEl = document.getElementById(loadingId);
+                if (loadingEl && loadingEl.parentNode) {
+                    loadingEl.parentNode.removeChild(loadingEl);
+                }
+            } else {
+                const loadingEl = element.querySelector('[id^="loading_"]');
+                if (loadingEl) loadingEl.remove();
+            }
+            element.style.display = '';
+        }
+        
+        function showInlineLoading(element, message = 'Loading...') {
+            if (!element) return null;
+            const originalContent = element.innerHTML;
+            element.dataset.originalContent = originalContent;
+            element.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 8px;">
+                    <div style="width: 16px; height: 16px; border: 2px solid #e9ecef; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                    <span>${message}</span>
+                </div>
+            `;
+            return () => {
+                element.innerHTML = originalContent;
+            };
+        }
+
         // Refresh data
         async function refreshData() {
+            const statsGrid = document.querySelector('.stats-grid');
+            const transactionsBody = document.getElementById('transactionsBody');
+            const recentActivity = document.getElementById('recentActivity');
+            const refreshBtn = document.querySelector('.btn-primary');
+            
+            // Show loading indicators
+            let restoreBtn = null;
+            if (refreshBtn) {
+                restoreBtn = showInlineLoading(refreshBtn, 'Refreshing...');
+            }
+            
+            const loadingId1 = showLoadingIndicator(statsGrid, 'Loading statistics...');
+            const loadingId2 = showLoadingIndicator(transactionsBody, 'Loading transactions...');
+            const loadingId3 = showLoadingIndicator(recentActivity, 'Loading activity...');
+            
             try {
                 await loadData();
                 updateDashboard();
@@ -1016,18 +1086,25 @@
                 loadBranchPerformance();
                 
                 // Show success indicator
-                const btn = document.querySelector('.btn-primary');
-                const originalText = btn.textContent;
-                btn.textContent = '✓ Refreshed';
-                btn.style.background = '#10b981';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '#667eea';
-                }, 2000);
+                if (refreshBtn && restoreBtn) {
+                    restoreBtn();
+                    const originalText = refreshBtn.textContent;
+                    refreshBtn.textContent = '✓ Refreshed';
+                    refreshBtn.style.background = '#10b981';
+                    setTimeout(() => {
+                        refreshBtn.textContent = originalText;
+                        refreshBtn.style.background = '#667eea';
+                    }, 2000);
+                }
                 
             } catch (error) {
                 console.error('Error refreshing data:', error);
                 alert('Failed to refresh data. Please try again.');
+            } finally {
+                // Hide loading indicators
+                hideLoadingIndicator(statsGrid, loadingId1);
+                hideLoadingIndicator(transactionsBody, loadingId2);
+                hideLoadingIndicator(recentActivity, loadingId3);
             }
         }
         

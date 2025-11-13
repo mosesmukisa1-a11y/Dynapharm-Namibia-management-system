@@ -101,6 +101,16 @@
             .btn { min-height: 44px; }
             * { -webkit-tap-highlight-color: rgba(196, 30, 58, 0.2); }
         }
+        
+        @keyframes misSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes misFadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
     <script defer src="./cloud-sync.js"></script>
     <script defer src="./auto-cloud-sync.js"></script>
@@ -659,17 +669,43 @@
         }
 
 		async function loadAuditLogs() {
-			const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
-			currentAuditLogs = await getAuditLogs({ start, end, branch });
-			$('auditTbody').innerHTML = currentAuditLogs.length
-				? currentAuditLogs.map(l => `<tr>
-					<td>${new Date(l.createdAt || l.timestamp).toLocaleString()}</td>
-					<td>${l.user || ''}</td>
-					<td>${l.eventType || ''}</td>
-					<td>${l.recordId || ''}</td>
-					<td>${typeof l.details === 'object' ? JSON.stringify(l.details) : (l.details || '')}</td>
-				</tr>`).join('')
-				: '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #999;">No audit log entries found for the selected filters.</td></tr>';
+			const tbody = $('auditTbody');
+			const loadBtn = document.querySelector('.btn-info[onclick="loadAuditLogs()"]');
+			
+			// Show loading indicators
+			let restoreBtn = null;
+			if (loadBtn) {
+				restoreBtn = showInlineLoading(loadBtn, 'Loading...');
+			}
+			const loadingId = showMISLoadingIndicator(tbody, 'Loading audit logs...');
+			
+			try {
+				const start = $('auditStart').value; const end = $('auditEnd').value; const branch = $('auditBranch').value || 'all';
+				if (!start || !end) {
+					throw new Error('Please select both start and end dates');
+				}
+				currentAuditLogs = await getAuditLogs({ start, end, branch });
+				$('auditTbody').innerHTML = currentAuditLogs.length
+					? currentAuditLogs.map(l => `<tr>
+						<td>${new Date(l.createdAt || l.timestamp).toLocaleString()}</td>
+						<td>${l.user || ''}</td>
+						<td>${l.eventType || ''}</td>
+						<td>${l.recordId || ''}</td>
+						<td>${typeof l.details === 'object' ? JSON.stringify(l.details) : (l.details || '')}</td>
+					</tr>`).join('')
+					: '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #999;">No audit log entries found for the selected filters.</td></tr>';
+			} catch (error) {
+				console.error('Error loading audit logs:', error);
+				const errorMessage = error.message || 'Failed to load audit logs';
+				$('auditTbody').innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 20px; color: #ef4444;">
+					<div style="margin-bottom: 8px;">⚠️ ${errorMessage}</div>
+					<div style="font-size: 0.85rem; color: #666;">Please check your connection and try again.</div>
+				</td></tr>`;
+				showMISErrorNotification(`Failed to load audit logs: ${errorMessage}`, 'error');
+			} finally {
+				hideMISLoadingIndicator(tbody, loadingId);
+				if (restoreBtn) restoreBtn();
+			}
 		}
 
 		window.exportAuditCsv = async function() {
@@ -1101,15 +1137,115 @@
 
         // Daily Receipts Functions
         window.loadDailyReceipts = async function() {
-            const date = $('dailyReceiptDate').value || new Date().toISOString().slice(0, 10);
-            $('dailyReceiptDate').value = date;
-            const response = await getDailyReceipts(date);
-            currentDailyReceipts = Array.isArray(response?.receipts) ? response.receipts : [];
-            currentDailyReceiptsSummary = response?.totals || { count: 0, totalAmount: 0, branchBreakdown: [] };
-            renderDailyReceipts();
+            const tbody = $('dailyReceiptsTbody');
+            const loadBtn = document.querySelector('.btn-info[onclick="loadDailyReceipts()"]');
+            
+            // Show loading indicators
+            let restoreBtn = null;
+            if (loadBtn) {
+                restoreBtn = showInlineLoading(loadBtn, 'Loading...');
+            }
+            const loadingId = showMISLoadingIndicator(tbody, 'Loading receipts...');
+            
+            try {
+                const date = $('dailyReceiptDate').value || new Date().toISOString().slice(0, 10);
+                $('dailyReceiptDate').value = date;
+                const response = await getDailyReceipts(date);
+                currentDailyReceipts = Array.isArray(response?.receipts) ? response.receipts : [];
+                currentDailyReceiptsSummary = response?.totals || { count: 0, totalAmount: 0, branchBreakdown: [] };
+                renderDailyReceipts();
+            } catch (error) {
+                console.error('Error loading daily receipts:', error);
+                const errorMessage = error.message || 'Failed to load receipts';
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">
+                    <div style="margin-bottom: 8px;">⚠️ ${errorMessage}</div>
+                    <div style="font-size: 0.85rem; color: #666;">Please check your connection and try again.</div>
+                </td></tr>`;
+                showMISErrorNotification(`Failed to load receipts: ${errorMessage}`, 'error');
+            } finally {
+                hideMISLoadingIndicator(tbody, loadingId);
+                if (restoreBtn) restoreBtn();
+            }
         };
+        
+        function showInlineLoading(element, message = 'Loading...') {
+            if (!element) return null;
+            const originalContent = element.innerHTML;
+            element.dataset.originalContent = originalContent;
+            element.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 8px;">
+                    <div style="width: 16px; height: 16px; border: 2px solid #e9ecef; border-top-color: #c41e3a; border-radius: 50%; animation: misSpin 0.8s linear infinite;"></div>
+                    <span>${message}</span>
+                </div>
+            `;
+            return () => {
+                element.innerHTML = originalContent;
+            };
+        }
+        
+        function showMISErrorNotification(message, type = 'error') {
+            const notification = document.createElement('div');
+            const bgColor = type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6';
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${bgColor};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10000;
+                max-width: 400px;
+                animation: misFadeIn 0.3s ease-in;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        @keyframes misFadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
         window.refreshDailyReceipts = loadDailyReceipts;
+
+        // Loading Indicator Utility Functions (for MIS Portal)
+        function showMISLoadingIndicator(element, message = 'Loading...') {
+            if (!element) return null;
+            const loadingId = 'mis_loading_' + Date.now();
+            const loadingEl = document.createElement('div');
+            loadingEl.id = loadingId;
+            loadingEl.style.cssText = 'display: flex; align-items: center; justify-content: center; padding: 20px; gap: 10px; color: #666;';
+            loadingEl.innerHTML = `
+                <div style="width: 20px; height: 20px; border: 3px solid #e9ecef; border-top-color: #c41e3a; border-radius: 50%; animation: misSpin 0.8s linear infinite;"></div>
+                <span>${message}</span>
+            `;
+            const originalContent = element.innerHTML;
+            element.dataset.originalContent = originalContent;
+            element.innerHTML = '';
+            element.appendChild(loadingEl);
+            return loadingId;
+        }
+        
+        function hideMISLoadingIndicator(element, loadingId = null) {
+            if (!element) return;
+            const loadingEl = loadingId ? document.getElementById(loadingId) : element.querySelector('[id^="mis_loading_"]');
+            if (loadingEl) {
+                const originalContent = element.dataset.originalContent || '';
+                element.innerHTML = originalContent;
+            }
+        }
 
         function renderDailyReceipts() {
             const tbody = $('dailyReceiptsTbody');

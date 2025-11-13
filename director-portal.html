@@ -183,11 +183,24 @@
         async function loadReports() {
             try {
                 const res = await fetch('./reports_data.json');
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 // Support both array root and {reports: []}
                 return Array.isArray(data) ? data : (data.reports || []);
             } catch (e) {
                 console.error('Failed to load reports_data.json', e);
+                // Try API fallback
+                try {
+                    const apiRes = await fetch('/api/reports');
+                    if (apiRes.ok) {
+                        const apiData = await apiRes.json();
+                        return Array.isArray(apiData) ? apiData : [];
+                    }
+                } catch (apiError) {
+                    console.debug('API fallback also failed:', apiError);
+                }
                 return [];
             }
         }
@@ -315,14 +328,74 @@
         }
 
         async function refresh() {
-            const range = document.getElementById('dateRange').value;
-            const branch = document.getElementById('branchFilter').value;
-            const reports = await loadReports();
-            if (document.getElementById('branchFilter').options.length <= 1) populateBranches(reports);
-            const sum = summarize(reports, range, branch);
-            renderKPIs(sum, sum.rows);
-            renderTable(sum.rows);
-            renderStock(estimateStockDepletion(reports));
+            const kpiGrid = document.querySelector('.kpi-grid');
+            const txBody = document.getElementById('txBody');
+            const stockList = document.getElementById('stockList');
+            const refreshBtn = document.getElementById('refreshBtn');
+            
+            // Show loading indicators
+            let restoreBtn = null;
+            if (refreshBtn) {
+                restoreBtn = showInlineLoading(refreshBtn, 'Refreshing...');
+            }
+            
+            const loadingId1 = showLoadingIndicator(kpiGrid, 'Loading KPIs...');
+            const loadingId2 = showLoadingIndicator(txBody, 'Loading transactions...');
+            const loadingId3 = showLoadingIndicator(stockList, 'Loading stock data...');
+            
+            try {
+                const range = document.getElementById('dateRange').value;
+                const branch = document.getElementById('branchFilter').value;
+                const reports = await loadReports();
+                
+                if (reports.length === 0) {
+                    // Show error notification
+                    showErrorNotification('No data available. Please check your connection or try again later.');
+                }
+                
+                if (document.getElementById('branchFilter').options.length <= 1) populateBranches(reports);
+                const sum = summarize(reports, range, branch);
+                renderKPIs(sum, sum.rows);
+                renderTable(sum.rows);
+                renderStock(estimateStockDepletion(reports));
+            } catch (error) {
+                console.error('Error refreshing Director Portal:', error);
+                showErrorNotification('Failed to load data. Please try again.');
+            } finally {
+                // Hide loading indicators
+                hideLoadingIndicator(kpiGrid, loadingId1);
+                hideLoadingIndicator(txBody, loadingId2);
+                hideLoadingIndicator(stockList, loadingId3);
+                if (restoreBtn) restoreBtn();
+            }
+        }
+        
+        function showErrorNotification(message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #ef4444;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10000;
+                animation: fadeIn 0.3s ease-in;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 5000);
         }
 
         // Director Portal Real-Time Sync Implementation

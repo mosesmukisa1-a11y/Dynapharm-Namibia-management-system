@@ -2882,6 +2882,119 @@
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.7; transform: scale(1.1); }
         }
+        
+        /* Loading Indicator Styles */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .loading-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: #495057;
+            font-size: 0.9rem;
+            animation: fadeIn 0.2s ease-in;
+        }
+        
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e9ecef;
+            border-top-color: #c41e3a;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.2s ease-in;
+        }
+        
+        .loading-overlay-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .loading-overlay-content .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border-width: 4px;
+        }
+        
+        .loading-inline {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+        }
+        
+        .loading-inline .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border-width: 2px;
+        }
+        
+        /* Form Validation Styles */
+        .field-error {
+            border-color: #ef4444 !important;
+            background-color: #fef2f2 !important;
+        }
+        
+        .field-success {
+            border-color: #10b981 !important;
+        }
+        
+        .field-error-message {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 4px;
+            display: block;
+        }
+        
+        .validation-summary {
+            background: #fef2f2;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #991b1b;
+        }
+        
+        .validation-summary h4 {
+            margin: 0 0 8px 0;
+            font-size: 1rem;
+        }
+        
+        .validation-summary ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
@@ -20091,16 +20204,30 @@
         // Global refresh function to update all portals
         // GM Portal data refresh
         async function refreshGMData() {
+            const gmContent = document.getElementById('gmContent');
+            const gmFinancialReport = document.getElementById('gmFinancialReportSummary');
+            const refreshBtn = document.querySelector('#gmContent .btn-primary');
+            
+            // Show loading indicators
+            let restoreBtn = null;
+            if (refreshBtn) {
+                restoreBtn = showInlineLoading(refreshBtn, 'Refreshing...');
+            }
+            
+            const loadingId1 = gmFinancialReport ? showLoadingIndicator(gmFinancialReport, 'Loading financial data...') : null;
+            
             try {
                 await loadData();
             } catch (e) {
                 console.debug('refreshGMData: loadData error', e);
+                showErrorToast('Failed to load data. Please try again.');
             }
             if (typeof loadEnhancedFinanceData === 'function') {
                 try {
                     await loadEnhancedFinanceData();
                 } catch (e) {
                     console.debug('refreshGMData: loadEnhancedFinanceData error', e);
+                    showErrorToast('Failed to load finance data.');
                 }
             }
             try {
@@ -20116,6 +20243,10 @@
             refreshAllApprovals();
             loadSpecialSales();
             displayGMInventoryBreakdown();
+            
+            // Hide loading indicators
+            if (loadingId1) hideLoadingIndicator(gmFinancialReport, loadingId1);
+            if (restoreBtn) restoreBtn();
         }
         
         // Director Portal data refresh
@@ -21949,6 +22080,195 @@
                     }
                 }, 300);
             }, 3000);
+        }
+
+        // Loading Indicator Utility Functions
+        function showLoadingIndicator(element, message = 'Loading...') {
+            if (!element) return null;
+            
+            const loadingId = 'loading_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const loadingEl = document.createElement('div');
+            loadingEl.id = loadingId;
+            loadingEl.className = 'loading-indicator';
+            loadingEl.innerHTML = `
+                <div class="loading-spinner"></div>
+                <span>${message}</span>
+            `;
+            
+            // Insert before element or replace content
+            if (element.parentNode) {
+                element.parentNode.insertBefore(loadingEl, element);
+                element.style.display = 'none';
+            } else {
+                element.innerHTML = '';
+                element.appendChild(loadingEl);
+            }
+            
+            return loadingId;
+        }
+        
+        function hideLoadingIndicator(element, loadingId = null) {
+            if (!element) return;
+            
+            if (loadingId) {
+                const loadingEl = document.getElementById(loadingId);
+                if (loadingEl && loadingEl.parentNode) {
+                    loadingEl.parentNode.removeChild(loadingEl);
+                }
+            } else {
+                const loadingEl = element.querySelector('.loading-indicator');
+                if (loadingEl) {
+                    loadingEl.remove();
+                }
+            }
+            
+            element.style.display = '';
+        }
+        
+        function showLoadingOverlay(message = 'Loading...') {
+            const overlay = document.createElement('div');
+            overlay.id = 'globalLoadingOverlay';
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading-overlay-content">
+                    <div class="loading-spinner"></div>
+                    <div>${message}</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            return overlay;
+        }
+        
+        function hideLoadingOverlay() {
+            const overlay = document.getElementById('globalLoadingOverlay');
+            if (overlay && overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+        }
+        
+        function showInlineLoading(element, message = 'Loading...') {
+            if (!element) return null;
+            
+            const originalContent = element.innerHTML;
+            element.dataset.originalContent = originalContent;
+            element.className = (element.className || '') + ' loading-inline';
+            element.innerHTML = `
+                <div class="loading-spinner"></div>
+                <span>${message}</span>
+            `;
+            
+            return () => {
+                element.innerHTML = originalContent;
+                element.className = element.className.replace(' loading-inline', '');
+            };
+        }
+
+        // Data Validation Utility Functions
+        function validateField(field, rules = {}) {
+            const value = field.value ? field.value.trim() : '';
+            const errors = [];
+            
+            // Required validation
+            if (rules.required && !value) {
+                errors.push(rules.requiredMessage || 'This field is required');
+            }
+            
+            // Min length validation
+            if (rules.minLength && value.length < rules.minLength) {
+                errors.push(rules.minLengthMessage || `Must be at least ${rules.minLength} characters`);
+            }
+            
+            // Max length validation
+            if (rules.maxLength && value.length > rules.maxLength) {
+                errors.push(rules.maxLengthMessage || `Must be no more than ${rules.maxLength} characters`);
+            }
+            
+            // Pattern validation
+            if (rules.pattern && value && !rules.pattern.test(value)) {
+                errors.push(rules.patternMessage || 'Invalid format');
+            }
+            
+            // Email validation
+            if (rules.type === 'email' && value) {
+                const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailPattern.test(value)) {
+                    errors.push('Please enter a valid email address');
+                }
+            }
+            
+            // Phone validation
+            if (rules.type === 'phone' && value) {
+                const phonePattern = /^[\d\s\-\+\(\)]+$/;
+                if (!phonePattern.test(value) || value.replace(/\D/g, '').length < 8) {
+                    errors.push('Please enter a valid phone number');
+                }
+            }
+            
+            // Number range validation
+            if (rules.type === 'number' && value) {
+                const num = parseFloat(value);
+                if (isNaN(num)) {
+                    errors.push('Please enter a valid number');
+                } else {
+                    if (rules.min !== undefined && num < rules.min) {
+                        errors.push(`Must be at least ${rules.min}`);
+                    }
+                    if (rules.max !== undefined && num > rules.max) {
+                        errors.push(`Must be no more than ${rules.max}`);
+                    }
+            }
+            }
+            
+            return {
+                isValid: errors.length === 0,
+                errors: errors
+            };
+        }
+        
+        function showFieldValidation(field, isValid, message = '') {
+            // Remove existing validation styling
+            field.classList.remove('field-error', 'field-success');
+            const existingError = field.parentNode?.querySelector('.field-error-message');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            if (!isValid && message) {
+                field.classList.add('field-error');
+                const errorEl = document.createElement('div');
+                errorEl.className = 'field-error-message';
+                errorEl.textContent = message;
+                errorEl.style.cssText = 'color: #ef4444; font-size: 0.85rem; margin-top: 4px;';
+                if (field.parentNode) {
+                    field.parentNode.appendChild(errorEl);
+                }
+            } else if (isValid) {
+                field.classList.add('field-success');
+            }
+        }
+        
+        function validateForm(form, fieldRules = {}) {
+            const errors = {};
+            let isValid = true;
+            
+            Object.keys(fieldRules).forEach(fieldName => {
+                const field = form.querySelector(`[name="${fieldName}"], #${fieldName}`);
+                if (field) {
+                    const validation = validateField(field, fieldRules[fieldName]);
+                    if (!validation.isValid) {
+                        isValid = false;
+                        errors[fieldName] = validation.errors;
+                        showFieldValidation(field, false, validation.errors[0]);
+                    } else {
+                        showFieldValidation(field, true);
+                    }
+                }
+            });
+            
+            return {
+                isValid: isValid,
+                errors: errors
+            };
         }
 
         // Show/hide real-time status indicator
@@ -23893,17 +24213,123 @@
             }, 500);
         }
 
+        // Add real-time validation to client form fields
+        function setupClientFormValidation() {
+            const form = document.getElementById('clientForm');
+            if (!form) return;
+            
+            // Full Name validation
+            const fullNameField = form.querySelector('input[name="fullName"]');
+            if (fullNameField) {
+                fullNameField.addEventListener('blur', function() {
+                    const validation = validateField(this, {
+                        required: true,
+                        minLength: 2,
+                        requiredMessage: 'Full name is required',
+                        minLengthMessage: 'Name must be at least 2 characters'
+                    });
+                    showFieldValidation(this, validation.isValid, validation.errors[0]);
+                });
+            }
+            
+            // NB Number validation
+            const nbNumberField = form.querySelector('input[name="nbNumber"]');
+            if (nbNumberField) {
+                nbNumberField.addEventListener('blur', function() {
+                    const validation = validateField(this, {
+                        required: true,
+                        pattern: /^NB[0-9]+$/,
+                        requiredMessage: 'NB Number is required',
+                        patternMessage: 'NB Number must start with NB followed by digits (e.g., NB12345678)'
+                    });
+                    showFieldValidation(this, validation.isValid, validation.errors[0]);
+                });
+            }
+            
+            // Email validation
+            const emailField = form.querySelector('input[name="email"], input[type="email"]');
+            if (emailField) {
+                emailField.addEventListener('blur', function() {
+                    if (this.value) {
+                        const validation = validateField(this, {
+                            type: 'email'
+                        });
+                        showFieldValidation(this, validation.isValid, validation.errors[0]);
+                    }
+                });
+            }
+            
+            // Phone validation
+            const phoneField = form.querySelector('input[name="phone"], input[type="tel"]');
+            if (phoneField) {
+                phoneField.addEventListener('blur', function() {
+                    if (this.value) {
+                        const validation = validateField(this, {
+                            type: 'phone'
+                        });
+                        showFieldValidation(this, validation.isValid, validation.errors[0]);
+                    }
+                });
+            }
+        }
+        
+        // Initialize validation when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupClientFormValidation);
+        } else {
+            setupClientFormValidation();
+        }
+
         document.getElementById('clientForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
-            const formData = new FormData(this);
+            const form = this;
+            const formData = new FormData(form);
+            
+            // Validate form fields
+            const validationRules = {
+                fullName: {
+                    required: true,
+                    minLength: 2,
+                    requiredMessage: 'Full name is required',
+                    minLengthMessage: 'Name must be at least 2 characters'
+                }
+            };
+            
+            const validation = validateForm(form, validationRules);
+            if (!validation.isValid) {
+                // Show validation summary
+                const existingSummary = form.querySelector('.validation-summary');
+                if (existingSummary) existingSummary.remove();
+                
+                const summary = document.createElement('div');
+                summary.className = 'validation-summary';
+                summary.innerHTML = `
+                    <h4>⚠️ Please fix the following errors:</h4>
+                    <ul>
+                        ${Object.keys(validation.errors).map(field => 
+                            `<li>${validation.errors[field][0]}</li>`
+                        ).join('')}
+                    </ul>
+                `;
+                form.insertBefore(summary, form.firstChild);
+                
+                // Scroll to first error
+                const firstError = form.querySelector('.field-error');
+                if (firstError) {
+                    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstError.focus();
+                }
+                return;
+            }
+
             const visitType = formData.get('visitType') || '';
             const preferredBranch = formData.get('preferredBranch') || currentBranch || (function(){
                 const checkSel = document.getElementById('checkupBranchSelect');
                 return checkSel ? checkSel.value : '';
             })();
             if (!preferredBranch) {
-                alert('Please select a branch.');
+                showMISErrorNotification('Please select a branch.', 'error');
                 return;
             }
 
@@ -23916,10 +24342,6 @@
             if (checkSel) checkSel.value = preferredBranch;
 
             const fullName = (formData.get('fullName') || '').trim();
-            if (!fullName) {
-                alert('Full Name is required');
-                return;
-            }
             const membershipStatus = formData.get('membershipStatus');
             const referralName = formData.get('referralName')?.trim();
             const referralNbNumber = formData.get('referralNbNumber')?.trim();
