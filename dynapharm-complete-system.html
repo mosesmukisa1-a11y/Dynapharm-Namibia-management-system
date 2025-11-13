@@ -11064,6 +11064,7 @@
                     <button class="btn" onclick="generateZReport()" style="background: white; color: #667eea;">📊 Z-Report</button>
                     <button class="btn" onclick="exportFinancialData()" style="background: white; color: #667eea;">📥 Export</button>
                 </div>
+                <div id="financeComparisonAlerts" style="margin-top: 14px;"></div>
             </div>
 
             <!-- Bank Deposit Slip Inbox -->
@@ -14305,6 +14306,13 @@
             branchStockQty: 'financeBranchStockQty',
             branchLowStock: 'financeBranchLowStock'
         };
+        const FINANCE_METRIC_NAMES = {
+            totalSales: 'Total sales',
+            cashSales: 'Cash sales',
+            cardSales: 'Card sales',
+            depositsTotal: 'Bank deposits',
+            cashExpenseTotal: 'Cash expenses'
+        };
         const FINANCE_COMPARISON_LABELS = {
             yesterday: 'Yesterday',
             lastWeek: 'Last 7 days',
@@ -14373,26 +14381,48 @@
             return total;
         }
 
-        function buildComparisonData(currentValue, previousValue, label) {
+        function buildComparisonData(currentValue, previousValue, label, key) {
             const current = Number.isFinite(Number(currentValue)) ? Number(currentValue) : 0;
             const previous = Number.isFinite(Number(previousValue)) ? Number(previousValue) : 0;
+            const diff = current - previous;
+            const base = {
+                text: `No change vs ${label}`,
+                color: '#64748b',
+                current,
+                previous,
+                diff,
+                label,
+                key,
+                deltaPercent: null,
+                direction: 'flat'
+            };
             if (previous <= 0 && current <= 0) {
-                return { text: `No change vs ${label}`, color: '#64748b' };
+                return base;
             }
             if (previous <= 0 && current > 0) {
-                return { text: `▲ New vs ${label}`, color: '#16a34a' };
+                return Object.assign({}, base, {
+                    text: `▲ New vs ${label}`,
+                    color: '#16a34a',
+                    direction: 'up'
+                });
             }
-            const diff = current - previous;
             if (Math.abs(diff) < 0.0001) {
-                return { text: `— vs ${label}`, color: '#64748b' };
+                return base;
             }
             const perc = (diff / previous) * 100;
-            const direction = diff > 0 ? '▲' : '▼';
+            const direction = diff > 0 ? 'up' : 'down';
             const color = diff > 0 ? '#16a34a' : '#dc2626';
             const formattedPercent = Math.abs(perc) >= 10 ? Math.abs(perc).toFixed(0) : Math.abs(perc).toFixed(1);
             return {
-                text: `${direction} ${formattedPercent}% vs ${label}`,
-                color
+                text: `${direction === 'up' ? '▲' : '▼'} ${formattedPercent}% vs ${label}`,
+                color,
+                current,
+                previous,
+                diff,
+                label,
+                key,
+                deltaPercent: perc,
+                direction
             };
         }
 
@@ -14422,14 +14452,17 @@
         }
 
         function applyFinanceComparisons(mode, metrics, datasets) {
-            if (!mode || mode === 'none') {
+            const clearComparisons = () => {
                 FINANCE_COMPARISON_METRICS.forEach((metricId) => updateMetricComparison(metricId, null));
-                return;
+            };
+            if (!mode || mode === 'none') {
+                clearComparisons();
+                return { mode: 'none', label: null, items: [] };
             }
             const windowFn = buildComparisonWindow(mode);
             if (typeof windowFn !== 'function') {
-                FINANCE_COMPARISON_METRICS.forEach((metricId) => updateMetricComparison(metricId, null));
-                return;
+                clearComparisons();
+                return { mode, label: null, items: [] };
             }
             const label = FINANCE_COMPARISON_LABELS[mode] || 'previous period';
             const payments = datasets.payments || [];
@@ -14452,26 +14485,84 @@
                 (item) => (item.paymentMethod || item.method || 'cash').toLowerCase().includes('cash')
             );
 
-            updateMetricComparison(
-                FINANCE_METRIC_IDS.totalSales,
-                buildComparisonData(metrics.totalSales, baselineSales, label)
-            );
-            updateMetricComparison(
-                FINANCE_METRIC_IDS.cashSales,
-                buildComparisonData(metrics.cashSales, baselineCashSales, label)
-            );
-            updateMetricComparison(
-                FINANCE_METRIC_IDS.cardSales,
-                buildComparisonData(metrics.cardSales, baselineCardSales, label)
-            );
-            updateMetricComparison(
-                FINANCE_METRIC_IDS.deposits,
-                buildComparisonData(metrics.depositsTotal, baselineDeposits, label)
-            );
-            updateMetricComparison(
+            const items = [];
+            const registerComparison = (metricId, key, current, previous) => {
+                const summary = buildComparisonData(current, previous, label, key);
+                updateMetricComparison(metricId, summary);
+                items.push(Object.assign({ metricId, key }, summary));
+            };
+
+            registerComparison(FINANCE_METRIC_IDS.totalSales, 'totalSales', metrics.totalSales, baselineSales);
+            registerComparison(FINANCE_METRIC_IDS.cashSales, 'cashSales', metrics.cashSales, baselineCashSales);
+            registerComparison(FINANCE_METRIC_IDS.cardSales, 'cardSales', metrics.cardSales, baselineCardSales);
+            registerComparison(FINANCE_METRIC_IDS.deposits, 'depositsTotal', metrics.depositsTotal, baselineDeposits);
+            registerComparison(
                 FINANCE_METRIC_IDS.cashExpenses,
-                buildComparisonData(metrics.cashExpenseTotal, baselineCashExpenses, label)
+                'cashExpenseTotal',
+                metrics.cashExpenseTotal,
+                baselineCashExpenses
             );
+            return { mode, label, items };
+        }
+
+        function renderFinanceComparisonAlerts(summary) {
+            const container = document.getElementById('financeComparisonAlerts');
+            if (!container) return;
+            if (!summary || summary.mode === 'none') {
+                container.innerHTML =
+                    '<div style="padding:10px; border:1px dashed #cbd5f5; border-radius:8px; background:#f8fafc; color:#475569;">Select a comparison period above to see performance trends.</div>';
+                return;
+            }
+
+            const label = summary.label || 'previous period';
+            const items = Array.isArray(summary.items) ? summary.items : [];
+            const significant = items.filter(
+                (item) => item && typeof item.deltaPercent === 'number' && Math.abs(item.deltaPercent) >= 10
+            );
+
+            if (!significant.length) {
+                container.innerHTML = `<div style="padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f1f5f9; color:#475569;">Metrics stable vs ${label}.</div>`;
+                return;
+            }
+
+            const formatPercent = (value) => {
+                const absolute = Math.abs(value);
+                return absolute >= 10 ? absolute.toFixed(0) : absolute.toFixed(1);
+            };
+
+            const alerts = significant
+                .sort((a, b) => Math.abs(b.deltaPercent || 0) - Math.abs(a.deltaPercent || 0))
+                .map((item) => {
+                    const metricName = FINANCE_METRIC_NAMES[item.key] || item.key;
+                    const trendWord = item.direction === 'down' ? 'dropped' : 'grew';
+                    const badgeColor = item.direction === 'down' ? '#dc2626' : '#16a34a';
+                    const icon = item.direction === 'down' ? '⬇️' : '⬆️';
+                    const percentText = formatPercent(item.deltaPercent);
+                    const deltaValue = formatCurrencyNAD(item.diff || 0);
+                    return `
+                        <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:10px; background:#ffffff;">
+                            <div style="font-size:1.25rem;">${icon}</div>
+                            <div style="flex:1; color:#1e293b;">
+                                <div style="font-weight:600;">${escapeHtml(metricName)} ${trendWord} ${percentText}% vs ${escapeHtml(
+                        label
+                    )}</div>
+                                <div style="font-size:0.85rem; color:#475569;">Δ ${deltaValue} (previous ${formatCurrencyNAD(
+                                    item.previous || 0
+                                )})</div>
+                            </div>
+                            <span style="padding:4px 10px; border-radius:999px; background:${badgeColor}20; color:${badgeColor}; font-size:0.75rem; font-weight:600;">
+                                ${item.direction === 'down' ? 'Attention' : 'On track'}
+                            </span>
+                        </div>
+                    `;
+                })
+                .join('');
+
+            container.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${alerts}
+                </div>
+            `;
         }
 
         function ensureFinancePortalInitialized() {
@@ -14833,7 +14924,7 @@
 
             const comparisonSelect = document.getElementById('financeComparisonPeriod');
             const comparisonMode = comparisonSelect ? comparisonSelect.value : 'none';
-            applyFinanceComparisons(
+            const comparisonSummary = applyFinanceComparisons(
                 comparisonMode,
                 {
                     totalSales,
@@ -14848,6 +14939,7 @@
                     expenses: expensesForView
                 }
             );
+            renderFinanceComparisonAlerts(comparisonSummary);
 
             const branchStockQty = sumFinance(walkinSalesForView, (sale) => {
                 if (!Array.isArray(sale.items)) return 0;
