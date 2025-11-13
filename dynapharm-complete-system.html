@@ -3374,8 +3374,13 @@
             }
             
             try {
-                // Try API login first
-                const apiResult = await authenticateViaApi(username, password);
+                // Try API login first (if function exists)
+                let apiResult = { success: false };
+                if (typeof authenticateViaApi === 'function') {
+                    apiResult = await authenticateViaApi(username, password);
+                } else if (typeof window.authenticateViaApi === 'function') {
+                    apiResult = await window.authenticateViaApi(username, password);
+                }
                 
                 if (apiResult.success && apiResult.user) {
                     const user = apiResult.user;
