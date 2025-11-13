@@ -14331,6 +14331,25 @@
         const FINANCE_ALERT_STATE = {
             recent: new Map()
         };
+        const MIS_RECEIPT_CACHE_KEY = 'mis_receipts_cache_v1';
+        const MIS_RECEIPT_CACHE_EXPIRY_MS = 60 * 1000;
+        const MIS_PORTAL_STATE = {
+            initialized: false,
+            loading: false,
+            lastLoadedAt: 0,
+            filters: {
+                branch: 'all',
+                search: '',
+                from: null,
+                to: null
+            },
+            receipts: [],
+            totals: {
+                count: 0,
+                totalAmount: 0,
+                branchBreakdown: []
+            }
+        };
 
         function parseFinanceDate(value) {
             const normalized = normaliseDate(value);
@@ -21758,8 +21777,9 @@
                     displayOndangwaStock();
                     displayDistributionHistory();
                 } else if (currentPortal === 'mis') {
+                    ensureMISPortalInitialized();
                     loadMISBranches();
-                    displayMISReports();
+                    await loadMISReceipts({ force: true });
                 } else if (currentPortal === 'admin') {
                     loadUserList();
                     loadBranchListAdmin();
@@ -22001,8 +22021,8 @@
                 }, 100);
             }
             
-            // MIS Portal now requires login - initialize if already logged in
-            if (tabName === 'mis' && currentUser && currentUser.role === 'mis') {
+            // MIS Portal initialization
+            if (tabName === 'mis' && currentUser) {
                 initializeMISPortal();
             }
             
@@ -22095,67 +22115,284 @@
         }
 
         // MIS Portal Functions
+        function persistMISReceiptsCache() {
+            try {
+                const payload = {
+                    savedAt: Date.now(),
+                    filters: MIS_PORTAL_STATE.filters,
+                    receipts: MIS_PORTAL_STATE.receipts,
+                    totals: MIS_PORTAL_STATE.totals
+                };
+                localStorage.setItem(MIS_RECEIPT_CACHE_KEY, JSON.stringify(payload));
+            } catch (error) {
+                console.debug('persistMISReceiptsCache error', error);
+            }
+        }
+
+        function restoreMISReceiptsCache() {
+            try {
+                const raw = localStorage.getItem(MIS_RECEIPT_CACHE_KEY);
+                if (!raw) return;
+                const payload = JSON.parse(raw);
+                if (!payload) return;
+                if (Array.isArray(payload.receipts)) {
+                    MIS_PORTAL_STATE.receipts = payload.receipts;
+                }
+                if (payload.totals) {
+                    MIS_PORTAL_STATE.totals = Object.assign({}, MIS_PORTAL_STATE.totals, payload.totals);
+                }
+                if (payload.filters) {
+                    MIS_PORTAL_STATE.filters = Object.assign({}, MIS_PORTAL_STATE.filters, payload.filters);
+                }
+                MIS_PORTAL_STATE.lastLoadedAt = payload.savedAt || 0;
+            } catch (error) {
+                console.debug('restoreMISReceiptsCache error', error);
+            }
+        }
+
+        function applyMISFiltersToForm() {
+            const { branch, search, from, to } = MIS_PORTAL_STATE.filters;
+            const branchSelect = document.getElementById('misBranchSelect');
+            if (branchSelect) {
+                const option = branchSelect.querySelector(`option[value="${escapeForSelector(branch)}"]`);
+                branchSelect.value = option ? branch : 'all';
+            }
+            const searchInput = document.getElementById('misSearchInput');
+            if (searchInput && searchInput.value !== (search || '')) {
+                searchInput.value = search || '';
+            }
+            const fromInput = document.getElementById('misDateFrom');
+            if (fromInput) {
+                fromInput.value = from || '';
+            }
+            const toInput = document.getElementById('misDateTo');
+            if (toInput) {
+                toInput.value = to || '';
+            }
+        }
+
+        function ensureMISPortalInitialized() {
+            if (MIS_PORTAL_STATE.initialized) return;
+            MIS_PORTAL_STATE.initialized = true;
+            restoreMISReceiptsCache();
+            applyMISFiltersToForm();
+
+            // Prefill UI with cached data so portal is not blank while fetching
+            if (MIS_PORTAL_STATE.receipts.length) {
+                renderMISReceipts();
+            }
+        }
+
         function initializeMISPortal() {
+            ensureMISPortalInitialized();
             loadMISBranches();
-            displayMISReports();
+            filterMISReports();
         }
 
         function loadMISBranches() {
             const branchSelect = document.getElementById('misBranchSelect');
             if (!branchSelect) return;
-            
-            // Clear existing options except "All Branches"
+
+            const current = MIS_PORTAL_STATE.filters.branch || 'all';
+
             branchSelect.innerHTML = '<option value="all">All Branches</option>';
-            
-            // Add branches
-            branches.forEach(branch => {
+
+            (Array.isArray(branches) ? branches : []).forEach(branch => {
+                if (!branch) return;
                 const option = document.createElement('option');
                 option.value = branch.id;
                 option.textContent = branch.name;
                 branchSelect.appendChild(option);
             });
+
+            const selectedOption = branchSelect.querySelector(`option[value="${escapeForSelector(current)}"]`);
+            branchSelect.value = selectedOption ? current : 'all';
+        }
+
+        function summarizeMISReceipts(receipts) {
+            const summary = {
+                count: Array.isArray(receipts) ? receipts.length : 0,
+                totalAmount: 0,
+                branchBreakdown: []
+            };
+            if (!Array.isArray(receipts) || !receipts.length) return summary;
+            const breakdown = new Map();
+            receipts.forEach(receipt => {
+                if (!receipt) return;
+                const amount = Number(receipt.totalAmount ?? receipt.total ?? 0);
+                if (Number.isFinite(amount)) {
+                    summary.totalAmount += amount;
+                }
+                const branchKey = receipt.branch || receipt.branchId || receipt.clientInfo?.branch || 'Unknown';
+                if (!breakdown.has(branchKey)) {
+                    breakdown.set(branchKey, { branch: branchKey, count: 0, total: 0 });
+                }
+                const entry = breakdown.get(branchKey);
+                entry.count += 1;
+                if (Number.isFinite(amount)) {
+                    entry.total += amount;
+                }
+            });
+            summary.branchBreakdown = Array.from(breakdown.values()).sort((a, b) => a.branch.localeCompare(b.branch));
+            return summary;
+        }
+
+        function matchesMISSearch(receipt, term) {
+            if (!term) return true;
+            const haystack = [
+                receipt.clientName,
+                receipt.customerName,
+                receipt.customerPhone,
+                receipt.customerEmail,
+                receipt.saleNumber,
+                receipt.receiptNumber,
+                receipt.id,
+                receipt.consultant,
+                receipt.soldBy,
+                receipt.metadata?.consultant,
+                receipt.metadata?.soldBy
+            ]
+                .concat(
+                    Array.isArray(receipt.products)
+                        ? receipt.products.map((p) => p?.name || p?.productName || '')
+                        : []
+                )
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(term.toLowerCase());
+        }
+
+        function normalizeOfflineReceipt(record) {
+            if (!record) return null;
+            const total = Number(record.totalAmount ?? record.total ?? 0);
+            const timestamp =
+                record.timestamp ||
+                record.saleDate ||
+                (record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString());
+            return {
+                id: record.id || record.saleNumber || `OFF-${Date.now()}`,
+                saleNumber: record.saleNumber || record.id,
+                receiptNumber: record.saleNumber || record.id,
+                branch: record.branch || record.branchId || record.clientInfo?.branch || 'Unknown',
+                branchId: record.branch || record.branchId || null,
+                clientName: record.customerName || record.clientName || record.clientInfo?.fullName || '',
+                customerName: record.customerName || record.clientName || record.clientInfo?.fullName || '',
+                customerPhone: record.phone || record.customerPhone || record.clientInfo?.phone || '',
+                customerEmail: record.email || record.customerEmail || record.clientInfo?.email || '',
+                customerType: record.customerType || record.clientInfo?.type || 'customer',
+                paymentMethod: record.paymentMethod || 'cash',
+                total,
+                totalAmount: total,
+                totalBV: Number(record.totalBV || 0),
+                products: Array.isArray(record.products) ? record.products : [],
+                medicines: Array.isArray(record.medicines) ? record.medicines : [],
+                items: Array.isArray(record.items) ? record.items : [],
+                timestamp
+            };
+        }
+
+        function applyMISSearchFilter(list) {
+            const term = MIS_PORTAL_STATE.filters.search?.trim().toLowerCase() || '';
+            if (!term) return list;
+            return list.filter((receipt) => matchesMISSearch(receipt, term));
+        }
+
+        async function loadMISReceipts({ force = false } = {}) {
+            ensureMISPortalInitialized();
+            const now = Date.now();
+            if (
+                !force &&
+                MIS_PORTAL_STATE.receipts.length &&
+                now - MIS_PORTAL_STATE.lastLoadedAt < MIS_RECEIPT_CACHE_EXPIRY_MS
+            ) {
+                renderMISReceipts();
+                return MIS_PORTAL_STATE.receipts;
+            }
+
+            MIS_PORTAL_STATE.loading = true;
+            const { branch, from, to } = MIS_PORTAL_STATE.filters;
+            const params = new URLSearchParams();
+            if (branch && branch !== 'all') params.set('branch', branch);
+            if (from) {
+                const fromDate = new Date(from);
+                if (!Number.isNaN(fromDate.getTime())) params.set('start', fromDate.toISOString());
+            }
+            if (to) {
+                const toDate = new Date(to);
+                if (!Number.isNaN(toDate.getTime())) params.set('end', toDate.toISOString());
+            }
+
+            let response = null;
+            try {
+                const endpoint = params.toString() ? `/mis/receipts?${params}` : '/mis/receipts';
+                response = await apiRequest(endpoint);
+            } catch (error) {
+                console.debug('loadMISReceipts apiRequest error', error);
+            }
+
+            let receipts = extractArray(response?.receipts, []);
+            if (!receipts.length) {
+                const offline = safeParseFromStorage('branch_walkin_sales', '[]');
+                if (Array.isArray(offline) && offline.length) {
+                    receipts = offline.map(normalizeOfflineReceipt).filter(Boolean);
+                }
+            }
+            MIS_PORTAL_STATE.receipts = receipts;
+            const responseTotals = response?.totals;
+            if (responseTotals) {
+                MIS_PORTAL_STATE.totals = {
+                    count: Number.isFinite(Number(responseTotals.count))
+                        ? Number(responseTotals.count)
+                        : receipts.length,
+                    totalAmount: Number(responseTotals.totalAmount || responseTotals.total || 0) || 0,
+                    branchBreakdown: Array.isArray(responseTotals.branchBreakdown)
+                        ? responseTotals.branchBreakdown
+                        : summarizeMISReceipts(receipts).branchBreakdown
+                };
+            } else {
+                MIS_PORTAL_STATE.totals = summarizeMISReceipts(receipts);
+            }
+            MIS_PORTAL_STATE.lastLoadedAt = Date.now();
+            persistMISReceiptsCache();
+            MIS_PORTAL_STATE.loading = false;
+            renderMISReceipts();
+            return receipts;
+        }
+
+        function renderMISReceipts() {
+            const filtered = applyMISSearchFilter(MIS_PORTAL_STATE.receipts || []);
+            displayMISReportsTable(filtered);
+            updateMISSummary(filtered);
         }
 
         function filterMISReports() {
+            ensureMISPortalInitialized();
             const branchId = document.getElementById('misBranchSelect')?.value || 'all';
-            const searchTerm = document.getElementById('misSearchInput')?.value?.toLowerCase() || '';
+            const searchTerm = document.getElementById('misSearchInput')?.value?.trim() || '';
             const fromInput = document.getElementById('misDateFrom')?.value || '';
             const toInput = document.getElementById('misDateTo')?.value || '';
-            const fromTs = fromInput ? new Date(fromInput).getTime() : null;
-            const toTs = toInput ? new Date(toInput).getTime() : null;
-            
-            let filteredReports = reports.filter(report => {
-                // Branch filter (only applies if report has branch info)
-                if (branchId !== 'all') {
-                    const rptBranch = report.branch || report.clientInfo?.branch || null;
-                    if (!rptBranch || rptBranch !== branchId) {
-                        return false;
-                    }
-                }
-                
-                // Time filter
-                if (fromTs || toTs) {
-                    const rptTs = report.timestamp ? new Date(report.timestamp).getTime() : null;
-                    if (!rptTs) return false;
-                    if (fromTs && rptTs < fromTs) return false;
-                    if (toTs && rptTs > toTs) return false;
-                }
-                
-                // Filter by search term (name or NB number)
-                if (searchTerm) {
-                    const name = report.clientInfo?.fullName?.toLowerCase() || '';
-                    const nbNumber = report.clientInfo?.nbNumber?.toLowerCase() || '';
-                    const receiptId = report.id?.toLowerCase() || '';
-                    const consultant = (report.consultant || '').toLowerCase();
-                    
-                    return name.includes(searchTerm) || nbNumber.includes(searchTerm) || receiptId.includes(searchTerm) || consultant.includes(searchTerm);
-                }
-                
-                return true;
-            });
-            
-            displayMISReportsTable(filteredReports);
-            updateMISSummary(filteredReports);
+
+            const filters = MIS_PORTAL_STATE.filters;
+            const branchChanged = branchId !== filters.branch;
+            const fromChanged = fromInput !== (filters.from || '');
+            const toChanged = toInput !== (filters.to || '');
+            const searchChanged = searchTerm !== (filters.search || '');
+
+            filters.branch = branchId;
+            filters.search = searchTerm;
+            filters.from = fromInput || null;
+            filters.to = toInput || null;
+
+            persistMISReceiptsCache();
+
+            if (branchChanged || fromChanged || toChanged || MIS_PORTAL_STATE.receipts.length === 0) {
+                loadMISReceipts({ force: true });
+            } else if (searchChanged) {
+                renderMISReceipts();
+            } else {
+                renderMISReceipts();
+            }
         }
 
         function displayMISReports() {
@@ -22224,11 +22461,19 @@
         }
 
         function getItemsPurchased(report) {
-            if (Array.isArray(report.medicines) && report.medicines.length > 0) {
-                return report.medicines.map(m => m.name).filter(Boolean);
+            if (!report) return [];
+            if (Array.isArray(report.items) && report.items.length > 0) {
+                return report.items
+                    .map((item) => item.productName || item.name || item.product || item.description || '')
+                    .filter(Boolean);
             }
             if (Array.isArray(report.products) && report.products.length > 0) {
-                return report.products.map(p => p.name || p.product || p.description).filter(Boolean);
+                return report.products
+                    .map((p) => p.name || p.product || p.description || p.productName || '')
+                    .filter(Boolean);
+            }
+            if (Array.isArray(report.medicines) && report.medicines.length > 0) {
+                return report.medicines.map((m) => m.name || m.product || m.description || '').filter(Boolean);
             }
             return [];
         }
@@ -22242,7 +22487,14 @@
                 if (paidBy && paidBy.paidBy) return paidBy.paidBy;
             }
             // Fallbacks: consultant or explicit cashier fields if present
-            return report.dispensedBy || report.cashier || report.consultant || null;
+            return (
+                report.soldBy ||
+                report.dispensedBy ||
+                report.cashier ||
+                report.consultant ||
+                report.metadata?.soldBy ||
+                null
+            );
         }
 
         function setMISDateToday() {
@@ -22269,31 +22521,72 @@
         }
 
         function calculateReportTotal(report) {
-            if (!report || !report.medicines || report.medicines.length === 0) return 0;
+            if (!report) return 0;
+            const directValues = [
+                report.totalAmount,
+                report.total,
+                report.summary?.total,
+                report.data?.total,
+                report.subtotal
+            ]
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value !== 0);
+            if (directValues.length) {
+                return directValues[0];
+            }
 
-            try {
-                // Derive client membership status if available
-                let membership = report.clientInfo?.membershipStatus;
-                if (!membership && typeof clients !== 'undefined' && Array.isArray(clients)) {
-                    const clientRef = report.clientId || report.clientInfo?.referenceNumber || report.clientInfo?.nbNumber;
-                    const client = clients.find(c => c.referenceNumber === clientRef);
-                    membership = client?.membershipStatus;
+            const lineItems = []
+                .concat(Array.isArray(report.products) ? report.products : [])
+                .concat(Array.isArray(report.items) ? report.items : [])
+                .concat(Array.isArray(report.medicines) ? report.medicines : []);
+            if (lineItems.length) {
+                const lineTotal = lineItems.reduce((sum, item) => {
+                    const quantity = Number(item.quantity || 1);
+                    const price =
+                        Number(item.amount) ||
+                        Number(item.total) ||
+                        Number(item.totalAmount) ||
+                        Number(item.cp) ||
+                        Number(item.price) ||
+                        Number(
+                            (item.currentPrice && (item.currentPrice.cp || item.currentPrice.price)) ||
+                                item.unitPrice ||
+                                0
+                        );
+                    if (!Number.isFinite(quantity) || !Number.isFinite(price)) return sum;
+                    if (item.currentPrice && item.currentPrice.cp) {
+                        return sum + Number(item.currentPrice.cp) * quantity;
+                    }
+                    return sum + price * (item.amount ? 1 : quantity);
+                }, 0);
+                if (Number.isFinite(lineTotal) && lineTotal > 0) {
+                    return lineTotal;
                 }
+            }
 
-                if (membership === 'member' || membership === 'referred') {
-                    const totals = calculatePrescriptionTotals(report.medicines, membership);
-                    return membership === 'member' ? (totals.total?.dp || 0) : (totals.total?.cp || 0);
+            if (Array.isArray(report.medicines) && report.medicines.length) {
+                try {
+                    let membership = report.clientInfo?.membershipStatus;
+                    if (!membership && Array.isArray(clients)) {
+                        const clientRef =
+                            report.clientId ||
+                            report.clientInfo?.referenceNumber ||
+                            report.clientInfo?.nbNumber;
+                        const client = clients.find((c) => c.referenceNumber === clientRef);
+                        membership = client?.membershipStatus;
+                    }
+                    if (membership === 'member' || membership === 'referred') {
+                        const totals = calculatePrescriptionTotals(report.medicines, membership);
+                        return membership === 'member'
+                            ? Number(totals.total?.dp || 0)
+                            : Number(totals.total?.cp || 0);
+                    }
+                } catch (error) {
+                    console.debug('calculateReportTotal membership calc error', error);
                 }
-            } catch (e) {}
+            }
 
-            // Fallback: sum CP from currentPrice when membership is unknown
-            return report.medicines.reduce((total, med) => {
-                if (med.currentPrice) {
-                    const quantity = med.quantity || 1;
-                    return total + ((med.currentPrice.cp || 0) * quantity);
-                }
-                return total;
-            }, 0);
+            return 0;
         }
 
         function updateMISSummary(reportsToDisplay) {
@@ -22341,19 +22634,37 @@
             } catch (e) {}
         }
 
-        function refreshMISData() {
-            refreshAllData().then(() => {
-                displayMISReports();
+        async function refreshMISData() {
+            ensureMISPortalInitialized();
+            try {
+                await loadData();
+            } catch (error) {
+                console.debug('refreshMISData loadData error', error);
+            }
+            try {
+                await loadMISReceipts({ force: true });
                 alert('MIS data refreshed successfully!');
-                try {
-                    const branchId = document.getElementById('misBranchSelect')?.value || 'all';
-                    renderInventoryBreakdown('misInventoryBreakdown', branchId);
-                } catch (e) {}
-            });
+            } catch (error) {
+                console.error('refreshMISData error', error);
+                alert('Unable to refresh MIS data. Showing cached results.');
+                renderMISReceipts();
+            }
+            try {
+                const branchId = document.getElementById('misBranchSelect')?.value || 'all';
+                renderInventoryBreakdown('misInventoryBreakdown', branchId);
+            } catch (e) {
+                console.debug('refreshMISData inventory error', e);
+            }
         }
 
         function exportMISData() {
-            const csv = convertReportsToCSV(reports);
+            ensureMISPortalInitialized();
+            const list = applyMISSearchFilter(MIS_PORTAL_STATE.receipts || []);
+            if (!list.length) {
+                alert('No MIS receipts available to export for the current filters.');
+                return;
+            }
+            const csv = convertMISReceiptsToCSV(list);
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -22362,26 +22673,48 @@
             a.click();
         }
 
-        function convertReportsToCSV(reportsData) {
-            let csv = 'Receipt ID,Date,Client Name,NB Number,Phone,Email,Consultant,Total Amount,Medicines\n';
-            
-            reportsData.forEach(report => {
-                const date = new Date(report.timestamp).toLocaleDateString('en-GB');
-                const totalAmount = calculateReportTotal(report);
-                const medicinesList = report.medicines?.map(m => m.name).join('; ') || 'N/A';
-                
-                csv += `"${report.id}",`;
-                csv += `"${date}",`;
-                csv += `"${report.clientInfo?.fullName || 'N/A'}",`;
-                csv += `"${report.clientInfo?.nbNumber || 'N/A'}",`;
-                csv += `"${report.clientInfo?.phone || 'N/A'}",`;
-                csv += `"${report.clientInfo?.email || 'N/A'}",`;
-                csv += `"${report.consultant || 'N/A'}",`;
-                csv += `"N$${totalAmount.toFixed(2)}",`;
-                csv += `"${medicinesList}"\n`;
+        function convertMISReceiptsToCSV(receiptsData) {
+            const header = [
+                'Receipt ID',
+                'Sale Date',
+                'Client Name',
+                'NB Number',
+                'Phone',
+                'Email',
+                'Sold By',
+                'Payment Method',
+                'Total Amount',
+                'Products'
+            ];
+            const rows = [header.join(',')];
+            (Array.isArray(receiptsData) ? receiptsData : []).forEach((receipt) => {
+                const date = receipt.timestamp ? new Date(receipt.timestamp).toLocaleString() : '';
+                const totalAmount = calculateReportTotal(receipt);
+                const nbNumber =
+                    receipt.clientInfo?.nbNumber ||
+                    receipt.clientInfo?.referenceNumber ||
+                    receipt.clientReferenceNumber ||
+                    receipt.metadata?.nbNumber ||
+                    '';
+                const medicinesList = getItemsPurchased(receipt).join('; ') || 'N/A';
+                rows.push(
+                    [
+                        receipt.id || receipt.saleNumber || '',
+                        date,
+                        receipt.clientName || receipt.customerName || receipt.clientInfo?.fullName || 'N/A',
+                        nbNumber || 'N/A',
+                        receipt.customerPhone || receipt.clientInfo?.phone || 'N/A',
+                        receipt.customerEmail || receipt.clientInfo?.email || 'N/A',
+                        receipt.soldBy || receipt.consultant || receipt.metadata?.soldBy || 'N/A',
+                        (receipt.paymentMethod || 'N/A').toUpperCase(),
+                        `N$${Number(totalAmount).toFixed(2)}`,
+                        medicinesList
+                    ]
+                        .map(csvEscape)
+                        .join(',')
+                );
             });
-            
-            return csv;
+            return rows.join('\n');
         }
 
         // Generic renderer for inventory breakdown tables using dynapharm_inventory
