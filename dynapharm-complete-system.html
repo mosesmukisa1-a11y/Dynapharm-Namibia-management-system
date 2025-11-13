@@ -2878,6 +2878,10 @@
         }
 
         /* Real-time notification animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
@@ -22125,6 +22129,8 @@
                         pendingTab.style.display = 'block';
                         pendingTab.classList.add('active');
                     }
+                    // Initialize Front Desk real-time sync
+                    initializeFrontDeskRealtime();
                 }, 100);
             }
         }
@@ -22208,6 +22214,242 @@
             loadMISBranches();
             filterMISReports();
         }
+
+        // Front Desk Portal Real-Time Sync Implementation
+        let frontDeskWebSocket = null;
+        let frontDeskRealtimeInitialized = false;
+        let frontDeskAutoRefreshInterval = null;
+
+        // Browser Notification Support
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    console.log('Front Desk notification permission:', permission);
+                });
+            }
+        }
+
+        function showBrowserNotification(title, message, icon = '/favicon.ico') {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                    const notification = new Notification(title, {
+                        body: message,
+                        icon: icon,
+                        badge: icon,
+                        tag: 'frontdesk-order',
+                        requireInteraction: false
+                    });
+                    
+                    // Auto-close after 5 seconds
+                    setTimeout(() => {
+                        notification.close();
+                    }, 5000);
+                    
+                    // Click handler to focus window
+                    notification.onclick = () => {
+                        window.focus();
+                        notification.close();
+                    };
+                } catch (error) {
+                    console.debug('Browser notification error:', error);
+                }
+            }
+        }
+
+        // WebSocket Connection for Real-Time Updates
+        function connectFrontDeskWebSocket() {
+            // Try to get Railway gateway URL from meta tag or use default
+            const metaTag = document.querySelector('meta[name="rt-base"]');
+            const rtBase = metaTag?.content?.trim() || '';
+            const wsUrl = rtBase 
+                ? rtBase.replace(/^https?:\/\//, 'wss://').replace(/\/$/, '') + '/ws'
+                : 'wss://web-production-40cac.up.railway.app/ws';
+            
+            if (frontDeskWebSocket && frontDeskWebSocket.readyState === WebSocket.OPEN) {
+                return; // Already connected
+            }
+
+            try {
+                frontDeskWebSocket = new WebSocket(wsUrl);
+
+                frontDeskWebSocket.onopen = () => {
+                    console.log('✅ Front Desk: Connected to realtime gateway');
+                    // Subscribe to orders channel
+                    frontDeskWebSocket.send(JSON.stringify({
+                        type: 'subscribe',
+                        channels: ['orders', 'clients', 'visitors']
+                    }));
+                    updateFrontDeskConnectionStatus(true);
+                };
+
+                frontDeskWebSocket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'event') {
+                            handleFrontDeskRealtimeEvent(data);
+                        } else if (data.type === 'subscribed') {
+                            console.log('✅ Front Desk: Subscribed to channels:', data.channels);
+                        }
+                    } catch (error) {
+                        console.debug('Front Desk WebSocket message parse error:', error);
+                    }
+                };
+
+                frontDeskWebSocket.onerror = (error) => {
+                    console.error('❌ Front Desk WebSocket error:', error);
+                    updateFrontDeskConnectionStatus(false);
+                };
+
+                frontDeskWebSocket.onclose = () => {
+                    console.log('⚠️ Front Desk: WebSocket closed, reconnecting in 5s...');
+                    updateFrontDeskConnectionStatus(false);
+                    setTimeout(connectFrontDeskWebSocket, 5000);
+                };
+            } catch (error) {
+                console.error('Failed to connect Front Desk WebSocket:', error);
+                updateFrontDeskConnectionStatus(false);
+            }
+        }
+
+        function handleFrontDeskRealtimeEvent(data) {
+            const { resource, action, data: eventData } = data;
+            
+            if (resource === 'orders') {
+                if (action === 'created') {
+                    console.log('📥 Front Desk: New order received', eventData);
+                    refreshAllFrontDeskOrderTabs();
+                    showBrowserNotification(
+                        '🆕 New Order Received',
+                        `Order #${eventData?.order_number || eventData?.id || 'N/A'} from ${eventData?.customer_name || 'Customer'}`,
+                        '/favicon.ico'
+                    );
+                    // Show visual indicator
+                    showNewOrderIndicator();
+                } else if (action === 'updated') {
+                    console.log('🔄 Front Desk: Order updated', eventData);
+                    refreshAllFrontDeskOrderTabs();
+                    // Show notification for status changes
+                    if (eventData?.status) {
+                        showBrowserNotification(
+                            '📦 Order Status Updated',
+                            `Order #${eventData?.order_number || eventData?.id || 'N/A'} is now ${eventData.status}`,
+                            '/favicon.ico'
+                        );
+                    }
+                }
+            } else if (resource === 'clients') {
+                if (action === 'created' || action === 'updated') {
+                    console.log('👤 Front Desk: Client updated', eventData);
+                    // Refresh client lookup if tab is open
+                    const clientLookupTab = document.getElementById('frontdeskClientLookup');
+                    if (clientLookupTab && !clientLookupTab.classList.contains('hidden')) {
+                        if (typeof performClientLookup === 'function') {
+                            // Optionally refresh client lookup
+                        }
+                    }
+                }
+            } else if (resource === 'visitors') {
+                if (action === 'created') {
+                    console.log('🚪 Front Desk: New visitor registered', eventData);
+                    refreshVisitors();
+                    showBrowserNotification(
+                        '🚪 New Visitor',
+                        `${eventData?.name || 'Visitor'} - ${eventData?.purpose || 'Visit'}`,
+                        '/favicon.ico'
+                    );
+                }
+            }
+        }
+
+        function refreshAllFrontDeskOrderTabs() {
+            // Refresh all order tabs
+            if (typeof refreshPendingOrders === 'function') refreshPendingOrders();
+            if (typeof refreshProcessingOrders === 'function') refreshProcessingOrders();
+            if (typeof refreshShippedOrders === 'function') refreshShippedOrders();
+            if (typeof refreshDeliveredOrders === 'function') refreshDeliveredOrders();
+            if (typeof refreshAllOrders === 'function') refreshAllOrders();
+        }
+
+        function showNewOrderIndicator() {
+            // Add visual indicator to pending orders tab
+            const pendingTab = document.querySelector('[onclick="showOrderTab(\'pending\')"]');
+            if (pendingTab) {
+                pendingTab.style.position = 'relative';
+                let indicator = pendingTab.querySelector('.new-order-indicator');
+                if (!indicator) {
+                    indicator = document.createElement('span');
+                    indicator.className = 'new-order-indicator';
+                    indicator.style.cssText = 'position:absolute; top:-5px; right:-5px; width:12px; height:12px; background:#ef4444; border-radius:50%; border:2px solid white; animation:pulse 2s infinite;';
+                    pendingTab.appendChild(indicator);
+                }
+                // Remove indicator after 10 seconds
+                setTimeout(() => {
+                    if (indicator && indicator.parentNode) {
+                        indicator.remove();
+                    }
+                }, 10000);
+            }
+        }
+
+        function updateFrontDeskConnectionStatus(connected) {
+            // Add connection status indicator
+            let statusIndicator = document.getElementById('frontdeskRealtimeStatus');
+            if (!statusIndicator) {
+                statusIndicator = document.createElement('div');
+                statusIndicator.id = 'frontdeskRealtimeStatus';
+                statusIndicator.style.cssText = 'position:fixed; bottom:20px; right:20px; padding:8px 12px; border-radius:8px; font-size:0.75rem; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+                document.body.appendChild(statusIndicator);
+            }
+            
+            if (connected) {
+                statusIndicator.textContent = '🟢 Real-time Connected';
+                statusIndicator.style.background = '#10b981';
+                statusIndicator.style.color = 'white';
+            } else {
+                statusIndicator.textContent = '🔴 Real-time Disconnected';
+                statusIndicator.style.background = '#ef4444';
+                statusIndicator.style.color = 'white';
+            }
+        }
+
+        function initializeFrontDeskRealtime() {
+            if (frontDeskRealtimeInitialized) return;
+            frontDeskRealtimeInitialized = true;
+
+            // Request notification permission
+            requestNotificationPermission();
+
+            // Connect to WebSocket
+            connectFrontDeskWebSocket();
+
+            // Set up auto-refresh fallback (every 30 seconds)
+            if (frontDeskAutoRefreshInterval) {
+                clearInterval(frontDeskAutoRefreshInterval);
+            }
+            frontDeskAutoRefreshInterval = setInterval(() => {
+                // Only refresh if WebSocket is not connected
+                if (!frontDeskWebSocket || frontDeskWebSocket.readyState !== WebSocket.OPEN) {
+                    refreshAllFrontDeskOrderTabs();
+                }
+            }, 30000);
+
+            // Listen to custom events (for local updates)
+            window.addEventListener('orders:created', () => {
+                refreshAllFrontDeskOrderTabs();
+                showBrowserNotification('🆕 New Order', 'A new order has been created', '/favicon.ico');
+            });
+
+            window.addEventListener('orders:updated', () => {
+                refreshAllFrontDeskOrderTabs();
+            });
+
+            console.log('✅ Front Desk real-time sync initialized');
+        }
+
+        // Make functions globally accessible
+        window.refreshAllFrontDeskOrderTabs = refreshAllFrontDeskOrderTabs;
+        window.initializeFrontDeskRealtime = initializeFrontDeskRealtime;
 
         function loadMISBranches() {
             const branchSelect = document.getElementById('misBranchSelect');
