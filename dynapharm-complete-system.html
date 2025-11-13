@@ -3305,8 +3305,291 @@
             'director': ['director', 'gm', 'client'],
             'mis': ['mis', 'client'],
             'stock': ['stock', 'client'],
+            'warehouse_manager': ['stock', 'client'],
+            'warehouse_manager_ondangwa': ['stock', 'client'],
+            'warehouse_manager_windhoek': ['stock', 'client'],
             'guest': ['client'] // Guest can only access shop
         };
+        
+        // Warehouse assignment mapping
+        const WAREHOUSE_ASSIGNMENTS = {
+            'warehouse_manager_ondangwa': 'Ondangwa',
+            'warehouse_manager_windhoek': 'Windhoek'
+        };
+        
+        // Current warehouse filter (for warehouse managers)
+        let currentWarehouseFilter = null;
+        
+        // Warehouse Manager Login Functions
+        function showWarehouseManagerLogin() {
+            const modal = document.getElementById('warehouseManagerLoginModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                document.getElementById('warehouseSelect').value = '';
+                document.getElementById('warehouseUsername').value = '';
+                document.getElementById('warehousePassword').value = '';
+                document.getElementById('warehouseLoginError').style.display = 'none';
+            }
+        }
+        
+        function hideWarehouseManagerLogin() {
+            const modal = document.getElementById('warehouseManagerLoginModal');
+            if (modal) modal.style.display = 'none';
+        }
+        
+        async function submitWarehouseManagerLogin() {
+            const warehouse = document.getElementById('warehouseSelect').value;
+            const username = document.getElementById('warehouseUsername').value.trim();
+            const password = document.getElementById('warehousePassword').value;
+            const loginBtn = document.getElementById('warehouseLoginBtn');
+            const errorDiv = document.getElementById('warehouseLoginError');
+            
+            // Clear previous errors
+            if (errorDiv) errorDiv.style.display = 'none';
+            
+            // Validation
+            if (!warehouse) {
+                if (errorDiv) {
+                    errorDiv.textContent = 'Please select a warehouse';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            
+            if (!username || !password) {
+                if (errorDiv) {
+                    errorDiv.textContent = 'Please enter both username and password';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            
+            // Show loading state
+            if (loginBtn) {
+                const btnText = loginBtn.querySelector('.btn-text');
+                const btnLoading = loginBtn.querySelector('.btn-loading');
+                if (btnText) btnText.style.display = 'none';
+                if (btnLoading) btnLoading.style.display = 'inline';
+                loginBtn.disabled = true;
+            }
+            
+            try {
+                // Try API login first
+                const apiResult = await authenticateViaApi(username, password);
+                
+                if (apiResult.success && apiResult.user) {
+                    const user = apiResult.user;
+                    const role = (user.role || '').toLowerCase();
+                    
+                    // Verify warehouse manager role
+                    const expectedRole = `warehouse_manager_${warehouse}`;
+                    if (role !== expectedRole && role !== 'warehouse_manager' && role !== 'admin') {
+                        throw new Error(`Access denied. This account is not authorized for ${warehouse} warehouse management.`);
+                    }
+                    
+                    // Set warehouse filter
+                    currentWarehouseFilter = warehouse === 'ondangwa' ? 'Ondangwa' : 'Windhoek';
+                    user.warehouse = currentWarehouseFilter;
+                    user.warehouseFilter = warehouse;
+                    
+                    // Store warehouse filter in localStorage
+                    localStorage.setItem('warehouseFilter', currentWarehouseFilter);
+                    
+                    // Login successful
+                    handlePortalLoginSuccess(user, { silent: true });
+                    hideWarehouseManagerLogin();
+                    
+                    // Open stock portal
+                    currentPortal = 'stock';
+                    window.currentPortal = 'stock';
+                    openTab('stock', null);
+                    
+                    // Show warehouse-specific welcome
+                    showToast(`Welcome to ${currentWarehouseFilter} Warehouse Management`, 'success');
+                    
+                    // Apply warehouse filter to stock portal
+                    applyWarehouseFilter();
+                } else {
+                    // Try local fallback
+                    const localUsers = JSON.parse(localStorage.getItem('users') || '[]');
+                    const localUser = localUsers.find(u => 
+                        u.username === username && 
+                        u.password === password &&
+                        (u.role === `warehouse_manager_${warehouse}` || u.role === 'warehouse_manager' || u.role === 'admin')
+                    );
+                    
+                    if (localUser) {
+                        localUser.warehouse = warehouse === 'ondangwa' ? 'Ondangwa' : 'Windhoek';
+                        localUser.warehouseFilter = warehouse;
+                        currentWarehouseFilter = localUser.warehouse;
+                        localStorage.setItem('warehouseFilter', currentWarehouseFilter);
+                        
+                        handlePortalLoginSuccess(localUser, { silent: true });
+                        hideWarehouseManagerLogin();
+                        currentPortal = 'stock';
+                        window.currentPortal = 'stock';
+                        openTab('stock', null);
+                        applyWarehouseFilter();
+                        showToast(`Welcome to ${currentWarehouseFilter} Warehouse Management`, 'success');
+                    } else {
+                        throw new Error('Invalid credentials or insufficient permissions for warehouse management.');
+                    }
+                }
+            } catch (error) {
+                console.error('Warehouse manager login error:', error);
+                if (errorDiv) {
+                    errorDiv.textContent = error.message || 'Login failed. Please check your credentials.';
+                    errorDiv.style.display = 'block';
+                }
+            } finally {
+                // Restore button state
+                if (loginBtn) {
+                    const btnText = loginBtn.querySelector('.btn-text');
+                    const btnLoading = loginBtn.querySelector('.btn-loading');
+                    if (btnText) btnText.style.display = 'inline';
+                    if (btnLoading) btnLoading.style.display = 'none';
+                    loginBtn.disabled = false;
+                }
+            }
+        }
+        
+        // Apply warehouse filter to stock portal
+        function applyWarehouseFilter() {
+            if (!currentWarehouseFilter) {
+                const savedFilter = localStorage.getItem('warehouseFilter');
+                const userRole = (currentUser?.role || '').toLowerCase();
+                if (userRole === 'warehouse_manager_ondangwa') {
+                    currentWarehouseFilter = 'Ondangwa';
+                } else if (userRole === 'warehouse_manager_windhoek') {
+                    currentWarehouseFilter = 'Windhoek';
+                } else if (savedFilter) {
+                    currentWarehouseFilter = savedFilter;
+                }
+            }
+            
+            if (currentWarehouseFilter) {
+                // Add warehouse filter badge to stock portal header
+                const stockHeader = document.querySelector('#stockContent .stock-hub-hero__text');
+                if (stockHeader && !document.getElementById('warehouseFilterBadge')) {
+                    const badge = document.createElement('div');
+                    badge.id = 'warehouseFilterBadge';
+                    badge.style.cssText = 'margin-top: 12px; padding: 8px 16px; background: #10b981; color: white; border-radius: 20px; display: inline-block; font-weight: 600; font-size: 0.9rem;';
+                    badge.textContent = `🏭 ${currentWarehouseFilter} Warehouse Only`;
+                    stockHeader.appendChild(badge);
+                }
+                
+                // Filter all stock data functions
+                window.warehouseFilter = currentWarehouseFilter;
+            }
+        }
+        
+        // Override stock loading functions to filter by warehouse
+        function filterStockByWarehouse(data) {
+            if (!currentWarehouseFilter || !data) return data;
+            
+            if (Array.isArray(data)) {
+                return data.filter(item => {
+                    const location = item.location || item.warehouse || item.branch || '';
+                    const category = item.category || '';
+                    return location.toLowerCase().includes(currentWarehouseFilter.toLowerCase()) ||
+                           category.toLowerCase().includes(currentWarehouseFilter.toLowerCase());
+                });
+            }
+            
+            if (typeof data === 'object') {
+                const filtered = { ...data };
+                Object.keys(filtered).forEach(key => {
+                    if (Array.isArray(filtered[key])) {
+                        filtered[key] = filtered[key].filter(item => {
+                            const location = item.location || item.warehouse || item.branch || '';
+                            const category = item.category || '';
+                            return location.toLowerCase().includes(currentWarehouseFilter.toLowerCase()) ||
+                                   category.toLowerCase().includes(currentWarehouseFilter.toLowerCase());
+                        });
+                    }
+                });
+                return filtered;
+            }
+            
+            return data;
+        }
+        
+        // Override displayOndangwaStock to show filtered data for warehouse managers
+        const originalDisplayOndangwaStock = window.displayOndangwaStock;
+        if (typeof originalDisplayOndangwaStock === 'function') {
+            window.displayOndangwaStock = function() {
+                if (currentWarehouseFilter === 'Ondangwa') {
+                    // Show only Ondangwa warehouse data
+                    const result = originalDisplayOndangwaStock.apply(this, arguments);
+                    // Filter the displayed list
+                    const stockList = document.getElementById('ondangwaStockList');
+                    if (stockList) {
+                        const items = stockList.querySelectorAll('[data-warehouse], [data-location]');
+                        items.forEach(item => {
+                            const warehouse = item.getAttribute('data-warehouse') || item.getAttribute('data-location') || '';
+                            if (warehouse.toLowerCase() !== 'ondangwa') {
+                                item.style.display = 'none';
+                            }
+                        });
+                    }
+                    return result;
+                } else if (currentWarehouseFilter && currentWarehouseFilter !== 'Ondangwa') {
+                    // Hide Ondangwa tab if not Ondangwa warehouse manager
+                    const ondangwaTab = document.getElementById('stockTabOndangwa');
+                    if (ondangwaTab) ondangwaTab.style.display = 'none';
+                    return;
+                }
+                return originalDisplayOndangwaStock.apply(this, arguments);
+            };
+        }
+        
+        // Override stock data loading to apply warehouse filter
+        function applyWarehouseFilterToStockData() {
+            if (!currentWarehouseFilter) return;
+            
+            // Filter ondangwaStock array
+            if (window.ondangwaStock && Array.isArray(window.ondangwaStock)) {
+                window.ondangwaStock = window.ondangwaStock.filter(item => {
+                    const location = item.location || item.warehouse || '';
+                    const category = item.category || '';
+                    return location.toLowerCase().includes(currentWarehouseFilter.toLowerCase()) ||
+                           category.toLowerCase().includes(currentWarehouseFilter.toLowerCase());
+                });
+            }
+            
+            // Filter localStorage data when loading
+            const originalGetItem = Storage.prototype.getItem;
+            Storage.prototype.getItem = function(key) {
+                const value = originalGetItem.call(this, key);
+                if (currentWarehouseFilter && (key === 'dyna_ondangwaStock' || key === 'dyna_warehouse_stock')) {
+                    try {
+                        const parsed = JSON.parse(value);
+                        if (Array.isArray(parsed)) {
+                            const filtered = parsed.filter(item => {
+                                const location = item.location || item.warehouse || item.branch || '';
+                                const category = item.category || '';
+                                return location.toLowerCase().includes(currentWarehouseFilter.toLowerCase()) ||
+                                       category.toLowerCase().includes(currentWarehouseFilter.toLowerCase());
+                            });
+                            return JSON.stringify(filtered);
+                        }
+                    } catch (e) {
+                        // Not JSON, return as is
+                    }
+                }
+                return value;
+            };
+        }
+        
+        // Initialize warehouse filter on stock portal load
+        const originalShowStockTab = window.showStockTab;
+        if (typeof originalShowStockTab === 'function') {
+            window.showStockTab = function(tab) {
+                applyWarehouseFilter();
+                applyWarehouseFilterToStockData();
+                return originalShowStockTab.apply(this, arguments);
+            };
+        }
         
         function extractArray(data, fallback = []) {
             if (Array.isArray(data)) return data;
@@ -4894,6 +5177,36 @@
                 <div style="display: flex; gap: 10px;">
                     <button onclick="submitForgotPassword()" class="btn" style="background: #c41e3a; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1;">Send Reset Link</button>
                     <button onclick="hideForgotPasswordModal()" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Warehouse Manager Login Modal -->
+    <div id="warehouseManagerLoginModal" class="modal-overlay" style="display: none; z-index: 10003;" onclick="if(event.target === this) hideWarehouseManagerLogin()">
+        <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
+            <h2 style="margin-bottom: 20px; color: #10b981;">🏭 Warehouse Manager Login</h2>
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                    <p style="margin: 0; color: #166534; font-size: 0.9rem; font-weight: 600;">Select Your Warehouse:</p>
+                    <select id="warehouseSelect" style="width: 100%; padding: 10px; margin-top: 8px; border: 2px solid #10b981; border-radius: 6px; font-size: 1rem;">
+                        <option value="">-- Select Warehouse --</option>
+                        <option value="ondangwa">🏭 Ondangwa Warehouse</option>
+                        <option value="windhoek">🏢 Windhoek Warehouse</option>
+                    </select>
+                </div>
+                <input type="text" id="warehouseUsername" placeholder="Username" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;" onkeypress="if(event.key === 'Enter') document.getElementById('warehousePassword').focus()">
+                <div style="position: relative;">
+                    <input type="password" id="warehousePassword" placeholder="Password" style="padding: 12px; padding-right: 45px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem; width: 100%; box-sizing: border-box;" onkeypress="if(event.key === 'Enter') submitWarehouseManagerLogin()">
+                    <button type="button" onclick="togglePasswordVisibility('warehousePassword', this)" class="password-toggle-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; color: #666; font-size: 1.2rem;" aria-label="Toggle password visibility">👁️</button>
+                </div>
+                <div id="warehouseLoginError" class="login-error" style="display: none; background: #fee; border: 1px solid #fcc; color: #c33; padding: 10px; border-radius: 6px; font-size: 0.9rem;"></div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="submitWarehouseManagerLogin()" id="warehouseLoginBtn" class="btn" style="background: #10b981; color: white; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; flex: 1; position: relative;">
+                        <span class="btn-text">Login</span>
+                        <span class="btn-loading" style="display: none;">⏳ Logging in...</span>
+                    </button>
+                    <button onclick="hideWarehouseManagerLogin()" class="btn" style="background: #f0f0f0; color: #666; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -8744,8 +9057,9 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access stock management portal</p>
-                    <div style="display: flex; gap: 15px; justify-content: center;">
-                        <button class="btn" onclick="showLogin('stock')">🔐 Login</button>
+                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                        <button class="btn" onclick="showLogin('stock')">🔐 Staff Login</button>
+                        <button class="btn" onclick="showWarehouseManagerLogin()" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
                     </div>
                 </div>
             </div>
@@ -25536,6 +25850,16 @@ function setAuthenticatedUser(user) {
 function handlePortalLoginSuccess(user, options = {}) {
     setAuthenticatedUser(user);
     const role = (user.role || '').toLowerCase();
+    
+    // Check if warehouse manager and set filter
+    if (role === 'warehouse_manager_ondangwa' || role === 'warehouse_manager_windhoek') {
+        currentWarehouseFilter = WAREHOUSE_ASSIGNMENTS[role] || null;
+        if (currentWarehouseFilter) {
+            localStorage.setItem('warehouseFilter', currentWarehouseFilter);
+            applyWarehouseFilter();
+        }
+    }
+    
     hideLandingPage();
     showAuthorizedPortals(role);
     updateNavigationForUser(user, role);
