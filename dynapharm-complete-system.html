@@ -10973,7 +10973,7 @@
             <!-- Branch Selector -->
             <div class="form-section" style="background: #f8f9fa; padding: 15px; margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 10px; font-weight: bold;">Select Branch:</label>
-                <select id="financeBranchSelect" onchange="refreshFinancialDashboard()" style="padding: 10px; width: 300px; border: 2px solid #ddd; border-radius: 5px;">
+                <select id="financeBranchSelect" onchange="handleFinanceBranchChange(event)" style="padding: 10px; width: 300px; border: 2px solid #ddd; border-radius: 5px;">
                     <option value="all">All Branches</option>
                 </select>
             </div>
@@ -12294,7 +12294,7 @@
             <form id="addExpenseForm">
                 <div class="form-group">
                     <label>Expense Category *</label>
-                    <select id="expenseCategory" required>
+                    <select id="financeExpenseCategory" required>
                         <option value="">Select Category</option>
                         <optgroup label="OPERATING EXPENSES">
                             <option value="cleaning-materials">Cleaning Materials & equipment</option>
@@ -12351,19 +12351,19 @@
                 </div>
                 <div class="form-group">
                     <label>Description *</label>
-                    <input type="text" id="expenseDescription" placeholder="e.g., Monthly rent payment" required>
+                    <input type="text" id="financeExpenseDescription" placeholder="e.g., Monthly rent payment" required>
                 </div>
                 <div class="form-group">
                     <label>Amount (N$) *</label>
-                    <input type="number" id="expenseAmount" step="0.01" min="0" placeholder="0.00" required>
+                    <input type="number" id="financeExpenseAmount" step="0.01" min="0" placeholder="0.00" required>
                 </div>
                 <div class="form-group">
                     <label>Date *</label>
-                    <input type="date" id="expenseDate" required>
+                    <input type="date" id="financeExpenseDate" required>
                 </div>
                 <div class="form-group">
                     <label>Payment Method</label>
-                    <select id="expensePaymentMethod">
+                    <select id="financeExpensePaymentMethod">
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
                         <option value="bank_transfer">Bank Transfer</option>
@@ -12372,7 +12372,7 @@
                 </div>
                 <div class="form-group">
                     <label>Notes (Optional)</label>
-                    <textarea id="expenseNotes" rows="3" placeholder="Additional details..."></textarea>
+                    <textarea id="financeExpenseNotes" rows="3" placeholder="Additional details..."></textarea>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button type="submit" class="btn btn-success">💾 Save Expense</button>
@@ -14258,6 +14258,1080 @@
         let currentBranch = '';
         let uploadedPDF = null;
         let autoRefreshInterval = null;
+        const FINANCE_STORAGE_KEY = 'finance_portal_cache_v1';
+        const FINANCE_PORTAL_STATE = {
+            initialized: false,
+            currentView: 'main',
+            currentBranch: 'all',
+            loading: false,
+            lastLoaded: 0,
+            loadPromise: null,
+            data: {
+                deposits: [],
+                payments: [],
+                expenses: [],
+                walkinSales: [],
+                cashMovements: [],
+                cashSessions: []
+            }
+        };
+
+        if (typeof window.formatCurrencyNAD !== 'function') {
+            window.formatCurrencyNAD = function formatCurrencyNAD(amount) {
+                const value = Number.isFinite(Number(amount)) ? Number(amount) : 0;
+                try {
+                    return new Intl.NumberFormat('en-NA', {
+                        style: 'currency',
+                        currency: 'NAD',
+                        minimumFractionDigits: 2
+                    }).format(value);
+                } catch (error) {
+                    return `N$ ${value.toFixed(2)}`;
+                }
+            };
+        }
+
+        const FINANCE_METRIC_IDS = {
+            totalSales: 'dailyTotalSales',
+            cashSales: 'dailyCashSales',
+            cardSales: 'dailyCardSales',
+            cashAtHand: 'cashAtHand',
+            deposits: 'dailyDeposits',
+            cashExpenses: 'dailyCashExpenses',
+            cashBonuses: 'dailyBonuses',
+            bankBonuses: 'dailyBankBonuses',
+            variance: 'variance',
+            varianceStatus: 'varianceStatus',
+            branchStockQty: 'financeBranchStockQty',
+            branchLowStock: 'financeBranchLowStock'
+        };
+        const FINANCE_COMPARISON_LABELS = {
+            yesterday: 'Yesterday',
+            lastWeek: 'Last 7 days',
+            lastMonth: 'Last 30 days'
+        };
+        const FINANCE_COMPARISON_METRICS = [
+            FINANCE_METRIC_IDS.totalSales,
+            FINANCE_METRIC_IDS.cashSales,
+            FINANCE_METRIC_IDS.cardSales,
+            FINANCE_METRIC_IDS.deposits,
+            FINANCE_METRIC_IDS.cashExpenses
+        ];
+
+        function parseFinanceDate(value) {
+            const normalized = normaliseDate(value);
+            if (!normalized) return null;
+            const [year, month, day] = normalized.split('-').map((part) => Number(part));
+            if (!year || !month || !day) return null;
+            return new Date(year, month - 1, day);
+        }
+
+        function buildComparisonWindow(mode) {
+            const today = new Date();
+            const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            if (mode === 'yesterday') {
+                const start = new Date(startOfToday);
+                start.setDate(start.getDate() - 1);
+                const end = new Date(start);
+                end.setDate(start.getDate() + 1);
+                return (date) => date >= start && date < end;
+            }
+            if (mode === 'lastWeek') {
+                const start = new Date(startOfToday);
+                start.setDate(start.getDate() - 7);
+                return (date) => date >= start && date < startOfToday;
+            }
+            if (mode === 'lastMonth') {
+                const start = new Date(startOfToday);
+                start.setDate(start.getDate() - 30);
+                return (date) => date >= start && date < startOfToday;
+            }
+            return null;
+        }
+
+        function sumDatasetForWindow(records, windowFn, valueSelector, filterFn) {
+            if (!Array.isArray(records) || typeof windowFn !== 'function') return 0;
+            let total = 0;
+            for (const record of records) {
+                const rawDate =
+                    record.date ||
+                    record.recordedAt ||
+                    record.recorded_at ||
+                    record.createdAt ||
+                    record.created_at ||
+                    (record.metadata && record.metadata.date) ||
+                    null;
+                const date = parseFinanceDate(rawDate);
+                if (!date || !windowFn(date)) continue;
+                if (filterFn && !filterFn(record)) continue;
+                const value = valueSelector ? valueSelector(record) : record.amount;
+                const numeric = Number(value);
+                if (Number.isFinite(numeric)) {
+                    total += numeric;
+                }
+            }
+            return total;
+        }
+
+        function buildComparisonData(currentValue, previousValue, label) {
+            const current = Number.isFinite(Number(currentValue)) ? Number(currentValue) : 0;
+            const previous = Number.isFinite(Number(previousValue)) ? Number(previousValue) : 0;
+            if (previous <= 0 && current <= 0) {
+                return { text: `No change vs ${label}`, color: '#64748b' };
+            }
+            if (previous <= 0 && current > 0) {
+                return { text: `▲ New vs ${label}`, color: '#16a34a' };
+            }
+            const diff = current - previous;
+            if (Math.abs(diff) < 0.0001) {
+                return { text: `— vs ${label}`, color: '#64748b' };
+            }
+            const perc = (diff / previous) * 100;
+            const direction = diff > 0 ? '▲' : '▼';
+            const color = diff > 0 ? '#16a34a' : '#dc2626';
+            const formattedPercent = Math.abs(perc) >= 10 ? Math.abs(perc).toFixed(0) : Math.abs(perc).toFixed(1);
+            return {
+                text: `${direction} ${formattedPercent}% vs ${label}`,
+                color
+            };
+        }
+
+        function updateMetricComparison(metricId, data) {
+            const el = document.getElementById(metricId);
+            if (!el) return;
+            const parent = el.parentElement;
+            if (!parent) return;
+            let pill = parent.querySelector('.finance-comparison-pill');
+            if (!data || !data.text) {
+                if (pill) pill.remove();
+                return;
+            }
+            if (!pill) {
+                pill = document.createElement('div');
+                pill.className = 'finance-comparison-pill';
+                pill.style.cssText =
+                    'margin-top:6px;font-size:0.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;';
+                if (el.nextSibling) {
+                    parent.insertBefore(pill, el.nextSibling);
+                } else {
+                    parent.appendChild(pill);
+                }
+            }
+            pill.textContent = data.text;
+            pill.style.color = data.color || '#475569';
+        }
+
+        function applyFinanceComparisons(mode, metrics, datasets) {
+            if (!mode || mode === 'none') {
+                FINANCE_COMPARISON_METRICS.forEach((metricId) => updateMetricComparison(metricId, null));
+                return;
+            }
+            const windowFn = buildComparisonWindow(mode);
+            if (typeof windowFn !== 'function') {
+                FINANCE_COMPARISON_METRICS.forEach((metricId) => updateMetricComparison(metricId, null));
+                return;
+            }
+            const label = FINANCE_COMPARISON_LABELS[mode] || 'previous period';
+            const payments = datasets.payments || [];
+            const deposits = datasets.deposits || [];
+            const expenseRecords = datasets.expenses || [];
+
+            const baselineSales = sumDatasetForWindow(payments, windowFn, (item) => item.amount || item.total || 0);
+            const baselineCashSales = sumDatasetForWindow(
+                payments,
+                windowFn,
+                (item) => item.amount || item.total || 0,
+                (item) => (item.method || item.paymentMethod || '').toLowerCase().includes('cash')
+            );
+            const baselineCardSales = Math.max(0, baselineSales - baselineCashSales);
+            const baselineDeposits = sumDatasetForWindow(deposits, windowFn, (item) => item.amount || 0);
+            const baselineCashExpenses = sumDatasetForWindow(
+                expenseRecords,
+                windowFn,
+                (item) => item.amount || 0,
+                (item) => (item.paymentMethod || item.method || 'cash').toLowerCase().includes('cash')
+            );
+
+            updateMetricComparison(
+                FINANCE_METRIC_IDS.totalSales,
+                buildComparisonData(metrics.totalSales, baselineSales, label)
+            );
+            updateMetricComparison(
+                FINANCE_METRIC_IDS.cashSales,
+                buildComparisonData(metrics.cashSales, baselineCashSales, label)
+            );
+            updateMetricComparison(
+                FINANCE_METRIC_IDS.cardSales,
+                buildComparisonData(metrics.cardSales, baselineCardSales, label)
+            );
+            updateMetricComparison(
+                FINANCE_METRIC_IDS.deposits,
+                buildComparisonData(metrics.depositsTotal, baselineDeposits, label)
+            );
+            updateMetricComparison(
+                FINANCE_METRIC_IDS.cashExpenses,
+                buildComparisonData(metrics.cashExpenseTotal, baselineCashExpenses, label)
+            );
+        }
+
+        function ensureFinancePortalInitialized() {
+            if (FINANCE_PORTAL_STATE.initialized) {
+                return;
+            }
+            FINANCE_PORTAL_STATE.initialized = true;
+            populateFinanceBranchSelect();
+
+            const branchSelect = document.getElementById('financeBranchSelect');
+            if (branchSelect && !branchSelect.hasAttribute('data-finance-bound')) {
+                branchSelect.setAttribute('data-finance-bound', 'true');
+                branchSelect.addEventListener('change', handleFinanceBranchChange);
+            }
+
+            const comparisonSelect = document.getElementById('financeComparisonPeriod');
+            if (comparisonSelect && !comparisonSelect.hasAttribute('data-finance-bound')) {
+                comparisonSelect.setAttribute('data-finance-bound', 'true');
+                comparisonSelect.addEventListener('change', () => refreshFinancialDashboard(true));
+            }
+
+            const depositForm = document.getElementById('bankDepositForm');
+            if (depositForm && !depositForm.hasAttribute('data-finance-bound')) {
+                depositForm.setAttribute('data-finance-bound', 'true');
+                depositForm.addEventListener('submit', handleBankDepositSubmit);
+            }
+
+            const addExpenseForm = document.getElementById('addExpenseForm');
+            if (addExpenseForm && !addExpenseForm.hasAttribute('data-finance-bound')) {
+                addExpenseForm.setAttribute('data-finance-bound', 'true');
+                addExpenseForm.addEventListener('submit', handleFinanceExpenseSubmit);
+            }
+
+            restoreEnhancedFinanceData();
+        }
+
+        function toggleFinanceView(view) {
+            ensureFinancePortalInitialized();
+            const mainSection = document.getElementById('financeMainSection');
+            const staffSection = document.getElementById('financeStaffSection');
+            const mainBtn = document.getElementById('financeMainTabBtn');
+            const staffBtn = document.getElementById('financeStaffTabBtn');
+            if (!mainSection || !staffSection) return;
+            const showStaff = view === 'staff';
+            FINANCE_PORTAL_STATE.currentView = showStaff ? 'staff' : 'main';
+
+            mainSection.style.display = showStaff ? 'none' : 'block';
+            staffSection.style.display = showStaff ? 'block' : 'none';
+
+            if (mainBtn) {
+                mainBtn.classList.toggle('btn-primary', !showStaff);
+                mainBtn.classList.toggle('btn', showStaff);
+            }
+            if (staffBtn) {
+                staffBtn.classList.toggle('btn-primary', showStaff);
+                staffBtn.classList.toggle('btn', !showStaff);
+            }
+        }
+
+        function populateFinanceBranchSelect() {
+            const financeSelect = document.getElementById('financeBranchSelect');
+            const depositSelect = document.getElementById('depositBranch');
+            let source = Array.isArray(branches) && branches.length ? branches : [];
+            if (!source.length) {
+                try {
+                    source = JSON.parse(localStorage.getItem('dyna_branches') || '[]');
+                } catch (_) {
+                    source = [];
+                }
+            }
+
+            const optionsHtml = source
+                .map(
+                    (branch) =>
+                        `<option value="${escapeHtml(branch.id)}">${escapeHtml(branch.name || branch.id)}</option>`
+                )
+                .join('');
+
+            if (financeSelect) {
+                const previous = financeSelect.value || FINANCE_PORTAL_STATE.currentBranch || 'all';
+                financeSelect.innerHTML = `<option value="all">All Branches</option>${optionsHtml}`;
+                if (previous && financeSelect.querySelector(`option[value="${escapeForSelector(previous)}"]`)) {
+                    financeSelect.value = previous;
+                    FINANCE_PORTAL_STATE.currentBranch = previous;
+                } else {
+                    financeSelect.value = 'all';
+                    FINANCE_PORTAL_STATE.currentBranch = 'all';
+                }
+            }
+
+            if (depositSelect) {
+                const previous = depositSelect.value;
+                depositSelect.innerHTML = `<option value="">Select Branch</option>${optionsHtml}`;
+                const branchToSelect =
+                    FINANCE_PORTAL_STATE.currentBranch && FINANCE_PORTAL_STATE.currentBranch !== 'all'
+                        ? FINANCE_PORTAL_STATE.currentBranch
+                        : previous || '';
+                if (branchToSelect && depositSelect.querySelector(`option[value="${escapeForSelector(branchToSelect)}"]`)) {
+                    depositSelect.value = branchToSelect;
+                }
+            }
+        }
+
+        function buildFinanceEndpoint(path, params = {}) {
+            const query = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+                if (value === undefined || value === null || value === '') return;
+                query.set(key, value);
+            });
+            const suffix = query.toString();
+            return suffix ? `${path}?${suffix}` : path;
+        }
+
+        function escapeForSelector(value) {
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(value);
+            }
+            return String(value).replace(/([!\"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+        }
+
+        function extractFinanceArray(response, key) {
+            if (!response) return [];
+            if (Array.isArray(response)) return response;
+            if (key && Array.isArray(response[key])) return response[key];
+            return [];
+        }
+
+        function normaliseBranchId(record) {
+            if (!record) return null;
+            return (
+                record.branchId ||
+                record.branch_id ||
+                record.branch ||
+                (record.metadata && record.metadata.branchId) ||
+                null
+            );
+        }
+
+        function normaliseDate(value) {
+            if (!value) return null;
+            if (value instanceof Date) return value.toISOString().slice(0, 10);
+            if (typeof value === 'string' && value.length >= 10) return value.slice(0, 10);
+            return null;
+        }
+
+        function filterFinanceByBranch(records) {
+            if (!Array.isArray(records)) return [];
+            const branch = FINANCE_PORTAL_STATE.currentBranch;
+            if (!branch || branch === 'all') return records;
+            return records.filter((item) => {
+                const id = normaliseBranchId(item);
+                return id && String(id).toLowerCase() === String(branch).toLowerCase();
+            });
+        }
+
+        function sumFinance(records, selector) {
+            if (!Array.isArray(records) || !records.length) return 0;
+            return records.reduce((total, item) => {
+                const value = typeof selector === 'function' ? selector(item) : item[selector];
+                const numeric = Number(value);
+                return total + (Number.isFinite(numeric) ? numeric : 0);
+            }, 0);
+        }
+
+        function saveEnhancedFinanceData(snapshot) {
+            try {
+                const payload = {
+                    savedAt: Date.now(),
+                    branch: FINANCE_PORTAL_STATE.currentBranch,
+                    data: snapshot
+                };
+                localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(payload));
+            } catch (error) {
+                console.debug('Unable to persist finance cache', error);
+            }
+        }
+
+        function restoreEnhancedFinanceData() {
+            try {
+                const raw = localStorage.getItem(FINANCE_STORAGE_KEY);
+                if (!raw) return;
+                const payload = JSON.parse(raw);
+                if (!payload || !payload.data) return;
+                FINANCE_PORTAL_STATE.data = Object.assign(
+                    {
+                        deposits: [],
+                        payments: [],
+                        expenses: [],
+                        walkinSales: [],
+                        cashMovements: [],
+                        cashSessions: []
+                    },
+                    payload.data || {}
+                );
+                FINANCE_PORTAL_STATE.lastLoaded = payload.savedAt || 0;
+                bankDeposits = FINANCE_PORTAL_STATE.data.deposits || [];
+                expenses = FINANCE_PORTAL_STATE.data.expenses || [];
+            } catch (error) {
+                console.debug('Unable to restore finance cache', error);
+            }
+        }
+
+        async function loadEnhancedFinanceData(options = {}) {
+            ensureFinancePortalInitialized();
+            const { force = false } = options;
+            if (FINANCE_PORTAL_STATE.loadPromise && !force) {
+                return FINANCE_PORTAL_STATE.loadPromise;
+            }
+            const now = Date.now();
+            if (!force && FINANCE_PORTAL_STATE.lastLoaded && now - FINANCE_PORTAL_STATE.lastLoaded < 15000) {
+                return FINANCE_PORTAL_STATE.data;
+            }
+
+            const branch =
+                FINANCE_PORTAL_STATE.currentBranch && FINANCE_PORTAL_STATE.currentBranch !== 'all'
+                    ? FINANCE_PORTAL_STATE.currentBranch
+                    : null;
+
+            const endpoints = {
+                deposits: buildFinanceEndpoint('/branch/deposits', { branch, limit: 250 }),
+                payments: buildFinanceEndpoint('/branch/payments', { branch, limit: 250 }),
+                expenses: buildFinanceEndpoint('/branch/expenses', { branch, limit: 250 }),
+                walkinSales: buildFinanceEndpoint('/branch/walkin-sales', { branch, limit: 250 }),
+                cashMovements: buildFinanceEndpoint('/branch/cash-movements', { branch, limit: 250 }),
+                cashSessions: branch
+                    ? buildFinanceEndpoint('/branch/cash-sessions', { branch, active: 1 })
+                    : buildFinanceEndpoint('/branch/cash-sessions', { limit: 50 })
+            };
+
+            FINANCE_PORTAL_STATE.loading = true;
+            FINANCE_PORTAL_STATE.loadPromise = (async () => {
+                try {
+                    const entries = await Promise.all(
+                        Object.entries(endpoints).map(async ([key, endpoint]) => {
+                            try {
+                                const response = await apiRequest(endpoint, 'GET');
+                                return [key, response];
+                            } catch (error) {
+                                console.debug(`Finance fetch failed for ${endpoint}`, error);
+                                return [key, null];
+                            }
+                        })
+                    );
+
+                    const resultMap = Object.fromEntries(entries);
+                    const snapshot = {
+                        deposits: extractFinanceArray(resultMap.deposits, 'deposits'),
+                        payments: extractFinanceArray(resultMap.payments, 'payments'),
+                        expenses: extractFinanceArray(resultMap.expenses, 'expenses'),
+                        walkinSales: extractFinanceArray(resultMap.walkinSales, 'sales'),
+                        cashMovements: extractFinanceArray(resultMap.cashMovements, 'movements'),
+                        cashSessions: (() => {
+                            const sessions = resultMap.cashSessions;
+                            if (!sessions) return [];
+                            if (Array.isArray(sessions)) return sessions;
+                            if (Array.isArray(sessions.sessions)) return sessions.sessions;
+                            if (sessions.session) return [sessions.session].filter(Boolean);
+                            return [];
+                        })()
+                    };
+
+                    FINANCE_PORTAL_STATE.data = snapshot;
+                    FINANCE_PORTAL_STATE.lastLoaded = Date.now();
+                    bankDeposits = snapshot.deposits || [];
+                    expenses = snapshot.expenses || [];
+                    walkInSales = snapshot.walkinSales || [];
+                    saveEnhancedFinanceData(snapshot);
+                    return snapshot;
+                } catch (error) {
+                    console.debug('Finance data load failed; using cache if available', error);
+                    if (FINANCE_PORTAL_STATE.data && FINANCE_PORTAL_STATE.data.deposits.length) {
+                        return FINANCE_PORTAL_STATE.data;
+                    }
+                    restoreEnhancedFinanceData();
+                    return FINANCE_PORTAL_STATE.data;
+                } finally {
+                    FINANCE_PORTAL_STATE.loading = false;
+                    FINANCE_PORTAL_STATE.loadPromise = null;
+                }
+            })();
+
+            return FINANCE_PORTAL_STATE.loadPromise;
+        }
+
+        function handleFinanceBranchChange(event) {
+            const selected =
+                (event && event.target && event.target.value) || (document.getElementById('financeBranchSelect')?.value) || 'all';
+            FINANCE_PORTAL_STATE.currentBranch = selected || 'all';
+            populateFinanceBranchSelect();
+            refreshFinancialDashboard(true);
+        }
+
+        async function refreshFinancialDashboard(force = false) {
+            ensureFinancePortalInitialized();
+            const snapshot = await loadEnhancedFinanceData({ force });
+            const branch = FINANCE_PORTAL_STATE.currentBranch;
+            const today = new Date().toISOString().slice(0, 10);
+
+            const depositsForView = filterFinanceByBranch(snapshot.deposits);
+            const paymentsForView = filterFinanceByBranch(snapshot.payments);
+            const expensesForView = filterFinanceByBranch(snapshot.expenses);
+            const walkinSalesForView = filterFinanceByBranch(snapshot.walkinSales);
+            const cashSessions = filterFinanceByBranch(snapshot.cashSessions);
+
+            const todaysPayments = paymentsForView.filter((item) => normaliseDate(item.date) === today);
+            const todaysDeposits = depositsForView.filter((item) => normaliseDate(item.date) === today);
+            const todaysExpenses = expensesForView.filter((item) => normaliseDate(item.date) === today);
+
+            const totalSales = sumFinance(todaysPayments, (item) => item.amount || item.total || 0);
+            const cashSales = sumFinance(todaysPayments, (item) => {
+                const method = (item.method || item.paymentMethod || '').toLowerCase();
+                if (method.includes('cash')) return item.amount || 0;
+                return 0;
+            });
+            const cardSales = Math.max(0, totalSales - cashSales);
+            const depositsTotal = sumFinance(todaysDeposits, (item) => item.amount || 0);
+            const cashExpenseTotal = sumFinance(todaysExpenses, (item) => {
+                const method = (item.paymentMethod || item.method || 'cash').toLowerCase();
+                return method.includes('cash') ? item.amount || 0 : 0;
+            });
+
+            const todaysCashBonuses = sumFinance(Array.isArray(cashBonuses) ? cashBonuses : [], (item) => {
+                return normaliseDate(item.date) === today ? Number(item.amount || item.value || 0) : 0;
+            });
+            const todaysBankBonuses = sumFinance(Array.isArray(bankBonuses) ? bankBonuses : [], (item) => {
+                return normaliseDate(item.date) === today ? Number(item.amount || item.value || 0) : 0;
+            });
+
+            const activeSession = cashSessions.find((session) => session && session.isOpen);
+            const sessionBalance =
+                (activeSession && activeSession.metadata && Number(activeSession.metadata.currentBalance)) ||
+                (activeSession && Number(activeSession.openingBalance)) ||
+                0;
+            const sessionVariance =
+                (activeSession && Number(activeSession.variance)) ||
+                sumFinance(
+                    cashSessions.filter((s) => !s.isOpen),
+                    (s) => Number(s.variance || 0)
+                );
+
+            const varianceStatusEl = document.getElementById(FINANCE_METRIC_IDS.varianceStatus);
+            if (varianceStatusEl) {
+                const status =
+                    Math.abs(sessionVariance) < 5
+                        ? 'Status: OK'
+                        : `Variance: ${formatCurrencyNAD(sessionVariance)} (${sessionVariance > 0 ? 'Over' : 'Short'})`;
+                varianceStatusEl.textContent = status;
+            }
+
+            setFinanceMetricValue(FINANCE_METRIC_IDS.totalSales, formatCurrencyNAD(totalSales));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.cashSales, formatCurrencyNAD(cashSales));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.cardSales, formatCurrencyNAD(cardSales));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.deposits, formatCurrencyNAD(depositsTotal));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.cashExpenses, formatCurrencyNAD(cashExpenseTotal));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.cashBonuses, formatCurrencyNAD(todaysCashBonuses));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.bankBonuses, formatCurrencyNAD(todaysBankBonuses));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.cashAtHand, formatCurrencyNAD(sessionBalance));
+            setFinanceMetricValue(FINANCE_METRIC_IDS.variance, formatCurrencyNAD(sessionVariance));
+
+            const comparisonSelect = document.getElementById('financeComparisonPeriod');
+            const comparisonMode = comparisonSelect ? comparisonSelect.value : 'none';
+            applyFinanceComparisons(
+                comparisonMode,
+                {
+                    totalSales,
+                    cashSales,
+                    cardSales,
+                    depositsTotal,
+                    cashExpenseTotal
+                },
+                {
+                    payments: paymentsForView,
+                    deposits: depositsForView,
+                    expenses: expensesForView
+                }
+            );
+
+            const branchStockQty = sumFinance(walkinSalesForView, (sale) => {
+                if (!Array.isArray(sale.items)) return 0;
+                return sale.items.reduce((total, item) => total + Number(item.quantity || 0), 0);
+            });
+
+            setFinanceMetricValue(FINANCE_METRIC_IDS.branchStockQty, branchStockQty.toLocaleString());
+            setFinanceMetricValue(FINANCE_METRIC_IDS.branchLowStock, '0');
+
+            renderFinanceDepositInbox(depositsForView);
+            renderFinanceRevenueSummary(paymentsForView, walkinSalesForView);
+            renderFinanceExpenseList(expensesForView);
+        }
+
+        function setFinanceMetricValue(id, value) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = value;
+            }
+        }
+
+        function renderFinanceDepositInbox(depositList) {
+            const pendingContainer = document.getElementById('depositList-pending');
+            const reviewedContainer = document.getElementById('depositList-reviewed');
+            const pendingBadge = document.getElementById('depositPendingBadge');
+            const approvedBadge = document.getElementById('depositApprovedBadge');
+            const rejectedBadge = document.getElementById('depositRejectedBadge');
+            const tabPendingCount = document.getElementById('depositTabCount-pending');
+            const tabReviewedCount = document.getElementById('depositTabCount-reviewed');
+
+            const pending = (depositList || []).filter((item) => (item.status || 'pending').toLowerCase() === 'pending');
+            const reviewed = (depositList || []).filter((item) => (item.status || 'pending').toLowerCase() !== 'pending');
+            const approved = reviewed.filter((item) => (item.status || '').toLowerCase() === 'approved');
+            const rejected = reviewed.filter((item) => (item.status || '').toLowerCase() === 'rejected');
+
+            if (pendingBadge) pendingBadge.textContent = `Pending: ${pending.length}`;
+            if (approvedBadge) approvedBadge.textContent = `Approved: ${approved.length}`;
+            if (rejectedBadge) rejectedBadge.textContent = `Rejected: ${rejected.length}`;
+            if (tabPendingCount) tabPendingCount.textContent = pending.length;
+            if (tabReviewedCount) tabReviewedCount.textContent = reviewed.length;
+
+            const renderCard = (deposit) => {
+                const branchName = (() => {
+                    if (typeof buildBranchDirectoryMap === 'function') {
+                        const directory = buildBranchDirectoryMap();
+                        const id = normaliseBranchId(deposit);
+                        const rec =
+                            directory[id] ||
+                            directory[String(id).toLowerCase()] ||
+                            (Array.isArray(branches) ? branches.find((b) => b.id === id) : null);
+                        return rec ? rec.name || rec.id : id || 'Unassigned';
+                    }
+                    return normaliseBranchId(deposit) || 'Unassigned';
+                })();
+                const amount = formatCurrencyNAD(deposit.amount || 0);
+                const dateLabel = normaliseDate(deposit.date) || '—';
+                const status = (deposit.status || 'pending').toUpperCase();
+                const tone =
+                    status === 'APPROVED' ? '#16a34a' : status === 'REJECTED' ? '#dc2626' : '#f59e0b';
+                return `
+                    <div style="border:1px solid #e2e8f0; border-radius:10px; padding:14px; background:#fff;">
+                        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                            <div>
+                                <div style="font-weight:600; color:#1f2937;">${escapeHtml(branchName)}</div>
+                                <div style="font-size:0.85rem; color:#64748b;">${escapeHtml(deposit.slipNumber || 'Slip not provided')}</div>
+                            </div>
+                            <span style="padding:6px 12px; border-radius:999px; background:${tone}20; color:${tone}; font-size:0.75rem; align-self:flex-start;">
+                                ${escapeHtml(status)}
+                            </span>
+                        </div>
+                        <div style="margin-top:12px; display:flex; gap:18px; flex-wrap:wrap; font-size:0.9rem; color:#475569;">
+                            <span>💰 <strong>${amount}</strong></span>
+                            <span>📅 ${escapeHtml(dateLabel)}</span>
+                            <span>🏦 ${escapeHtml(deposit.bankName || 'Bank N/A')}</span>
+                        </div>
+                        ${deposit.notes ? `<p style="margin-top:10px; font-size:0.85rem; color:#64748b;">${escapeHtml(deposit.notes)}</p>` : ''}
+                    </div>
+                `;
+            };
+
+            if (pendingContainer) {
+                pendingContainer.innerHTML = pending.length
+                    ? pending.map(renderCard).join('')
+                    : '<p style="text-align:center; color:#64748b; padding:16px;">No pending deposits.</p>';
+            }
+            if (reviewedContainer) {
+                reviewedContainer.innerHTML = reviewed.length
+                    ? reviewed.map(renderCard).join('')
+                    : '<p style="text-align:center; color:#64748b; padding:16px;">No reviewed deposits yet.</p>';
+            }
+        }
+
+        function renderFinanceRevenueSummary(paymentsForView, walkinSalesForView) {
+            const prescriptionEl = document.getElementById('prescriptionRevenue');
+            const walkinEl = document.getElementById('walkinRevenue');
+            const totalEl = document.getElementById('totalSales');
+            if (!prescriptionEl && !walkinEl && !totalEl) return;
+
+            const prescriptionTotal = sumFinance(paymentsForView, (item) => {
+                const method = (item.method || '').toLowerCase();
+                const reference = (item.reference || '').toLowerCase();
+                if (method.includes('medical') || reference.startsWith('rx')) {
+                    return item.amount || 0;
+                }
+                return 0;
+            });
+            const walkinTotal =
+                sumFinance(paymentsForView, (item) => item.amount || 0) - prescriptionTotal ||
+                sumFinance(walkinSalesForView, (sale) => Number(sale.totalAmount || sale.amount || 0));
+            const grandTotal = prescriptionTotal + walkinTotal;
+
+            if (prescriptionEl) prescriptionEl.textContent = formatCurrencyNAD(prescriptionTotal);
+            if (walkinEl) walkinEl.textContent = formatCurrencyNAD(walkinTotal);
+            if (totalEl) totalEl.textContent = formatCurrencyNAD(grandTotal);
+        }
+
+        function showAddExpenseModal() {
+            ensureFinancePortalInitialized();
+            const modal = document.getElementById('addExpenseModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            const dateInput = document.getElementById('financeExpenseDate');
+            if (dateInput && !dateInput.value) {
+                dateInput.value = new Date().toISOString().slice(0, 10);
+            }
+            requestAnimationFrame(() => {
+                const amountInput = document.getElementById('financeExpenseAmount');
+                if (amountInput) amountInput.focus();
+            });
+            if (FINANCE_PORTAL_STATE.currentBranch === 'all') {
+                alert('Select a branch from the Finance dashboard before recording an expense.');
+            }
+        }
+
+        async function handleFinanceExpenseSubmit(event) {
+            event.preventDefault();
+            ensureFinancePortalInitialized();
+            const form = event.target;
+            const submitBtn = event.submitter || form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+
+            const branchSelect = document.getElementById('financeBranchSelect');
+            const branchId =
+                FINANCE_PORTAL_STATE.currentBranch && FINANCE_PORTAL_STATE.currentBranch !== 'all'
+                    ? FINANCE_PORTAL_STATE.currentBranch
+                    : branchSelect && branchSelect.value !== 'all'
+                    ? branchSelect.value
+                    : '';
+            if (!branchId) {
+                alert('Please select a branch before saving an expense.');
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const amountValue = parseFloat(document.getElementById('financeExpenseAmount')?.value || '0');
+            if (!Number.isFinite(amountValue) || amountValue <= 0) {
+                alert('Enter a valid amount greater than zero.');
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const payload = {
+                branchId,
+                category: document.getElementById('financeExpenseCategory')?.value || 'general',
+                description: document.getElementById('financeExpenseDescription')?.value || 'Expense',
+                amount: amountValue,
+                date: document.getElementById('financeExpenseDate')?.value || new Date().toISOString().slice(0, 10),
+                paymentMethod: document.getElementById('financeExpensePaymentMethod')?.value || 'cash',
+                notes: document.getElementById('financeExpenseNotes')?.value || '',
+                metadata: {
+                    source: 'finance_portal',
+                    createdAt: new Date().toISOString()
+                }
+            };
+
+            try {
+                const response = await apiRequest('/branch/expenses', 'POST', payload);
+                const saved =
+                    response?.expense ||
+                    (Array.isArray(response?.expenses) ? response.expenses[0] : null) ||
+                    Object.assign({ id: payload.id || `EXP-${Date.now()}` }, payload);
+
+                const normalized = Object.assign({}, saved, {
+                    branchId: saved?.branchId || saved?.branch || payload.branchId,
+                    description: saved?.description || payload.description,
+                    category: saved?.category || payload.category,
+                    amount: Number(saved?.amount ?? payload.amount ?? 0),
+                    paymentMethod: saved?.paymentMethod || saved?.payment_method || payload.paymentMethod,
+                    notes: saved?.notes || payload.notes || '',
+                    date: saved?.date || payload.date,
+                    recordedAt: saved?.createdAt || saved?.created_at || new Date().toISOString()
+                });
+
+                if (!FINANCE_PORTAL_STATE.data) {
+                    FINANCE_PORTAL_STATE.data = { expenses: [] };
+                }
+                if (!Array.isArray(FINANCE_PORTAL_STATE.data.expenses)) {
+                    FINANCE_PORTAL_STATE.data.expenses = [];
+                }
+                FINANCE_PORTAL_STATE.data.expenses.unshift(normalized);
+                if (FINANCE_PORTAL_STATE.data.expenses.length > 300) {
+                    FINANCE_PORTAL_STATE.data.expenses.length = 300;
+                }
+                saveEnhancedFinanceData(FINANCE_PORTAL_STATE.data);
+
+                alert('✅ Expense recorded successfully.');
+                form.reset();
+                closeModal('addExpenseModal');
+                await refreshFinancialDashboard(true);
+                filterExpenses();
+            } catch (error) {
+                console.error('Expense submission failed:', error);
+                alert(`❌ Unable to save expense: ${error.message || error}`);
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        }
+
+        function getFinanceExpenseFilters() {
+            return {
+                category: (document.getElementById('expenseCategoryFilter')?.value || 'all').toLowerCase(),
+                month: document.getElementById('expenseMonthFilter')?.value || 'all',
+                search: (document.getElementById('expenseSearch')?.value || '').trim().toLowerCase()
+            };
+        }
+
+        function formatExpenseMonthLabel(monthValue) {
+            if (!monthValue || monthValue.length !== 7) return monthValue || '';
+            const [year, month] = monthValue.split('-');
+            const date = new Date(Number(year), Number(month) - 1, 1);
+            return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        }
+
+        function populateExpenseMonthFilter(records) {
+            const monthSelect = document.getElementById('expenseMonthFilter');
+            if (!monthSelect) return;
+            const previous = monthSelect.value || 'all';
+            const months = Array.from(
+                new Set(
+                    (records || [])
+                        .map((expense) => {
+                            const date = normaliseDate(expense.date);
+                            return date ? date.slice(0, 7) : null;
+                        })
+                        .filter(Boolean)
+                )
+            ).sort((a, b) => b.localeCompare(a));
+
+            const options = [
+                '<option value="all">All Months</option>',
+                ...months.map(
+                    (value) => `<option value="${value}">${escapeHtml(formatExpenseMonthLabel(value))}</option>`
+                )
+            ];
+            monthSelect.innerHTML = options.join('');
+            if (previous && monthSelect.querySelector(`option[value="${escapeForSelector(previous)}"]`)) {
+                monthSelect.value = previous;
+            }
+        }
+
+        function applyFinanceExpenseFilters(records) {
+            const { category, month, search } = getFinanceExpenseFilters();
+            return (records || []).filter((expense) => {
+                const expenseCategory = (expense.category || '').toLowerCase();
+                const matchesCategory = category === 'all' || expenseCategory === category;
+
+                const dateValue = normaliseDate(expense.date);
+                const expenseMonth = dateValue ? dateValue.slice(0, 7) : null;
+                const matchesMonth = month === 'all' || expenseMonth === month;
+
+                if (search) {
+                    const haystack = [
+                        expense.description,
+                        expense.category,
+                        expense.notes,
+                        expense.paymentMethod,
+                        expense.reference
+                    ]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                    if (!haystack.includes(search)) return false;
+                }
+
+                return matchesCategory && matchesMonth;
+            });
+        }
+
+        function renderFinanceExpenseList(expenseRecords) {
+            const container = document.getElementById('expenseList');
+            if (!container) return;
+
+            const branchExpenses = filterFinanceByBranch(FINANCE_PORTAL_STATE.data.expenses || []);
+            populateExpenseMonthFilter(branchExpenses);
+
+            if (!Array.isArray(expenseRecords) || !expenseRecords.length) {
+                container.innerHTML =
+                    '<p style="text-align:center; color:#64748b; padding:20px;">No expenses recorded for this branch yet.</p>';
+                return;
+            }
+
+            const filtered = applyFinanceExpenseFilters(expenseRecords);
+            if (!filtered.length) {
+                container.innerHTML =
+                    '<p style="text-align:center; color:#64748b; padding:20px;">No expenses match the selected filters.</p>';
+                return;
+            }
+
+            const rows = filtered
+                .slice()
+                .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                .map((expense) => {
+                    return `
+                        <tr>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${escapeHtml(expense.description || 'Expense')}</td>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${escapeHtml(
+                                (expense.category || 'General').toUpperCase()
+                            )}</td>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${escapeHtml(
+                                normaliseDate(expense.date) || '—'
+                            )}</td>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${formatCurrencyNAD(expense.amount || 0)}</td>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${escapeHtml(
+                                (expense.paymentMethod || 'Cash').toUpperCase()
+                            )}</td>
+                            <td style="padding:10px; border-bottom:1px solid #e2e8f0;">${escapeHtml(expense.notes || '—')}</td>
+                        </tr>
+                    `;
+                })
+                .join('');
+
+            const totalAmount = sumFinance(filtered, (item) => item.amount || 0);
+
+            container.innerHTML = `
+                <div class="scroll-x" style="overflow:auto;">
+                    <table style="width:100%; border-collapse:collapse; min-width:760px;">
+                        <thead>
+                            <tr style="background:#f8fafc; color:#1e293b;">
+                                <th style="padding:10px; text-align:left;">Description</th>
+                                <th style="padding:10px; text-align:left;">Category</th>
+                                <th style="padding:10px; text-align:left;">Date</th>
+                                <th style="padding:10px; text-align:left;">Amount</th>
+                                <th style="padding:10px; text-align:left;">Method</th>
+                                <th style="padding:10px; text-align:left;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                <div style="margin-top:12px; text-align:right; color:#475569;">
+                    <strong>Total:</strong> ${formatCurrencyNAD(totalAmount)}
+                </div>
+            `;
+        }
+
+        async function refreshExpenses(force = false) {
+            ensureFinancePortalInitialized();
+            if (force) {
+                await loadEnhancedFinanceData({ force: true });
+            }
+            renderFinanceExpenseList(filterFinanceByBranch(FINANCE_PORTAL_STATE.data.expenses || []));
+        }
+
+        async function handleBankDepositSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            if (!form) return;
+            const submitButton = form.querySelector('button[type="submit"]');
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                const branchId = form.depositBranch?.value || FINANCE_PORTAL_STATE.currentBranch || '';
+                if (!branchId || branchId === 'all') {
+                    alert('Please choose a branch for this deposit.');
+                    return;
+                }
+
+                const amountValue = Number(form.depositAmount?.value || 0);
+                if (!amountValue || !Number.isFinite(amountValue)) {
+                    alert('Please provide a valid deposit amount.');
+                    return;
+                }
+
+                let slipFile = null;
+                const fileInput = form.depositPhoto;
+                if (fileInput && fileInput.files && fileInput.files[0]) {
+                    slipFile = await convertFileToBase64Payload(fileInput.files[0]);
+                }
+
+                const payload = {
+                    branchId,
+                    date: form.depositDate?.value || new Date().toISOString().slice(0, 10),
+                    amount: amountValue,
+                    slipNumber: form.depositSlipNo?.value || '',
+                    bankName: form.depositBank?.value || '',
+                    bankBranch: form.depositBankBranch?.value || '',
+                    accountNumber: form.depositAccountNumber?.value || '',
+                    accountType: form.depositAccountType?.value || '',
+                    depositedBy: form.depositedBy?.value || (currentUser?.fullName || 'Staff'),
+                    notes: form.depositNotes?.value || '',
+                    slipFile
+                };
+
+                const response = await apiRequest('/branch/deposits', 'POST', payload);
+                if (response && response.success && response.deposit) {
+                    bankDeposits.unshift(response.deposit);
+                }
+                alert('✅ Deposit recorded successfully.');
+
+                await refreshFinancialDashboard(true);
+                closeModal('bankDepositModal');
+            } catch (error) {
+                console.error('Deposit submission failed', error);
+                alert(`❌ Unable to record deposit: ${error.message || error}`);
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        }
+
+        function showBankDeposit() {
+            ensureFinancePortalInitialized();
+            const modal = document.getElementById('bankDepositModal');
+            if (!modal) return;
+            populateFinanceBranchSelect();
+            modal.style.display = 'block';
+            const dateInput = document.getElementById('depositDate');
+            if (dateInput && !dateInput.value) {
+                dateInput.value = new Date().toISOString().slice(0, 10);
+            }
+            const branchSelect = document.getElementById('depositBranch');
+            if (
+                branchSelect &&
+                FINANCE_PORTAL_STATE.currentBranch &&
+                FINANCE_PORTAL_STATE.currentBranch !== 'all' &&
+                branchSelect.querySelector(
+                    `option[value="${escapeForSelector(FINANCE_PORTAL_STATE.currentBranch)}"]`
+                )
+            ) {
+                branchSelect.value = FINANCE_PORTAL_STATE.currentBranch;
+            }
+            requestAnimationFrame(() => {
+                const focusTarget = document.getElementById('depositAmount');
+                if (focusTarget) focusTarget.focus();
+            });
+        }
+
+        function refreshDepositInbox() {
+            ensureFinancePortalInitialized();
+            renderFinanceDepositInbox(filterFinanceByBranch(FINANCE_PORTAL_STATE.data.deposits));
+        }
+
+        async function refreshRevenue(force = false) {
+            await refreshFinancialDashboard(force);
+        }
+
+        function refreshFinancialOverview() {
+            ensureFinancePortalInitialized();
+            renderFinanceDepositInbox(filterFinanceByBranch(FINANCE_PORTAL_STATE.data.deposits));
+        }
+
+        function filterExpenses() {
+            ensureFinancePortalInitialized();
+            renderFinanceExpenseList(filterFinanceByBranch(FINANCE_PORTAL_STATE.data.expenses || []));
+        }
+
+        function convertFileToBase64Payload(file) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        resolve({
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            data: reader.result
+                        });
+                    };
+                    reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
         
         // Global Distributor selection (name + NB number) shared across portals
         let globalDistributor = null;
@@ -20703,23 +21777,17 @@
             if (tabName === 'finance') {
                 setTimeout(async () => {
                     try {
-                        if (typeof loadEnhancedFinanceData === 'function') {
-                            await loadEnhancedFinanceData();
-                        }
-                        if (typeof populateBranchSelects === 'function') {
-                            populateBranchSelects();
+                        if (typeof ensureFinancePortalInitialized === 'function') {
+                            ensureFinancePortalInitialized();
                         }
                         if (typeof refreshFinancialDashboard === 'function') {
-                            refreshFinancialDashboard();
+                            await refreshFinancialDashboard(true);
                         }
                         if (typeof refreshFinancialOverview === 'function') {
                             refreshFinancialOverview();
                         }
                         if (typeof refreshRevenue === 'function') {
                             refreshRevenue();
-                        }
-                        if (typeof refreshExpenses === 'function') {
-                            refreshExpenses();
                         }
                     } catch (e) {
                         console.debug('Finance portal initialization error:', e);
@@ -30853,61 +31921,138 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
             } catch (e) {}
         }
         
-        function submitPayment(e) {
-            e.preventDefault();
-            const payment = {
-                id: 'PAY' + Date.now(),
-                branch: document.getElementById('paymentBranch')?.value || (typeof getBranchId === 'function' ? getBranchId() : ''),
-                date: document.getElementById('paymentDate')?.value || new Date().toISOString().split('T')[0],
-                client: document.getElementById('paymentClient')?.value || '',
-                invoice: document.getElementById('paymentInvoice')?.value || '',
-                amount: parseFloat(document.getElementById('paymentAmount')?.value || '0'),
+        async function submitPayment(event) {
+            event.preventDefault();
+            ensureFinancePortalInitialized();
+            const form = event.target;
+            const submitBtn = event.submitter || form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+
+            const branchId =
+                document.getElementById('paymentBranch')?.value ||
+                (typeof getBranchId === 'function' ? getBranchId() : '') ||
+                (FINANCE_PORTAL_STATE.currentBranch !== 'all' ? FINANCE_PORTAL_STATE.currentBranch : '');
+            if (!branchId || branchId === 'all') {
+                alert('Please select a branch before recording the payment.');
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const amountValue = parseFloat(document.getElementById('paymentAmount')?.value || '0');
+            if (!Number.isFinite(amountValue) || amountValue <= 0) {
+                alert('Please enter a valid amount greater than zero.');
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const payload = {
+                branchId,
+                date: document.getElementById('paymentDate')?.value || new Date().toISOString().slice(0, 10),
+                clientName: document.getElementById('paymentClient')?.value || '',
+                invoiceNumber: document.getElementById('paymentInvoice')?.value || '',
+                amount: amountValue,
                 method: document.getElementById('paymentMethod')?.value || 'cash',
                 reference: document.getElementById('paymentReference')?.value || '',
                 notes: document.getElementById('paymentNotes')?.value || '',
                 recordedBy: (window.currentUser && window.currentUser.fullName) || 'system',
-                recordedAt: new Date().toISOString()
+                metadata: {
+                    source: 'finance_portal',
+                    createdAt: new Date().toISOString()
+                }
             };
-            if (!payment.branch) { alert('Please select a branch'); return; }
-            if (!payment.amount || payment.amount <= 0) { alert('Please enter a valid amount'); return; }
-            const payments = JSON.parse(localStorage.getItem('finance_payments') || '[]');
-            payments.push(payment);
-            localStorage.setItem('finance_payments', JSON.stringify(payments));
-            try { recordDepartmentEvent && recordDepartmentEvent('record_payment', { branch: payment.branch, amount: payment.amount, method: payment.method }); } catch (e) {}
-            closeModal('paymentModal');
-            displayPaymentHistory();
-            try { refreshFinancialDashboard && refreshFinancialDashboard(); } catch (e) {}
-            alert('Payment recorded successfully!');
+
+            try {
+                const response = await apiRequest('/branch/payments', 'POST', payload);
+                const saved =
+                    (response && response.payment) ||
+                    (Array.isArray(response?.payments) ? response.payments[0] : null) ||
+                    Object.assign({ id: payload.id || `PAY-${Date.now()}` }, payload);
+
+                const normalized = Object.assign({}, saved, {
+                    branchId: saved?.branchId || saved?.branch || payload.branchId,
+                    clientName: saved?.clientName || saved?.client || payload.clientName,
+                    invoiceNumber: saved?.invoiceNumber || saved?.invoice || payload.invoiceNumber,
+                    amount: Number(saved?.amount ?? payload.amount ?? 0),
+                    method: saved?.method || payload.method,
+                    recordedAt: saved?.recordedAt || new Date().toISOString()
+                });
+
+                if (!FINANCE_PORTAL_STATE.data) {
+                    FINANCE_PORTAL_STATE.data = { payments: [] };
+                }
+                if (!Array.isArray(FINANCE_PORTAL_STATE.data.payments)) {
+                    FINANCE_PORTAL_STATE.data.payments = [];
+                }
+                FINANCE_PORTAL_STATE.data.payments.unshift(normalized);
+                if (Array.isArray(FINANCE_PORTAL_STATE.data?.payments) && FINANCE_PORTAL_STATE.data.payments.length > 200) {
+                    FINANCE_PORTAL_STATE.data.payments.length = 200;
+                }
+                saveEnhancedFinanceData(FINANCE_PORTAL_STATE.data);
+                try {
+                    recordDepartmentEvent &&
+                        recordDepartmentEvent('record_payment', {
+                            branch: normalized.branchId,
+                            amount: normalized.amount,
+                            method: normalized.method
+                        });
+                } catch (_) {}
+
+                alert('✅ Payment recorded successfully.');
+                closeModal('paymentModal');
+                await refreshFinancialDashboard(true);
+                displayPaymentHistory();
+            } catch (error) {
+                console.error('Payment submission failed:', error);
+                alert(`❌ Unable to record payment: ${error.message || error}`);
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+            }
         }
         
         function searchPayments() {
             displayPaymentHistory();
         }
         
-        function displayPaymentHistory() {
+        async function displayPaymentHistory(options = {}) {
+            ensureFinancePortalInitialized();
             const container = document.getElementById('paymentsList');
             if (!container) return;
-            const payments = JSON.parse(localStorage.getItem('finance_payments') || '[]');
-            const branchFilter = (typeof getBranchId === 'function' && getBranchId()) || '';
+            if (options.force || !FINANCE_PORTAL_STATE.lastLoaded) {
+                await loadEnhancedFinanceData({ force: true });
+            }
+            if (!Array.isArray(FINANCE_PORTAL_STATE.data.payments)) {
+                await loadEnhancedFinanceData({ force: true });
+            }
+
+            const payments = filterFinanceByBranch(FINANCE_PORTAL_STATE.data.payments || []);
+            const branchFilter =
+                FINANCE_PORTAL_STATE.currentBranch && FINANCE_PORTAL_STATE.currentBranch !== 'all'
+                    ? FINANCE_PORTAL_STATE.currentBranch
+                    : (typeof getBranchId === 'function' && getBranchId()) || '';
             const term = (document.getElementById('paymentSearch')?.value || '').toLowerCase();
-            const filtered = payments.filter(p => {
-                const matchesBranch = !branchFilter || p.branch === branchFilter;
-                const matchesTerm = !term || `${p.client} ${p.invoice}`.toLowerCase().includes(term);
-                return matchesBranch && matchesTerm;
-            }).sort((a,b)=> (b.recordedAt||'').localeCompare(a.recordedAt||''));
+            const filtered = payments
+                .filter((p) => {
+                    const branchId = normaliseBranchId(p);
+                    const matchesBranch = !branchFilter || (branchId && String(branchId).toLowerCase() === branchFilter.toLowerCase());
+                    const client = (p.clientName || p.client || '').toLowerCase();
+                    const invoice = (p.invoiceNumber || p.invoice || '').toLowerCase();
+                    const matchesTerm = !term || `${client} ${invoice}`.includes(term);
+                    return matchesBranch && matchesTerm;
+                })
+                .sort((a, b) => String(b.recordedAt || b.date || '').localeCompare(String(a.recordedAt || a.date || '')));
             if (filtered.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No payment records found.</p>';
                 return;
             }
             const rows = filtered.map(p => `
                 <tr>
-                    <td style="padding:10px; border:1px solid #ddd;">${new Date(p.date).toLocaleDateString()}</td>
-                    <td style="padding:10px; border:1px solid #ddd;">${p.branch}</td>
-                    <td style="padding:10px; border:1px solid #ddd;">${p.client}</td>
-                    <td style="padding:10px; border:1px solid #ddd;">${p.invoice}</td>
-                    <td style="padding:10px; border:1px solid #ddd; text-align:right;">N$ ${Number(p.amount||0).toFixed(2)}</td>
-                    <td style="padding:10px; border:1px solid #ddd;">${p.method.replace('_',' ')}</td>
-                    <td style="padding:10px; border:1px solid #ddd;">${p.reference||''}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${new Date(p.date || p.recordedAt || Date.now()).toLocaleDateString()}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${escapeHtml(normaliseBranchId(p) || 'N/A')}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${escapeHtml(p.clientName || p.client || 'Walk-in')}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${escapeHtml(p.invoiceNumber || p.invoice || '—')}</td>
+                    <td style="padding:10px; border:1px solid #ddd; text-align:right;">${formatCurrencyNAD(p.amount || 0)}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${escapeHtml((p.method || '').replace('_',' ') || 'cash')}</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${escapeHtml(p.reference || '')}</td>
                 </tr>
             `).join('');
             container.innerHTML = `
