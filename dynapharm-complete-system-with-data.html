@@ -1660,13 +1660,14 @@
             <span class="close" onclick="closeModal('loginModal')">&times;</span>
             <h2>Login</h2>
             <form id="loginForm">
+                <div id="loginError" style="color: #c41e3a; margin-bottom: 15px; font-size: 0.9rem; display: none;"></div>
                 <div class="form-group">
-                    <input type="text" id="username" placeholder="Username" required>
+                    <input type="text" id="loginUsername" placeholder="Username" required>
                 </div>
                 <div class="form-group">
-                    <input type="password" id="password" placeholder="Password" required>
+                    <input type="password" id="loginPassword" placeholder="Password" required>
                 </div>
-                <button type="submit" class="btn">Login</button>
+                <button type="submit" class="btn" id="loginSubmitButton">Login</button>
                 <div style="margin-top: 15px; font-size: 0.85rem; color: #666; background: #f8f9fa; padding: 10px; border-radius: 5px;">
                     <p><strong>Default Test Accounts:</strong></p>
                     <p>Admin: <code>admin</code> / <code>walker33</code></p>
@@ -1898,6 +1899,161 @@
     </div>
 
     <script>
+        // ----------------------------------------------------------
+        //  DYNAPHARM – UNIFIED AUTH SYSTEM (FINAL VERSION)
+        //  Replaces unifiedStaffLogin, checkExistingSession, old loginPortalRequest,
+        //  old setAuthenticatedUser, and old handlePortalLoginSuccess.
+        // ----------------------------------------------------------
+
+        // ----------------------------------------------------------
+        // 1. GLOBAL: Login Request (calls backend /api/auth/login)
+        // ----------------------------------------------------------
+        window.loginPortalRequest = async function loginPortalRequest(username, password) {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: 'Login failed.' }));
+                throw new Error(err.message || 'Login failed.');
+            }
+
+            const data = await response.json();
+            return data.user;
+        };
+
+
+        // ----------------------------------------------------------
+        // 2. GLOBAL: Persist authenticated user
+        // ----------------------------------------------------------
+        function setAuthenticatedUser(user) {
+            if (!user) return;
+
+            const session = {
+                username: user.username || null,
+                role: user.role || null,
+                fullName: user.fullName || null,
+                token: user.token || null,           // if provided
+                timestamp: Date.now()
+            };
+
+            localStorage.setItem('dyna_portal_user', JSON.stringify(session));
+            window.currentUser = session;
+        }
+
+
+        // ----------------------------------------------------------
+        // 3. GLOBAL: Success Handler → Redirect to Correct Portal
+        // ----------------------------------------------------------
+        function handlePortalLoginSuccess(user, options = {}) {
+            // Store user
+            setAuthenticatedUser(user);
+
+            // Determine which portal they should see
+            const role = (user.role || "").toLowerCase();
+
+            const portalRoutes = {
+                "client": "distributor-portal.html",
+                "distributor": "distributor-portal.html",
+                "branch": "branch-stock-inventory.html",
+                "warehouse": "branch-stock-inventory.html",
+                "hr": "dynapharm-complete-system.html",
+                "hr_manager": "dynapharm-complete-system.html",
+                "hr_admin": "dynapharm-complete-system.html",
+                "gm": "gm-portal.html",
+                "director": "director-portal.html",
+                "admin": "admin-portal.html",
+                "mis": "mis-portal.html",
+                "consultant": "consultant-portal.html"
+            };
+
+            const redirectUrl = portalRoutes[role] || "distributor-portal.html";
+
+            if (!options.silent) {
+                console.log(`🔐 Login successful. Redirecting to ${redirectUrl}`);
+            }
+
+            window.location.href = redirectUrl;
+        }
+
+        // Ensure global access
+        window.handlePortalLoginSuccess = handlePortalLoginSuccess;
+
+
+        // ----------------------------------------------------------
+        // 4. LOGIN FORM HANDLER (Modal or Popup Login UI)
+        // ----------------------------------------------------------
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('loginForm');
+            const loginError = document.getElementById('loginError');
+            const loginSubmitButton = document.getElementById('loginSubmitButton');
+
+            if (!loginForm) return;
+
+            loginForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const username = loginForm.querySelector('#loginUsername')?.value.trim();
+                const password = loginForm.querySelector('#loginPassword')?.value.trim();
+
+                if (!username || !password) {
+                    if (loginError) {
+                        loginError.textContent = "Username and password are required.";
+                        loginError.style.display = 'block';
+                    }
+                    return;
+                }
+
+                if (loginError) {
+                    loginError.textContent = '';
+                    loginError.style.display = 'none';
+                }
+                const originalButtonText = loginSubmitButton.textContent;
+
+                loginSubmitButton.disabled = true;
+                loginSubmitButton.textContent = 'Signing in...';
+
+                try {
+                    const user = await loginPortalRequest(username, password);
+                    handlePortalLoginSuccess(user);
+                } catch (error) {
+                    if (loginError) {
+                        loginError.textContent = error.message || "Unable to login.";
+                        loginError.style.display = 'block';
+                    }
+                }
+
+                loginSubmitButton.disabled = false;
+                loginSubmitButton.textContent = originalButtonText;
+            });
+        });
+
+
+        // ----------------------------------------------------------
+        // 5. AUTO SESSION RESTORE (When page loads)
+        // ----------------------------------------------------------
+        (function restoreSession() {
+            try {
+                const saved = localStorage.getItem('dyna_portal_user');
+                if (!saved) return;
+
+                const user = JSON.parse(saved);
+
+                // Verify token & restore
+                if (user && user.username) {
+                    window.currentUser = user;
+
+                    // Auto-login silently into correct portal
+                    handlePortalLoginSuccess(user, { silent: true });
+                }
+            } catch (e) {
+                console.warn("⚠️ Failed to restore session:", e);
+            }
+        })();
+
         let clients = [
             {"referenceNumber": "CLT-NGHISHIDIMBWA-NB96061001371-1759828718144", "fullName": "Nghishidimbwa Mathias Nghipangelwa", "nbNumber": "NB96061001371", "email": "", "phone": "0816716038", "membershipStatus": "referred", "referralName": "mogan maria ", "referralNbNumber": "12345678", "memberId": "", "memberSince": "", "gender": "Male", "dob": "1996-06-10", "age": "28", "height": "175", "weight": "70", "occupation": "Teacher", "emergencyContact": "0812345678", "primaryReason": "General Health Check", "medicalHistory": "None", "currentMedications": "None", "supplements": "None", "familyHistory": ["None"], "waterIntake": "1-2 liters", "exerciseFreq": "1-2 times per week", "sleepHours": "6-7 hours", "stressLevel": "Moderate", "symptoms": ["None"], "signature": "Nghishidimbwa Mathias Nghipangelwa", "branch": "townshop", "timestamp": "2025-10-07T09:18:38.144Z", "lastUpdated": "2025-10-07T10:11:14.845Z", "updatedBy": "NAEM HANGULA", "allergies": ""},
             {"referenceNumber": "CLT-MWAREWANGEPO-NBN/A-1759832656098", "fullName": "Mwarewangepo Munyaradzi Gwinyayi", "nbNumber": "N/A", "email": "m.g.mwarewangepo@gmail.com", "phone": "0816432344", "membershipStatus": "referred", "referralName": "Maria Mogen", "referralNbNumber": "Nb008304", "memberId": "", "memberSince": "", "gender": "male", "dob": "1969-09-08", "age": "56", "height": "1", "weight": "101", "occupation": "teacher", "emergencyContact": "0857468102", "primaryReason": "check my well-being", "medicalHistory": ["highBloodPressure", "diabetes"], "currentMedications": "Yes", "supplements": "N/A", "familyHistory": ["hypertension"], "waterIntake": "2to3", "exerciseFreq": "3-4", "sleepHours": "5-6", "stressLevel": "1", "symptoms": ["none"], "signature": "Mwarewangepo Munyaradzi Gwinyayi", "branch": "townshop", "timestamp": "2025-10-07T10:24:16.098Z"},
@@ -3254,74 +3410,21 @@
             modalTitle.textContent = `${portal.charAt(0).toUpperCase() + portal.slice(1)} Portal Login`;
             document.getElementById('loginModal').style.display = 'block';
             // Clear previous values
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
+            const usernameInput = document.getElementById('loginUsername');
+            const passwordInput = document.getElementById('loginPassword');
+            const errorDiv = document.getElementById('loginError');
+            if (usernameInput) usernameInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            if (errorDiv) {
+                errorDiv.textContent = '';
+                errorDiv.style.display = 'none';
+            }
         }
-
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            
-            // Reload users from storage to get latest data
-            loadData();
-            
-            console.log('Login attempt:', username, 'for portal:', currentPortal);
-            console.log('Available users:', users.map(u => ({username: u.username, role: u.role})));
-            
-            const user = users.find(u => u.username === username && u.password === password);
-            
-            if (!user) {
-                alert('Invalid username or password');
-                return;
-            }
-            
-            if (user.role !== currentPortal) {
-                alert(`This user is a ${user.role}, not a ${currentPortal}. Please use the correct portal.`);
-                return;
-            }
-            
-            // Login successful
-            currentUser = user;
-            closeModal('loginModal');
-            
-            document.getElementById(currentPortal + 'Auth').style.display = 'none';
-            document.getElementById(currentPortal + 'Content').style.display = 'block';
-            
-            // Start real-time synchronization
-            startAutoRefresh();
-            showRealtimeStatus();
-            
-            const branchName = branches.find(b => b.id === user.branch)?.name || 'Unknown';
-            const profile = document.getElementById(currentPortal + 'Profile');
-            if(profile) {
-                profile.innerHTML = `
-                    <h4>Welcome, ${user.fullName}</h4>
-                    <p>Role: ${user.role} | Branch: ${branchName}</p>
-                    <button class="btn btn-warning" onclick="showChangePassword()">Change Password</button>
-                    <button class="btn btn-danger" onclick="logout()">Logout</button>
-                `;
-            }
-            
-            if (currentPortal === 'consultant') {
-                displayClients();
-                displayMyReports();
-                displayFollowUps();
-            }
-            if (currentPortal === 'dispenser') {
-                displayPrescriptions();
-                displayPriceList();
-            }
-            if (currentPortal === 'admin') {
-                loadUserList();
-                loadBranchListAdmin();
-            }
-            
-            alert(`Welcome, ${user.fullName}! Real-time sync activated.`);
-        });
 
         function logout() {
             currentUser = null;
+            // Clear session storage
+            localStorage.removeItem('dyna_portal_user');
             stopAutoRefresh();
             hideRealtimeStatus();
             document.getElementById(currentPortal + 'Auth').style.display = 'block';
