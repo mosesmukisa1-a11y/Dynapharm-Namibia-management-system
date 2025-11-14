@@ -404,6 +404,22 @@
         (function(){
             try {
                 const u = new URL(location.href);
+                
+                // SECURITY: Remove any username or password from URL parameters
+                let hasSensitiveParams = false;
+                if (u.searchParams.has('username') || u.searchParams.has('password')) {
+                    hasSensitiveParams = true;
+                    u.searchParams.delete('username');
+                    u.searchParams.delete('password');
+                }
+                
+                // Clean URL if sensitive parameters were found
+                if (hasSensitiveParams) {
+                    const cleanUrl = u.pathname + (u.search ? u.search : '') + (u.hash ? u.hash : '');
+                    window.history.replaceState({}, '', cleanUrl);
+                    console.warn('Removed sensitive login parameters from URL');
+                }
+                
                 if (u.searchParams.get('collect') === '1') {
                     setTimeout(() => { collectAndUploadSnapshot(); }, 500);
                 }
@@ -3446,8 +3462,61 @@
                     
                     // Verify modal is actually visible on screen
                     const rect = loginModal.getBoundingClientRect();
+                    const computed = getComputedStyle(loginModal);
+                    console.log('Modal final state (RAF) - Display:', computed.display, 'Visibility:', computed.visibility, 'Z-index:', computed.zIndex, 'Position:', computed.position);
+                    console.log('Modal dimensions (RAF) - Width:', computed.width, 'Height:', computed.height);
+                    console.log('Modal bounding rect (RAF):', rect);
+                    
                     if (rect.width === 0 || rect.height === 0) {
-                        console.error('Modal has zero dimensions!');
+                        console.error('Modal has zero dimensions! Computed:', computed.width, 'x', computed.height, 'but rect:', rect.width, 'x', rect.height);
+                        
+                        // Check parent containers
+                        let parent = loginModal.parentElement;
+                        let parentLevel = 0;
+                        while (parent && parentLevel < 5) {
+                            const parentComputed = getComputedStyle(parent);
+                            console.log(`Parent ${parentLevel} (${parent.tagName || 'unknown'}):`, {
+                                display: parentComputed.display,
+                                visibility: parentComputed.visibility,
+                                height: parentComputed.height,
+                                width: parentComputed.width,
+                                overflow: parentComputed.overflow,
+                                position: parentComputed.position
+                            });
+                            parent = parent.parentElement;
+                            parentLevel++;
+                        }
+                        
+                        // Try DOM manipulation - remove and re-add
+                        console.warn('Trying DOM manipulation to force rendering...');
+                        const parentElement = loginModal.parentElement;
+                        const nextSibling = loginModal.nextSibling;
+                        
+                        if (parentElement) {
+                            parentElement.removeChild(loginModal);
+                            void loginModal.offsetHeight; // Force reflow
+                            
+                            if (nextSibling) {
+                                parentElement.insertBefore(loginModal, nextSibling);
+                            } else {
+                                parentElement.appendChild(loginModal);
+                            }
+                            
+                            void loginModal.offsetHeight; // Force reflow again
+                            
+                            // Re-check after manipulation
+                            requestAnimationFrame(() => {
+                                const newRect = loginModal.getBoundingClientRect();
+                                const newComputed = getComputedStyle(loginModal);
+                                console.log('After DOM manipulation - rect:', newRect.width, 'x', newRect.height, 'computed:', newComputed.width, 'x', newComputed.height);
+                                
+                                if (newRect.width === 0 || newRect.height === 0) {
+                                    console.error('Still zero dimensions after DOM manipulation. Modal may be in a collapsed container or have conflicting CSS.');
+                                } else {
+                                    console.log('Success! Modal now has dimensions:', newRect.width, 'x', newRect.height);
+                                }
+                            });
+                        }
                     } else {
                         console.log('Modal should be visible! Position:', { top: rect.top, left: rect.left, width: rect.width, height: rect.height });
                     }
@@ -26438,6 +26507,18 @@ if (loginForm) {
             }
             handlePortalLoginSuccess(user);
             closeLoginModal();
+            
+            // SECURITY: Ensure URL is clean after login (no username/password parameters)
+            try {
+                const currentUrl = new URL(window.location.href);
+                if (currentUrl.searchParams.has('username') || currentUrl.searchParams.has('password')) {
+                    currentUrl.searchParams.delete('username');
+                    currentUrl.searchParams.delete('password');
+                    const cleanUrl = currentUrl.pathname + (currentUrl.search ? currentUrl.search : '') + (currentUrl.hash ? currentUrl.hash : '');
+                    window.history.replaceState({}, '', cleanUrl);
+                    console.warn('Cleaned sensitive login parameters from URL after login');
+                }
+            } catch(_) {}
         } catch (error) {
             if (loginError) loginError.textContent = error.message || 'Unable to login. Please try again.';
             if (passwordField) {
