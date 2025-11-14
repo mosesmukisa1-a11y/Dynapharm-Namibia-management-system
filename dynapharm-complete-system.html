@@ -3272,6 +3272,12 @@
                 }
             }
             
+            // Guard: Do not open login modal if user is already authenticated
+            if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
+                console.log('User already authenticated, skipping login modal');
+                return;
+            }
+            
             // Fallback to opening login modal if available
             if (typeof openLoginModal === 'function') {
                 openLoginModal(targetPortal);
@@ -3286,6 +3292,12 @@
         // Define openLoginModal early to ensure it's available when openPortalLogin is called
         // This is a safe version that works even if DOM elements aren't ready yet
         function openLoginModal(portal) {
+            // Guard: Do not open login modal if user is already authenticated
+            if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
+                console.log('User already authenticated, skipping login modal');
+                return;
+            }
+            
             // Wait for DOM to be ready if needed
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', () => openLoginModal(portal));
@@ -25893,6 +25905,12 @@ function handleLoginEscape(event) {
 }
 
 function openLoginModal(portal) {
+    // Guard: Do not open login modal if user is already authenticated
+    if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
+        console.log('User already authenticated, skipping login modal');
+        return;
+    }
+    
     currentPortal = portal;
     window.currentPortal = portal;
     const label = getPortalLabel(portal);
