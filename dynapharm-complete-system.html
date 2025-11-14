@@ -3225,7 +3225,8 @@
     </style>
     <script>
         // Define openPortalLogin early to ensure it's available for onclick handlers
-        window.openPortalLogin = function openPortalLogin(portalKey) {
+        // Define as global function first (for onclick handlers)
+        function openPortalLogin(portalKey) {
             // Map portal keys to internal portal names
             const portalMap = {
                 'client': 'client',
@@ -3265,7 +3266,10 @@
             } else {
                 console.warn('openLoginModal not yet available, portal:', targetPortal);
             }
-        };
+        }
+        
+        // Also attach to window for explicit access
+        window.openPortalLogin = openPortalLogin;
         
         // Debounce utility for search/filter inputs
         function debounce(func, wait) {
