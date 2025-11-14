@@ -3224,6 +3224,49 @@
         }
     </style>
     <script>
+        // Define openPortalLogin early to ensure it's available for onclick handlers
+        window.openPortalLogin = function openPortalLogin(portalKey) {
+            // Map portal keys to internal portal names
+            const portalMap = {
+                'client': 'client',
+                'consultant': 'consultant',
+                'dispenser': 'dispenser',
+                'stock': 'stock',
+                'admin': 'admin',
+                'finance': 'finance',
+                'mis': 'mis',
+                'gm': 'gm',
+                'director': 'director',
+                'hr-portal': 'hr-portal'
+            };
+            
+            // Map legacy portal names
+            if (portalKey === 'frontdesk' || portalKey === 'branch') {
+                portalKey = 'dispenser';
+            }
+            
+            const targetPortal = portalMap[portalKey] || portalKey;
+            
+            // Check if currentUser and isPortalAllowedForRole are available
+            if (typeof currentUser !== 'undefined' && currentUser && typeof isPortalAllowedForRole === 'function' && isPortalAllowedForRole(currentUser.role, targetPortal)) {
+                if (typeof currentPortal !== 'undefined') {
+                    currentPortal = targetPortal;
+                    window.currentPortal = targetPortal;
+                }
+                if (typeof handlePortalLoginSuccess === 'function') {
+                    handlePortalLoginSuccess(currentUser, { silent: true });
+                    return;
+                }
+            }
+            
+            // Fallback to opening login modal if available
+            if (typeof openLoginModal === 'function') {
+                openLoginModal(targetPortal);
+            } else {
+                console.warn('openLoginModal not yet available, portal:', targetPortal);
+            }
+        };
+        
         // Debounce utility for search/filter inputs
         function debounce(func, wait) {
             let timeout;
@@ -25572,36 +25615,9 @@
             }, 100);
         }
 
-        function openPortalLogin(portalKey) {
-    // Map portal keys to internal portal names
-    const portalMap = {
-        'client': 'client',
-        'consultant': 'consultant',
-        'dispenser': 'dispenser',
-        'stock': 'stock',
-        'admin': 'admin',
-        'finance': 'finance',
-        'mis': 'mis',
-        'gm': 'gm',
-        'director': 'director',
-        'hr-portal': 'hr-portal'
-    };
-    
-    // Map legacy portal names
-    if (portalKey === 'frontdesk' || portalKey === 'branch') {
-        portalKey = 'dispenser';
-    }
-    
-    const targetPortal = portalMap[portalKey] || portalKey;
-    
-    if (currentUser && isPortalAllowedForRole(currentUser.role, targetPortal)) {
-        currentPortal = targetPortal;
-        window.currentPortal = targetPortal;
-        handlePortalLoginSuccess(currentUser, { silent: true });
-        return;
-    }
-    openLoginModal(targetPortal);
-}
+        // openPortalLogin is already defined early in the script (line ~3228)
+        // This ensures it's available for onclick handlers that execute before the full script loads
+        // The function is attached to window.openPortalLogin for global access
 
 const PORTAL_LABELS = {
     frontdesk: 'Front Desk',
