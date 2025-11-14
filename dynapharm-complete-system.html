@@ -3300,7 +3300,14 @@
             
             // Wait for DOM to be ready if needed
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => openLoginModal(portal));
+                document.addEventListener('DOMContentLoaded', () => {
+                    // Guard: Check again if user is authenticated before opening modal
+                    if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
+                        console.log('User already authenticated, skipping login modal (DOMContentLoaded)');
+                        return;
+                    }
+                    openLoginModal(portal);
+                });
                 return;
             }
             
@@ -3350,7 +3357,14 @@
                 if (openLoginModal.retryCount < 10) {
                     openLoginModal.retryCount++;
                     console.warn('Login modal not yet available, retrying...', openLoginModal.retryCount);
-                    setTimeout(() => openLoginModal(portal), 100);
+                    setTimeout(() => {
+                        // Guard: Check again if user is authenticated before retrying
+                        if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
+                            console.log('User already authenticated, skipping login modal (retry)');
+                            return;
+                        }
+                        openLoginModal(portal);
+                    }, 100);
                     return;
                 } else {
                     console.error('Login modal not found after 10 retries');
