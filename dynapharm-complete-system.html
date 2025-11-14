@@ -12,7 +12,16 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dynapharm">
-    <link rel="manifest" href="./manifest.json" onerror="console.warn('Manifest.json not accessible (403 error is non-critical - PWA features may be limited)')">
+    <link rel="manifest" href="./manifest.json">
+    <script>
+        // Handle manifest.json 403 errors gracefully (non-critical for PWA)
+        window.addEventListener('error', function(e) {
+            if (e.target && e.target.href && e.target.href.includes('manifest.json')) {
+                console.warn('⚠️ Manifest.json not accessible (403) - PWA features may be limited. This is non-critical.');
+                e.preventDefault();
+            }
+        }, true);
+    </script>
     <!-- Explicit favicon to avoid /favicon.ico 404s -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' ry='12' fill='%23c41e3a'/%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='28' fill='%23ffffff'%3ED%3C/text%3E%3C/svg%3E">
     <script src="./cloud-sync.js"></script>
