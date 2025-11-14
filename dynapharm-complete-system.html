@@ -12,7 +12,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dynapharm">
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="./manifest.json" onerror="console.warn('Manifest.json not accessible (403 error is non-critical - PWA features may be limited)')">
     <!-- Explicit favicon to avoid /favicon.ico 404s -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' ry='12' fill='%23c41e3a'/%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='28' fill='%23ffffff'%3ED%3C/text%3E%3C/svg%3E">
     <script src="./cloud-sync.js"></script>
@@ -4955,20 +4955,42 @@
             }
         }
 
-        registerStaffServicesContext('mis', {
-            leaveStatusId: 'staffLeaveStatus-mis',
-            cashStatusId: 'staffCashStatus-mis'
-        });
+        // Register staff services contexts (function defined later in script)
+        // These will be registered when the function is available
+        if (typeof registerStaffServicesContext === 'function') {
+            registerStaffServicesContext('mis', {
+                leaveStatusId: 'staffLeaveStatus-mis',
+                cashStatusId: 'staffCashStatus-mis'
+            });
 
-        registerStaffServicesContext('admin', {
-            leaveStatusId: 'staffLeaveStatus-admin',
-            cashStatusId: 'staffCashStatus-admin'
-        });
+            registerStaffServicesContext('admin', {
+                leaveStatusId: 'staffLeaveStatus-admin',
+                cashStatusId: 'staffCashStatus-admin'
+            });
 
-        registerStaffServicesContext('stock', {
-            leaveStatusId: 'staffLeaveStatus-stock',
-            cashStatusId: 'staffCashStatus-stock'
-        });
+            registerStaffServicesContext('stock', {
+                leaveStatusId: 'staffLeaveStatus-stock',
+                cashStatusId: 'staffCashStatus-stock'
+            });
+        } else {
+            // Defer registration until function is available
+            document.addEventListener('DOMContentLoaded', function() {
+                if (typeof registerStaffServicesContext === 'function') {
+                    registerStaffServicesContext('mis', {
+                        leaveStatusId: 'staffLeaveStatus-mis',
+                        cashStatusId: 'staffCashStatus-mis'
+                    });
+                    registerStaffServicesContext('admin', {
+                        leaveStatusId: 'staffLeaveStatus-admin',
+                        cashStatusId: 'staffCashStatus-admin'
+                    });
+                    registerStaffServicesContext('stock', {
+                        leaveStatusId: 'staffLeaveStatus-stock',
+                        cashStatusId: 'staffCashStatus-stock'
+                    });
+                }
+            });
+        }
     </script>
     <!-- SheetJS library for Excel parsing -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" crossorigin="anonymous" onerror="console.warn('⚠️ xlsx library failed to load, Excel export may not work')"></script>
@@ -26235,10 +26257,18 @@ async function logout() {
             }
         }
 
-        registerStaffServicesContext('consultant', {
-            leaveStatusId: 'staffLeaveStatus-consultant',
-            cashStatusId: 'staffCashStatus-consultant'
-        });
+        // Register consultant staff services context (function available globally)
+        if (typeof registerStaffServicesContext === 'function') {
+            registerStaffServicesContext('consultant', {
+                leaveStatusId: 'staffLeaveStatus-consultant',
+                cashStatusId: 'staffCashStatus-consultant'
+            });
+        } else if (typeof window.registerStaffServicesContext === 'function') {
+            window.registerStaffServicesContext('consultant', {
+                leaveStatusId: 'staffLeaveStatus-consultant',
+                cashStatusId: 'staffCashStatus-consultant'
+            });
+        }
 
         async function refreshConsultantData(options = {}) {
             const { forceAppointments = false } = options || {};
@@ -35092,6 +35122,9 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 cashStatusId: config.cashStatusId || null
             };
         }
+        
+        // Make function globally available immediately
+        window.registerStaffServicesContext = registerStaffServicesContext;
 
         function getStaffStatusElement(contextKey, type) {
             const context = STAFF_SERVICES_CONTEXTS[contextKey] || {};
