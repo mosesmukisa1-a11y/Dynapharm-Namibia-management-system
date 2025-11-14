@@ -3350,14 +3350,10 @@
         
         // Warehouse Manager Login Functions
         function showWarehouseManagerLogin() {
-            const modal = document.getElementById('warehouseManagerLoginModal');
-            if (modal) {
-                modal.style.display = 'flex';
-                document.getElementById('warehouseSelect').value = '';
-                document.getElementById('warehouseUsername').value = '';
-                document.getElementById('warehousePassword').value = '';
-                document.getElementById('warehouseLoginError').style.display = 'none';
-            }
+            // Set currentPortal before opening login modal
+            currentPortal = 'stock';
+            window.currentPortal = 'stock';
+            showLogin('stock');
         }
         
         function hideWarehouseManagerLogin() {
@@ -4227,15 +4223,10 @@
         }
         
         function showStaffLogin() {
-            const modal = document.getElementById('staffLoginModal');
-            if (modal) {
-                modal.style.display = 'flex';
-            // Focus on username field
-            setTimeout(() => {
-                const usernameField = document.getElementById('unifiedUsername');
-                if (usernameField) usernameField.focus();
-            }, 100);
-            }
+            // Set currentPortal before opening login modal
+            currentPortal = 'frontdesk';
+            window.currentPortal = 'frontdesk';
+            showLogin('frontdesk');
         }
         
         function hideStaffLogin() {
@@ -4305,7 +4296,7 @@
                 
                 setTimeout(() => {
                     hideForgotPasswordModal();
-                    showStaffLogin();
+                    showLogin('frontdesk');
                 }, 3000);
             } catch (error) {
                 errorDiv.textContent = error.message || 'Failed to send reset instructions. Please contact your administrator.';
@@ -4878,7 +4869,7 @@
                 <a href="#about" onclick="showAboutUs()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">About Us</a>
                 <a href="#media" onclick="showMedia()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Media</a>
                 <span id="navLoginSection">
-                    <button onclick="showStaffLogin()" class="btn" style="background: #c41e3a; color: white; padding: 10px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer;">Login / Register</button>
+                    <button onclick="showLogin('frontdesk')" class="btn" style="background: #c41e3a; color: white; padding: 10px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer;">Login / Register</button>
                 </span>
                 <span id="navUserSection" style="display: none; display: flex; align-items: center; gap: 10px;">
                     <span id="navUserDisplay" style="color: #666; font-size: 0.9rem;"></span>
@@ -4894,7 +4885,7 @@
             <a href="#about" onclick="showAboutUs(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">About Us</a>
             <a href="#media" onclick="showMedia(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Media</a>
             <div id="mobileLoginSection">
-                <button onclick="showStaffLogin(); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
+                <button onclick="showLogin('frontdesk'); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
                 <a href="distributor-portal.html" target="_blank" class="btn" style="width: 100%; background: #f0f0f0; color: #333; padding: 12px 20px; font-weight: 600; text-decoration: none; border-radius: 8px; display: block; text-align: center; margin-top: 10px; min-height: 44px; line-height: 20px;">📊 Distributor Portal</a>
                 <button onclick="continueAsGuest(); toggleMobileMenu();" class="btn" style="width: 100%; background: #f8f9fa; color: #333; padding: 12px 20px; font-weight: 600; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; margin-top: 10px; min-height: 44px;">🛒 Guest Access</button>
             </div>
@@ -5112,7 +5103,7 @@
                 
                 <!-- Quick Access Buttons -->
                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 30px;">
-                    <button onclick="showStaffLogin()" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
+                    <button onclick="showLogin('frontdesk')" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
                             onmouseover="this.style.transform='translateY(-2px)'" 
                             onmouseout="this.style.transform='translateY(0)'">
                         👔 Staff Login
@@ -8948,7 +8939,7 @@
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access stock management portal</p>
                     <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                         <button class="btn" onclick="showLogin('stock')">🔐 Staff Login</button>
-                        <button class="btn" onclick="showWarehouseManagerLogin()" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
+                        <button class="btn" onclick="showLogin('stock')" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
                     </div>
                 </div>
             </div>
