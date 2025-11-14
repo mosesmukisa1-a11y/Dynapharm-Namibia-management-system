@@ -25861,14 +25861,33 @@ function openLoginModal(portal) {
     if (loginForm) loginForm.reset();
     loginModalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (loginModal) {
-        loginModal.style.display = 'block';
+        // Use flexbox for proper centering of modal-content
+        loginModal.style.display = 'flex';
+        loginModal.style.alignItems = 'center';
+        loginModal.style.justifyContent = 'center';
+        loginModal.style.position = 'fixed';
+        loginModal.style.top = '0';
+        loginModal.style.left = '0';
+        loginModal.style.width = '100%';
+        loginModal.style.height = '100%';
+        loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        loginModal.style.zIndex = '10000';
+        loginModal.style.visibility = 'visible';
+        loginModal.style.opacity = '1';
         loginModal.setAttribute('aria-hidden', 'false');
+        
+        // Prevent body scroll when modal is open
+        document.body.style.overflow = 'hidden';
+        
+        // Focus trap handler
         loginTrapHandler = (event) => trapFocus(event, loginModal);
         loginModal.addEventListener('keydown', loginTrapHandler);
     }
     document.addEventListener('keydown', handleLoginEscape);
     const usernameField = document.getElementById('username');
-    if (usernameField) usernameField.focus();
+    if (usernameField) {
+        setTimeout(() => usernameField.focus(), 100);
+    }
 }
 
 function closeLoginModal() {
@@ -25880,6 +25899,8 @@ function closeLoginModal() {
             loginTrapHandler = null;
         }
     }
+    // Restore body scroll
+    document.body.style.overflow = '';
     document.removeEventListener('keydown', handleLoginEscape);
     if (loginError) loginError.textContent = '';
     if (loginForm) loginForm.reset();
