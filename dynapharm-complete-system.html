@@ -25878,23 +25878,32 @@ function openLoginModal(portal) {
     if (loginForm) loginForm.reset();
     loginModalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (loginModal) {
+        // Ensure modal is in body (not hidden in a collapsed container)
+        if (loginModal.parentElement !== document.body) {
+            // Modal might be inside a container that's collapsed - move to body
+            document.body.appendChild(loginModal);
+            console.log('Moved modal to body');
+        }
+        
         // Use flexbox for proper centering of modal-content
-        loginModal.style.display = 'flex';
-        loginModal.style.alignItems = 'center';
-        loginModal.style.justifyContent = 'center';
-        loginModal.style.position = 'fixed';
-        loginModal.style.top = '0';
-        loginModal.style.left = '0';
-        loginModal.style.width = '100vw';
-        loginModal.style.height = '100vh';
-        loginModal.style.minWidth = '100%';
-        loginModal.style.minHeight = '100%';
-        loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-        loginModal.style.zIndex = '10000';
-        loginModal.style.visibility = 'visible';
-        loginModal.style.opacity = '1';
-        loginModal.style.margin = '0';
-        loginModal.style.padding = '0';
+        loginModal.style.cssText = `
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            min-width: 100vw !important;
+            min-height: 100vh !important;
+            background-color: rgba(0, 0, 0, 0.5) !important;
+            z-index: 10000 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        `;
         loginModal.setAttribute('aria-hidden', 'false');
         
         // Ensure modal-content has proper dimensions
@@ -25922,22 +25931,63 @@ function openLoginModal(portal) {
         loginTrapHandler = (event) => trapFocus(event, loginModal);
         loginModal.addEventListener('keydown', loginTrapHandler);
         
+        // Force a reflow to ensure styles are applied
+        void loginModal.offsetHeight; // Force reflow
+        
         // Debug: Check dimensions after setting styles
         setTimeout(() => {
+            // Force another reflow
+            void loginModal.offsetHeight;
+            
             const rect = loginModal.getBoundingClientRect();
+            const computed = getComputedStyle(loginModal);
             console.log('Modal dimensions after setup:', {
                 width: rect.width,
                 height: rect.height,
-                display: getComputedStyle(loginModal).display
+                display: computed.display,
+                computedWidth: computed.width,
+                computedHeight: computed.height,
+                position: computed.position
             });
+            
+            // Check parent containers
+            let parent = loginModal.parentElement;
+            let parentLevel = 0;
+            while (parent && parentLevel < 5) {
+                const parentComputed = getComputedStyle(parent);
+                console.log(`Parent ${parentLevel} (${parent.tagName}):`, {
+                    display: parentComputed.display,
+                    visibility: parentComputed.visibility,
+                    height: parentComputed.height,
+                    overflow: parentComputed.overflow
+                });
+                parent = parent.parentElement;
+                parentLevel++;
+            }
+            
             if (modalContent) {
+                void modalContent.offsetHeight; // Force reflow
                 const contentRect = modalContent.getBoundingClientRect();
+                const contentComputed = getComputedStyle(modalContent);
                 console.log('Modal content dimensions:', {
-                    width: contentRect.width,
-                    height: contentRect.height
+                    rectWidth: contentRect.width,
+                    rectHeight: contentRect.height,
+                    computedWidth: contentComputed.width,
+                    computedHeight: contentComputed.height
                 });
             }
-        }, 50);
+            
+            // If still zero, try to force render with !important
+            if (rect.width === 0 || rect.height === 0) {
+                console.warn('Modal still has zero dimensions, forcing with !important...');
+                loginModal.style.setProperty('display', 'flex', 'important');
+                loginModal.style.setProperty('width', '100vw', 'important');
+                loginModal.style.setProperty('height', '100vh', 'important');
+                loginModal.style.setProperty('min-width', '100vw', 'important');
+                loginModal.style.setProperty('min-height', '100vh', 'important');
+                void loginModal.offsetHeight; // Force reflow again
+            }
+        }, 100);
     }
     document.addEventListener('keydown', handleLoginEscape);
     const usernameField = document.getElementById('username');
