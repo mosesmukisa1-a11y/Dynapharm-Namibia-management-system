@@ -3329,6 +3329,26 @@
         // Current warehouse filter (for warehouse managers)
         let currentWarehouseFilter = null;
         
+        // Define loginPortalRequest early for staff login
+        if (typeof window.loginPortalRequest === 'undefined') {
+            window.loginPortalRequest = async function loginPortalRequest(username, password) {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include'
+                });
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (_) {}
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Invalid username or password');
+                }
+                return data;
+            };
+        }
+        
         // Warehouse Manager Login Functions
         function showWarehouseManagerLogin() {
             const modal = document.getElementById('warehouseManagerLoginModal');
