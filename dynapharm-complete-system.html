@@ -25915,12 +25915,45 @@ function openLoginModal(portal) {
         // Force immediate reflow
         void loginModal.offsetHeight;
         
-        console.log('Modal styles set, checking...', {
-            display: getComputedStyle(loginModal).display,
-            width: getComputedStyle(loginModal).width,
-            height: getComputedStyle(loginModal).height,
-            position: getComputedStyle(loginModal).position,
-            visibility: getComputedStyle(loginModal).visibility
+        // Use requestAnimationFrame to ensure styles are applied before checking
+        requestAnimationFrame(() => {
+            const computed = getComputedStyle(loginModal);
+            const rect = loginModal.getBoundingClientRect();
+            
+            console.log('Modal styles set (after RAF), checking...', {
+                display: computed.display,
+                width: computed.width,
+                height: computed.height,
+                position: computed.position,
+                visibility: computed.visibility,
+                rectWidth: rect.width,
+                rectHeight: rect.height,
+                rectTop: rect.top,
+                rectLeft: rect.left
+            });
+            
+            // If bounding rect is still zero, the element might be in a weird state
+            // Try removing and re-adding it
+            if (rect.width === 0 || rect.height === 0) {
+                console.warn('Modal has zero bounding rect, trying DOM manipulation...');
+                const parent = loginModal.parentElement;
+                const nextSibling = loginModal.nextSibling;
+                parent.removeChild(loginModal);
+                void loginModal.offsetHeight; // Force reflow
+                if (nextSibling) {
+                    parent.insertBefore(loginModal, nextSibling);
+                } else {
+                    parent.appendChild(loginModal);
+                }
+                void loginModal.offsetHeight; // Force reflow again
+                
+                // Re-check after DOM manipulation
+                const newRect = loginModal.getBoundingClientRect();
+                console.log('After DOM manipulation:', {
+                    rectWidth: newRect.width,
+                    rectHeight: newRect.height
+                });
+            }
         });
         
         // Ensure modal-content has proper dimensions
