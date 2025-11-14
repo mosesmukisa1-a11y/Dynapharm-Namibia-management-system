@@ -3297,7 +3297,6 @@
         }
         document.addEventListener('DOMContentLoaded', function() {
             applyRoleGuards();
-            checkExistingSession(); // Check if user is already logged in
         });
         
         // Role to Portal Access Mapping
@@ -3631,62 +3630,6 @@
             if (data && Array.isArray(data.items)) return data.items;
             if (data && Array.isArray(data.results)) return data.results;
             return Array.isArray(fallback) ? fallback : [];
-        }
-        
-        async function checkExistingSession() {
-            try {
-                const response = await fetch('/api/auth/me', { credentials: 'include' });
-                if (response.ok) {
-                    const data = await response.json();
-                    const user = data?.user;
-                    const role = (user?.role || '').toLowerCase();
-                    if (user && role && role !== 'guest') {
-                        setAuthenticatedUser(user);
-                        hideLandingPage();
-                        showAuthorizedPortals(role);
-                        updateNavigationForUser(user, role);
-                        setTimeout(() => {
-                            if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
-                                loadShopProducts();
-                            }
-                        }, 500);
-                        return;
-                    }
-                }
-            } catch (error) {
-                console.warn('Session lookup error:', error);
-            }
-
-            const savedUser = localStorage.getItem('currentUser');
-            const savedRole = localStorage.getItem('currentUserRole');
-            if (savedUser && savedRole) {
-                try {
-                    const user = JSON.parse(savedUser);
-                    const role = savedRole.toLowerCase();
-                    if (role !== 'guest') {
-                        setAuthenticatedUser(user);
-                        hideLandingPage();
-                        showAuthorizedPortals(role);
-                        updateNavigationForUser(user, role);
-                        setTimeout(() => {
-                            if (typeof loadShopProducts === 'function' && ROLE_PORTAL_ACCESS[role]?.includes('client')) {
-                                loadShopProducts();
-                            }
-                        }, 500);
-                        return;
-                    }
-                } catch (e) {
-                    console.error('Error parsing saved session:', e);
-                }
-            }
-
-            showLandingPage();
-            showLandingTab('shop');
-            setTimeout(() => {
-                if (typeof loadShopProducts === 'function') {
-                    loadShopProducts();
-                }
-            }, 500);
         }
         
         function updateNavigationForUser(user, role) {
@@ -4309,18 +4252,6 @@
             if (passwordField) passwordField.value = '';
         }
         
-        // Allow Enter key to submit login
-        document.addEventListener('DOMContentLoaded', function() {
-            const passwordField = document.getElementById('unifiedPassword');
-            if (passwordField) {
-                passwordField.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        unifiedStaffLogin();
-                    }
-                });
-            }
-        });
-        
         // Password Visibility Toggle
         function togglePasswordVisibility(inputId, button) {
             const input = document.getElementById(inputId);
@@ -4437,128 +4368,6 @@
             
             // Scroll to error
             errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        
-        async function unifiedStaffLogin() {
-            // Initialize currentPortal from window.currentPortal or set to null
-            let currentPortal = window.currentPortal || null;
-            
-            const username = document.getElementById('unifiedUsername').value.trim();
-            const password = document.getElementById('unifiedPassword').value;
-            const rememberMe = document.getElementById('rememberMe')?.checked || false;
-            const loginBtn = document.getElementById('staffLoginBtn');
-            const errorDiv = document.getElementById('staffLoginError');
-            
-            // Clear previous errors
-            if (errorDiv) errorDiv.style.display = 'none';
-            
-            // Validation
-            if (!username || !password) {
-                showLoginError('Please enter both username and password');
-                return;
-            }
-            
-            // Check for lockout
-            try {
-                checkLoginLockout(username);
-            } catch (error) {
-                showLoginError(error.message);
-                return;
-            }
-            
-            // Show loading state
-            if (loginBtn) {
-                const btnText = loginBtn.querySelector('.btn-text');
-                const btnLoading = loginBtn.querySelector('.btn-loading');
-                if (btnText) btnText.style.display = 'none';
-                if (btnLoading) btnLoading.style.display = 'inline';
-                loginBtn.disabled = true;
-            }
-            
-            try {
-                // Use window.loginPortalRequest if available, otherwise try local function
-                const loginFn = window.loginPortalRequest || loginPortalRequest;
-                if (!loginFn) {
-                    throw new Error('Login service unavailable. Please refresh the page.');
-                }
-                const data = await loginFn(username, password);
-                const user = data?.user;
-                
-                if (!user) {
-                    recordLoginAttempt(username, false);
-                    throw new Error('Invalid username or password. Please check your credentials.');
-                }
-                
-                // Success - reset attempts
-                recordLoginAttempt(username, true);
-                
-                if (user.role === 'distributor') {
-                    showLoginError('Distributors should use the Distributor Portal link');
-                    window.open('distributor-portal.html', '_blank');
-                    return;
-                }
-                
-                // Handle remember me
-                if (rememberMe) {
-                    const sessionData = {
-                        username: username,
-                        rememberUntil: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 days
-                    };
-                    localStorage.setItem('rememberedSession', JSON.stringify(sessionData));
-                } else {
-                    localStorage.removeItem('rememberedSession');
-                }
-                
-                const role = (user.role || '').toLowerCase();
-                const allowedPortals = ROLE_PORTAL_ACCESS[role] || [];
-                if (!currentPortal || !allowedPortals.includes(currentPortal)) {
-                    const fallbackPortal = allowedPortals[0] || 'client';
-                    currentPortal = fallbackPortal;
-                    window.currentPortal = fallbackPortal;
-                }
-                
-                // Use window.handlePortalLoginSuccess if available, otherwise fallback to local function
-                const loginSuccessHandler = window.handlePortalLoginSuccess || handlePortalLoginSuccess;
-                if (typeof loginSuccessHandler === 'function') {
-                    loginSuccessHandler(user, { silent: true });
-                } else {
-                    throw new Error('Login success handler not available. Please refresh the page.');
-                }
-                hideStaffLoginModal();
-                
-                // Show welcome message with portal access
-                const portalCount = allowedPortals.length;
-                const portalList = portalCount ? allowedPortals.join(', ') : 'none';
-                const welcomeMsg = role === 'admin'
-                    ? `Welcome, ${user.fullName || user.username}!\n\n🔑 Master Admin Access\nYou have full access to all ${portalCount} portals:\n${portalList}`
-                    : `Welcome, ${user.fullName || user.username}!\n\nYou have access to ${portalCount} portal(s):\n${portalList}`;
-                alert(welcomeMsg);
-            } catch (error) {
-                console.error('Staff login error:', error);
-                const errorMessage = error.message || 'Unable to login. Please try again.';
-                
-                // Determine specific error type
-                let specificError = errorMessage;
-                if (errorMessage.includes('401') || errorMessage.includes('Invalid') || errorMessage.includes('password')) {
-                    specificError = 'Invalid username or password. Please check your credentials.';
-                    recordLoginAttempt(username, false);
-                    showLoginError(specificError, true);
-                } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-                    specificError = 'Network error. Please check your connection and try again.';
-                    showLoginError(specificError);
-                } else {
-                    showLoginError(specificError);
-                }
-            } finally {
-                // Restore button state
-                if (loginBtn) {
-                    const btnText = loginBtn.querySelector('.btn-text');
-                    const btnLoading = loginBtn.querySelector('.btn-loading');
-                    if (btnText) btnText.style.display = 'inline';
-                    if (btnLoading) btnLoading.style.display = 'none';
-                    loginBtn.disabled = false;
-                }
-            }
         }
 
         // Action-level guards
@@ -5213,7 +5022,7 @@
     <div id="staffLoginModal" class="modal-overlay" style="display: none; z-index: 10001;">
         <div class="modal-card" style="max-width: 450px;">
             <h2 style="margin-bottom: 20px; color: #c41e3a;">👔 Staff Login</h2>
-            <form id="staffLoginForm" onsubmit="event.preventDefault(); unifiedStaffLogin();">
+            <form id="staffLoginForm" onsubmit="event.preventDefault();">
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                 <input type="text" id="unifiedUsername" name="username" placeholder="Username" autocomplete="username" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;">
                 <div style="position: relative;">
