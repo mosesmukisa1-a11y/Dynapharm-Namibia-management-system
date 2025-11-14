@@ -4088,7 +4088,7 @@
         
         // Navigation functions
         function showGuestPortal() {
-            showLandingPage();
+//             showLandingPage();
             // Show shop tab by default
             showLandingTab('shop');
             // Scroll to shop section
@@ -4104,7 +4104,7 @@
         }
         
         function showMedia() {
-            showLandingPage();
+//             showLandingPage();
             showLandingTab('shop');
             setTimeout(() => {
                 if (typeof loadMediaPreviewWidget === 'function') {
@@ -4154,7 +4154,7 @@
         
         // Legacy function names for compatibility
         function showWelcomeOverlay() {
-            showLandingPage();
+//             showLandingPage();
         }
         
         function hideWelcomeOverlay() {
@@ -4285,15 +4285,15 @@
             clearTimeout(sessionTimeoutTimer);
             
             // Clear user data
-                currentUser = null;
-                window.currentUser = null;
-                localStorage.removeItem('currentUser');
-                localStorage.removeItem('currentUserRole');
-            localStorage.removeItem('rememberedSession');
-            
-            // Call logout API if available
-            if (typeof logoutRequest === 'function') {
-                logoutRequest().catch(err => console.error('Logout API error:', err));
+//                 currentUser = null;
+//                 window.currentUser = null;
+//                 localStorage.removeItem('currentUser');
+//                 localStorage.removeItem('currentUserRole');
+//             localStorage.removeItem('rememberedSession');
+//             
+//             // Call logout API if available
+//             if (typeof logoutRequest === 'function') {
+//                 logoutRequest().catch(err => console.error('Logout API error:', err));
             }
             
             // Hide portal tabs
@@ -4567,7 +4567,7 @@
         
         function continueAsGuest() {
             // Guest access - show landing page with shop (already visible)
-            setCurrentUserRole('guest');
+//             setCurrentUserRole('guest');
             currentUser = { role: 'guest', username: 'guest', fullName: 'Guest User' };
             window.currentUser = currentUser;
             // Database API only - no localStorage for user data
@@ -14669,7 +14669,7 @@
         }
         
         function openMediaTab(mediaId) {
-            showLandingPage();
+//             showLandingPage();
             showLandingTab('shop');
             loadMediaPreviewWidget().catch(() => {});
             openMediaOverlay(mediaId);
@@ -15651,9 +15651,9 @@
         let bankBonuses = [];
         let cashShifts = [];
         let currentShift = null;
-        let currentUser = null;
-        // Initialize window.currentUser for global access
-        window.currentUser = null;
+//         let currentUser = null;
+//         // Initialize window.currentUser for global access
+//         window.currentUser = null;
         let currentPortal = null;
         let currentClientId = null;
         let currentBranch = '';
@@ -25919,7 +25919,7 @@
 
         function printClientForm() {
             // Ensure we're on the client tab
-            openTab('client');
+//             openTab('client');
             
             // Add a small delay to ensure the tab is active
             setTimeout(() => {
@@ -26531,24 +26531,24 @@ if (loginForm) {
 
 async function logout() {
     const portal = currentPortal;
-    await logoutRequest();
-            currentUser = null;
-    window.currentUser = null;
-    currentPortal = null;
-    window.currentPortal = null;
-    try { localStorage.removeItem('currentUser'); } catch (_) {}
-    setCurrentUserRole('guest');
-            stopAutoRefresh();
-            hideRealtimeStatus();
-    closeLoginModal();
-    if (portal) {
-        const authElement = document.getElementById(portal + 'Auth');
-        const contentElement = document.getElementById(portal + 'Content');
-        if (authElement) authElement.style.display = 'block';
-        if (contentElement) contentElement.style.display = 'none';
-    }
-            openTab('client');
-    showLandingPage();
+//     await logoutRequest();
+//             currentUser = null;
+//     window.currentUser = null;
+//     currentPortal = null;
+//     window.currentPortal = null;
+//     try { localStorage.removeItem('currentUser'); } catch (_) {}
+//     setCurrentUserRole('guest');
+//             stopAutoRefresh();
+//             hideRealtimeStatus();
+//     closeLoginModal();
+//     if (portal) {
+//         const authElement = document.getElementById(portal + 'Auth');
+//         const contentElement = document.getElementById(portal + 'Content');
+//         if (authElement) authElement.style.display = 'block';
+//         if (contentElement) contentElement.style.display = 'none';
+//     }
+//             openTab('client');
+//     showLandingPage();
     showLandingTab('shop');
     setTimeout(() => {
         if (typeof loadShopProducts === 'function') {
