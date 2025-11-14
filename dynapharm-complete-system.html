@@ -3352,15 +3352,32 @@
             loginModal.style.position = 'fixed';
             loginModal.style.top = '0';
             loginModal.style.left = '0';
-            loginModal.style.width = '100%';
-            loginModal.style.height = '100%';
+            loginModal.style.width = '100vw';
+            loginModal.style.height = '100vh';
+            loginModal.style.minWidth = '100%';
+            loginModal.style.minHeight = '100%';
             loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            loginModal.style.margin = '0';
+            loginModal.style.padding = '0';
             
             // Ensure high z-index and visibility
             loginModal.style.zIndex = '10000';
             loginModal.style.visibility = 'visible';
             loginModal.style.opacity = '1';
             loginModal.setAttribute('aria-hidden', 'false');
+            
+            // Ensure modal-content has proper dimensions
+            const modalContent = loginModal.querySelector('.modal-content');
+            if (modalContent) {
+                modalContent.style.display = 'block';
+                modalContent.style.position = 'relative';
+                modalContent.style.margin = 'auto';
+                modalContent.style.minWidth = '300px';
+                modalContent.style.maxWidth = '500px';
+                modalContent.style.width = '90%';
+                modalContent.style.maxHeight = '80vh';
+                modalContent.style.overflowY = 'auto';
+            }
             
             // Double-check computed style
             const computedDisplay = getComputedStyle(loginModal).display;
@@ -25868,13 +25885,35 @@ function openLoginModal(portal) {
         loginModal.style.position = 'fixed';
         loginModal.style.top = '0';
         loginModal.style.left = '0';
-        loginModal.style.width = '100%';
-        loginModal.style.height = '100%';
+        loginModal.style.width = '100vw';
+        loginModal.style.height = '100vh';
+        loginModal.style.minWidth = '100%';
+        loginModal.style.minHeight = '100%';
         loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
         loginModal.style.zIndex = '10000';
         loginModal.style.visibility = 'visible';
         loginModal.style.opacity = '1';
+        loginModal.style.margin = '0';
+        loginModal.style.padding = '0';
         loginModal.setAttribute('aria-hidden', 'false');
+        
+        // Ensure modal-content has proper dimensions
+        const modalContent = loginModal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.style.display = 'block';
+            modalContent.style.position = 'relative';
+            modalContent.style.margin = 'auto';
+            modalContent.style.minWidth = '300px';
+            modalContent.style.maxWidth = '500px';
+            modalContent.style.width = '90%';
+            modalContent.style.maxHeight = '80vh';
+            modalContent.style.overflowY = 'auto';
+            console.log('Modal content dimensions set:', {
+                width: modalContent.style.width,
+                minWidth: modalContent.style.minWidth,
+                maxWidth: modalContent.style.maxWidth
+            });
+        }
         
         // Prevent body scroll when modal is open
         document.body.style.overflow = 'hidden';
@@ -25882,6 +25921,23 @@ function openLoginModal(portal) {
         // Focus trap handler
         loginTrapHandler = (event) => trapFocus(event, loginModal);
         loginModal.addEventListener('keydown', loginTrapHandler);
+        
+        // Debug: Check dimensions after setting styles
+        setTimeout(() => {
+            const rect = loginModal.getBoundingClientRect();
+            console.log('Modal dimensions after setup:', {
+                width: rect.width,
+                height: rect.height,
+                display: getComputedStyle(loginModal).display
+            });
+            if (modalContent) {
+                const contentRect = modalContent.getBoundingClientRect();
+                console.log('Modal content dimensions:', {
+                    width: contentRect.width,
+                    height: contentRect.height
+                });
+            }
+        }, 50);
     }
     document.addEventListener('keydown', handleLoginEscape);
     const usernameField = document.getElementById('username');
