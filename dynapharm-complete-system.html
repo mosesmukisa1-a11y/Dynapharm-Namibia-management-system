@@ -4025,7 +4025,9 @@
         // Track user activity to reset session timer
         ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
             document.addEventListener(event, () => {
-                if (currentUser) {
+                // Check if currentUser exists (may be window.currentUser or local variable)
+                const user = window.currentUser || currentUser || null;
+                if (user) {
                     resetSessionTimer();
                 }
             }, { passive: true });
@@ -8357,13 +8359,13 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Quantity *</label>
-                                    <input type="number" id="transferQuantity" min="1" required>
+                                    <input type="number" id="transferQuantity-countryImport" min="1" required>
                                 </div>
                             </div>
                             
                             <div class="form-group">
                                 <label>Notes</label>
-                                <textarea id="transferNotes" rows="3" placeholder="Transfer reason or notes"></textarea>
+                                <textarea id="transferNotes-countryImport" rows="3" placeholder="Transfer reason or notes"></textarea>
                             </div>
                             
                             <div style="display: flex; gap: 10px; margin-top: 20px;">
@@ -9581,7 +9583,7 @@
                         <div class="hub-section__header">
                             <h3 class="hub-section__title">Country Stock Inventory</h3>
                             <div class="hub-section__actions">
-                                <input type="text" id="countryStockSearch" placeholder="Search products..." onkeyup="searchCountryStock()">
+                                    <input type="text" id="countryStockSearch-countryImport" placeholder="Search products..." onkeyup="searchCountryStock()">
                                 <button class="hub-btn hub-btn--ghost" type="button" onclick="displayCountryStock()">🔄 Refresh</button>
                                 <button class="hub-btn hub-btn--ghost" type="button" onclick="exportCountryStock()">📥 Export CSV</button>
                             </div>
@@ -9741,7 +9743,7 @@
                     <div class="form-section">
                         <h3>📊 Country Stock Inventory</h3>
                         <div class="search-box">
-                            <input type="text" id="countryStockSearch" placeholder="Search products..." onkeyup="searchCountryStock()">
+                                    <input type="text" id="countryStockSearch-countryImport" placeholder="Search products..." onkeyup="searchCountryStock()">
                             <button class="btn btn-success" onclick="displayCountryStock()">Refresh</button>
                         </div>
                         <div id="countryStockList" style="max-height: 500px; overflow-y: auto; margin-top: 15px;"></div>
@@ -10254,11 +10256,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label class="required">Quantity</label>
-                                    <input type="number" id="transferQuantity" min="1" required>
+                                    <input type="number" id="transferQuantity-ondangwa" min="1" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Reason</label>
-                                    <select id="transferReason">
+                                    <select id="transferReason-ondangwa">
                                         <option value="replenishment">Replenishment</option>
                                         <option value="adjustment">Stock Adjustment</option>
                                         <option value="emergency">Emergency</option>
@@ -10267,7 +10269,7 @@
                                 </div>
                                 <div class="form-group" style="grid-column: 1 / -1;">
                                     <label>Notes</label>
-                                    <textarea id="transferNotes" rows="2" placeholder="Transfer notes..."></textarea>
+                                    <textarea id="transferNotes-ondangwa" rows="2" placeholder="Transfer notes..."></textarea>
                                 </div>
                             </div>
                             <button type="submit" class="btn btn-success" style="width: 100%;">🔄 Create Transfer</button>
@@ -25824,7 +25826,8 @@ function closeLoginModal() {
     loginModalPreviousFocus = null;
 }
 
-async function loginPortalRequest(username, password) {
+// Make loginPortalRequest globally available
+window.loginPortalRequest = async function loginPortalRequest(username, password) {
     const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
