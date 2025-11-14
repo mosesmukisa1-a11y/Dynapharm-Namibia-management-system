@@ -4440,6 +4440,9 @@
         }
         
         async function unifiedStaffLogin() {
+            // Initialize currentPortal from window.currentPortal or set to null
+            let currentPortal = window.currentPortal || null;
+            
             const username = document.getElementById('unifiedUsername').value.trim();
             const password = document.getElementById('unifiedPassword').value;
             const rememberMe = document.getElementById('rememberMe')?.checked || false;
