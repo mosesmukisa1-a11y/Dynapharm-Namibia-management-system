@@ -4305,39 +4305,39 @@
             clearTimeout(sessionTimeoutWarning);
             clearTimeout(sessionTimeoutTimer);
             
-            // Clear user data
-//                 currentUser = null;
-//                 window.currentUser = null;
-//                 localStorage.removeItem('currentUser');
-//                 localStorage.removeItem('currentUserRole');
-//             localStorage.removeItem('rememberedSession');
-//             
-//             // Call logout API if available
-//             if (typeof logoutRequest === 'function') {
-//                 logoutRequest().catch(err => console.error('Logout API error:', err));
+            // Clear user data (handled by centralized auth system)
+            // currentUser = null;
+            // window.currentUser = null;
+            // localStorage.removeItem('currentUser');
+            // localStorage.removeItem('currentUserRole');
+            // localStorage.removeItem('rememberedSession');
+            
+            // Call logout API if available
+            if (typeof logoutRequest === 'function') {
+                logoutRequest().catch(err => console.error('Logout API error:', err));
             }
             
             // Hide portal tabs
-                hideAllPortalTabs();
-                const portalTabs = document.getElementById('portalTabs');
-                if (portalTabs) portalTabs.style.display = 'none';
-                
-                // Reset navigation
-                const navLoginSection = document.getElementById('navLoginSection');
-                const navUserSection = document.getElementById('navUserSection');
-                if (navLoginSection) navLoginSection.style.display = 'block';
-                if (navUserSection) navUserSection.style.display = 'none';
-                
-                // Show landing page
-                showLandingPage();
-                
-                // Clear any portal-specific auth states
-                document.querySelectorAll('[id$="Auth"]').forEach(el => {
-                    el.style.display = 'block';
-                });
-                document.querySelectorAll('[id$="Content"]').forEach(el => {
-                    el.style.display = 'none';
-                });
+            hideAllPortalTabs();
+            const portalTabs = document.getElementById('portalTabs');
+            if (portalTabs) portalTabs.style.display = 'none';
+            
+            // Reset navigation
+            const navLoginSection = document.getElementById('navLoginSection');
+            const navUserSection = document.getElementById('navUserSection');
+            if (navLoginSection) navLoginSection.style.display = 'block';
+            if (navUserSection) navUserSection.style.display = 'none';
+            
+            // Show landing page
+            showLandingPage();
+            
+            // Clear any portal-specific auth states
+            document.querySelectorAll('[id$="Auth"]').forEach(el => {
+                el.style.display = 'block';
+            });
+            document.querySelectorAll('[id$="Content"]').forEach(el => {
+                el.style.display = 'none';
+            });
             
             if (!isAutoLogout) {
                 showToast('Logged out successfully', 'success');
