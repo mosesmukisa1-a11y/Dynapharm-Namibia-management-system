@@ -4098,12 +4098,13 @@
                 userDisplay.textContent = `${currentUser.fullName || currentUser.username} (${role})`;
             }
             
-            // Show first authorized portal by default, preferring role-specific portals over client
-            const defaultPortal =
-                authorizedPortals.find(portal => portal !== 'client') ||
-                authorizedPortals[0] ||
-                'client';
-            openTab(defaultPortal, null);
+            // DO NOT automatically open a portal - let handlePortalLoginSuccess open the selected portal
+            // The following code was causing currentPortal to be reset after login
+            // const defaultPortal =
+            //     authorizedPortals.find(portal => portal !== 'client') ||
+            //     authorizedPortals[0] ||
+            //     'client';
+            // openTab(defaultPortal, null);
         }
         
         // Session Management
@@ -26170,7 +26171,17 @@ function handlePortalLoginSuccess(user, options = {}) {
     showAuthorizedPortals(role);
     updateNavigationForUser(user, role);
 
-    // Get the portal that was requested for login
+    // Protect currentPortal after login - restore if it was reset
+    if (window.currentPortal == null && currentPortal) {
+        console.warn("Portal reset detected — restoring portal:", currentPortal);
+        window.currentPortal = currentPortal;
+    }
+    if (currentPortal == null && window.currentPortal) {
+        console.warn("Portal reset detected — restoring portal:", window.currentPortal);
+        currentPortal = window.currentPortal;
+    }
+    
+    // Get the portal that was requested for login (after restoration)
     const portal = currentPortal || window.currentPortal;
     
     // Hide ALL portal-content divs first
