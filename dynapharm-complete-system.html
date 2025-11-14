@@ -4517,7 +4517,13 @@
                     window.currentPortal = fallbackPortal;
                 }
                 
-                handlePortalLoginSuccess(user, { silent: true });
+                // Use window.handlePortalLoginSuccess if available, otherwise fallback to local function
+                const loginSuccessHandler = window.handlePortalLoginSuccess || handlePortalLoginSuccess;
+                if (typeof loginSuccessHandler === 'function') {
+                    loginSuccessHandler(user, { silent: true });
+                } else {
+                    throw new Error('Login success handler not available. Please refresh the page.');
+                }
                 hideStaffLoginModal();
                 
                 // Show welcome message with portal access
@@ -26018,6 +26024,11 @@ function handlePortalLoginSuccess(user, options = {}) {
             alert(`Welcome, ${user.fullName || user.username}! Real-time sync activated.`);
         } catch (_) {}
     }
+}
+
+// Ensure handlePortalLoginSuccess is globally accessible
+if (typeof window !== 'undefined') {
+    window.handlePortalLoginSuccess = handlePortalLoginSuccess;
 }
 
 if (loginCancelButton) {
