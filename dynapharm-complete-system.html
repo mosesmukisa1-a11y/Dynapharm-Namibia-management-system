@@ -24,7 +24,8 @@
     </script>
     <!-- Explicit favicon to avoid /favicon.ico 404s -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' ry='12' fill='%23c41e3a'/%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='28' fill='%23ffffff'%3ED%3C/text%3E%3C/svg%3E">
-    <script src="./cloud-sync.js"></script>
+    <!-- Cloud sync disabled — using API/database only -->
+    <!-- <script src="./cloud-sync.js"></script> -->
     <script src="./inventory-reporting.js"></script>
     <script>
         // Suppress console noise from expected image 404 errors
@@ -3701,7 +3702,9 @@
                     applyWarehouseFilter();
                 } else {
                     // Try local fallback
-                    const localUsers = JSON.parse(localStorage.getItem('users') || '[]');
+                    // Database API only - no localStorage fallback
+                    // const localUsers = JSON.parse(localStorage.getItem('users') || '[]');
+                    const localUsers = []; // Load from API only
                     const localUser = localUsers.find(u => 
                         u.username === username && 
                         u.password === password &&
@@ -4472,8 +4475,9 @@
             setCurrentUserRole('guest');
             currentUser = { role: 'guest', username: 'guest', fullName: 'Guest User' };
             window.currentUser = currentUser;
-            localStorage.setItem('currentUser', JSON.stringify(currentUser));
-            localStorage.setItem('currentUserRole', 'guest');
+            // Database API only - no localStorage for user data
+            // localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            // localStorage.setItem('currentUserRole', 'guest');
             // Landing page is already visible, show shop tab and ensure products are loaded
             showLandingPage();
             showLandingTab('shop');
@@ -18936,7 +18940,8 @@
                         phone: item.phone || item.telephone || item.mobile || item.contact_number || ''
                     };
                 });
-                try { localStorage.setItem('dyna_branches', JSON.stringify(branches)); } catch (_) {}
+                // Database API only - no localStorage for branch data
+                // try { localStorage.setItem('dyna_branches', JSON.stringify(branches)); } catch (_) {}
                 if (typeof loadBranches === 'function') loadBranches();
                 if (typeof loadBranchesForDistribution === 'function') loadBranchesForDistribution();
                 if (typeof populateSharingLocations === 'function') populateSharingLocations();
@@ -20066,7 +20071,8 @@
                     // Update local cache
                     try {
                         await dbBulkPut(DYN_CLIENTS_STORE, clients);
-                        localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                        // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     } catch(_) {}
                     
                     console.log(`✅ Loaded ${clients.length} clients from backend database`);
@@ -20119,7 +20125,8 @@
                     await dbBulkPut(DYN_CLIENTS_STORE, list);
                 }
             } catch(_) {}
-            try { localStorage.setItem('dyna_clients', JSON.stringify(list || [])); } catch(_) {}
+            // Database API only - no localStorage for client data
+            // try { localStorage.setItem('dyna_clients', JSON.stringify(list || [])); } catch(_) {}
         }
 
         async function addClientAdapter(client) {
@@ -20161,7 +20168,8 @@
             try {
                 const ls = safeParseFromStorage('dyna_clients', '[]');
                 ls.push(record);
-                localStorage.setItem('dyna_clients', JSON.stringify(ls));
+                // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(ls));
             } catch(_) {}
             return { success: true };
         }
@@ -21108,7 +21116,8 @@
                 } else if (method === 'POST') {
                     const clients = JSON.parse(localStorage.getItem('dyna_clients') || '[]');
                     clients.push(data);
-            localStorage.setItem('dyna_clients', JSON.stringify(clients));
+            // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     return { success: true, message: 'Client saved (offline)' };
                 }
             }
@@ -21187,7 +21196,8 @@
                     delete clone.password;
                     delete clone.password_hash;
                     usersLocal.push(clone);
-                    localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
+                    // Database API only - no localStorage for user data
+// localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
                     return { success: true, message: 'User saved (offline)' };
                 } else if (method === 'PUT') {
                     const usersLocal = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
@@ -21198,7 +21208,8 @@
                         delete clone.password;
                         delete clone.password_hash;
                         usersLocal[idx] = clone;
-                        localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
+                        // Database API only - no localStorage for user data
+// localStorage.setItem('dyna_users', JSON.stringify(usersLocal));
                         return { success: true, message: 'User updated (offline)' };
                     }
                     return { success: false, message: 'User not found (offline)' };
@@ -21209,7 +21220,8 @@
                     const id = (data && data.id) || (typeof endpoint === 'string' && endpoint.includes('?') ? new URLSearchParams(endpoint.split('?')[1]).get('id') : null);
                     if (!id) return { success: false, message: 'No user id provided (offline)' };
                     const next = usersLocal.filter(u => u.id !== id);
-                    localStorage.setItem('dyna_users', JSON.stringify(next));
+                    // Database API only - no localStorage for user data
+// localStorage.setItem('dyna_users', JSON.stringify(next));
                     return { success: true, message: 'User deleted (offline)' };
                 }
             }
@@ -21224,7 +21236,8 @@
                 } else if (method === 'POST') {
                     const branchesLocal = safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON);
                     branchesLocal.push(data);
-                    localStorage.setItem('dyna_branches', JSON.stringify(branchesLocal));
+                    // Database API only - no localStorage for branch data
+// localStorage.setItem('dyna_branches', JSON.stringify(branchesLocal));
                     return { success: true, message: 'Branch saved (offline)' };
                 }
             }
@@ -21307,30 +21320,17 @@
                     branches = JSON.parse(DEFAULT_BRANCHES_JSON);
                 }
                 
-                // Load reports from localStorage or keep the existing ones
-                if (reports.length === 0) {
-                    const storedReports = localStorage.getItem('dyna_reports');
-                    if (storedReports && storedReports !== '[]' && storedReports !== 'null') {
-                        reports = JSON.parse(storedReports);
-                    }
-                }
+                // Database API only - no localStorage fallback
+                // Reports loaded from API only
             } catch (error) {
-                console.error('Error loading data:', error);
-                // Fallback to localStorage using safe parsing
-                clients = safeParseFromStorage('dyna_clients', '[]');
-                users = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
-                branches = safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON);
-                reports = safeParseFromStorage('dyna_reports', '[]');
-                
-                // Ensure users and branches are not empty
-                if (users.length === 0) {
-                    users = JSON.parse(DEFAULT_USERS_JSON);
-                    localStorage.setItem('dyna_users', DEFAULT_USERS_JSON);
-                }
-                if (branches.length === 0) {
-                    branches = JSON.parse(DEFAULT_BRANCHES_JSON);
-                    localStorage.setItem('dyna_branches', DEFAULT_BRANCHES_JSON);
-                }
+                console.error('Error loading data from API:', error);
+                // Database API only - no localStorage fallback
+                // Data must come from database API
+                // Initialize empty arrays if API fails
+                if (!clients) clients = [];
+                if (!users) users = [];
+                if (!branches) branches = [];
+                if (!reports) reports = [];
                 
                 // Auto-extract clients from reports if clients array is empty
                 if (clients.length === 0 && reports.length > 0) {
@@ -21353,7 +21353,8 @@
                     });
                     
                     clients = extractedClients;
-                    localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                    // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     console.log(`✅ Extracted ${clients.length} clients from reports`);
                 }
             }
@@ -25611,7 +25612,8 @@
                     
                 // Save to localStorage as cache/backup (backend is source of truth)
                     try {
-                        localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                        // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     console.log(`✅ Client cached to localStorage: ${referenceNumber}`);
                     } catch (storageError) {
                     console.error('❌ Error caching client to localStorage:', storageError);
@@ -25767,7 +25769,8 @@
                 // Fallback: Save directly to localStorage if API fails
                 try {
                     clients.push(client);
-                    localStorage.setItem('dyna_clients', JSON.stringify(clients));
+                    // Database API only - no localStorage for client data
+// localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     
                     const refEl = document.getElementById('clientRefNumber');
                     if (refEl) {
@@ -26149,7 +26152,8 @@ function setAuthenticatedUser(user) {
             users.push({ ...currentUser });
         }
     }
-    try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
+    // Database API only - currentUser stored in memory only, not localStorage
+    // try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
     const normalizedRole = (user.role || 'guest').toLowerCase();
     setCurrentUserRole(normalizedRole);
 }
@@ -39018,9 +39022,10 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 delete createdUser.password_hash;
 
                 users = users.filter(u => u.id !== createdUser.id).concat([createdUser]);
-                try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {
-                    console.warn('Unable to persist users locally:', e);
-                }
+                // Database API only - no localStorage for user data
+                // try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {
+                //     console.warn('Unable to persist users locally:', e);
+                // }
 
                 try {
                     window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: createdUser, action: 'created' } }));
@@ -39157,7 +39162,8 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                     }
 
                 users = users.filter(u => u.id !== userId);
-                try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
+                // Database API only - no localStorage for user data
+                // try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
 
                         // Broadcast user update event for real-time sync
                         try {
@@ -39281,7 +39287,8 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                     if (userIndex !== -1) {
                         users[userIndex] = updatedUser;
                     }
-                    try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
+                    // Database API only - no localStorage for user data
+                // try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
                     // Broadcast user update event for real-time sync
                     try {
                         window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: updatedUser, action: 'updated' } }));
@@ -39371,8 +39378,11 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 delete users[index].password;
                 delete users[index].password_hash;
             }
-            try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
-            try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (_) {}
+            // Database API only - currentUser stored in memory only, not localStorage
+    //             // Database API only - no localStorage for user data
+            // try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch (_) {}
+            // try { // Database API only - no localStorage for user data
+// localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (_) {}
         }
         alert('✅ Password changed successfully');
         closeModal('changePasswordModal');
@@ -39439,7 +39449,8 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                     delete users[userIndex].password;
                     delete users[userIndex].password_hash;
                 }
-                try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
+                // Database API only - no localStorage for user data
+                // try { localStorage.setItem('dyna_users', JSON.stringify(users)); } catch (e) {}
                 
                 try {
                     window.dispatchEvent(new CustomEvent('users:updated', { detail: { user: updatedUser, action: 'password_reset' } }));

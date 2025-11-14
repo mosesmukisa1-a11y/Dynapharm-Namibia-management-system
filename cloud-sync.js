@@ -1,6 +1,10 @@
 // Cloud Sync for Dynapharm - GitHub-based storage
 // This will sync data to a GitHub repository for permanent storage
 
+// CLOUD SYNC DISABLED — using API/database only
+console.warn("CLOUD SYNC DISABLED — using API/database only");
+return;
+
 class CloudStorage {
     constructor() {
         this.repo = 'mosesmukisa1-a11y/dynapharm-namibia-health';

@@ -1,4 +1,8 @@
 (function(){
+    // CLOUD SYNC DISABLED — using API/database only
+    console.warn("CLOUD SYNC DISABLED — using API/database only");
+    return;
+    
     // Debounced auto-save to cloud when localStorage keys with prefix 'dyna_' change
     if (typeof window === 'undefined') return;
 
