@@ -3344,17 +3344,35 @@
             if (loginError) loginError.textContent = '';
             if (loginForm) loginForm.reset();
             
-            // Show modal - use block or flex depending on CSS
-            // Try both to ensure compatibility
-            loginModal.style.display = 'block';
-            // Also try flex as fallback if block doesn't work
-            if (getComputedStyle(loginModal).display === 'none') {
-                loginModal.style.display = 'flex';
-            }
+            // Show modal - use flex for proper centering of modal-content
+            // Set multiple display properties to ensure it shows
+            loginModal.style.display = 'flex';
+            loginModal.style.alignItems = 'center';
+            loginModal.style.justifyContent = 'center';
+            loginModal.style.position = 'fixed';
+            loginModal.style.top = '0';
+            loginModal.style.left = '0';
+            loginModal.style.width = '100%';
+            loginModal.style.height = '100%';
+            loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
             
-            // Ensure high z-index
+            // Ensure high z-index and visibility
             loginModal.style.zIndex = '10000';
+            loginModal.style.visibility = 'visible';
+            loginModal.style.opacity = '1';
             loginModal.setAttribute('aria-hidden', 'false');
+            
+            // Double-check computed style
+            const computedDisplay = getComputedStyle(loginModal).display;
+            const computedVisibility = getComputedStyle(loginModal).visibility;
+            console.log('Modal computed styles - Display:', computedDisplay, 'Visibility:', computedVisibility, 'Opacity:', getComputedStyle(loginModal).opacity);
+            
+            // If still not showing, force it more aggressively
+            if (computedDisplay === 'none' || computedVisibility === 'hidden') {
+                console.warn('Modal still hidden, forcing display...');
+                loginModal.style.setProperty('display', 'flex', 'important');
+                loginModal.style.setProperty('visibility', 'visible', 'important');
+            }
             
             // Prevent body scroll when modal is open
             document.body.style.overflow = 'hidden';
@@ -3410,7 +3428,19 @@
                 });
             }
             
-            console.log('Modal should be visible now. Display:', getComputedStyle(loginModal).display);
+            // Final check - log all relevant styles
+            const finalComputed = getComputedStyle(loginModal);
+            console.log('Modal final state - Display:', finalComputed.display, 'Visibility:', finalComputed.visibility, 'Z-index:', finalComputed.zIndex, 'Position:', finalComputed.position);
+            console.log('Modal dimensions - Width:', finalComputed.width, 'Height:', finalComputed.height);
+            console.log('Modal bounding rect:', loginModal.getBoundingClientRect());
+            
+            // Verify modal is actually visible on screen
+            const rect = loginModal.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {
+                console.error('Modal has zero dimensions!');
+            } else {
+                console.log('Modal should be visible! Position:', { top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+            }
         }
         
         // Also attach to window for explicit access
