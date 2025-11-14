@@ -23701,13 +23701,8 @@
                 if (btn) btn.classList.add('active');
             }
             
-            // Auto-login for stock portal if not already logged in
-            if (tabName === 'stock' && !currentUser) {
-                // Give a small delay to let the tab load
-                setTimeout(() => {
-                    autoLoginStock();
-                }, 100);
-            }
+            // Stock portal - user must login through the login modal
+            // Removed autoLoginStock() - login must go through loginModal form submission
             
             // MIS Portal initialization
             if (tabName === 'mis' && currentUser) {
