@@ -3316,26 +3316,101 @@
             const loginForm = document.getElementById('loginForm');
             const usernameField = document.getElementById('username');
             
+            // Debug: Log what we found
+            console.log('openLoginModal called for portal:', portal);
+            console.log('loginModal element found:', !!loginModal);
+            
+            if (!loginModal) {
+                // If modal not available yet, retry after a short delay (max 10 retries)
+                if (!openLoginModal.retryCount) openLoginModal.retryCount = 0;
+                if (openLoginModal.retryCount < 10) {
+                    openLoginModal.retryCount++;
+                    console.warn('Login modal not yet available, retrying...', openLoginModal.retryCount);
+                    setTimeout(() => openLoginModal(portal), 100);
+                    return;
+                } else {
+                    console.error('Login modal not found after 10 retries');
+                    alert('Login modal not found. Please refresh the page.');
+                    return;
+                }
+            }
+            
+            // Reset retry count on success
+            openLoginModal.retryCount = 0;
+            
             // Update modal title and description if available
             if (modalTitle) modalTitle.textContent = `${label} Portal Login`;
             if (modalDescription) modalDescription.textContent = `Sign in to access the ${label.toLowerCase()} portal.`;
             if (loginError) loginError.textContent = '';
             if (loginForm) loginForm.reset();
             
-            // Show modal if available
-            if (loginModal) {
-                loginModal.style.display = 'block';
-                loginModal.setAttribute('aria-hidden', 'false');
-                
-                // Focus management
-                if (usernameField) {
-                    setTimeout(() => usernameField.focus(), 100);
-                }
-            } else {
-                // If modal not available yet, retry after a short delay
-                console.warn('Login modal not yet available, retrying...');
-                setTimeout(() => openLoginModal(portal), 100);
+            // Show modal - use block or flex depending on CSS
+            // Try both to ensure compatibility
+            loginModal.style.display = 'block';
+            // Also try flex as fallback if block doesn't work
+            if (getComputedStyle(loginModal).display === 'none') {
+                loginModal.style.display = 'flex';
             }
+            
+            // Ensure high z-index
+            loginModal.style.zIndex = '10000';
+            loginModal.setAttribute('aria-hidden', 'false');
+            
+            // Prevent body scroll when modal is open
+            document.body.style.overflow = 'hidden';
+            
+            // Focus management
+            if (usernameField) {
+                setTimeout(() => {
+                    usernameField.focus();
+                    console.log('Focused username field');
+                }, 100);
+            }
+            
+            // Add click handler to close button if available
+            const closeButton = document.getElementById('loginCloseButton');
+            if (closeButton && !closeButton.dataset.handlerAttached) {
+                closeButton.dataset.handlerAttached = 'true';
+                closeButton.addEventListener('click', function() {
+                    if (typeof closeLoginModal === 'function') {
+                        closeLoginModal();
+                    } else {
+                        loginModal.style.display = 'none';
+                        document.body.style.overflow = '';
+                    }
+                });
+            }
+            
+            // Add click handler to cancel button if available
+            const cancelButton = document.getElementById('loginCancelButton');
+            if (cancelButton && !cancelButton.dataset.handlerAttached) {
+                cancelButton.dataset.handlerAttached = 'true';
+                cancelButton.addEventListener('click', function() {
+                    if (typeof closeLoginModal === 'function') {
+                        closeLoginModal();
+                    } else {
+                        loginModal.style.display = 'none';
+                        document.body.style.overflow = '';
+                    }
+                });
+            }
+            
+            // Click outside to close
+            if (!loginModal.dataset.outsideHandlerAttached) {
+                loginModal.dataset.outsideHandlerAttached = 'true';
+                loginModal.addEventListener('click', function(e) {
+                    if (e.target === loginModal) {
+                        if (typeof closeLoginModal === 'function') {
+                            closeLoginModal();
+                        } else {
+                            loginModal.style.display = 'none';
+                            document.body.style.overflow = '';
+                        }
+                    }
+                });
+            }
+            
+            console.log('Modal should be visible now. Display:', getComputedStyle(loginModal).display);
         }
         
         // Also attach to window for explicit access
