@@ -4025,10 +4025,14 @@
         // Track user activity to reset session timer
         ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
             document.addEventListener(event, () => {
-                // Check if currentUser exists (may be window.currentUser or local variable)
-                const user = window.currentUser || currentUser || null;
-                if (user) {
-                    resetSessionTimer();
+                // Check if currentUser exists (safely check window.currentUser first)
+                try {
+                    const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+                    if (user) {
+                        resetSessionTimer();
+                    }
+                } catch (e) {
+                    // Silently ignore if currentUser is not defined yet
                 }
             }, { passive: true });
         });
@@ -4449,7 +4453,12 @@
             }
             
             try {
-                const data = await loginPortalRequest(username, password);
+                // Use window.loginPortalRequest if available, otherwise try local function
+                const loginFn = window.loginPortalRequest || loginPortalRequest;
+                if (!loginFn) {
+                    throw new Error('Login service unavailable. Please refresh the page.');
+                }
+                const data = await loginFn(username, password);
                 const user = data?.user;
                 
                 if (!user) {
@@ -15445,6 +15454,8 @@
         let cashShifts = [];
         let currentShift = null;
         let currentUser = null;
+        // Initialize window.currentUser for global access
+        window.currentUser = null;
         let currentPortal = null;
         let currentClientId = null;
         let currentBranch = '';
@@ -25869,7 +25880,12 @@ function setAuthenticatedUser(user) {
             delete currentUser.password_hash;
         } catch (_) {}
     }
+    // Always sync to window.currentUser for global access
     window.currentUser = currentUser;
+    // Also ensure local variable is set
+    if (typeof currentUser !== 'undefined') {
+        currentUser = window.currentUser;
+    }
     if (Array.isArray(users)) {
         const existingIndex = users.findIndex(u => u.id === currentUser.id);
         if (existingIndex >= 0) {
