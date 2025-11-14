@@ -3252,57 +3252,26 @@
         }
     </style>
     <script>
-        // Define openPortalLogin early to ensure it's available for onclick handlers
-        // Define as global function first (for onclick handlers)
+        // Legacy openPortalLogin function - now redirects to showLogin for backward compatibility
+        // This function is deprecated but kept for any legacy code that might still reference it
         function openPortalLogin(portalKey) {
-            // Map portal keys to internal portal names
-            const portalMap = {
-                'client': 'client',
-                'consultant': 'consultant',
-                'dispenser': 'dispenser',
-                'stock': 'stock',
-                'admin': 'admin',
-                'finance': 'finance',
-                'mis': 'mis',
-                'gm': 'gm',
-                'director': 'director',
-                'hr-portal': 'hr-portal'
-            };
-            
             // Map legacy portal names
             if (portalKey === 'frontdesk' || portalKey === 'branch') {
                 portalKey = 'dispenser';
             }
             
-            const targetPortal = portalMap[portalKey] || portalKey;
-            
-            // Check if currentUser and isPortalAllowedForRole are available
-            if (typeof currentUser !== 'undefined' && currentUser && typeof isPortalAllowedForRole === 'function' && isPortalAllowedForRole(currentUser.role, targetPortal)) {
-                if (typeof currentPortal !== 'undefined') {
-                    currentPortal = targetPortal;
-                    window.currentPortal = targetPortal;
-                }
-                if (typeof handlePortalLoginSuccess === 'function') {
-                    handlePortalLoginSuccess(currentUser, { silent: true });
-                    return;
-                }
-            }
-            
-            // Guard: Do not open login modal if user is already authenticated
-            if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
-                console.log('User already authenticated, skipping login modal');
-                return;
-            }
-            
-            // Fallback to opening login modal if available
-            if (typeof openLoginModal === 'function') {
-                openLoginModal(targetPortal);
+            // Use the modern showLogin function
+            if (typeof showLogin === 'function') {
+                showLogin(portalKey);
+            } else if (typeof openLoginModal === 'function') {
+                // Fallback to openLoginModal if showLogin not yet available
+                openLoginModal(portalKey);
             } else {
-                console.warn('openLoginModal not yet available, portal:', targetPortal);
+                console.warn('showLogin and openLoginModal not yet available, portal:', portalKey);
             }
         }
         
-        // Also attach to window for explicit access
+        // Also attach to window for explicit access (for backward compatibility)
         window.openPortalLogin = openPortalLogin;
         
         // Define openLoginModal early to ensure it's available when openPortalLogin is called
@@ -3581,6 +3550,58 @@
         // Also attach to window for explicit access
         window.openLoginModal = openLoginModal;
         
+        // Modern showLogin function - replaces openPortalLogin
+        function showLogin(portal) {
+            if (typeof currentPortal !== 'undefined') {
+                currentPortal = portal;
+            }
+            window.currentPortal = portal;
+            
+            // Update modal title to show which portal
+            const modalTitle = document.getElementById('loginModalTitle');
+            if (modalTitle) {
+                const PORTAL_LABELS = {
+                    frontdesk: 'Front Desk',
+                    consultant: 'Consultant',
+                    dispenser: 'Branch',
+                    admin: 'Admin',
+                    finance: 'Finance',
+                    stock: 'Stock',
+                    mis: 'MIS',
+                    gm: 'General Manager',
+                    director: 'Director',
+                    'hr-portal': 'HR',
+                    client: 'Client'
+                };
+                const label = PORTAL_LABELS[portal] || portal.charAt(0).toUpperCase() + portal.slice(1);
+                modalTitle.textContent = `${label} Portal Login`;
+            }
+            
+            // Use openLoginModal to handle the actual modal display
+            if (typeof openLoginModal === 'function') {
+                openLoginModal(portal);
+            } else {
+                // Fallback: directly show the modal
+                const loginModal = document.getElementById('loginModal');
+                if (loginModal) {
+                    loginModal.style.display = 'block';
+                    // Clear previous values
+                    const usernameInput = document.getElementById('username') || document.getElementById('loginUsername');
+                    const passwordInput = document.getElementById('password') || document.getElementById('loginPassword');
+                    const errorDiv = document.getElementById('loginError');
+                    if (usernameInput) usernameInput.value = '';
+                    if (passwordInput) passwordInput.value = '';
+                    if (errorDiv) {
+                        errorDiv.textContent = '';
+                        errorDiv.style.display = 'none';
+                    }
+                }
+            }
+        }
+        
+        // Attach to window for global access
+        window.showLogin = showLogin;
+        
         // Debounce utility for search/filter inputs
         function debounce(func, wait) {
             let timeout;
@@ -3710,7 +3731,7 @@
             // Set currentPortal before opening login modal
             currentPortal = 'stock';
             window.currentPortal = 'stock';
-            openPortalLogin('stock');
+            showLogin('stock');
         }
         
         function hideWarehouseManagerLogin() {
@@ -4587,7 +4608,7 @@
             // Set currentPortal before opening login modal
             currentPortal = 'dispenser';
             window.currentPortal = 'dispenser';
-            openPortalLogin('dispenser');
+            showLogin('dispenser');
         }
         
         function hideStaffLogin() {
@@ -4657,7 +4678,7 @@
                 
                 setTimeout(() => {
                     hideForgotPasswordModal();
-                    openPortalLogin('dispenser');
+                    showLogin('dispenser');
                 }, 3000);
             } catch (error) {
                 errorDiv.textContent = error.message || 'Failed to send reset instructions. Please contact your administrator.';
@@ -5230,7 +5251,7 @@
                 <a href="#about" onclick="showAboutUs()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">About Us</a>
                 <a href="#media" onclick="showMedia()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Media</a>
                 <span id="navLoginSection">
-                    <button onclick="openPortalLogin('dispenser')" class="btn" style="background: #c41e3a; color: white; padding: 10px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer;">Login / Register</button>
+                    <button onclick="showLogin('dispenser')" class="btn" style="background: #c41e3a; color: white; padding: 10px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer;">Login / Register</button>
                 </span>
                 <span id="navUserSection" style="display: none; display: flex; align-items: center; gap: 10px;">
                     <span id="navUserDisplay" style="color: #666; font-size: 0.9rem;"></span>
@@ -5246,7 +5267,7 @@
             <a href="#about" onclick="showAboutUs(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">About Us</a>
             <a href="#media" onclick="showMedia(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Media</a>
             <div id="mobileLoginSection">
-                <button onclick="openPortalLogin('dispenser'); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
+                <button onclick="showLogin('dispenser'); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
                 <a href="distributor-portal.html" target="_blank" class="btn" style="width: 100%; background: #f0f0f0; color: #333; padding: 12px 20px; font-weight: 600; text-decoration: none; border-radius: 8px; display: block; text-align: center; margin-top: 10px; min-height: 44px; line-height: 20px;">📊 Distributor Portal</a>
                 <button onclick="continueAsGuest(); toggleMobileMenu();" class="btn" style="width: 100%; background: #f8f9fa; color: #333; padding: 12px 20px; font-weight: 600; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; margin-top: 10px; min-height: 44px;">🛒 Guest Access</button>
             </div>
@@ -5464,7 +5485,7 @@
                 
                 <!-- Quick Access Buttons -->
                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 30px;">
-                    <button onclick="openPortalLogin('dispenser')" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
+                    <button onclick="showLogin('dispenser')" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
                             onmouseover="this.style.transform='translateY(-2px)'" 
                             onmouseout="this.style.transform='translateY(0)'">
                         👔 Staff Login
@@ -7718,7 +7739,7 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access consultant portal</p>
-                    <button class="btn" onclick="openPortalLogin('consultant')">🔐 Login</button>
+                    <button class="btn" onclick="showLogin('consultant')">🔐 Login</button>
                 </div>
             </div>
             <div id="consultantContent" style="display: none;">
@@ -7848,7 +7869,7 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access branch portal</p>
-                    <button class="btn" onclick="openPortalLogin('dispenser')">🔐 Login</button>
+                    <button class="btn" onclick="showLogin('dispenser')">🔐 Login</button>
                 </div>
             </div>
             <div id="dispenserContent" style="display: none;">
@@ -9299,8 +9320,8 @@
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access stock management portal</p>
                     <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-                        <button class="btn" onclick="openPortalLogin('stock')">🔐 Staff Login</button>
-                        <button class="btn" onclick="openPortalLogin('stock')" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
+                        <button class="btn" onclick="showLogin('stock')">🔐 Staff Login</button>
+                        <button class="btn" onclick="showLogin('stock')" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
                     </div>
                 </div>
             </div>
@@ -11523,7 +11544,7 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access GM portal</p>
-                    <button class="btn" onclick="openPortalLogin('gm')">🔐 Login</button>
+                    <button class="btn" onclick="showLogin('gm')">🔐 Login</button>
                 </div>
             </div>
             <div id="gmContent" style="display: none;">
@@ -11853,7 +11874,7 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access Director portal</p>
-                    <button class="btn" onclick="openPortalLogin('director')">🔐 Login</button>
+                    <button class="btn" onclick="showLogin('director')">🔐 Login</button>
                 </div>
             </div>
             <div id="directorContent" style="display: none;">
@@ -11964,7 +11985,7 @@
             <h2>Admin Portal</h2>
             <div id="adminAuth">
                 <p>Please login to access admin portal</p>
-                <button class="btn" onclick="openPortalLogin('admin')">Login</button>
+                <button class="btn" onclick="showLogin('admin')">Login</button>
             </div>
             <div id="adminContent" style="display: none;">
                 <div class="form-section">
@@ -12923,7 +12944,7 @@
                 </div>
                 <div style="text-align: center; padding: 40px;">
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access MIS portal</p>
-                    <button class="btn" onclick="openPortalLogin('mis')">🔐 Login</button>
+                    <button class="btn" onclick="showLogin('mis')">🔐 Login</button>
                 </div>
             </div>
             <div id="misContent" style="display: none;">
