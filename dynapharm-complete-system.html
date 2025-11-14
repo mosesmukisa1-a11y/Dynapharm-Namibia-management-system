@@ -3564,7 +3564,7 @@
         const ROLE_PORTAL_ACCESS = {
             'admin': ['admin', 'client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock'],
             'consultant': ['consultant', 'frontdesk', 'client'],
-            'sales_staff': ['consultant', 'frontdesk', 'client'],
+            'sales_staff': ['dispenser', 'frontdesk', 'client'],
             'dispenser': ['dispenser', 'frontdesk', 'client'],
             'branch_manager': ['dispenser', 'mis', 'frontdesk', 'client'],
             'finance': ['finance', 'client'],
@@ -23586,7 +23586,7 @@
 
         function openTab(tabName, event) {
             // Set currentPortal for portal tabs
-            const portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal'];
+            const portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal', 'client', 'frontdesk'];
             if (portalTabs.includes(tabName)) {
                 currentPortal = tabName;
                 window.currentPortal = tabName; // Set global for permission checks
@@ -26170,8 +26170,55 @@ function handlePortalLoginSuccess(user, options = {}) {
     showAuthorizedPortals(role);
     updateNavigationForUser(user, role);
 
-    const portal = currentPortal;
+    // Get the portal that was requested for login
+    const portal = currentPortal || window.currentPortal;
+    
+    // Hide ALL portal-content divs first
+    const allPortalContents = document.querySelectorAll('[id$="Content"]');
+    allPortalContents.forEach(el => {
+        if (el.id.endsWith('Content')) {
+            el.style.display = 'none';
+        }
+    });
+    
+    // Hide ALL portal-auth divs first
+    const allPortalAuths = document.querySelectorAll('[id$="Auth"]');
+    allPortalAuths.forEach(el => {
+        if (el.id.endsWith('Auth')) {
+            el.style.display = 'none';
+        }
+    });
+    
+    // Show ONLY the portal that matches currentPortal
     if (portal) {
+        // Use openTab to properly open the portal tab
+        if (typeof openTab === 'function') {
+            openTab(portal, null);
+        } else {
+            // Fallback: manually open the tab
+            const portalTab = document.getElementById(portal);
+            if (portalTab) {
+                // Hide all tab-content divs
+                document.querySelectorAll('.tab-content').forEach(t => {
+                    t.classList.remove('active');
+                    t.style.display = 'none';
+                });
+                // Show the selected portal tab
+                portalTab.classList.add('active');
+                portalTab.style.display = 'block';
+                
+                // Update tab buttons
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                    const portalId = btn.getAttribute('onclick');
+                    if (portalId && portalId.includes(`'${portal}'`)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+        }
+        
+        // Then show/hide Auth and Content containers (if they exist)
         const authElement = document.getElementById(portal + 'Auth');
         const contentElement = document.getElementById(portal + 'Content');
         if (authElement) authElement.style.display = 'none';
@@ -26214,24 +26261,65 @@ function handlePortalLoginSuccess(user, options = {}) {
         }
             }
             
+    // Load portal-specific dashboard data
     if (portal === 'consultant') {
-                refreshConsultantData({ forceAppointments: true }).catch(err => {
-                    console.debug('refreshConsultantData error', err);
-                });
+        refreshConsultantData({ forceAppointments: true }).catch(err => {
+            console.debug('refreshConsultantData error', err);
+        });
     } else if (portal === 'dispenser') {
-                displayPrescriptions();
-                displayPriceList();
-                showDispenserTab('stock');
+        displayPrescriptions();
+        displayPriceList();
+        showDispenserTab('stock');
     } else if (portal === 'mis') {
-                loadMISBranches();
-                displayMISReports();
+        loadMISBranches();
+        displayMISReports();
     } else if (portal === 'admin') {
-                loadUserList();
-                loadBranchListAdmin();
-                populatePhotoProductSelect();
-                loadProductPhotos().then(() => renderProductPhotos());
-                loadAdminDistributorDirectory();
-            }
+        loadUserList();
+        loadBranchListAdmin();
+        populatePhotoProductSelect();
+        loadProductPhotos().then(() => renderProductPhotos());
+        loadAdminDistributorDirectory();
+    } else if (portal === 'stock') {
+        // Stock portal initialization
+        if (typeof loadStockData === 'function') {
+            loadStockData();
+        }
+    } else if (portal === 'finance') {
+        // Finance portal initialization
+        if (typeof ensureFinancePortalInitialized === 'function') {
+            ensureFinancePortalInitialized();
+        }
+        if (typeof refreshFinancialDashboard === 'function') {
+            refreshFinancialDashboard(true).catch(err => {
+                console.debug('refreshFinancialDashboard error', err);
+            });
+        }
+    } else if (portal === 'hr-portal') {
+        // HR portal initialization
+        if (typeof loadHRData === 'function') {
+            loadHRData();
+        }
+    } else if (portal === 'gm') {
+        // GM portal initialization
+        if (typeof loadGMData === 'function') {
+            loadGMData();
+        }
+    } else if (portal === 'director') {
+        // Director portal initialization
+        if (typeof loadDirectorData === 'function') {
+            loadDirectorData();
+        }
+    } else if (portal === 'frontdesk') {
+        // Front desk portal initialization
+        if (typeof loadFrontDeskData === 'function') {
+            loadFrontDeskData();
+        }
+    } else if (portal === 'client') {
+        // Client portal initialization
+        if (typeof loadClientData === 'function') {
+            loadClientData();
+        }
+    }
             
     if (!options.silent) {
         try {
