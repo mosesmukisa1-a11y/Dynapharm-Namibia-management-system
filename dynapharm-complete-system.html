@@ -3271,6 +3271,76 @@
         // Also attach to window for explicit access
         window.openPortalLogin = openPortalLogin;
         
+        // Define openLoginModal early to ensure it's available when openPortalLogin is called
+        // This is a safe version that works even if DOM elements aren't ready yet
+        function openLoginModal(portal) {
+            // Wait for DOM to be ready if needed
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => openLoginModal(portal));
+                return;
+            }
+            
+            // Set current portal
+            if (typeof currentPortal !== 'undefined') {
+                currentPortal = portal;
+            }
+            window.currentPortal = portal;
+            
+            // Get portal label helper
+            const PORTAL_LABELS = {
+                frontdesk: 'Front Desk',
+                consultant: 'Consultant',
+                dispenser: 'Branch',
+                admin: 'Admin',
+                finance: 'Finance',
+                stock: 'Stock',
+                mis: 'MIS',
+                gm: 'General Manager',
+                director: 'Director',
+                'hr-portal': 'HR',
+                client: 'Client'
+            };
+            
+            function getPortalLabel(portal) {
+                if (!portal) return 'Portal';
+                return PORTAL_LABELS[portal] || portal.charAt(0).toUpperCase() + portal.slice(1);
+            }
+            
+            const label = getPortalLabel(portal);
+            
+            // Try to get DOM elements (may not be available yet)
+            const loginModal = document.getElementById('loginModal');
+            const modalTitle = document.getElementById('loginModalTitle');
+            const modalDescription = document.getElementById('loginModalDescription');
+            const loginError = document.getElementById('loginError');
+            const loginForm = document.getElementById('loginForm');
+            const usernameField = document.getElementById('username');
+            
+            // Update modal title and description if available
+            if (modalTitle) modalTitle.textContent = `${label} Portal Login`;
+            if (modalDescription) modalDescription.textContent = `Sign in to access the ${label.toLowerCase()} portal.`;
+            if (loginError) loginError.textContent = '';
+            if (loginForm) loginForm.reset();
+            
+            // Show modal if available
+            if (loginModal) {
+                loginModal.style.display = 'block';
+                loginModal.setAttribute('aria-hidden', 'false');
+                
+                // Focus management
+                if (usernameField) {
+                    setTimeout(() => usernameField.focus(), 100);
+                }
+            } else {
+                // If modal not available yet, retry after a short delay
+                console.warn('Login modal not yet available, retrying...');
+                setTimeout(() => openLoginModal(portal), 100);
+            }
+        }
+        
+        // Also attach to window for explicit access
+        window.openLoginModal = openLoginModal;
+        
         // Debounce utility for search/filter inputs
         function debounce(func, wait) {
             let timeout;
