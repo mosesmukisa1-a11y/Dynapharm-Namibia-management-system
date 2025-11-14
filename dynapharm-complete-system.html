@@ -2263,6 +2263,14 @@
             height: 100%; 
             background: rgba(0,0,0,0.5); 
         }
+        #loginModal {
+            display: none;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            min-width: 100%;
+            min-height: 100%;
+        }
         .modal-content { 
             background: white; 
             margin: 5% auto; 
@@ -2272,6 +2280,9 @@
             max-width: 500px;
             max-height: 80vh;
             overflow-y: auto;
+            display: block;
+            min-width: 350px;
+            min-height: 200px;
         }
         .close { 
             float: right; 
@@ -3338,58 +3349,83 @@
             // Reset retry count on success
             openLoginModal.retryCount = 0;
             
+            // Ensure modal is in body (not hidden in a collapsed container)
+            if (loginModal.parentElement !== document.body) {
+                // Modal might be inside a container that's collapsed - move to body
+                document.body.appendChild(loginModal);
+                console.log('Moved modal to body');
+            }
+            
             // Update modal title and description if available
             if (modalTitle) modalTitle.textContent = `${label} Portal Login`;
             if (modalDescription) modalDescription.textContent = `Sign in to access the ${label.toLowerCase()} portal.`;
             if (loginError) loginError.textContent = '';
             if (loginForm) loginForm.reset();
             
-            // Show modal - use flex for proper centering of modal-content
-            // Set multiple display properties to ensure it shows
-            loginModal.style.display = 'flex';
-            loginModal.style.alignItems = 'center';
-            loginModal.style.justifyContent = 'center';
-            loginModal.style.position = 'fixed';
-            loginModal.style.top = '0';
-            loginModal.style.left = '0';
-            loginModal.style.width = '100vw';
-            loginModal.style.height = '100vh';
-            loginModal.style.minWidth = '100%';
-            loginModal.style.minHeight = '100%';
-            loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-            loginModal.style.margin = '0';
-            loginModal.style.padding = '0';
-            
-            // Ensure high z-index and visibility
-            loginModal.style.zIndex = '10000';
-            loginModal.style.visibility = 'visible';
-            loginModal.style.opacity = '1';
-            loginModal.setAttribute('aria-hidden', 'false');
-            
-            // Ensure modal-content has proper dimensions
-            const modalContent = loginModal.querySelector('.modal-content');
-            if (modalContent) {
-                modalContent.style.display = 'block';
-                modalContent.style.position = 'relative';
-                modalContent.style.margin = 'auto';
-                modalContent.style.minWidth = '300px';
-                modalContent.style.maxWidth = '500px';
-                modalContent.style.width = '90%';
-                modalContent.style.maxHeight = '80vh';
-                modalContent.style.overflowY = 'auto';
-            }
-            
-            // Double-check computed style
-            const computedDisplay = getComputedStyle(loginModal).display;
-            const computedVisibility = getComputedStyle(loginModal).visibility;
-            console.log('Modal computed styles - Display:', computedDisplay, 'Visibility:', computedVisibility, 'Opacity:', getComputedStyle(loginModal).opacity);
-            
-            // If still not showing, force it more aggressively
-            if (computedDisplay === 'none' || computedVisibility === 'hidden') {
-                console.warn('Modal still hidden, forcing display...');
-                loginModal.style.setProperty('display', 'flex', 'important');
-                loginModal.style.setProperty('visibility', 'visible', 'important');
-            }
+            // Use requestAnimationFrame to ensure DOM is ready before setting styles
+            requestAnimationFrame(() => {
+                // Ensure modal is visible
+                loginModal.style.display = 'block';
+                loginModal.style.visibility = 'visible';
+                
+                // Show modal - use flex for proper centering of modal-content
+                // Set multiple display properties to ensure it shows
+                loginModal.style.display = 'flex';
+                loginModal.style.alignItems = 'center';
+                loginModal.style.justifyContent = 'center';
+                loginModal.style.position = 'fixed';
+                loginModal.style.top = '0';
+                loginModal.style.left = '0';
+                loginModal.style.width = '100%';
+                loginModal.style.height = '100%';
+                loginModal.style.minWidth = '100%';
+                loginModal.style.minHeight = '100%';
+                loginModal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                loginModal.style.margin = '0';
+                loginModal.style.padding = '0';
+                
+                // Ensure high z-index and visibility
+                loginModal.style.zIndex = '10000';
+                loginModal.style.visibility = 'visible';
+                loginModal.style.opacity = '1';
+                loginModal.setAttribute('aria-hidden', 'false');
+                
+                // Ensure modal-content has proper dimensions
+                const modalContent = loginModal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.display = 'block';
+                    modalContent.style.position = 'relative';
+                    modalContent.style.margin = 'auto';
+                    modalContent.style.minWidth = '350px';
+                    modalContent.style.minHeight = '200px';
+                    modalContent.style.maxWidth = '500px';
+                    modalContent.style.width = '90%';
+                    modalContent.style.maxHeight = '80vh';
+                    modalContent.style.overflowY = 'auto';
+                }
+                
+                // Double-check computed style after a frame
+                requestAnimationFrame(() => {
+                    const computedDisplay = getComputedStyle(loginModal).display;
+                    const computedVisibility = getComputedStyle(loginModal).visibility;
+                    console.log('Modal computed styles - Display:', computedDisplay, 'Visibility:', computedVisibility, 'Opacity:', getComputedStyle(loginModal).opacity);
+                    
+                    // If still not showing, force it more aggressively
+                    if (computedDisplay === 'none' || computedVisibility === 'hidden') {
+                        console.warn('Modal still hidden, forcing display...');
+                        loginModal.style.setProperty('display', 'flex', 'important');
+                        loginModal.style.setProperty('visibility', 'visible', 'important');
+                    }
+                    
+                    // Verify modal is actually visible on screen
+                    const rect = loginModal.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        console.error('Modal has zero dimensions!');
+                    } else {
+                        console.log('Modal should be visible! Position:', { top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+                    }
+                });
+            });
             
             // Prevent body scroll when modal is open
             document.body.style.overflow = 'hidden';
@@ -3443,20 +3479,6 @@
                         }
                     }
                 });
-            }
-            
-            // Final check - log all relevant styles
-            const finalComputed = getComputedStyle(loginModal);
-            console.log('Modal final state - Display:', finalComputed.display, 'Visibility:', finalComputed.visibility, 'Z-index:', finalComputed.zIndex, 'Position:', finalComputed.position);
-            console.log('Modal dimensions - Width:', finalComputed.width, 'Height:', finalComputed.height);
-            console.log('Modal bounding rect:', loginModal.getBoundingClientRect());
-            
-            // Verify modal is actually visible on screen
-            const rect = loginModal.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) {
-                console.error('Modal has zero dimensions!');
-            } else {
-                console.log('Modal should be visible! Position:', { top: rect.top, left: rect.left, width: rect.width, height: rect.height });
             }
         }
         
