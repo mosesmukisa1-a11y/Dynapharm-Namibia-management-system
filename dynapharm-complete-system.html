@@ -4880,6 +4880,22 @@
             
             console.log('🔐 Staff login attempt:', { username, hasPassword: !!password });
             
+            // Check if page is still loading critical functions
+            if (typeof openTab !== 'function' && typeof window.openTab !== 'function') {
+                console.warn('⚠️ Page still loading, waiting for functions to be available...');
+                if (errorDiv) {
+                    errorDiv.textContent = 'Page is still loading... Please wait a moment and try again.';
+                    errorDiv.style.display = 'block';
+                }
+                // Retry after a delay
+                setTimeout(() => {
+                    if (typeof submitStaffLogin === 'function') {
+                        submitStaffLogin(event);
+                    }
+                }, 1000);
+                return;
+            }
+            
             // Clear previous errors
             if (errorDiv) errorDiv.style.display = 'none';
             
@@ -4994,8 +5010,26 @@
                                 // Open the portal
                                 if (typeof openTab === 'function') {
                                     openTab(targetPortal, null);
+                                } else if (typeof window.openTab === 'function') {
+                                    window.openTab(targetPortal, null);
                                 } else {
-                                    console.error('openTab function not found either!');
+                                    console.error('openTab function not found! Trying direct DOM manipulation...');
+                                    
+                                    // Last resort: directly show the portal tab
+                                    const portalElement = document.getElementById(targetPortal);
+                                    if (portalElement) {
+                                        // Hide all tabs
+                                        document.querySelectorAll('.tab-content').forEach(t => {
+                                            t.classList.remove('active');
+                                            t.style.display = 'none';
+                                        });
+                                        // Show target portal
+                                        portalElement.classList.add('active');
+                                        portalElement.style.display = 'block';
+                                        console.log('✅ Portal opened via direct DOM manipulation');
+                                    } else {
+                                        console.error('Portal element not found:', targetPortal);
+                                    }
                                 }
                             } catch (fallbackError) {
                                 console.error('Fallback failed:', fallbackError);
