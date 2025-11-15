@@ -20338,6 +20338,18 @@
                 }
             });
         }
+
+        if (typeof renderWalkInCart === 'function') {
+            renderWalkInCart();
+        }
+        if (typeof renderWalkInSalesList === 'function') {
+            renderWalkInSalesList();
+        }
+        if (typeof syncWalkInSalesToBackend === 'function') {
+            setTimeout(() => {
+                syncWalkInSalesToBackend().catch(err => console.debug('Walk-in sale sync pending:', err));
+            }, 300);
+        }
         stockApiReady.then(async (module) => {
             if (!module || typeof module.refreshStockData !== 'function') return;
             try {
@@ -33687,18 +33699,42 @@ async function reverseLastPrescriptionPayment(reportId){
                 listEl.innerHTML = sales.slice(0, 5).map(sale => {
                     const amount = formatWalkInCurrency(sale.total || sale.subtotal || 0);
                     const when = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : 'Just now';
+                    const statusBadge = sale.synced
+                        ? '<span style="color:#22c55e; font-size:0.8rem; font-weight:600;">✅ Synced</span>'
+                        : '<span style="color:#f97316; font-size:0.8rem; font-weight:600;">⏳ Pending sync</span>';
+                    const errorNote = !sale.synced && sale.syncError
+                        ? `<div style="font-size:0.75rem; color:#b91c1c; margin-top:4px;">${sale.syncError}</div>`
+                        : '';
                     return `
                         <div style="border-bottom:1px solid #eee; padding:10px 0;">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <strong style="color:#2c3e50;">${sale.customerName || 'Walk-in customer'}</strong>
                                 <span style="color:#27ae60; font-weight:bold;">${amount}</span>
                             </div>
-                            <div style="font-size:0.85rem; color:#7f8c8d;">${sale.customerType || 'customer'} &middot; ${when}</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; color:#7f8c8d;">
+                                <span>${sale.customerType || 'customer'} &middot; ${when}</span>
+                                ${statusBadge}
+                            </div>
+                            ${errorNote}
                         </div>
                     `;
                 }).join('');
             }
             if (countEl) countEl.textContent = sales.length;
+        }
+        
+        function saleRecordBranchHint() {
+            if (typeof getBranchId === 'function') {
+                const derived = getBranchId();
+                if (derived) return derived;
+            }
+            return (
+                window.currentBranch ||
+                (window.currentUser && (window.currentUser.branch || window.currentUser.branchId)) ||
+                document.getElementById('branchSelect')?.value ||
+                document.getElementById('userBranchSelect')?.value ||
+                null
+            );
         }
         
         function showWalkInSaleConfirmation() {
@@ -33793,17 +33829,34 @@ async function reverseLastPrescriptionPayment(reportId){
                 return acc;
             }, { subtotal: 0, totalBV: 0 });
             
+            const branchId = saleRecordBranchHint();
+            const distributorReferral =
+                referralName || referralCode
+                    ? {
+                          name: referralName || null,
+                          code: referralCode || null,
+                      }
+                    : null;
+            
             const saleRecord = {
                 id: `WS-${Date.now()}`,
                 customerName,
                 customerType,
                 phone,
+                email,
                 paymentMethod,
                 subtotal: totals.subtotal,
                 total: totals.subtotal,
                 totalBV: totals.totalBV,
                 items: cartItems,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                branch: branchId,
+                branchId,
+                distributorReferral,
+                soldBy: (window.currentUser && (window.currentUser.username || window.currentUser.fullName)) || null,
+                synced: false,
+                syncAttempts: 0,
+                syncError: null,
             };
             
             const history = getStoredWalkInSales();
@@ -33827,6 +33880,87 @@ async function reverseLastPrescriptionPayment(reportId){
         window.renderWalkInSalesList = renderWalkInSalesList;
         window.showWalkInSaleConfirmation = showWalkInSaleConfirmation;
         window.confirmWalkInSale = confirmWalkInSale;
+        
+        let walkInSyncInProgress = false;
+        async function syncWalkInSalesToBackend({ force = false } = {}) {
+            if (walkInSyncInProgress && !force) return 0;
+            const sales = getStoredWalkInSales();
+            const pending = sales.filter(sale => !sale.synced);
+            if (!pending.length) {
+                return 0;
+            }
+            
+            walkInSyncInProgress = true;
+            let syncedCount = 0;
+            
+            for (const sale of pending) {
+                const branchId =
+                    sale.branchId ||
+                    sale.branch ||
+                    saleRecordBranchHint() ||
+                    null;
+                
+                if (!branchId) {
+                    sale.syncError = 'Missing branch';
+                    sale.syncAttempts = (sale.syncAttempts || 0) + 1;
+                    continue;
+                }
+                
+                const payload = {
+                    id: sale.id,
+                    branch: branchId,
+                    branchId,
+                    saleNumber: sale.id,
+                    customerName: sale.customerName,
+                    customerType: sale.customerType || 'customer',
+                    phone: sale.phone || '',
+                    email: sale.email || '',
+                    paymentMethod: sale.paymentMethod || 'cash',
+                    subtotal: sale.subtotal || sale.total || 0,
+                    total: sale.total || sale.subtotal || 0,
+                    totalBV: sale.totalBV || 0,
+                    discount: sale.discount || 0,
+                    tax: sale.tax || 0,
+                    products: Array.isArray(sale.items) ? sale.items : [],
+                    timestamp: sale.createdAt,
+                    soldBy: sale.soldBy || (window.currentUser && (window.currentUser.username || window.currentUser.fullName)) || null,
+                    distributorReferral: sale.distributorReferral || null,
+                    metadata: {
+                        source: 'walkin-offline',
+                        syncAttempts: sale.syncAttempts || 0,
+                    },
+                };
+                
+                try {
+                    const response = await fetch('/api/branch/walkin-sales', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ sale: payload }),
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json().catch(() => null);
+                    sale.synced = true;
+                    sale.syncedAt = new Date().toISOString();
+                    sale.serverId = data?.sale?.id || sale.serverId || payload.id;
+                    sale.syncError = null;
+                    syncedCount += 1;
+                } catch (error) {
+                    sale.synced = false;
+                    sale.syncError = error.message || 'Sync failed';
+                    sale.syncAttempts = (sale.syncAttempts || 0) + 1;
+                    console.warn('Walk-in sale sync failed:', sale.id, error);
+                }
+            }
+            
+            saveStoredWalkInSales(sales);
+            renderWalkInSalesList();
+            walkInSyncInProgress = false;
+            return syncedCount;
+        }
+        window.syncWalkInSalesToBackend = syncWalkInSalesToBackend;
         
         // =============================================================================
         // =============================================================================
