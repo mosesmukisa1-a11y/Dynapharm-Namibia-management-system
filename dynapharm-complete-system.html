@@ -7351,13 +7351,13 @@
                         <div class="form-group" style="position: relative;">
                             <label class="required">Referral Name *</label>
                             <input type="text" name="referralName" id="clientReferralName" placeholder="Type name or NB number (e.g. OTTILIE or NB001544)" 
-                                   onkeyup="searchDistributorsForClientReferral()" autocomplete="off" required>
+                                   onkeyup="searchDistributorsForClientReferral()" autocomplete="off">
                             <div id="clientReferralDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
                             <small id="clientReferralStatus" style="color: #666; font-size: 0.85rem;"></small>
                         </div>
                         <div class="form-group">
                             <label class="required">Referral NB Number *</label>
-                            <input type="text" name="referralNbNumber" id="clientReferralNB" placeholder="e.g., NB12345678 or NB01234567" required pattern="NB[0-9]+" title="NB number must start with 'NB' followed by any number of digits (can start with 0)">
+                            <input type="text" name="referralNbNumber" id="clientReferralNB" placeholder="e.g., NB12345678 or NB01234567" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by any number of digits (can start with 0)">
                             </div>
                         </div>
                     </div>
@@ -24639,6 +24639,10 @@
                     if (typeof loadMediaPreviewWidget === 'function') {
                         loadMediaPreviewWidget();
                     }
+                    // Initialize membership status change handler for referral fields
+                    if (typeof handleMembershipStatusChange === 'function') {
+                        handleMembershipStatusChange();
+                    }
                 }, 200);
             }
             
@@ -24661,6 +24665,10 @@
                     }
                     // Initialize Front Desk real-time sync
                     initializeFrontDeskRealtime();
+                    // Initialize membership status change handler for client registration form
+                    if (typeof handleMembershipStatusChange === 'function') {
+                        handleMembershipStatusChange();
+                    }
                 }, 100);
             }
         }
