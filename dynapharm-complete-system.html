@@ -33440,9 +33440,13 @@ async function reverseLastPrescriptionPayment(reportId){
                         ensureWalkInDataHydrated().catch(err => console.warn('walkIn tab hydration issue', err));
                     }
                     if (!hasSyncedWalkInSales) {
-                        syncWalkInSalesFromApi().catch(() => {});
+                        if (typeof syncWalkInSalesFromApi === 'function') {
+                            syncWalkInSalesFromApi().catch(() => {});
+                        }
                     } else {
-                        refreshWalkInSalesList();
+                        if (typeof refreshWalkInSalesList === 'function') {
+                            refreshWalkInSalesList();
+                        }
                     }
                     break;
                 case 'sale':
@@ -33453,9 +33457,13 @@ async function reverseLastPrescriptionPayment(reportId){
                         ensureWalkInDataHydrated().catch(err => console.warn('sale tab hydration issue', err));
                     }
                     if (!hasSyncedWalkInSales) {
-                        syncWalkInSalesFromApi().catch(() => {});
+                        if (typeof syncWalkInSalesFromApi === 'function') {
+                            syncWalkInSalesFromApi().catch(() => {});
+                        }
                     } else {
-                        refreshWalkInSalesList();
+                        if (typeof refreshWalkInSalesList === 'function') {
+                            refreshWalkInSalesList();
+                        }
                     }
                     break;
                 case 'prescription':
