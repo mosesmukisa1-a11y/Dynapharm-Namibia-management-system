@@ -19880,10 +19880,16 @@
             }
         }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        syncBranchesFromBackend().catch(err => console.debug('Branch sync (startup) error', err));
-        syncProductsFromBackend().catch(err => console.debug('Product sync (startup) error', err));
-        syncBarcodeStockFromBackend().catch(err => console.debug('Barcode stock sync (startup) error', err));
+    // Defer initialization until AFTER all functions are loaded
+    // Using functionsReady event instead of DOMContentLoaded to prevent blocking script parsing
+    window.addEventListener('functionsReady', () => {
+        console.log('📡 functionsReady: Starting background data sync...');
+        // Run data sync in background (non-blocking)
+        setTimeout(() => {
+            syncBranchesFromBackend().catch(err => console.debug('Branch sync (startup) error', err));
+            syncProductsFromBackend().catch(err => console.debug('Product sync (startup) error', err));
+            syncBarcodeStockFromBackend().catch(err => console.debug('Barcode stock sync (startup) error', err));
+        }, 100);
 
         loadBranchesForDistribution();
         populateTransferBranchOptions();
