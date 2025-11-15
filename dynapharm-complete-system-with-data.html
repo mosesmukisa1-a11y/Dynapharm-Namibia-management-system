@@ -1948,6 +1948,9 @@
     </div>
 
     <script>
+        // Check if script is running
+        console.log('🚀 Script loaded and executing...');
+        
         // ----------------------------------------------------------
         //  DYNAPHARM – UNIFIED AUTH SYSTEM (FINAL VERSION)
         //  Replaces unifiedStaffLogin, checkExistingSession, old loginPortalRequest,
@@ -2947,7 +2950,7 @@
             referred: 200   // N$200 for referred clients
         };
 
-        async         function init() {
+        async function init() {
             await loadData();
             loadBranches();
             handleMembershipStatusChange();
@@ -3731,6 +3734,13 @@
         window.showLogin = showLogin;
         window.closeLoginModal = closeLoginModal;
         window.togglePasswordVisibility = togglePasswordVisibility;
+        
+        // Confirm functions are accessible
+        console.log('✅ Login functions registered:', {
+            showLogin: typeof window.showLogin,
+            closeLoginModal: typeof window.closeLoginModal,
+            togglePasswordVisibility: typeof window.togglePasswordVisibility
+        });
 
         function logout() {
             // Clear session using the new session management
