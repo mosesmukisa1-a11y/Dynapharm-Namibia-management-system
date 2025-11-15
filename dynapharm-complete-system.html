@@ -4773,6 +4773,75 @@
             hideStaffLoginModal();
         }
         
+        // Handle Staff Login Form Submission
+        async function submitStaffLogin(event) {
+            if (event) event.preventDefault();
+            
+            const username = document.getElementById('unifiedUsername')?.value?.trim();
+            const password = document.getElementById('unifiedPassword')?.value;
+            const rememberMe = document.getElementById('rememberMe')?.checked || false;
+            const loginBtn = document.getElementById('staffLoginBtn');
+            const errorDiv = document.getElementById('staffLoginError');
+            
+            console.log('🔐 Staff login attempt:', { username, hasPassword: !!password });
+            
+            // Clear previous errors
+            if (errorDiv) errorDiv.style.display = 'none';
+            
+            // Validation
+            if (!username || !password) {
+                showLoginError('Please enter both username and password');
+                return;
+            }
+            
+            // Show loading state
+            if (loginBtn) {
+                const btnText = loginBtn.querySelector('.btn-text');
+                const btnLoading = loginBtn.querySelector('.btn-loading');
+                if (btnText) btnText.style.display = 'none';
+                if (btnLoading) btnLoading.style.display = 'inline';
+                loginBtn.disabled = true;
+            }
+            
+            try {
+                console.log('🚀 Calling loginPortalRequest...');
+                const result = await window.loginPortalRequest(username, password);
+                console.log('✅ Login API response:', result);
+                
+                if (result && result.user) {
+                    const user = result.user;
+                    user.username = user.username || username;
+                    
+                    // Handle remember me
+                    if (rememberMe) {
+                        localStorage.setItem('rememberMe', 'true');
+                        localStorage.setItem('rememberedUsername', username);
+                    } else {
+                        localStorage.removeItem('rememberMe');
+                        localStorage.removeItem('rememberedUsername');
+                    }
+                    
+                    console.log('✅ Staff login successful:', user.username, user.role);
+                    handlePortalLoginSuccess(user, { silent: true });
+                    hideStaffLoginModal();
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+            } catch (error) {
+                console.error('❌ Staff login error:', error);
+                showLoginError(error.message || 'Login failed. Please try again.', true);
+            } finally {
+                // Reset button state
+                if (loginBtn) {
+                    const btnText = loginBtn.querySelector('.btn-text');
+                    const btnLoading = loginBtn.querySelector('.btn-loading');
+                    if (btnText) btnText.style.display = 'inline';
+                    if (btnLoading) btnLoading.style.display = 'none';
+                    loginBtn.disabled = false;
+                }
+            }
+        }
+        
         function hideStaffLoginModal() {
             const modal = document.getElementById('staffLoginModal');
             if (modal) modal.style.display = 'none';
@@ -5553,7 +5622,7 @@
     <div id="staffLoginModal" class="modal-overlay" style="display: none; z-index: 10001;">
         <div class="modal-card" style="max-width: 450px;">
             <h2 style="margin-bottom: 20px; color: #c41e3a;">👔 Staff Login</h2>
-            <form id="staffLoginForm" onsubmit="event.preventDefault();">
+            <form id="staffLoginForm" onsubmit="submitStaffLogin(event); return false;">
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                 <input type="text" id="unifiedUsername" name="username" placeholder="Username" autocomplete="username" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; font-size: 1rem;">
                 <div style="position: relative;">
