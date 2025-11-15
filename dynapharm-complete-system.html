@@ -4219,6 +4219,22 @@
             const landingPage = document.getElementById('landingPage');
             const container = document.querySelector('.container');
             const portalTabs = document.getElementById('portalTabs');
+            const loginModal = document.getElementById('loginModal');
+            
+            // Check if login modal is open - don't show landing page if modal is visible
+            let isLoginModalOpen = false;
+            if (loginModal) {
+                const modalDisplay = loginModal.style.display;
+                const computedDisplay = getComputedStyle(loginModal).display;
+                isLoginModalOpen = (modalDisplay !== 'none' && computedDisplay !== 'none') || 
+                                 modalDisplay === 'flex' || computedDisplay === 'flex' ||
+                                 modalDisplay === 'block' || computedDisplay === 'block';
+            }
+            
+            // If login modal is open, don't hide/show anything - just return
+            if (isLoginModalOpen) {
+                return;
+            }
             
             if (landingPage) landingPage.style.display = 'block';
             if (container) container.style.display = 'none';
