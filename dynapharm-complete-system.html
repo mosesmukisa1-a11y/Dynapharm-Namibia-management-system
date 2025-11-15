@@ -4836,7 +4836,19 @@
                     }
                     
                     console.log('✅ Staff login successful:', user.username, user.role);
-                    handlePortalLoginSuccess(user, { silent: true });
+                    
+                    // Call the login success handler (try window first, then direct)
+                    if (typeof window.handlePortalLoginSuccess === 'function') {
+                        window.handlePortalLoginSuccess(user, { silent: true });
+                    } else if (typeof handlePortalLoginSuccess === 'function') {
+                        handlePortalLoginSuccess(user, { silent: true });
+                    } else {
+                        console.error('❌ handlePortalLoginSuccess not found! Using fallback.');
+                        // Fallback: Set user and redirect manually
+                        setAuthenticatedUser(user);
+                        hideLandingPage();
+                        openTab('dispenser', null);
+                    }
                     hideStaffLoginModal();
                 } else {
                     throw new Error('Invalid response from server');
