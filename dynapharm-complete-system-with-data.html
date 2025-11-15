@@ -856,10 +856,10 @@
         </div>
 
         <div class="tabs">
-            <button class="tab-button active" onclick="openTab('client')">Client Registration</button>
-            <button class="tab-button" onclick="openTab('consultant')">Consultant Portal</button>
-            <button class="tab-button" onclick="openTab('dispenser')">Dispenser Portal</button>
-            <button class="tab-button" onclick="openTab('admin')">Admin Portal</button>
+            <button class="tab-button active" onclick="openTab('client', event)">Client Registration</button>
+            <button class="tab-button" onclick="openTab('consultant', event)">Consultant Portal</button>
+            <button class="tab-button" onclick="openTab('dispenser', event)">Dispenser Portal</button>
+            <button class="tab-button" onclick="openTab('admin', event)">Admin Portal</button>
         </div>
 
         <!-- Client Registration -->
@@ -3224,12 +3224,36 @@
             });
         }
 
-        function openTab(tabName) {
+        function openTab(tabName, event) {
+            // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            // Remove active class from all tab buttons
             document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            
+            // Show the selected tab content
+            const tabContent = document.getElementById(tabName);
+            if (tabContent) {
+                tabContent.classList.add('active');
+            } else {
+                console.warn('Tab content not found:', tabName);
+            }
+            
+            // Add active class to the clicked button
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // Fallback: find button by tab name
+                const buttons = document.querySelectorAll('.tab-button');
+                buttons.forEach(btn => {
+                    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${tabName}'`)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
         }
+        
+        // Make openTab globally accessible
+        window.openTab = openTab;
 
         function calculateAge() {
             const dob = document.querySelector('[name="dob"]').value;
