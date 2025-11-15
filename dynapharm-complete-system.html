@@ -3319,11 +3319,8 @@
             // Use the modern showLogin function
             if (typeof showLogin === 'function') {
                 showLogin(portalKey);
-            } else if (typeof openLoginModal === 'function') {
-                // Fallback to openLoginModal if showLogin not yet available
-                openLoginModal(portalKey);
             } else {
-                console.warn('showLogin and openLoginModal not yet available, portal:', portalKey);
+                console.warn('showLogin not yet available, portal:', portalKey);
             }
         }
         
@@ -3639,29 +3636,28 @@
         window.openLoginModal = openLoginModal;
         
         // Modern showLogin function - replaces openPortalLogin
+        // Modern showLogin function - simplified and reliable
         function showLogin(portal) {
-            // Guard: Prevent duplicate calls if modal is already open
-            const loginModal = document.getElementById('loginModal');
-            if (loginModal) {
-                const modalDisplay = loginModal.style.display;
-                const computedDisplay = getComputedStyle(loginModal).display;
-                const isModalOpen = (modalDisplay !== 'none' && computedDisplay !== 'none') || 
-                                  modalDisplay === 'flex' || computedDisplay === 'flex' ||
-                                  modalDisplay === 'block' || computedDisplay === 'block';
-                
-                if (isModalOpen) {
-                    console.log('Login modal already open, skipping duplicate showLogin call');
-                    return;
-                }
-            }
+            if (!portal) portal = 'default';
             
+            // Set current portal
             if (typeof currentPortal !== 'undefined') {
                 currentPortal = portal;
             }
             window.currentPortal = portal;
             
-            // Update modal title to show which portal
+            const loginModal = document.getElementById('loginModal');
             const modalTitle = document.getElementById('loginModalTitle');
+            const usernameInput = document.getElementById('loginUsername') || document.getElementById('username');
+            const passwordInput = document.getElementById('loginPassword') || document.getElementById('password');
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!loginModal) {
+                console.warn('Login modal not found');
+                return;
+            }
+            
+            // Update modal title
             if (modalTitle) {
                 const PORTAL_LABELS = {
                     frontdesk: 'Front Desk',
@@ -3669,41 +3665,84 @@
                     dispenser: 'Branch',
                     admin: 'Admin',
                     finance: 'Finance',
-                    stock: 'Stock',
+                    stock: 'Stock Management',
                     mis: 'MIS',
                     gm: 'General Manager',
                     director: 'Director',
                     'hr-portal': 'HR',
-                    client: 'Client'
+                    client: 'Client',
+                    default: 'Portal'
                 };
                 const label = PORTAL_LABELS[portal] || portal.charAt(0).toUpperCase() + portal.slice(1);
                 modalTitle.textContent = `${label} Portal Login`;
             }
             
-            // Use openLoginModal to handle the actual modal display
-            if (typeof openLoginModal === 'function') {
-                openLoginModal(portal);
-            } else {
-                // Fallback: directly show the modal
-                const fallbackModal = document.getElementById('loginModal');
-                if (fallbackModal) {
-                    fallbackModal.style.display = 'block';
-                    // Clear previous values
-                    const usernameInput = document.getElementById('username') || document.getElementById('loginUsername');
-                    const passwordInput = document.getElementById('password') || document.getElementById('loginPassword');
-                    const errorDiv = document.getElementById('loginError');
-                    if (usernameInput) usernameInput.value = '';
-                    if (passwordInput) passwordInput.value = '';
-                    if (errorDiv) {
-                        errorDiv.textContent = '';
-                        errorDiv.style.display = 'none';
-                    }
+            // Clear form and errors
+            if (usernameInput) {
+                usernameInput.value = '';
+                usernameInput.focus();
+            }
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.type = 'password';
+            }
+            if (errorDiv) {
+                errorDiv.style.display = 'none';
+                const errorText = document.getElementById('loginErrorText');
+                if (errorText) errorText.textContent = '';
+            }
+            
+            // Show modal - simple and direct
+            loginModal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // Helper function to close login modal
+        function closeLoginModal() {
+            const loginModal = document.getElementById('loginModal');
+            if (loginModal) {
+                loginModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        }
+        
+        // Toggle password visibility
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('loginPassword') || document.getElementById('password');
+            const toggleBtn = document.getElementById('togglePassword');
+            if (passwordInput && toggleBtn) {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    toggleBtn.textContent = '🙈';
+                } else {
+                    passwordInput.type = 'password';
+                    toggleBtn.textContent = '👁️';
                 }
             }
         }
         
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const loginModal = document.getElementById('loginModal');
+            if (loginModal && event.target === loginModal) {
+                closeLoginModal();
+            }
+        });
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const loginModal = document.getElementById('loginModal');
+                if (loginModal && loginModal.style.display === 'block') {
+                    closeLoginModal();
+                }
+            }
+        });
+        
         // Attach to window for global access
         window.showLogin = showLogin;
+        window.closeLoginModal = closeLoginModal;
+        window.togglePasswordVisibility = togglePasswordVisibility;
         
         // Debounce utility for search/filter inputs
         function debounce(func, wait) {
