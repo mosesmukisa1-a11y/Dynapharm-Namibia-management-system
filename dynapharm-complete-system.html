@@ -7358,50 +7358,60 @@
                 <input type="hidden" name="visitType" id="visitType" value="">
                 <!-- Member/Referral Information -->
                 <div class="form-section">
-                    <h3>Member/Referral Information</h3>
-                    <p style="margin-bottom: 15px; color: #666;">Please select your membership status:</p>
+                    <h3>Client Type & Referral Information</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Please select the client type and provide relevant information:</p>
+                    
+                    <!-- CLIENT TYPE SELECTOR -->
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="required">Membership Status *</label>
-                            <select name="membershipStatus" id="membershipStatusSelect" required>
-                                <option value="">Select</option>
-                                <option value="member">I am a registered member</option>
-                                <option value="referred">I was referred by a member</option>
+                            <label class="required">Client Type *</label>
+                            <select name="clientType" id="clientTypeSelect" required>
+                                <option value="">Select Client Type</option>
+                                <option value="customer">Customer (Buying products)</option>
+                                <option value="distributor">Distributor (Registered member)</option>
                             </select>
+                            <small style="color: #666; font-size: 0.85rem;">Select whether this is a customer or a registered distributor</small>
                         </div>
                     </div>
                     
-                    <div id="referralDetails" style="display: none; margin-top: 15px;">
-                        <h4>Referral Information</h4>
-                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">Search for a distributor by name or NB number</p>
-                    <div class="form-grid">
-                        <div class="form-group" style="position: relative;">
-                            <label class="required">Referral Name *</label>
-                            <input type="text" name="referralName" id="clientReferralName" placeholder="Type name or NB number (e.g. OTTILIE or NB001544)" 
-                                   onkeyup="searchDistributorsForClientReferral()" autocomplete="off">
-                            <div id="clientReferralDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
-                            <small id="clientReferralStatus" style="color: #666; font-size: 0.85rem;"></small>
-                        </div>
-                        <div class="form-group">
-                            <label class="required">Referral NB Number *</label>
-                            <input type="text" name="referralNbNumber" id="clientReferralNB" placeholder="e.g., NB12345678 or NB01234567" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by any number of digits (can start with 0)">
+                    <!-- FOR CUSTOMERS: Show referral details (who referred them) -->
+                    <div id="customerReferralDetails" style="display: none; margin-top: 15px; background: #f0f8ff; padding: 15px; border-radius: 8px; border-left: 4px solid #3498db;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">👥 Customer Referral Information</h4>
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">Who referred this customer? Search for the distributor by name or NB number</p>
+                        <div class="form-grid">
+                            <div class="form-group" style="position: relative;">
+                                <label class="required">Referred By (Distributor Name) *</label>
+                                <input type="text" name="referralName" id="clientReferralName" placeholder="Type distributor name or NB number (e.g. OTTILIE or NB001544)" 
+                                       onkeyup="searchDistributorsForClientReferral()" autocomplete="off">
+                                <div id="clientReferralDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
+                                <small id="clientReferralStatus" style="color: #666; font-size: 0.85rem;"></small>
+                            </div>
+                            <div class="form-group">
+                                <label class="required">Distributor NB Number *</label>
+                                <input type="text" name="referralNbNumber" id="clientReferralNB" placeholder="e.g., NB12345678 or NB01234567" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by any number of digits">
                             </div>
                         </div>
                     </div>
                     
-                    <div id="memberDetails" style="display: none; margin-top: 15px;">
-                        <h4>Member Information</h4>
+                    <!-- FOR DISTRIBUTORS: Show their own NB number -->
+                    <div id="distributorNbDetails" style="display: none; margin-top: 15px; background: #f0fff4; padding: 15px; border-radius: 8px; border-left: 4px solid #27ae60;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">🏢 Distributor Information</h4>
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">Enter your distributor NB number</p>
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>Member ID</label>
-                                <input type="text" name="memberId" placeholder="Your member ID (if known)">
+                                <label class="required">Your NB Number *</label>
+                                <input type="text" name="distributorNbNumber" id="distributorNbNumber" placeholder="e.g., NB12345678 or NB01234567" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by any number of digits">
+                                <small style="color: #666; font-size: 0.85rem;">Your registered distributor NB number</small>
                             </div>
                             <div class="form-group">
                                 <label>Member Since</label>
-                                <input type="date" name="memberSince">
+                                <input type="date" name="memberSince" placeholder="When you joined">
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- OLD MEMBERSHIP STATUS (Hidden as backup) -->
+                    <input type="hidden" name="membershipStatus" id="membershipStatusSelect" value="">
                 </div>
 
                 <!-- Client Information -->
@@ -21838,34 +21848,84 @@
 
         // Handle membership status change
         function handleMembershipStatusChange() {
-            const membershipSelect = document.getElementById('membershipStatusSelect');
-            const referralDetails = document.getElementById('referralDetails');
-            const memberDetails = document.getElementById('memberDetails');
+            // NEW: Handle Client Type selector (customer vs distributor)
+            const clientTypeSelect = document.getElementById('clientTypeSelect');
+            const customerReferralDetails = document.getElementById('customerReferralDetails');
+            const distributorNbDetails = document.getElementById('distributorNbDetails');
+            const membershipStatusHidden = document.getElementById('membershipStatusSelect');
+            
+            // Get input fields
             const referralNameInput = document.querySelector('input[name="referralName"]');
             const referralNbInput = document.querySelector('input[name="referralNbNumber"]');
+            const distributorNbInput = document.querySelector('input[name="distributorNbNumber"]');
 
-            function updateVisibility(value) {
-                if (value === 'member') {
-                    if (referralDetails) referralDetails.style.display = 'none';
-                    if (memberDetails) memberDetails.style.display = 'block';
-                    if (referralNameInput) referralNameInput.required = false;
-                    if (referralNbInput) referralNbInput.required = false;
-                } else if (value === 'referred') {
-                    if (referralDetails) referralDetails.style.display = 'block';
-                    if (memberDetails) memberDetails.style.display = 'none';
+            function updateClientTypeVisibility(clientType) {
+                console.log('📝 Client type changed to:', clientType);
+                
+                if (clientType === 'customer') {
+                    // Show referral fields (who referred this customer)
+                    if (customerReferralDetails) customerReferralDetails.style.display = 'block';
+                    if (distributorNbDetails) distributorNbDetails.style.display = 'none';
                     if (referralNameInput) referralNameInput.required = true;
                     if (referralNbInput) referralNbInput.required = true;
-                } else {
-                    if (referralDetails) referralDetails.style.display = 'none';
-                    if (memberDetails) memberDetails.style.display = 'none';
+                    if (distributorNbInput) distributorNbInput.required = false;
+                    
+                    // Set hidden membership status for backward compatibility
+                    if (membershipStatusHidden) membershipStatusHidden.value = 'referred';
+                    
+                } else if (clientType === 'distributor') {
+                    // Show distributor NB number field (their own NB)
+                    if (customerReferralDetails) customerReferralDetails.style.display = 'none';
+                    if (distributorNbDetails) distributorNbDetails.style.display = 'block';
                     if (referralNameInput) referralNameInput.required = false;
                     if (referralNbInput) referralNbInput.required = false;
+                    if (distributorNbInput) distributorNbInput.required = true;
+                    
+                    // Set hidden membership status for backward compatibility
+                    if (membershipStatusHidden) membershipStatusHidden.value = 'member';
+                    
+                } else {
+                    // Nothing selected - hide both
+                    if (customerReferralDetails) customerReferralDetails.style.display = 'none';
+                    if (distributorNbDetails) distributorNbDetails.style.display = 'none';
+                    if (referralNameInput) referralNameInput.required = false;
+                    if (referralNbInput) referralNbInput.required = false;
+                    if (distributorNbInput) distributorNbInput.required = false;
+                    
+                    if (membershipStatusHidden) membershipStatusHidden.value = '';
                 }
             }
 
-            if (membershipSelect) {
-                membershipSelect.addEventListener('change', function() { updateVisibility(this.value); });
-                updateVisibility(membershipSelect.value);
+            // Attach event listener to clientTypeSelect
+            if (clientTypeSelect) {
+                clientTypeSelect.addEventListener('change', function() { 
+                    updateClientTypeVisibility(this.value); 
+                });
+                // Initialize on page load
+                updateClientTypeVisibility(clientTypeSelect.value);
+            }
+            
+            // LEGACY: Old membership status handler (for backward compatibility)
+            const membershipSelect = document.getElementById('membershipStatusSelect');
+            const referralDetails = document.getElementById('referralDetails');
+            const memberDetails = document.getElementById('memberDetails');
+
+            function updateOldVisibility(value) {
+                if (value === 'member') {
+                    if (referralDetails) referralDetails.style.display = 'none';
+                    if (memberDetails) memberDetails.style.display = 'block';
+                } else if (value === 'referred') {
+                    if (referralDetails) referralDetails.style.display = 'block';
+                    if (memberDetails) memberDetails.style.display = 'none';
+                } else {
+                    if (referralDetails) referralDetails.style.display = 'none';
+                    if (memberDetails) memberDetails.style.display = 'none';
+                }
+            }
+
+            if (membershipSelect && membershipSelect.tagName === 'SELECT') {
+                membershipSelect.addEventListener('change', function() { updateOldVisibility(this.value); });
+                updateOldVisibility(membershipSelect.value);
             }
         }
 
