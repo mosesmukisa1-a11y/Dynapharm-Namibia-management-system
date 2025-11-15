@@ -20081,16 +20081,16 @@
             } catch (_) {}
 
             saveStockData();
-            displayCountryStock();
-            displayWindhoekStock();
-            displayOndangwaStock();
-            displayDistributionHistory();
-            loadWindhoekProducts();
-            loadOndangwaProducts();
-            populateBranchDistributionProducts();
-            updateWindhoekAvailableQuantity();
-            updateOndangwaAvailableQuantity();
-            updateBranchDistAvailableQty();
+            if (typeof displayCountryStock === 'function') displayCountryStock();
+            if (typeof displayWindhoekStock === 'function') displayWindhoekStock();
+            if (typeof displayOndangwaStock === 'function') displayOndangwaStock();
+            if (typeof displayDistributionHistory === 'function') displayDistributionHistory();
+            if (typeof loadWindhoekProducts === 'function') loadWindhoekProducts();
+            if (typeof loadOndangwaProducts === 'function') loadOndangwaProducts();
+            if (typeof populateBranchDistributionProducts === 'function') populateBranchDistributionProducts();
+            if (typeof updateWindhoekAvailableQuantity === 'function') updateWindhoekAvailableQuantity();
+            if (typeof updateOndangwaAvailableQuantity === 'function') updateOndangwaAvailableQuantity();
+            if (typeof updateBranchDistAvailableQty === 'function') updateBranchDistAvailableQty();
         }
 
         function getBarcodeStockList() {
@@ -20283,15 +20283,15 @@
         if (typeof loadRealtimeSyncStatus === 'function') loadRealtimeSyncStatus();
 
         const windhoekProductSelect = document.getElementById('windhoekProduct');
-        if (windhoekProductSelect) {
+        if (windhoekProductSelect && typeof updateWindhoekAvailableQuantity === 'function') {
             windhoekProductSelect.addEventListener('change', updateWindhoekAvailableQuantity);
         }
         const ondangwaProductSelectNew = document.getElementById('ondangwaProductNew');
-        if (ondangwaProductSelectNew) {
+        if (ondangwaProductSelectNew && typeof updateOndangwaAvailableQuantity === 'function') {
             ondangwaProductSelectNew.addEventListener('change', updateOndangwaAvailableQuantity);
         }
         const ondangwaProductSelectLegacy = document.getElementById('ondangwaProduct');
-        if (ondangwaProductSelectLegacy) {
+        if (ondangwaProductSelectLegacy && typeof updateOndangwaAvailableQuantity === 'function') {
             ondangwaProductSelectLegacy.addEventListener('change', updateOndangwaAvailableQuantity);
         }
         const branchSource = document.getElementById('branchDistSourceWarehouse');
@@ -35909,7 +35909,10 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
 
         async function loadBranchStockMovements({ notify = false } = {}) {
                 const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
-            await syncBranchMovementsFromApi({ branchId, notify });
+            // TODO: Implement syncBranchMovementsFromApi function
+            if (typeof syncBranchMovementsFromApi === 'function') {
+                await syncBranchMovementsFromApi({ branchId, notify });
+            }
 
                 const movementsEl = document.getElementById('branchInventoryMovements');
                 if (!movementsEl) return;
