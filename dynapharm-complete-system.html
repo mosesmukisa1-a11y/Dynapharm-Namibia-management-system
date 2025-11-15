@@ -5531,6 +5531,270 @@
             refreshSalesAnalytics();
         }
         
+        // =============================================================================
+        // MISSING TAB SWITCHING FUNCTIONS - Added 2025-01-15
+        // =============================================================================
+        
+        /**
+         * Show Distributor/Client sub-tabs (Shop, Checkup, Media, Testimonials)
+         */
+        function showDistributorTab(tabName) {
+            console.log('📑 Switching to distributor tab:', tabName);
+            
+            // Hide all distributor tab contents
+            const tabContents = document.querySelectorAll('[id^="distributor-tab-"]');
+            tabContents.forEach(tab => {
+                tab.style.display = 'none';
+            });
+            
+            // Remove active class from all distributor tab buttons
+            const tabButtons = document.querySelectorAll('.client .tab-button');
+            tabButtons.forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(`distributor-tab-${tabName}`);
+            if (selectedTab) {
+                selectedTab.style.display = 'block';
+            } else {
+                console.warn(`Distributor tab content not found: distributor-tab-${tabName}`);
+            }
+            
+            // Set active button
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            
+            // Load data for specific tabs
+            if (tabName === 'shop') {
+                if (typeof loadShopProducts === 'function') {
+                    loadShopProducts();
+                }
+            } else if (tabName === 'checkup') {
+                if (typeof loadCheckupAppointments === 'function') {
+                    loadCheckupAppointments();
+                }
+            }
+        }
+        
+        /**
+         * Show Front Desk order management tabs
+         */
+        function showOrderTab(tabName) {
+            console.log('📦 Switching to order tab:', tabName);
+            
+            // Hide all order tab contents
+            const tabContents = document.querySelectorAll('[id^="order-tab-"]');
+            tabContents.forEach(tab => {
+                tab.style.display = 'none';
+            });
+            
+            // Remove active class from all order tab buttons
+            const parentDiv = document.querySelector('.frontdesk') || document.querySelector('.order-tabs-container');
+            if (parentDiv) {
+                const tabButtons = parentDiv.querySelectorAll('.tab-button');
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+            }
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(`order-tab-${tabName}`);
+            if (selectedTab) {
+                selectedTab.style.display = 'block';
+            } else {
+                console.warn(`Order tab content not found: order-tab-${tabName}`);
+            }
+            
+            // Set active button
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            
+            // Load data for specific tabs
+            switch(tabName) {
+                case 'pending':
+                case 'processing':
+                case 'shipped':
+                case 'delivered':
+                case 'all':
+                    if (typeof loadOrders === 'function') {
+                        loadOrders(tabName);
+                    }
+                    break;
+                case 'appointments':
+                    if (typeof loadAppointments === 'function') {
+                        loadAppointments();
+                    }
+                    break;
+                case 'clientRegistration':
+                    if (typeof initClientRegistration === 'function') {
+                        initClientRegistration();
+                    }
+                    break;
+                case 'clientLookup':
+                    if (typeof initClientLookup === 'function') {
+                        initClientLookup();
+                    }
+                    break;
+                case 'visitors':
+                    if (typeof loadVisitors === 'function') {
+                        loadVisitors();
+                    }
+                    break;
+            }
+        }
+        
+        /**
+         * Show Stock Management tabs
+         */
+        function showStockTab(tabName) {
+            console.log('📊 Switching to stock tab:', tabName);
+            
+            // Hide all stock tab contents
+            const tabContents = document.querySelectorAll('[id^="stock-tab-"]');
+            tabContents.forEach(tab => {
+                tab.style.display = 'none';
+            });
+            
+            // Remove active class from all stock tab buttons
+            const parentDiv = document.querySelector('.stock') || document.querySelector('#stock');
+            if (parentDiv) {
+                const tabButtons = parentDiv.querySelectorAll('.tab-button');
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+            }
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(`stock-tab-${tabName}`);
+            if (selectedTab) {
+                selectedTab.style.display = 'block';
+            } else {
+                console.warn(`Stock tab content not found: stock-tab-${tabName}`);
+            }
+            
+            // Set active button (find the button that called this)
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // Fallback: find button by id
+                const btnId = `stockTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+                const btn = document.getElementById(btnId);
+                if (btn) btn.classList.add('active');
+            }
+            
+            // Load data for specific tabs
+            switch(tabName) {
+                case 'overview':
+                    if (typeof loadStockOverview === 'function') {
+                        loadStockOverview();
+                    }
+                    break;
+                case 'countryImport':
+                    if (typeof loadCountryImports === 'function') {
+                        loadCountryImports();
+                    }
+                    break;
+                case 'warehouseDistribution':
+                    if (typeof loadWarehouseDistribution === 'function') {
+                        loadWarehouseDistribution();
+                    }
+                    break;
+                case 'branchDistribution':
+                    if (typeof loadBranchDistribution === 'function') {
+                        loadBranchDistribution();
+                    }
+                    break;
+                case 'transfers':
+                    if (typeof loadStockTransfers === 'function') {
+                        loadStockTransfers();
+                    }
+                    break;
+                case 'windhoek':
+                    if (typeof loadWindhoekProducts === 'function') {
+                        loadWindhoekProducts();
+                    }
+                    break;
+                case 'ondangwa':
+                    if (typeof loadOndangwaProducts === 'function') {
+                        loadOndangwaProducts();
+                    }
+                    break;
+                case 'inventory':
+                    if (typeof loadInventoryLog === 'function') {
+                        loadInventoryLog();
+                    }
+                    break;
+            }
+        }
+        
+        /**
+         * Show Front Desk CRM tabs
+         */
+        function showFrontdeskCRMTab(tabName) {
+            console.log('👥 Switching to CRM tab:', tabName);
+            
+            // Hide all CRM tab contents
+            const tabContents = document.querySelectorAll('[id^="crm-tab-"]');
+            tabContents.forEach(tab => {
+                tab.style.display = 'none';
+            });
+            
+            // Remove active class from all CRM tab buttons
+            const parentDiv = document.querySelector('.frontdesk-crm-tabs') || document.querySelector('.crm-container');
+            if (parentDiv) {
+                const tabButtons = parentDiv.querySelectorAll('.tab-button');
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+            }
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(`crm-tab-${tabName}`);
+            if (selectedTab) {
+                selectedTab.style.display = 'block';
+            } else {
+                console.warn(`CRM tab content not found: crm-tab-${tabName}`);
+            }
+            
+            // Set active button
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            
+            // Load data for specific tabs
+            switch(tabName) {
+                case 'comm':
+                    if (typeof loadCRMCommunications === 'function') {
+                        loadCRMCommunications();
+                    }
+                    break;
+                case 'segments':
+                    if (typeof loadCRMSegments === 'function') {
+                        loadCRMSegments();
+                    }
+                    break;
+                case 'workflows':
+                    if (typeof loadCRMWorkflows === 'function') {
+                        loadCRMWorkflows();
+                    }
+                    break;
+                case 'loyalty':
+                    if (typeof loadLoyaltyProgram === 'function') {
+                        loadLoyaltyProgram();
+                    }
+                    break;
+            }
+        }
+        
+        // Make functions globally accessible
+        window.showDistributorTab = showDistributorTab;
+        window.showOrderTab = showOrderTab;
+        window.showStockTab = showStockTab;
+        window.showFrontdeskCRMTab = showFrontdeskCRMTab;
+        
         function populateBranchFilters() {
             const branchList = getCachedBranches();
             const selects = ['reportBranchFilter', 'salesBranchFilter'];
