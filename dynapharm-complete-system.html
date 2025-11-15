@@ -26658,7 +26658,34 @@ function handlePortalLoginSuccess(user, options = {}) {
     }
     
     // Get the portal that was requested for login (after restoration)
-    const portal = currentPortal || window.currentPortal;
+    let portal = currentPortal || window.currentPortal;
+    
+    // Map roles to their primary portals
+    const rolePortalMap = {
+        'admin': 'admin',
+        'consultant': 'consultant',
+        'dispenser': 'dispenser',
+        'branch_manager': 'dispenser',
+        'finance': 'finance',
+        'hr_manager': 'hr-portal',
+        'hr_admin': 'hr-portal',
+        'gm': 'gm',
+        'director': 'director',
+        'mis': 'mis',
+        'stock': 'stock',
+        'warehouse_manager': 'stock',
+        'warehouse_manager_ondangwa': 'stock',
+        'warehouse_manager_windhoek': 'stock',
+        'frontdesk': 'frontdesk'
+    };
+    
+    // If no portal specified or role-based portal should override, use role's default portal
+    const roleDefaultPortal = rolePortalMap[role];
+    if (!portal || portal === 'default' || portal === 'dispenser') {
+        portal = roleDefaultPortal || 'dispenser';
+    }
+    
+    console.log('📍 Opening portal:', portal, 'for role:', role);
     
     // Hide ALL portal-content divs first
     const allPortalContents = document.querySelectorAll('[id$="Content"]');
