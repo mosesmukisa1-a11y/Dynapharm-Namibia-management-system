@@ -3308,6 +3308,12 @@
         }
     </style>
     <script>
+        // =============================================================================
+        // CRITICAL: Initialize loading state
+        // =============================================================================
+        console.log('🚀 Starting JavaScript initialization...');
+        window.functionsLoaded = false;
+        
         // Legacy openPortalLogin function - now redirects to showLogin for backward compatibility
         // This function is deprecated but kept for any legacy code that might still reference it
         function openPortalLogin(portalKey) {
@@ -3867,15 +3873,37 @@
                 console.log('✅ Restoring session for:', userData.username);
                 window.currentUser = userData;
                 
-                // Wait for handlePortalLoginSuccess to be available
+                // Wait for all functions to be loaded before attempting login
+                let retries = 0;
+                const maxRetries = 50; // Max 10 seconds (50 * 200ms)
+                
                 const tryLogin = () => {
+                    retries++;
+                    
+                    // Check if all functions have loaded
+                    if (!window.functionsLoaded) {
+                        if (retries < maxRetries) {
+                            if (retries === 1 || retries % 10 === 0) {
+                                console.log(`⏳ Waiting for functions to load... (${retries}/${maxRetries})`);
+                            }
+                            setTimeout(tryLogin, 200);
+                        } else {
+                            console.error('❌ Timeout: Functions did not load in time. Please refresh the page.');
+                            alert('Page loading timeout. Please refresh the page.');
+                        }
+                        return;
+                    }
+                    
+                    // Functions are loaded, now call handlePortalLoginSuccess
                     if (typeof window.handlePortalLoginSuccess === 'function') {
+                        console.log('✅ Calling handlePortalLoginSuccess for session restore');
                         window.handlePortalLoginSuccess(userData, { silent: true });
                     } else if (typeof handlePortalLoginSuccess === 'function') {
+                        console.log('✅ Calling handlePortalLoginSuccess (direct) for session restore');
                         handlePortalLoginSuccess(userData, { silent: true });
                     } else {
-                        console.log('Waiting for login handler...');
-                        setTimeout(tryLogin, 200);
+                        console.error('❌ handlePortalLoginSuccess not found even after functions loaded!');
+                        alert('Login system error. Please refresh the page.');
                     }
                 };
                 
@@ -3887,8 +3915,25 @@
             }
         }
         
-        // Try to restore session on load
-        setTimeout(restoreSession, 500);
+        // Wait for functions to be fully loaded before trying to restore session
+        if (window.functionsLoaded) {
+            // Functions already loaded (unlikely but possible)
+            setTimeout(restoreSession, 500);
+        } else {
+            // Wait for the functionsReady event
+            window.addEventListener('functionsReady', () => {
+                console.log('📡 functionsReady event received, restoring session...');
+                setTimeout(restoreSession, 500);
+            });
+            
+            // Fallback: if event doesn't fire, try after a delay anyway
+            setTimeout(() => {
+                if (!window.functionsLoaded) {
+                    console.warn('⚠️ functionsReady event not fired, attempting restore anyway...');
+                    restoreSession();
+                }
+            }, 3000);
+        }
         
         // Define loginPortalRequest early for staff login
         if (typeof window.loginPortalRequest === 'undefined') {
@@ -4880,9 +4925,9 @@
             
             console.log('🔐 Staff login attempt:', { username, hasPassword: !!password });
             
-            // Check if page is still loading critical functions
-            if (typeof openTab !== 'function' && typeof window.openTab !== 'function') {
-                console.warn('⚠️ Page still loading, waiting for functions to be available...');
+            // Check if all functions have finished loading
+            if (!window.functionsLoaded) {
+                console.warn('⚠️ Page still loading functions, please wait...');
                 if (errorDiv) {
                     errorDiv.textContent = 'Page is still loading... Please wait a moment and try again.';
                     errorDiv.style.display = 'block';
@@ -40154,3 +40199,14 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 alert('Failed to delete branch. Please try again.');
             }
         }
+        
+        // =============================================================================
+        // CRITICAL: Mark all functions as loaded
+        // =============================================================================
+        console.log('🎉 All functions loaded successfully!');
+        window.functionsLoaded = true;
+        window.dispatchEvent(new Event('functionsReady'));
+        
+    </script>
+</body>
+</html>
