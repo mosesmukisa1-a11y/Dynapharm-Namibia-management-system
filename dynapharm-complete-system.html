@@ -4490,11 +4490,11 @@
 //                     if (user) {
 //                         resetSessionTimer();
 //                     }
-//                 } catch (e) {
-//                     // Silently ignore if currentUser is not defined yet
-//                 }
-//             }, { passive: true });
-//         });
+                } catch (e) {
+                    // Silently ignore if currentUser is not defined yet
+                }
+            }, { passive: true });
+        });
 //         
 //         // Initialize session timer when user logs in
 //         const originalHandlePortalLoginSuccess = window.handlePortalLoginSuccess;
@@ -4518,7 +4518,7 @@
 //             'mis': { name: 'MIS Portal', icon: '📊', category: 'Management' },
 //             'stock': { name: 'Stock Management', icon: '📦', category: 'Operations' },
 //             'admin': { name: 'Admin Portal', icon: '⚙️', category: 'Administration' }
-        };
+//         };
         
         function getFavoritePortals() {
             return JSON.parse(localStorage.getItem('favoritePortals') || '[]');

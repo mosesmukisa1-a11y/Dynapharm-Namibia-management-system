@@ -1654,25 +1654,74 @@
         </div>
     </div>
 
-    <!-- Login Modal -->
-    <div class="modal" id="loginModal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('loginModal')">&times;</span>
-            <h2>Login</h2>
-            <form id="loginForm">
-                <div id="loginError" style="color: #c41e3a; margin-bottom: 15px; font-size: 0.9rem; display: none;"></div>
-                <div class="form-group">
-                    <input type="text" id="loginUsername" placeholder="Username" required>
+    <!-- Modern Login Modal -->
+    <div class="modal" id="loginModal" style="display: none;">
+        <div class="modal-content" style="max-width: 450px; padding: 40px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <h2 id="loginModalTitle" style="margin: 0; color: #c41e3a; font-size: 1.8rem; font-weight: 700;">Portal Login</h2>
+                <span class="close" onclick="closeLoginModal()" style="font-size: 28px; font-weight: bold; color: #999; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='#c41e3a'" onmouseout="this.style.color='#999'">&times;</span>
+            </div>
+            
+            <form id="loginForm" novalidate>
+                <div id="loginError" style="display: none; background: #fee; color: #c41e3a; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #c41e3a; font-size: 0.9rem; line-height: 1.5;">
+                    <strong>⚠️</strong> <span id="loginErrorText"></span>
                 </div>
-                <div class="form-group">
-                    <input type="password" id="loginPassword" placeholder="Password" required>
+                
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="loginUsername" style="display: block; margin-bottom: 8px; color: #333; font-weight: 600; font-size: 0.9rem;">Username</label>
+                    <input 
+                        type="text" 
+                        id="loginUsername" 
+                        placeholder="Enter your username" 
+                        required 
+                        autocomplete="username"
+                        style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; transition: border-color 0.3s; box-sizing: border-box;"
+                        onfocus="this.style.borderColor='#c41e3a'; this.style.outline='none'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                    >
                 </div>
-                <button type="submit" class="btn" id="loginSubmitButton">Login</button>
-                <div style="margin-top: 15px; font-size: 0.85rem; color: #666; background: #f8f9fa; padding: 10px; border-radius: 5px;">
-                    <p><strong>Default Test Accounts:</strong></p>
-                    <p>Admin: <code>admin</code> / <code>walker33</code></p>
-                    <p>Consultant: <code>consultant</code> / <code>consultant123</code></p>
-                    <p>Dispenser: <code>dispenser</code> / <code>dispenser123</code></p>
+                
+                <div class="form-group" style="margin-bottom: 25px;">
+                    <label for="loginPassword" style="display: block; margin-bottom: 8px; color: #333; font-weight: 600; font-size: 0.9rem;">Password</label>
+                    <div style="position: relative;">
+                        <input 
+                            type="password" 
+                            id="loginPassword" 
+                            placeholder="Enter your password" 
+                            required 
+                            autocomplete="current-password"
+                            style="width: 100%; padding: 14px 16px; padding-right: 50px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; transition: border-color 0.3s; box-sizing: border-box;"
+                            onfocus="this.style.borderColor='#c41e3a'; this.style.outline='none'"
+                            onblur="this.style.borderColor='#e0e0e0'"
+                        >
+                        <button 
+                            type="button" 
+                            id="togglePassword" 
+                            onclick="togglePasswordVisibility()"
+                            style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #666; font-size: 1.2rem; padding: 5px;"
+                            title="Show/Hide Password"
+                        >👁️</button>
+                    </div>
+                </div>
+                
+                <button 
+                    type="submit" 
+                    class="btn" 
+                    id="loginSubmitButton" 
+                    style="width: 100%; background: linear-gradient(135deg, #c41e3a 0%, #a01a2e 100%); color: white; padding: 16px; font-size: 1.1rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 12px rgba(196, 30, 58, 0.3);"
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(196, 30, 58, 0.4)'"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(196, 30, 58, 0.3)'"
+                >
+                    🔐 Sign In
+                </button>
+                
+                <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border: 1px solid #dee2e6;">
+                    <p style="margin: 0 0 12px 0; font-weight: 600; color: #495057; font-size: 0.9rem;">📋 Test Accounts:</p>
+                    <div style="font-size: 0.85rem; color: #6c757d; line-height: 1.8;">
+                        <div><strong>Admin:</strong> <code style="background: white; padding: 2px 6px; border-radius: 4px;">admin</code> / <code style="background: white; padding: 2px 6px; border-radius: 4px;">walker33</code></div>
+                        <div><strong>Consultant:</strong> <code style="background: white; padding: 2px 6px; border-radius: 4px;">consultant</code> / <code style="background: white; padding: 2px 6px; border-radius: 4px;">consultant123</code></div>
+                        <div><strong>Dispenser:</strong> <code style="background: white; padding: 2px 6px; border-radius: 4px;">dispenser</code> / <code style="background: white; padding: 2px 6px; border-radius: 4px;">dispenser123</code></div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1906,23 +1955,68 @@
         // ----------------------------------------------------------
 
         // ----------------------------------------------------------
-        // 1. GLOBAL: Login Request (calls backend /api/auth/login)
+        // 1. MODERN AUTHENTICATION: API First, Local Fallback
         // ----------------------------------------------------------
         window.loginPortalRequest = async function loginPortalRequest(username, password) {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ username, password })
-            });
+            // Try API authentication first
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password }),
+                    signal: controller.signal
+                });
 
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({ message: 'Login failed.' }));
-                throw new Error(err.message || 'Login failed.');
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.user) {
+                        return data.user;
+                    }
+                } else {
+                    const err = await response.json().catch(() => ({ message: 'Invalid credentials.' }));
+                    throw new Error(err.message || 'Invalid credentials.');
+                }
+            } catch (apiError) {
+                // If API fails (network error, timeout, etc.), try local authentication
+                console.warn('API authentication failed, trying local fallback:', apiError.message);
+                
+                // Local user authentication fallback
+                if (typeof users !== 'undefined' && Array.isArray(users)) {
+                    const user = users.find(u => 
+                        (u.username || '').toLowerCase() === username.toLowerCase() && 
+                        (u.password || '') === password
+                    );
+                    
+                    if (user) {
+                        // Return user in expected format
+                        return {
+                            id: user.id,
+                            username: user.username,
+                            role: user.role,
+                            fullName: user.fullName || user.username,
+                            email: user.email,
+                            phone: user.phone,
+                            branch: user.branch,
+                            branches: user.branches || []
+                        };
+                    }
+                }
+                
+                // If both fail, throw appropriate error
+                if (apiError.name === 'AbortError') {
+                    throw new Error('Request timeout. Please check your connection and try again.');
+                } else if (apiError.message) {
+                    throw apiError;
+                } else {
+                    throw new Error('Invalid username or password.');
+                }
             }
-
-            const data = await response.json();
-            return data.user;
         };
 
 
@@ -1936,12 +2030,17 @@
                 username: user.username || null,
                 role: user.role || null,
                 fullName: user.fullName || null,
+                email: user.email || null,
+                phone: user.phone || null,
+                branch: user.branch || null,
+                branches: user.branches || [],
                 token: user.token || null,           // if provided
                 timestamp: Date.now()
             };
 
             localStorage.setItem('dyna_portal_user', JSON.stringify(session));
             window.currentUser = session;
+            currentUser = session; // Also set local variable
         }
 
 
@@ -1981,78 +2080,171 @@
 
         // Ensure global access
         window.handlePortalLoginSuccess = handlePortalLoginSuccess;
+        window.setAuthenticatedUser = setAuthenticatedUser;
 
 
         // ----------------------------------------------------------
-        // 4. LOGIN FORM HANDLER (Modal or Popup Login UI)
+        // 4. MODERN LOGIN FORM HANDLER with Enhanced UX
         // ----------------------------------------------------------
+        
+        // Error handling functions (defined globally for accessibility)
+        function showLoginError(message) {
+            const loginError = document.getElementById('loginError');
+            const loginErrorText = document.getElementById('loginErrorText');
+            if (loginError && loginErrorText) {
+                loginErrorText.textContent = message;
+                loginError.style.display = 'block';
+                
+                // Scroll error into view
+                loginError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function hideLoginError() {
+            const loginError = document.getElementById('loginError');
+            if (loginError) {
+                loginError.style.display = 'none';
+            }
+        }
+        
+        // Make error functions globally accessible
+        window.showLoginError = showLoginError;
+        window.hideLoginError = hideLoginError;
+        
         document.addEventListener('DOMContentLoaded', () => {
             const loginForm = document.getElementById('loginForm');
             const loginError = document.getElementById('loginError');
+            const loginErrorText = document.getElementById('loginErrorText');
             const loginSubmitButton = document.getElementById('loginSubmitButton');
+            const usernameInput = document.getElementById('loginUsername');
+            const passwordInput = document.getElementById('loginPassword');
 
-            if (!loginForm) return;
+            if (!loginForm) {
+                console.warn('⚠️ Login form not found');
+                return;
+            }
 
+            // Clear error on input
+            [usernameInput, passwordInput].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        if (loginError && loginError.style.display === 'block') {
+                            hideLoginError();
+                        }
+                    });
+                }
+            });
+
+            // Handle form submission
             loginForm.addEventListener('submit', async function (e) {
                 e.preventDefault();
 
-                const username = loginForm.querySelector('#loginUsername')?.value.trim();
-                const password = loginForm.querySelector('#loginPassword')?.value.trim();
+                const username = usernameInput?.value.trim();
+                const password = passwordInput?.value.trim();
 
+                // Validation
                 if (!username || !password) {
-                    if (loginError) {
-                        loginError.textContent = "Username and password are required.";
-                        loginError.style.display = 'block';
-                    }
+                    showLoginError('Please enter both username and password.');
+                    usernameInput?.focus();
                     return;
                 }
 
-                if (loginError) {
-                    loginError.textContent = '';
-                    loginError.style.display = 'none';
-                }
-                const originalButtonText = loginSubmitButton.textContent;
+                // Hide previous errors
+                hideLoginError();
 
+                // Update UI for loading state
+                const originalButtonText = loginSubmitButton.textContent;
+                const originalButtonStyle = loginSubmitButton.style.cssText;
+                
                 loginSubmitButton.disabled = true;
-                loginSubmitButton.textContent = 'Signing in...';
+                loginSubmitButton.textContent = '🔐 Signing in...';
+                loginSubmitButton.style.opacity = '0.7';
+                loginSubmitButton.style.cursor = 'not-allowed';
 
                 try {
+                    // Attempt authentication
                     const user = await loginPortalRequest(username, password);
-                    handlePortalLoginSuccess(user);
+                    
+                    // Success - show success message briefly
+                    loginSubmitButton.textContent = '✅ Success!';
+                    loginSubmitButton.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+                    
+                    // Close modal and handle login
+                    setTimeout(() => {
+                        closeLoginModal();
+                        if (typeof handlePortalLoginSuccess === 'function') {
+                            handlePortalLoginSuccess(user);
+                        } else {
+                            console.error('⚠️ handlePortalLoginSuccess function not found');
+                            alert('Login successful but redirect failed. Please refresh the page.');
+                        }
+                    }, 500);
+                    
                 } catch (error) {
-                    if (loginError) {
-                        loginError.textContent = error.message || "Unable to login.";
-                        loginError.style.display = 'block';
-                    }
+                    console.error('Login error:', error);
+                    // Show error message
+                    showLoginError(error.message || 'Unable to login. Please try again.');
+                    
+                    // Reset button
+                    loginSubmitButton.disabled = false;
+                    loginSubmitButton.textContent = originalButtonText;
+                    loginSubmitButton.style.cssText = originalButtonStyle;
+                    
+                    // Focus on password field for retry
+                    passwordInput?.focus();
+                    passwordInput?.select();
                 }
-
-                loginSubmitButton.disabled = false;
-                loginSubmitButton.textContent = originalButtonText;
             });
         });
 
 
         // ----------------------------------------------------------
-        // 5. AUTO SESSION RESTORE (When page loads)
+        // 5. ENHANCED SESSION MANAGEMENT & AUTO-RESTORE
         // ----------------------------------------------------------
-        (function restoreSession() {
+        function getStoredSession() {
             try {
                 const saved = localStorage.getItem('dyna_portal_user');
-                if (!saved) return;
-
-                const user = JSON.parse(saved);
-
-                // Verify token & restore
-                if (user && user.username) {
-                    window.currentUser = user;
-
-                    // Auto-login silently into correct portal
-                    handlePortalLoginSuccess(user, { silent: true });
+                if (!saved) return null;
+                
+                const session = JSON.parse(saved);
+                
+                // Check if session is still valid (not older than 7 days)
+                const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+                if (session.timestamp && (Date.now() - session.timestamp > SESSION_MAX_AGE)) {
+                    localStorage.removeItem('dyna_portal_user');
+                    return null;
                 }
+                
+                return session;
             } catch (e) {
-                console.warn("⚠️ Failed to restore session:", e);
+                console.warn("⚠️ Failed to parse stored session:", e);
+                localStorage.removeItem('dyna_portal_user');
+                return null;
+            }
+        }
+
+        function clearSession() {
+            localStorage.removeItem('dyna_portal_user');
+            window.currentUser = null;
+            currentUser = null;
+        }
+
+        // Auto-restore session on page load
+        (function restoreSession() {
+            const session = getStoredSession();
+            if (session && session.username) {
+                window.currentUser = session;
+                currentUser = session;
+                console.log('✅ Session restored for:', session.username);
+                
+                // Optionally auto-login (commented out to prevent unwanted redirects)
+                // handlePortalLoginSuccess(session, { silent: true });
             }
         })();
+        
+        // Make session functions globally accessible
+        window.getStoredSession = getStoredSession;
+        window.clearSession = clearSession;
 
         let clients = [
             {"referenceNumber": "CLT-NGHISHIDIMBWA-NB96061001371-1759828718144", "fullName": "Nghishidimbwa Mathias Nghipangelwa", "nbNumber": "NB96061001371", "email": "", "phone": "0816716038", "membershipStatus": "referred", "referralName": "mogan maria ", "referralNbNumber": "12345678", "memberId": "", "memberSince": "", "gender": "Male", "dob": "1996-06-10", "age": "28", "height": "175", "weight": "70", "occupation": "Teacher", "emergencyContact": "0812345678", "primaryReason": "General Health Check", "medicalHistory": "None", "currentMedications": "None", "supplements": "None", "familyHistory": ["None"], "waterIntake": "1-2 liters", "exerciseFreq": "1-2 times per week", "sleepHours": "6-7 hours", "stressLevel": "Moderate", "symptoms": ["None"], "signature": "Nghishidimbwa Mathias Nghipangelwa", "branch": "townshop", "timestamp": "2025-10-07T09:18:38.144Z", "lastUpdated": "2025-10-07T10:11:14.845Z", "updatedBy": "NAEM HANGULA", "allergies": ""},
@@ -3403,34 +3595,129 @@
             }, 100);
         }
 
+        // Modern Login System Functions
         function showLogin(portal) {
+            if (!portal) portal = 'default';
             currentPortal = portal;
-            // Update modal title to show which portal
-            const modalTitle = document.querySelector('#loginModal h2');
-            modalTitle.textContent = `${portal.charAt(0).toUpperCase() + portal.slice(1)} Portal Login`;
-            document.getElementById('loginModal').style.display = 'block';
-            // Clear previous values
+            
+            const loginModal = document.getElementById('loginModal');
+            const modalTitle = document.getElementById('loginModalTitle');
             const usernameInput = document.getElementById('loginUsername');
             const passwordInput = document.getElementById('loginPassword');
             const errorDiv = document.getElementById('loginError');
-            if (usernameInput) usernameInput.value = '';
-            if (passwordInput) passwordInput.value = '';
+            
+            // Update modal title
+            if (modalTitle) {
+                const PORTAL_LABELS = {
+                    frontdesk: 'Front Desk',
+                    consultant: 'Consultant',
+                    dispenser: 'Branch',
+                    admin: 'Admin',
+                    finance: 'Finance',
+                    stock: 'Stock Management',
+                    mis: 'MIS',
+                    gm: 'General Manager',
+                    director: 'Director',
+                    'hr-portal': 'HR',
+                    client: 'Client',
+                    default: 'Portal'
+                };
+                const label = PORTAL_LABELS[portal] || portal.charAt(0).toUpperCase() + portal.slice(1);
+                modalTitle.textContent = `${label} Portal Login`;
+            }
+            
+            // Clear form and errors
+            if (usernameInput) {
+                usernameInput.value = '';
+                usernameInput.focus();
+            }
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.type = 'password';
+            }
             if (errorDiv) {
-                errorDiv.textContent = '';
                 errorDiv.style.display = 'none';
+                document.getElementById('loginErrorText').textContent = '';
+            }
+            
+            // Show modal
+            if (loginModal) {
+                loginModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
             }
         }
+        
+        function closeLoginModal() {
+            const loginModal = document.getElementById('loginModal');
+            if (loginModal) {
+                loginModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        }
+        
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('loginPassword');
+            const toggleBtn = document.getElementById('togglePassword');
+            if (passwordInput && toggleBtn) {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    toggleBtn.textContent = '🙈';
+                } else {
+                    passwordInput.type = 'password';
+                    toggleBtn.textContent = '👁️';
+                }
+            }
+        }
+        
+        // Close modal when clicking outside (but not on child elements)
+        window.addEventListener('click', function(event) {
+            const loginModal = document.getElementById('loginModal');
+            if (loginModal && event.target === loginModal) {
+                closeLoginModal();
+            }
+        });
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const loginModal = document.getElementById('loginModal');
+                if (loginModal && loginModal.style.display === 'block') {
+                    closeLoginModal();
+                }
+            }
+        });
+        
+        // Make functions globally accessible
+        window.showLogin = showLogin;
+        window.closeLoginModal = closeLoginModal;
+        window.togglePasswordVisibility = togglePasswordVisibility;
 
         function logout() {
-            currentUser = null;
-            // Clear session storage
-            localStorage.removeItem('dyna_portal_user');
-            stopAutoRefresh();
-            hideRealtimeStatus();
-            document.getElementById(currentPortal + 'Auth').style.display = 'block';
-            document.getElementById(currentPortal + 'Content').style.display = 'none';
-            openTab('client');
+            // Clear session using the new session management
+            clearSession();
+            
+            // Stop any running processes
+            if (typeof stopAutoRefresh === 'function') stopAutoRefresh();
+            if (typeof hideRealtimeStatus === 'function') hideRealtimeStatus();
+            
+            // Reset UI
+            if (currentPortal) {
+                const authEl = document.getElementById(currentPortal + 'Auth');
+                const contentEl = document.getElementById(currentPortal + 'Content');
+                if (authEl) authEl.style.display = 'block';
+                if (contentEl) contentEl.style.display = 'none';
+            }
+            
+            // Return to client tab
+            if (typeof openTab === 'function') {
+                openTab('client');
+            }
+            
+            console.log('✅ Logged out successfully');
         }
+        
+        // Make logout globally accessible
+        window.logout = logout;
 
         async function displayClients() {
             // Refresh data from API
@@ -9792,9 +10079,13 @@
             document.getElementById(modalId).style.display = 'none';
         }
 
+        // Global modal click handler (but don't interfere with login modal's specific handler)
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
+                // Don't close login modal with this handler - it has its own handler
+                if (event.target.id !== 'loginModal') {
+                    event.target.style.display = 'none';
+                }
             }
         }
 
