@@ -3320,6 +3320,33 @@
             if (status) status.textContent = 'Loading functions (40,000+ lines)...';
         }, 100);
         
+        // =============================================================================
+        // STAFF SERVICES CONTEXTS - Defined early to prevent "before initialization" errors
+        // =============================================================================
+        const STAFF_SERVICES_CONTEXTS = {};
+        let activeStaffContext = 'branch';
+
+        function registerStaffServicesContext(contextKey, config = {}) {
+            if (!contextKey) return;
+            STAFF_SERVICES_CONTEXTS[contextKey] = {
+                leaveStatusId: config.leaveStatusId || null,
+                cashStatusId: config.cashStatusId || null
+            };
+        }
+        
+        // Make function globally available immediately
+        window.registerStaffServicesContext = registerStaffServicesContext;
+        window.STAFF_SERVICES_CONTEXTS = STAFF_SERVICES_CONTEXTS;
+
+        function getStaffStatusElement(contextKey, type) {
+            const context = STAFF_SERVICES_CONTEXTS[contextKey] || {};
+            const fallbackId = type === 'leave' ? 'myLeaveStatus' : 'myCashStatus';
+            const targetId = type === 'leave' ? context.leaveStatusId : context.cashStatusId;
+            return document.getElementById(targetId || fallbackId);
+        }
+        
+        // =============================================================================
+        
         // Legacy openPortalLogin function - now redirects to showLogin for backward compatibility
         // This function is deprecated but kept for any legacy code that might still reference it
         function openPortalLogin(portalKey) {
@@ -20195,19 +20222,20 @@
             syncBarcodeStockFromBackend().catch(err => console.debug('Barcode stock sync (startup) error', err));
         }, 100);
 
-        loadBranchesForDistribution();
-        populateTransferBranchOptions();
-        loadWindhoekProducts();
-        loadOndangwaProducts();
-        populateBranchDistributionProducts();
-        populateSharingLocations();
-        applyAutoOrderSettings();
-        applySyncSettings();
-        loadStockOrders();
-        loadShopWarehouseSharing();
-        loadTransferFromProducts();
-        loadStockTransfers();
-        loadRealtimeSyncStatus();
+        // Initialize stock management functions (with existence checks)
+        if (typeof loadBranchesForDistribution === 'function') loadBranchesForDistribution();
+        if (typeof populateTransferBranchOptions === 'function') populateTransferBranchOptions();
+        if (typeof loadWindhoekProducts === 'function') loadWindhoekProducts();
+        if (typeof loadOndangwaProducts === 'function') loadOndangwaProducts();
+        if (typeof populateBranchDistributionProducts === 'function') populateBranchDistributionProducts();
+        if (typeof populateSharingLocations === 'function') populateSharingLocations();
+        if (typeof applyAutoOrderSettings === 'function') applyAutoOrderSettings();
+        if (typeof applySyncSettings === 'function') applySyncSettings();
+        if (typeof loadStockOrders === 'function') loadStockOrders();
+        if (typeof loadShopWarehouseSharing === 'function') loadShopWarehouseSharing();
+        if (typeof loadTransferFromProducts === 'function') loadTransferFromProducts();
+        if (typeof loadStockTransfers === 'function') loadStockTransfers();
+        if (typeof loadRealtimeSyncStatus === 'function') loadRealtimeSyncStatus();
 
         const windhoekProductSelect = document.getElementById('windhoekProduct');
         if (windhoekProductSelect) {
@@ -35526,7 +35554,11 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
 
         async function loadBranchInventory({ notify = false } = {}) {
                 const branchId = (typeof getBranchId === 'function' ? getBranchId() : (window.currentUser && window.currentUser.branch) || 'default');
-            await syncBranchInventoryFromApi({ branchId, notify });
+            // TODO: Implement syncBranchInventoryFromApi function
+            // await syncBranchInventoryFromApi({ branchId, notify });
+            if (typeof syncBranchInventoryFromApi === 'function') {
+                await syncBranchInventoryFromApi({ branchId, notify });
+            }
                 const noticeEl = document.getElementById('branchInventoryRestrictedNotice');
             if (noticeEl) {
                 noticeEl.style.display = !hasInventoryFullAccess() ? 'block' : 'none';
@@ -36501,26 +36533,8 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
 
         initializeCommunicationPanels();
 
-        const STAFF_SERVICES_CONTEXTS = {};
-        let activeStaffContext = 'branch';
-
-        function registerStaffServicesContext(contextKey, config = {}) {
-            if (!contextKey) return;
-            STAFF_SERVICES_CONTEXTS[contextKey] = {
-                leaveStatusId: config.leaveStatusId || null,
-                cashStatusId: config.cashStatusId || null
-            };
-        }
-        
-        // Make function globally available immediately
-        window.registerStaffServicesContext = registerStaffServicesContext;
-
-        function getStaffStatusElement(contextKey, type) {
-            const context = STAFF_SERVICES_CONTEXTS[contextKey] || {};
-            const fallbackId = type === 'leave' ? 'myLeaveStatus' : 'myCashStatus';
-            const targetId = type === 'leave' ? context.leaveStatusId : context.cashStatusId;
-            return document.getElementById(targetId || fallbackId);
-        }
+        // STAFF_SERVICES_CONTEXTS moved to line 3326 (early initialization)
+        // Duplicate definition removed to prevent conflicts
 
         function refreshStaffServices(contextKey = 'branch') {
             viewMyLeaveRequests(contextKey);
