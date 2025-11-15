@@ -3881,6 +3881,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  // Attach click handlers to login buttons
+  document.getElementById("distributorLoginBtn")?.addEventListener("click", handleDistributorLogin);
+  document.getElementById("staffLoginBtn")?.addEventListener("click", handleStaffLogin);
+  document.getElementById("adminLoginBtn")?.addEventListener("click", handleAdminLogin);
+
   // Allow Enter key to submit forms
   document.getElementById("distributorDOB")?.addEventListener("keypress", function (e) {
     if (e.key === "Enter") handleDistributorLogin();
