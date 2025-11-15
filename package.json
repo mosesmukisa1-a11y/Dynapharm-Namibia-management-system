@@ -41,15 +41,16 @@
   },
   "homepage": "https://dynapharm-cloud.vercel.app",
   "dependencies": {
-    "pg": "^8.16.3",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
     "cookie": "^0.6.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "playwright": "^1.56.1"
   },
   "devDependencies": {
-    "chokidar": "^3.6.0",
     "@eslint/js": "^9.12.0",
+    "chokidar": "^3.6.0",
     "eslint": "^9.12.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-html": "^8.1.2",

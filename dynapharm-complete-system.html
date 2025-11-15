@@ -1630,6 +1630,12 @@
     background: linear-gradient(135deg, #2563eb, #1d4ed8);
     border-color: transparent;
 }
+#stockContent .hub-action.hub-action--active {
+    background: linear-gradient(135deg, #c41e3a, #8b1c1c);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 18px 32px rgba(196, 30, 58, 0.25);
+}
 #stockContent .hub-activity-feed {
     display: flex;
     flex-direction: column;
@@ -4509,16 +4515,41 @@
             }
         }
 
-        function handleStockQuickAction(action) {
+        function handleStockQuickAction(arg1, arg2) {
+            let evt = null;
+            let action = null;
+            if (typeof arg1 === 'string' && !arg2) {
+                action = arg1;
+            } else {
+                evt = arg1 || null;
+                action = arg2 || null;
+            }
+            if (!action) return;
             try {
+                if (evt?.preventDefault) evt.preventDefault();
+
                 if (typeof showStockTab === 'function') {
-                    showStockTab(action);
+                    showStockTab(action, evt);
                 }
-                const target = document.getElementById(`${action}Tab`) || document.getElementById('stock');
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const quickButtons = document.querySelectorAll('#stockContent .hub-action');
+                quickButtons.forEach(btn => btn.classList.remove('hub-action--active'));
+                if (evt?.currentTarget) {
+                    evt.currentTarget.classList.add('hub-action--active');
+                } else {
+                    const fallbackBtn = document.querySelector(`#stockContent .hub-action[data-stock-action="${action}"]`);
+                    if (fallbackBtn) fallbackBtn.classList.add('hub-action--active');
                 }
-                notifyStock('Navigated to ' + action.replace(/([A-Z])/g, ' $1'), 'info');
+
+                requestAnimationFrame(() => {
+                    const target =
+                        document.getElementById(`${action}Tab`) ||
+                        document.getElementById(`stock-tab-${action}`) ||
+                        document.getElementById('stockTabsContainer');
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
             } catch (error) {
                 console.warn('handleStockQuickAction error:', error);
             }
@@ -6242,40 +6273,59 @@
         /**
          * Show Stock Management tabs
          */
-        function showStockTab(tabName) {
+        function showStockTab(tabName, evt = null) {
             console.log('📊 Switching to stock tab:', tabName);
+            const triggerEvent = evt || window.event || null;
+            const stockContent = document.getElementById('stockContent');
             
             // Hide all stock tab contents
-            const tabContents = document.querySelectorAll('[id^="stock-tab-"]');
+            const tabContents = stockContent ? stockContent.querySelectorAll('.stock-tab-content') : [];
             tabContents.forEach(tab => {
                 tab.style.display = 'none';
             });
             
-            // Remove active class from all stock tab buttons
-            const parentDiv = document.querySelector('.stock') || document.querySelector('#stock');
-            if (parentDiv) {
-                const tabButtons = parentDiv.querySelectorAll('.tab-button');
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active');
-                });
+            // Remove active class from tab buttons and workflow tabs
+            if (stockContent) {
+                const tabButtons = stockContent.querySelectorAll('.stock-hub-tab-row .tab-button, .stock-hub-journey .workflow-tab');
+                tabButtons.forEach(btn => btn.classList.remove('active'));
             }
             
-            // Show selected tab content
-            const selectedTab = document.getElementById(`stock-tab-${tabName}`);
+            // Determine target tab element
+            const candidateIds = [
+                `stock-tab-${tabName}`,
+                `${tabName}Tab`,
+                `${tabName}-tab`,
+                `${tabName}_tab`
+            ];
+            const selectedTab = candidateIds
+                .map(id => document.getElementById(id))
+                .find(Boolean);
             if (selectedTab) {
                 selectedTab.style.display = 'block';
             } else {
-                console.warn(`Stock tab content not found: stock-tab-${tabName}`);
+                console.warn(`Stock tab content not found for ${tabName}`);
             }
             
-            // Set active button (find the button that called this)
-            if (event && event.target) {
-                event.target.classList.add('active');
-            } else {
-                // Fallback: find button by id
-                const btnId = `stockTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
-                const btn = document.getElementById(btnId);
-                if (btn) btn.classList.add('active');
+            // Highlight the triggering button (or fallback)
+            let activeButton = triggerEvent?.currentTarget || triggerEvent?.target || null;
+            const capitalize = str => str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+            if (!activeButton && stockContent) {
+                const cap = capitalize(tabName);
+                const selectors = [
+                    `#stockTab${cap}`,
+                    `.workflow-tab[data-tab="${tabName}"]`,
+                    `.tab-button[data-stock-tab="${tabName}"]`
+                ];
+                for (const selector of selectors) {
+                    const candidate = stockContent.querySelector(selector);
+                    if (candidate) {
+                        activeButton = candidate;
+                        break;
+                    }
+                }
+            }
+            if (activeButton) {
+                activeButton.classList.add('active');
             }
             
             // Load data for specific tabs
@@ -6284,6 +6334,9 @@
                     if (typeof loadStockOverview === 'function') {
                         loadStockOverview();
                     }
+                    renderPurchaseOrders();
+                    renderPlanInsights();
+                    renderSupplierScorecard();
                     break;
                 case 'countryImport':
                     if (typeof loadCountryImports === 'function') {
@@ -6303,6 +6356,16 @@
                 case 'transfers':
                     if (typeof loadStockTransfers === 'function') {
                         loadStockTransfers();
+                    }
+                    break;
+                case 'orders':
+                    renderPurchaseOrders();
+                    renderPlanInsights();
+                    renderSupplierScorecard();
+                    break;
+                case 'countryInventory':
+                    if (typeof displayCountryStock === 'function') {
+                        displayCountryStock();
                     }
                     break;
                 case 'windhoek':
@@ -11010,11 +11073,11 @@
                             <p class="hub-section__meta">Jump directly into the flow you need.</p>
                         </div>
                         <div class="hub-action-grid">
-                            <button class="hub-action" onclick="handleStockQuickAction('countryImport')">📥 Import Country Stock</button>
-                            <button class="hub-action" onclick="handleStockQuickAction('warehouseDistribution')">🏢 Distribute to Warehouse</button>
-                            <button class="hub-action" onclick="handleStockQuickAction('branchDistribution')">🏬 Distribute to Branch</button>
-                            <button class="hub-action" onclick="handleStockQuickAction('orders')">📋 Manage Orders</button>
-                            <button class="hub-action" onclick="handleStockQuickAction('countryInventory')">🌍 Country Inventory</button>
+                            <button class="hub-action" data-stock-action="countryImport" onclick="handleStockQuickAction(event, 'countryImport')">📥 Import Country Stock</button>
+                            <button class="hub-action" data-stock-action="warehouseDistribution" onclick="handleStockQuickAction(event, 'warehouseDistribution')">🏢 Distribute to Warehouse</button>
+                            <button class="hub-action" data-stock-action="branchDistribution" onclick="handleStockQuickAction(event, 'branchDistribution')">🏬 Distribute to Branch</button>
+                            <button class="hub-action" data-stock-action="orders" onclick="handleStockQuickAction(event, 'orders')">📋 Manage Orders</button>
+                            <button class="hub-action" data-stock-action="countryInventory" onclick="handleStockQuickAction(event, 'countryInventory')">🌍 Country Inventory</button>
                         </div>
                     </section>
                     <section class="hub-section">
@@ -20686,6 +20749,84 @@
             }, 0);
         }
 
+        function updateBranchDistAvailableQty() {
+            try {
+                const productSelect = document.getElementById('branchDistProduct');
+                const availableInput = document.getElementById('branchDistAvailableQty');
+                if (!availableInput) return;
+
+                const sourceSelect = document.getElementById('branchDistSourceWarehouse');
+                const productName = productSelect
+                    ? (productSelect.value || productSelect.selectedOptions?.[0]?.textContent || '').trim()
+                    : '';
+                const sourceKey = sourceSelect && sourceSelect.value ? sourceSelect.value.trim() : '';
+
+                if (!sourceKey) {
+                    availableInput.value = 'Select warehouse';
+                    availableInput.style.color = '#b91c1c';
+                    return;
+                }
+                if (!productName) {
+                    availableInput.value = 'Select product';
+                    availableInput.style.color = '#b91c1c';
+                    return;
+                }
+
+                const rawQty = calculateAvailableQuantity(productName, sourceKey);
+                const availableQty = Number.isFinite(rawQty) ? Math.max(0, rawQty) : 0;
+                availableInput.value = `${availableQty} units`;
+                availableInput.style.color = availableQty > 0 ? '#27ae60' : '#b91c1c';
+
+                const qtyInput = document.getElementById('branchDistQuantity');
+                if (qtyInput) {
+                    qtyInput.max = availableQty > 0 ? availableQty : '';
+                }
+            } catch (error) {
+                console.debug('updateBranchDistAvailableQty error:', error);
+            }
+        }
+
+        function updateTransferAvailableQty() {
+            try {
+                const productSelect = document.getElementById('transferProduct');
+                const availableInput = document.getElementById('transferAvailableQty');
+                if (!availableInput) return;
+
+                const sourceSelect = document.getElementById('transferFromLocation');
+                const branchSelect = document.getElementById('transferBranch');
+                const productName = productSelect
+                    ? (productSelect.value || productSelect.selectedOptions?.[0]?.textContent || '').trim()
+                    : '';
+                let sourceKey = sourceSelect && sourceSelect.value ? sourceSelect.value.trim() : '';
+                if (sourceKey === 'branch' && branchSelect && branchSelect.value) {
+                    sourceKey = branchSelect.value.trim();
+                }
+
+                if (!sourceKey) {
+                    availableInput.value = 'Select source';
+                    availableInput.style.color = '#b91c1c';
+                    return;
+                }
+                if (!productName) {
+                    availableInput.value = 'Select product';
+                    availableInput.style.color = '#b91c1c';
+                    return;
+                }
+
+                const rawQty = calculateAvailableQuantity(productName, sourceKey);
+                const availableQty = Number.isFinite(rawQty) ? Math.max(0, rawQty) : 0;
+                availableInput.value = `${availableQty} units`;
+                availableInput.style.color = availableQty > 0 ? '#27ae60' : '#b91c1c';
+
+                const qtyInput = document.getElementById('transferQuantity-ondangwa');
+                if (qtyInput) {
+                    qtyInput.max = availableQty > 0 ? availableQty : '';
+                }
+            } catch (error) {
+                console.debug('updateTransferAvailableQty error:', error);
+            }
+        }
+
         function moveBarcodeStock(productName, quantity, fromLocation, toLocation, meta = {}) {
             const normalizedName = String(productName || '').toLowerCase();
             if (!normalizedName) return { success: false, message: 'Product required' };
@@ -20864,10 +21005,13 @@
         if (branchSource) {
             branchSource.addEventListener('change', () => {
                 populateBranchDistributionProducts();
+                if (typeof updateBranchDistAvailableQty === 'function') {
+                    updateBranchDistAvailableQty();
+                }
             });
         }
         const branchProductSelect = document.getElementById('branchDistProduct');
-        if (branchProductSelect) {
+        if (branchProductSelect && typeof updateBranchDistAvailableQty === 'function') {
             branchProductSelect.addEventListener('change', updateBranchDistAvailableQty);
         }
         const transferFrom = document.getElementById('transferFromLocation');
@@ -20889,7 +21033,7 @@
             });
         }
         const transferProduct = document.getElementById('transferProduct');
-        if (transferProduct) {
+        if (transferProduct && typeof updateTransferAvailableQty === 'function') {
             transferProduct.addEventListener('change', updateTransferAvailableQty);
         }
         const transferBranchWrapper = document.getElementById('transferBranchSelect');
@@ -20916,6 +21060,9 @@
                 syncWalkInSalesToBackend().catch(err => console.debug('Walk-in sale sync pending:', err));
             }, 300);
         }
+        const stockApiReady = window.stockApiReady || Promise.resolve(null);
+        window.stockApiReady = stockApiReady;
+
         stockApiReady.then(async (module) => {
             if (!module || typeof module.refreshStockData !== 'function') return;
             try {
@@ -20926,7 +21073,9 @@
                 try { loadGMPendingInventoryApprovals(); } catch (_) {}
             }
         });
-        updateTransferAvailableQty();
+        if (typeof updateTransferAvailableQty === 'function') {
+            updateTransferAvailableQty();
+        }
     });
 
         window.addEventListener('stock:updated', (event) => {
