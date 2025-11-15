@@ -400,15 +400,71 @@
             renderOptions(toSelect);
         }
 
+        // Auto-fill login form from URL parameters (stored for when form is ready)
+        window.pendingLoginParams = null;
+        
         // Auto-trigger when URL has ?collect=1
         (function(){
             try {
                 const u = new URL(location.href);
                 
-                // SECURITY: Remove any username or password from URL parameters
+                // Auto-fill login form if username/password are in URL, then remove them for security
                 let hasSensitiveParams = false;
+                let usernameParam = null;
+                let passwordParam = null;
+                
                 if (u.searchParams.has('username') || u.searchParams.has('password')) {
                     hasSensitiveParams = true;
+                    usernameParam = u.searchParams.get('username');
+                    passwordParam = u.searchParams.get('password');
+                    
+                    // Store for later use when login modal opens
+                    window.pendingLoginParams = {
+                        username: usernameParam,
+                        password: passwordParam
+                    };
+                    
+                    // Try to pre-fill immediately if fields exist, otherwise will be filled when modal opens
+                    function fillLoginFields() {
+                        if (!window.pendingLoginParams) return;
+                        
+                        const { username, password } = window.pendingLoginParams;
+                        
+                        if (username) {
+                            // Try multiple possible field IDs
+                            const usernameFields = ['username', 'loginUsername', 'warehouseUsername', 'unifiedUsername'];
+                            usernameFields.forEach(fieldId => {
+                                const field = document.getElementById(fieldId);
+                                if (field) {
+                                    field.value = username;
+                                }
+                            });
+                        }
+                        
+                        if (password) {
+                            // Try multiple possible field IDs
+                            const passwordFields = ['password', 'loginPassword', 'warehousePassword', 'unifiedPassword'];
+                            passwordFields.forEach(fieldId => {
+                                const field = document.getElementById(fieldId);
+                                if (field) {
+                                    field.value = password;
+                                }
+                            });
+                        }
+                        
+                        // Clear after successful fill
+                        window.pendingLoginParams = null;
+                    }
+                    
+                    // Try immediately
+                    fillLoginFields();
+                    
+                    // Also try when DOM is ready
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', fillLoginFields);
+                    }
+                    
+                    // Remove parameters from URL for security
                     u.searchParams.delete('username');
                     u.searchParams.delete('password');
                 }
@@ -417,7 +473,7 @@
                 if (hasSensitiveParams) {
                     const cleanUrl = u.pathname + (u.search ? u.search : '') + (u.hash ? u.hash : '');
                     window.history.replaceState({}, '', cleanUrl);
-                    console.warn('Removed sensitive login parameters from URL');
+                    // Suppress warning - this is expected security behavior
                 }
                 
                 if (u.searchParams.get('collect') === '1') {
@@ -3330,7 +3386,8 @@
             const modalDescription = document.getElementById('loginModalDescription');
             const loginError = document.getElementById('loginError');
             const loginForm = document.getElementById('loginForm');
-            const usernameField = document.getElementById('username');
+            const usernameField = document.getElementById('username') || document.getElementById('loginUsername') || document.getElementById('warehouseUsername') || document.getElementById('unifiedUsername');
+            const passwordField = document.getElementById('password') || document.getElementById('loginPassword') || document.getElementById('warehousePassword') || document.getElementById('unifiedPassword');
             
             // Debug: Log what we found
             console.log('openLoginModal called for portal:', portal);
@@ -3373,6 +3430,22 @@
             if (modalDescription) modalDescription.textContent = `Sign in to access the ${label.toLowerCase()} portal.`;
             if (loginError) loginError.textContent = '';
             if (loginForm) loginForm.reset();
+            
+            // Auto-fill form if URL parameters were provided
+            if (window.pendingLoginParams) {
+                const { username, password } = window.pendingLoginParams;
+                
+                if (username && usernameField) {
+                    usernameField.value = username;
+                }
+                
+                if (password && passwordField) {
+                    passwordField.value = password;
+                }
+                
+                // Clear after use
+                window.pendingLoginParams = null;
+            }
             
             // Use requestAnimationFrame to ensure DOM is ready before setting styles
             requestAnimationFrame(() => {
