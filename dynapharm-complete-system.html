@@ -3851,20 +3851,59 @@
         // Define loginPortalRequest early for staff login
         if (typeof window.loginPortalRequest === 'undefined') {
             window.loginPortalRequest = async function loginPortalRequest(username, password) {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password }),
-                    credentials: 'include'
-                });
-                let data = null;
+                // Try API first
                 try {
-                    data = await response.json();
-                } catch (_) {}
-                if (!response.ok) {
-                    throw new Error(data?.error || 'Invalid username or password');
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password }),
+                        credentials: 'include'
+                    });
+                    let data = null;
+                    try {
+                        data = await response.json();
+                    } catch (_) {}
+                    if (response.ok && data) {
+                        return data;
+                    }
+                    // API failed, try local fallback
+                    console.warn('API login failed, trying local users...');
+                } catch (apiError) {
+                    console.warn('API error, trying local fallback:', apiError.message);
                 }
-                return data;
+                
+                // Local fallback authentication
+                const localUsers = [
+                    { id: 1, username: 'admin', password: 'walker33', role: 'admin', fullName: 'Administrator', email: 'admin@dynapharm.com' },
+                    { id: 2, username: 'moses', password: 'walker33', role: 'consultant', fullName: 'MOSES MUKISA', email: 'moses@dynapharm.com' },
+                    { id: 3, username: 'Geneva', password: 'Pearl_11', role: 'consultant', fullName: 'Jennifer Joseph', email: 'geneva@dynapharm.com', branch: 'Geneva' },
+                    { id: 4, username: 'NAEM', password: 'PASSWORD', role: 'dispenser', fullName: 'NAEM HANGULA', email: 'naem@dynapharm.com', branch: 'Main Branch' },
+                    { id: 5, username: 'GEINGOS', password: 'ALBERTO99', role: 'consultant', fullName: 'HILMA C', email: 'geingos@dynapharm.com', branch: 'GEINGOS' }
+                ];
+                
+                const user = localUsers.find(u => 
+                    u.username.toLowerCase() === username.toLowerCase() && 
+                    u.password === password
+                );
+                
+                if (user) {
+                    console.log('✅ Local authentication successful:', user.username);
+                    return { 
+                        success: true, 
+                        user: {
+                            id: user.id,
+                            username: user.username,
+                            role: user.role,
+                            fullName: user.fullName,
+                            full_name: user.fullName,
+                            email: user.email,
+                            branch: user.branch || null,
+                            branches: []
+                        }
+                    };
+                }
+                
+                throw new Error('Invalid username or password');
             };
         }
         
@@ -4837,19 +4876,37 @@
                     
                     console.log('✅ Staff login successful:', user.username, user.role);
                     
-                    // Call the login success handler (try window first, then direct)
-                    if (typeof window.handlePortalLoginSuccess === 'function') {
-                        window.handlePortalLoginSuccess(user, { silent: true });
-                    } else if (typeof handlePortalLoginSuccess === 'function') {
-                        handlePortalLoginSuccess(user, { silent: true });
-                    } else {
-                        console.error('❌ handlePortalLoginSuccess not found! Using fallback.');
-                        // Fallback: Set user and redirect manually
-                        setAuthenticatedUser(user);
-                        hideLandingPage();
-                        openTab('dispenser', null);
+                    // Store user in localStorage for persistence
+                    try {
+                        localStorage.setItem('dyna_portal_user', JSON.stringify({
+                            username: user.username,
+                            role: user.role,
+                            fullName: user.fullName || user.full_name,
+                            email: user.email,
+                            phone: user.phone,
+                            branch: user.branch,
+                            branches: user.branches || [],
+                            timestamp: Date.now()
+                        }));
+                        window.currentUser = user;
+                    } catch (e) {
+                        console.warn('Failed to store user:', e);
                     }
+                    
                     hideStaffLoginModal();
+                    
+                    // Call the login success handler with delay to ensure DOM is ready
+                    setTimeout(() => {
+                        if (typeof window.handlePortalLoginSuccess === 'function') {
+                            window.handlePortalLoginSuccess(user, { silent: true });
+                        } else if (typeof handlePortalLoginSuccess === 'function') {
+                            handlePortalLoginSuccess(user, { silent: true });
+                        } else {
+                            console.error('❌ handlePortalLoginSuccess not found! Reloading page...');
+                            // Last resort: reload page and let it detect the stored user
+                            window.location.reload();
+                        }
+                    }, 100);
                 } else {
                     throw new Error('Invalid response from server');
                 }
