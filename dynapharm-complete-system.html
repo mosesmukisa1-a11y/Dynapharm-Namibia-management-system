@@ -4937,21 +4937,74 @@
                     
                     hideStaffLoginModal();
                     
-                    // Call the login success handler with delay to ensure DOM is ready
-                    setTimeout(() => {
+                    // Call the login success handler - retry until available
+                    let retries = 0;
+                    const maxRetries = 20; // Try for up to 4 seconds
+                    const tryLoginSuccess = () => {
+                        retries++;
+                        
                         if (typeof window.handlePortalLoginSuccess === 'function') {
+                            console.log('✅ Calling handlePortalLoginSuccess');
                             window.handlePortalLoginSuccess(user, { silent: true });
                         } else if (typeof handlePortalLoginSuccess === 'function') {
+                            console.log('✅ Calling handlePortalLoginSuccess (direct)');
                             handlePortalLoginSuccess(user, { silent: true });
+                        } else if (retries < maxRetries) {
+                            console.log(`⏳ Waiting for handlePortalLoginSuccess... (attempt ${retries}/${maxRetries})`);
+                            setTimeout(tryLoginSuccess, 200);
                         } else {
-                            console.error('❌ handlePortalLoginSuccess not found! Opening portal manually...');
-                            // Fallback: manually show the portal without full handler
-                            hideLandingPage();
-                            if (typeof openTab === 'function') {
-                                openTab('dispenser', null);
+                            console.error('❌ handlePortalLoginSuccess not found after', retries, 'attempts! Opening portal manually...');
+                            
+                            // Manual fallback
+                            try {
+                                // Set the user globally
+                                window.currentUser = user;
+                                
+                                // Hide landing page
+                                const landingPage = document.getElementById('landingPage');
+                                if (landingPage) landingPage.style.display = 'none';
+                                
+                                // Show container
+                                const container = document.querySelector('.container');
+                                if (container) container.style.display = 'block';
+                                
+                                // Show portal tabs
+                                const portalTabs = document.getElementById('portalTabs');
+                                if (portalTabs) portalTabs.style.display = 'flex';
+                                
+                                // Determine portal based on role
+                                const rolePortalMap = {
+                                    'admin': 'admin',
+                                    'consultant': 'consultant',
+                                    'dispenser': 'dispenser',
+                                    'branch_manager': 'dispenser',
+                                    'finance': 'finance',
+                                    'hr_manager': 'hr-portal',
+                                    'hr_admin': 'hr-portal',
+                                    'gm': 'gm',
+                                    'director': 'director',
+                                    'mis': 'mis',
+                                    'stock': 'stock',
+                                    'warehouse_manager': 'stock'
+                                };
+                                const targetPortal = rolePortalMap[user.role] || 'dispenser';
+                                
+                                console.log('📍 Opening portal manually:', targetPortal);
+                                
+                                // Open the portal
+                                if (typeof openTab === 'function') {
+                                    openTab(targetPortal, null);
+                                } else {
+                                    console.error('openTab function not found either!');
+                                }
+                            } catch (fallbackError) {
+                                console.error('Fallback failed:', fallbackError);
+                                alert('Login successful but portal failed to open. Please refresh the page.');
                             }
                         }
-                    }, 100);
+                    };
+                    
+                    setTimeout(tryLoginSuccess, 200);
                 } else {
                     throw new Error('Invalid response from server');
                 }
