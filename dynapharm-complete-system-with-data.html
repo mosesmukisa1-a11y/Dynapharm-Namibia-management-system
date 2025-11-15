@@ -3621,6 +3621,8 @@
 
         // Modern Login System Functions
         function showLogin(portal) {
+            console.log('🔐 showLogin called for portal:', portal);
+            
             if (!portal) portal = 'default';
             currentPortal = portal;
             
@@ -3629,6 +3631,20 @@
             const usernameInput = document.getElementById('loginUsername');
             const passwordInput = document.getElementById('loginPassword');
             const errorDiv = document.getElementById('loginError');
+            
+            console.log('Login modal found:', !!loginModal);
+            console.log('Login elements:', {
+                modalTitle: !!modalTitle,
+                usernameInput: !!usernameInput,
+                passwordInput: !!passwordInput,
+                errorDiv: !!errorDiv
+            });
+            
+            if (!loginModal) {
+                console.error('❌ Login modal not found!');
+                alert('Login modal not found. Please refresh the page.');
+                return;
+            }
             
             // Update modal title
             if (modalTitle) {
@@ -3653,7 +3669,7 @@
             // Clear form and errors
             if (usernameInput) {
                 usernameInput.value = '';
-                usernameInput.focus();
+                setTimeout(() => usernameInput.focus(), 100);
             }
             if (passwordInput) {
                 passwordInput.value = '';
@@ -3661,14 +3677,14 @@
             }
             if (errorDiv) {
                 errorDiv.style.display = 'none';
-                document.getElementById('loginErrorText').textContent = '';
+                const errorText = document.getElementById('loginErrorText');
+                if (errorText) errorText.textContent = '';
             }
             
             // Show modal
-            if (loginModal) {
-                loginModal.style.display = 'block';
-                document.body.style.overflow = 'hidden';
-            }
+            loginModal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            console.log('✅ Login modal displayed');
         }
         
         function closeLoginModal() {
