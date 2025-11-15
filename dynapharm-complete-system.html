@@ -7967,6 +7967,20 @@
                 <div class="form-section">
                     <h3>👤 Client Registration - Walk-in Registration</h3>
                     <p style="margin-bottom: 15px; color: #666;">Register new clients who visit the branch in person</p>
+                    
+                    <!-- Client Type Selector -->
+                    <div class="form-grid" style="margin-bottom: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border-left: 4px solid #3498db;">
+                        <div class="form-group">
+                            <label class="required">Client Type *</label>
+                            <select id="fdClientType" onchange="onFrontDeskCustomerTypeChange()" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 5px;" required>
+                                <option value="">Select Client Type</option>
+                                <option value="customer">Customer (Buying products)</option>
+                                <option value="distributor">Distributor (Registered member)</option>
+                            </select>
+                            <small style="color: #666; font-size: 0.85rem;">Select whether this is a customer or a registered distributor</small>
+                        </div>
+                    </div>
+                    
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="required">Full Name</label>
@@ -7992,9 +8006,30 @@
                             <label>Address</label>
                             <textarea id="fdClientAddress" rows="2" placeholder="Physical Address"></textarea>
                         </div>
-                        <div class="form-group">
-                            <label>Distributor Referral (NB Number)</label>
-                            <input type="text" id="fdClientReferral" placeholder="NB Number (optional)" style="text-transform: uppercase;">
+                    </div>
+                    
+                    <!-- FOR CUSTOMERS: Show referral fields -->
+                    <div id="fdCustomerReferralSection" style="display: none; margin: 20px 0; background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #f39c12;">
+                        <h4 style="color: #856404; margin-bottom: 10px;">👥 Customer Referral Information</h4>
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">Who referred this customer?</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="required">Distributor Referral (NB Number) *</label>
+                                <input type="text" id="fdClientReferral" placeholder="e.g., NB12345678" style="text-transform: uppercase;" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by digits">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- FOR DISTRIBUTORS: Show own NB number -->
+                    <div id="fdDistributorNbSection" style="display: none; margin: 20px 0; background: #f0fff4; padding: 15px; border-radius: 8px; border-left: 4px solid #27ae60;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">🏢 Distributor Information</h4>
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">Enter your distributor NB number</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="required">Your NB Number *</label>
+                                <input type="text" id="fdDistributorNB" placeholder="e.g., NB12345678" style="text-transform: uppercase;" pattern="NB[0-9]+" title="NB number must start with 'NB' followed by digits">
+                                <small style="color: #666; font-size: 0.85rem;">Your registered distributor NB number</small>
+                            </div>
                         </div>
                     </div>
                     <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -33467,6 +33502,83 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
+        // =============================================================================
+        // CUSTOMER TYPE CHANGE HANDLER - Used across all forms
+        // =============================================================================
+        
+        function onCustomerTypeChange() {
+            const walkInType = document.getElementById('walkInCustomerType');
+            const clientType = document.getElementById('clientTypeSelect');
+            
+            // Determine which form is active
+            let customerType = '';
+            
+            if (walkInType) {
+                customerType = walkInType.value;
+                const customerReferralField = document.getElementById('customerReferralField');
+                
+                if (customerType === 'customer') {
+                    // Show referral fields for customers
+                    if (customerReferralField) customerReferralField.style.display = 'block';
+                } else if (customerType === 'distributor') {
+                    // Hide referral fields for distributors (they have their own NB)
+                    if (customerReferralField) customerReferralField.style.display = 'none';
+                }
+                
+                console.log('🔄 Walk-in customer type changed to:', customerType);
+            }
+            
+            if (clientType) {
+                // This is handled by handleMembershipStatusChange() which was already updated
+                // Just trigger it
+                if (typeof handleMembershipStatusChange === 'function') {
+                    handleMembershipStatusChange();
+                }
+            }
+        }
+        
+        // Make function globally accessible
+        window.onCustomerTypeChange = onCustomerTypeChange;
+        
+        // Front Desk Customer Type Change Handler
+        function onFrontDeskCustomerTypeChange() {
+            const fdClientType = document.getElementById('fdClientType');
+            const fdCustomerReferralSection = document.getElementById('fdCustomerReferralSection');
+            const fdDistributorNbSection = document.getElementById('fdDistributorNbSection');
+            const fdClientReferral = document.getElementById('fdClientReferral');
+            const fdDistributorNB = document.getElementById('fdDistributorNB');
+            
+            if (!fdClientType) return;
+            
+            const clientType = fdClientType.value;
+            console.log('📝 Front Desk client type changed to:', clientType);
+            
+            if (clientType === 'customer') {
+                // Show referral fields for customers
+                if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'block';
+                if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'none';
+                if (fdClientReferral) fdClientReferral.required = true;
+                if (fdDistributorNB) fdDistributorNB.required = false;
+                
+            } else if (clientType === 'distributor') {
+                // Show distributor NB field (their own NB)
+                if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'none';
+                if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'block';
+                if (fdClientReferral) fdClientReferral.required = false;
+                if (fdDistributorNB) fdDistributorNB.required = true;
+                
+            } else {
+                // Nothing selected - hide both
+                if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'none';
+                if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'none';
+                if (fdClientReferral) fdClientReferral.required = false;
+                if (fdDistributorNB) fdDistributorNB.required = false;
+            }
+        }
+        
+        // Make function globally accessible
+        window.onFrontDeskCustomerTypeChange = onFrontDeskCustomerTypeChange;
+        
         // =============================================================================
         // DISPENSER PORTAL - Walk-in Sales Functions
         // =============================================================================
