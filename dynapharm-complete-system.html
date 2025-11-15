@@ -33503,82 +33503,332 @@ async function reverseLastPrescriptionPayment(reportId){
         }
 
         // =============================================================================
-        // CUSTOMER TYPE CHANGE HANDLER - Used across all forms
+        // CUSTOMER TYPE CHANGE HANDLERS (Walk-in & Front Desk)
         // =============================================================================
         
         function onCustomerTypeChange() {
             const walkInType = document.getElementById('walkInCustomerType');
             const clientType = document.getElementById('clientTypeSelect');
             
-            // Determine which form is active
-            let customerType = '';
-            
             if (walkInType) {
-                customerType = walkInType.value;
                 const customerReferralField = document.getElementById('customerReferralField');
-                
-                if (customerType === 'customer') {
-                    // Show referral fields for customers
+                if (walkInType.value === 'customer') {
                     if (customerReferralField) customerReferralField.style.display = 'block';
-                } else if (customerType === 'distributor') {
-                    // Hide referral fields for distributors (they have their own NB)
+                } else if (walkInType.value === 'distributor') {
                     if (customerReferralField) customerReferralField.style.display = 'none';
                 }
-                
-                console.log('🔄 Walk-in customer type changed to:', customerType);
+                console.log('🔄 Walk-in customer type changed to:', walkInType.value);
             }
             
-            if (clientType) {
-                // This is handled by handleMembershipStatusChange() which was already updated
-                // Just trigger it
-                if (typeof handleMembershipStatusChange === 'function') {
-                    handleMembershipStatusChange();
-                }
+            if (clientType && typeof handleMembershipStatusChange === 'function') {
+                handleMembershipStatusChange();
             }
         }
-        
-        // Make function globally accessible
         window.onCustomerTypeChange = onCustomerTypeChange;
         
-        // Front Desk Customer Type Change Handler
         function onFrontDeskCustomerTypeChange() {
             const fdClientType = document.getElementById('fdClientType');
             const fdCustomerReferralSection = document.getElementById('fdCustomerReferralSection');
             const fdDistributorNbSection = document.getElementById('fdDistributorNbSection');
             const fdClientReferral = document.getElementById('fdClientReferral');
             const fdDistributorNB = document.getElementById('fdDistributorNB');
-            
             if (!fdClientType) return;
             
-            const clientType = fdClientType.value;
-            console.log('📝 Front Desk client type changed to:', clientType);
-            
-            if (clientType === 'customer') {
-                // Show referral fields for customers
+            const type = fdClientType.value;
+            if (type === 'customer') {
                 if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'block';
                 if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'none';
                 if (fdClientReferral) fdClientReferral.required = true;
                 if (fdDistributorNB) fdDistributorNB.required = false;
-                
-            } else if (clientType === 'distributor') {
-                // Show distributor NB field (their own NB)
+            } else if (type === 'distributor') {
                 if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'none';
                 if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'block';
                 if (fdClientReferral) fdClientReferral.required = false;
                 if (fdDistributorNB) fdDistributorNB.required = true;
-                
             } else {
-                // Nothing selected - hide both
                 if (fdCustomerReferralSection) fdCustomerReferralSection.style.display = 'none';
                 if (fdDistributorNbSection) fdDistributorNbSection.style.display = 'none';
                 if (fdClientReferral) fdClientReferral.required = false;
                 if (fdDistributorNB) fdDistributorNB.required = false;
             }
+            
+            console.log('📝 Front Desk client type changed to:', type);
         }
-        
-        // Make function globally accessible
         window.onFrontDeskCustomerTypeChange = onFrontDeskCustomerTypeChange;
         
+        // =============================================================================
+        // WALK-IN CART + SALES HELPERS
+        // =============================================================================
+        const WALKIN_SALES_HISTORY_KEY = 'dyna_walkin_sales';
+        const WALKIN_PAYMENT_LABELS = {
+            cash: 'Cash',
+            card: 'Card Payment',
+            mobile: 'Mobile Money',
+            bank: 'Bank Transfer'
+        };
+        
+        function formatWalkInCurrency(value) {
+            if (typeof window.formatCurrencyNAD === 'function') {
+                return window.formatCurrencyNAD(value);
+            }
+            const amount = Number(value) || 0;
+            return `N$ ${amount.toFixed(2)}`;
+        }
+        
+        function getWalkInCartItems() {
+            if (window.walkInCartStore && typeof window.walkInCartStore.get === 'function') {
+                try {
+                    return [...(window.walkInCartStore.get() || [])];
+                } catch (_) {}
+            }
+            if (Array.isArray(window.walkInCart)) {
+                return [...window.walkInCart];
+            }
+            return [];
+        }
+        
+        function renderWalkInCart() {
+            const cartItems = getWalkInCartItems();
+            const listEl = document.getElementById('walkInCartList');
+            const totalAmountEl = document.getElementById('walkInTotalAmount');
+            const discountEl = document.getElementById('walkInDiscountAmount');
+            const grandTotalEl = document.getElementById('walkInGrandTotal');
+            const dualPricingEl = document.getElementById('walkInDualPricingNotice');
+            if (!listEl) return;
+            
+            if (!cartItems.length) {
+                listEl.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">Cart is empty. Add products from the price list.</p>';
+            } else {
+                listEl.innerHTML = cartItems.map((item, idx) => {
+                    const qty = Number(item.quantity || item.qty || 1);
+                    const price = Number(item.price || item.unitPrice || item.amount || 0);
+                    const lineTotal = Number(item.total || item.amount || (qty * price));
+                    const name = item.productName || item.name || `Product ${idx + 1}`;
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding:8px 0;">
+                            <div>
+                                <strong style="color:#2c3e50;">${name}</strong>
+                                <div style="font-size:0.85rem; color:#7f8c8d;">Qty: ${qty} &middot; ${formatWalkInCurrency(price)}</div>
+                            </div>
+                            <div style="font-weight:bold; color:#27ae60;">${formatWalkInCurrency(lineTotal)}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            const totals = cartItems.reduce((acc, item) => {
+                const qty = Number(item.quantity || item.qty || 1);
+                const price = Number(item.price || item.unitPrice || item.amount || 0);
+                const lineTotal = Number(item.total || item.amount || (qty * price));
+                const bv = Number(item.bv || item.totalBV || 0);
+                acc.subtotal += lineTotal;
+                acc.totalBV += bv;
+                return acc;
+            }, { subtotal: 0, totalBV: 0 });
+            
+            if (totalAmountEl) totalAmountEl.textContent = formatWalkInCurrency(totals.subtotal);
+            if (discountEl) discountEl.textContent = formatWalkInCurrency(0);
+            if (grandTotalEl) grandTotalEl.textContent = formatWalkInCurrency(totals.subtotal);
+            if (dualPricingEl) {
+                dualPricingEl.textContent = totals.totalBV > 0
+                    ? `BV earned on this order: ${totals.totalBV.toFixed(2)}`
+                    : 'Dual pricing summary will appear here.';
+            }
+        }
+        
+        function selectWalkInPaymentMethod(method = 'cash') {
+            const normalized = method || 'cash';
+            ['cash', 'card', 'mobile', 'bank'].forEach(m => {
+                const btn = document.getElementById(`paymentMethod${m.charAt(0).toUpperCase() + m.slice(1)}`);
+                if (!btn) return;
+                if (m === normalized) {
+                    btn.classList.add('active');
+                    btn.style.border = '2px solid #27ae60';
+                    btn.style.background = '#e8f5e9';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.border = '2px solid #ddd';
+                    btn.style.background = '#fff';
+                }
+            });
+            const input = document.getElementById('walkInPaymentMethod');
+            if (input) input.value = normalized;
+            const summary = document.getElementById('walkInTenderSummary');
+            if (summary) {
+                summary.textContent = `Primary payment method: ${WALKIN_PAYMENT_LABELS[normalized] || normalized}`;
+            }
+        }
+        
+        function getStoredWalkInSales() {
+            try {
+                const raw = localStorage.getItem(WALKIN_SALES_HISTORY_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+        
+        function saveStoredWalkInSales(list) {
+            try {
+                localStorage.setItem(WALKIN_SALES_HISTORY_KEY, JSON.stringify(list));
+            } catch (_) {}
+        }
+        
+        function renderWalkInSalesList() {
+            const listEl = document.getElementById('walkInSalesList');
+            const countEl = document.getElementById('walkInCount');
+            if (!listEl) return;
+            const sales = getStoredWalkInSales();
+            if (!sales.length) {
+                listEl.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">No walk-in sales recorded yet.</p>';
+            } else {
+                listEl.innerHTML = sales.slice(0, 5).map(sale => {
+                    const amount = formatWalkInCurrency(sale.total || sale.subtotal || 0);
+                    const when = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : 'Just now';
+                    return `
+                        <div style="border-bottom:1px solid #eee; padding:10px 0;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <strong style="color:#2c3e50;">${sale.customerName || 'Walk-in customer'}</strong>
+                                <span style="color:#27ae60; font-weight:bold;">${amount}</span>
+                            </div>
+                            <div style="font-size:0.85rem; color:#7f8c8d;">${sale.customerType || 'customer'} &middot; ${when}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            if (countEl) countEl.textContent = sales.length;
+        }
+        
+        function showWalkInSaleConfirmation() {
+            const customerNameInput = document.getElementById('walkInCustomerName');
+            if (!customerNameInput || !customerNameInput.value.trim()) {
+                alert('Please enter the customer name before continuing.');
+                if (customerNameInput) customerNameInput.focus();
+                return;
+            }
+            const customerType = (document.getElementById('walkInCustomerType')?.value) || 'customer';
+            const phone = document.getElementById('walkInPhone')?.value || '';
+            const email = document.getElementById('walkInEmail')?.value || '';
+            const referralName = document.getElementById('distributorReferralSearch')?.value || document.getElementById('clientReferralName')?.value || '';
+            const referralCode = document.getElementById('distributorReferralValue')?.value || document.getElementById('clientReferralNB')?.value || '';
+            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
+            const cartItems = getWalkInCartItems();
+            const productsList = document.getElementById('confirmProductsList');
+            const subtotalEl = document.getElementById('confirmSubtotal');
+            const totalBVEl = document.getElementById('confirmTotalBV');
+            const grandTotalEl = document.getElementById('confirmGrandTotal');
+            const referralInfo = document.getElementById('confirmReferralInfo');
+            const referralDisplay = document.getElementById('confirmReferral');
+            
+            const totals = cartItems.reduce((acc, item) => {
+                const qty = Number(item.quantity || item.qty || 1);
+                const price = Number(item.price || item.unitPrice || item.amount || 0);
+                const lineTotal = Number(item.total || item.amount || (qty * price));
+                const bv = Number(item.bv || item.totalBV || 0);
+                acc.subtotal += lineTotal;
+                acc.totalBV += bv;
+                return acc;
+            }, { subtotal: 0, totalBV: 0 });
+            
+            if (productsList) {
+                if (!cartItems.length) {
+                    productsList.innerHTML = '<p style="color:#7f8c8d;">Cart is empty. You can still proceed if this is a service-only sale.</p>';
+                } else {
+                    productsList.innerHTML = cartItems.map((item, idx) => {
+                        const qty = Number(item.quantity || item.qty || 1);
+                        const price = Number(item.price || item.unitPrice || item.amount || 0);
+                        const lineTotal = Number(item.total || item.amount || (qty * price));
+                        const name = item.productName || item.name || `Product ${idx + 1}`;
+                        return `
+                            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #f5c16c; padding:6px 0;">
+                                <div>
+                                    <strong style="color:#5f370e;">${name}</strong>
+                                    <div style="font-size:0.85rem; color:#7f8c8d;">Qty: ${qty}</div>
+                                </div>
+                                <div style="font-weight:bold; color:#c41e3a;">${formatWalkInCurrency(lineTotal)}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            if (subtotalEl) subtotalEl.textContent = formatWalkInCurrency(totals.subtotal);
+            if (totalBVEl) totalBVEl.textContent = totals.totalBV.toFixed(2);
+            if (grandTotalEl) grandTotalEl.textContent = formatWalkInCurrency(totals.subtotal);
+            if (document.getElementById('confirmCustomerName')) document.getElementById('confirmCustomerName').textContent = customerNameInput.value.trim();
+            if (document.getElementById('confirmCustomerType')) document.getElementById('confirmCustomerType').textContent = customerType;
+            if (document.getElementById('confirmPhone')) document.getElementById('confirmPhone').textContent = phone || '—';
+            if (document.getElementById('confirmEmail')) document.getElementById('confirmEmail').textContent = email || '—';
+            if (document.getElementById('confirmPaymentMethod')) document.getElementById('confirmPaymentMethod').textContent = WALKIN_PAYMENT_LABELS[paymentMethod] || paymentMethod;
+            
+            if (customerType === 'customer' && (referralName || referralCode)) {
+                if (referralInfo) referralInfo.style.display = 'block';
+                if (referralDisplay) referralDisplay.textContent = referralName
+                    ? `${referralName}${referralCode ? ` (${referralCode})` : ''}`
+                    : referralCode;
+            } else if (referralInfo) {
+                referralInfo.style.display = 'none';
+            }
+            
+            const confirmationModal = document.getElementById('walkInSaleConfirmationModal');
+            if (confirmationModal) confirmationModal.style.display = 'block';
+        }
+        
+        function confirmWalkInSale() {
+            const customerName = document.getElementById('walkInCustomerName')?.value?.trim() || 'Walk-in customer';
+            const customerType = document.getElementById('walkInCustomerType')?.value || 'customer';
+            const phone = document.getElementById('walkInPhone')?.value || '';
+            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
+            const cartItems = getWalkInCartItems();
+            
+            const totals = cartItems.reduce((acc, item) => {
+                const qty = Number(item.quantity || item.qty || 1);
+                const price = Number(item.price || item.unitPrice || item.amount || 0);
+                const lineTotal = Number(item.total || item.amount || (qty * price));
+                const bv = Number(item.bv || item.totalBV || 0);
+                acc.subtotal += lineTotal;
+                acc.totalBV += bv;
+                return acc;
+            }, { subtotal: 0, totalBV: 0 });
+            
+            const saleRecord = {
+                id: `WS-${Date.now()}`,
+                customerName,
+                customerType,
+                phone,
+                paymentMethod,
+                subtotal: totals.subtotal,
+                total: totals.subtotal,
+                totalBV: totals.totalBV,
+                items: cartItems,
+                createdAt: new Date().toISOString()
+            };
+            
+            const history = getStoredWalkInSales();
+            history.unshift(saleRecord);
+            saveStoredWalkInSales(history.slice(0, 50));
+            
+            if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
+                window.walkInCartStore.clear();
+            } else {
+                window.walkInCart = [];
+            }
+            
+            renderWalkInCart();
+            renderWalkInSalesList();
+            closeModal('walkInSaleConfirmationModal');
+            closeModal('walkInSaleModal');
+            alert('✅ Walk-in sale recorded locally. Data will sync once the backend is available.');
+        }
+        window.selectWalkInPaymentMethod = selectWalkInPaymentMethod;
+        window.renderWalkInCart = renderWalkInCart;
+        window.renderWalkInSalesList = renderWalkInSalesList;
+        window.showWalkInSaleConfirmation = showWalkInSaleConfirmation;
+        window.confirmWalkInSale = confirmWalkInSale;
+        
+        // =============================================================================
         // =============================================================================
         // DISPENSER PORTAL - Walk-in Sales Functions
         // =============================================================================
@@ -33591,6 +33841,12 @@ async function reverseLastPrescriptionPayment(reportId){
             if (modal) {
                 modal.style.display = 'block';
                 
+                // Reset form fields first
+                const form = document.getElementById('walkInSaleForm');
+                if (form) {
+                    form.reset();
+                }
+                
                 // Set customer type based on saleType parameter
                 const customerTypeSelect = document.getElementById('walkInCustomerType');
                 if (customerTypeSelect) {
@@ -33601,11 +33857,18 @@ async function reverseLastPrescriptionPayment(reportId){
                     }
                 }
                 
-                // Reset form fields
-                const form = document.getElementById('walkInSaleForm');
-                if (form) {
-                    form.reset();
+                if (typeof onCustomerTypeChange === 'function') {
+                    onCustomerTypeChange();
                 }
+                
+                const referralSearch = document.getElementById('distributorReferralSearch');
+                const referralValue = document.getElementById('distributorReferralValue');
+                const selectedInfo = document.getElementById('selectedDistributorInfo');
+                const noReferralCheckbox = document.getElementById('noReferralCheckbox');
+                if (referralSearch) referralSearch.value = '';
+                if (referralValue) referralValue.value = '';
+                if (selectedInfo) selectedInfo.style.display = 'none';
+                if (noReferralCheckbox) noReferralCheckbox.checked = false;
                 
                 // Clear cart
                 if (typeof window.walkInCartStore !== 'undefined' && typeof window.walkInCartStore.clear === 'function') {
@@ -33623,6 +33886,10 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (typeof updateWalkInDistributorInsights === 'function') {
                     updateWalkInDistributorInsights();
                 }
+                
+                selectWalkInPaymentMethod('cash');
+                renderWalkInCart();
+                renderWalkInSalesList();
                 
                 console.log('✅ Walk-in sale modal opened successfully');
             } else {
