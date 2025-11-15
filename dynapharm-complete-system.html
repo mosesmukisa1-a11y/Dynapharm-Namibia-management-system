@@ -3339,6 +3339,21 @@
                 return;
             }
             
+            // Guard: Prevent duplicate calls if modal is already open
+            const existingModal = document.getElementById('loginModal');
+            if (existingModal) {
+                const modalDisplay = existingModal.style.display;
+                const computedDisplay = getComputedStyle(existingModal).display;
+                const isModalOpen = (modalDisplay !== 'none' && computedDisplay !== 'none') || 
+                                  modalDisplay === 'flex' || computedDisplay === 'flex' ||
+                                  modalDisplay === 'block' || computedDisplay === 'block';
+                
+                if (isModalOpen) {
+                    console.log('Login modal already open, skipping duplicate call');
+                    return;
+                }
+            }
+            
             // Wait for DOM to be ready if needed
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', () => {
@@ -3625,6 +3640,21 @@
         
         // Modern showLogin function - replaces openPortalLogin
         function showLogin(portal) {
+            // Guard: Prevent duplicate calls if modal is already open
+            const loginModal = document.getElementById('loginModal');
+            if (loginModal) {
+                const modalDisplay = loginModal.style.display;
+                const computedDisplay = getComputedStyle(loginModal).display;
+                const isModalOpen = (modalDisplay !== 'none' && computedDisplay !== 'none') || 
+                                  modalDisplay === 'flex' || computedDisplay === 'flex' ||
+                                  modalDisplay === 'block' || computedDisplay === 'block';
+                
+                if (isModalOpen) {
+                    console.log('Login modal already open, skipping duplicate showLogin call');
+                    return;
+                }
+            }
+            
             if (typeof currentPortal !== 'undefined') {
                 currentPortal = portal;
             }
@@ -3655,9 +3685,9 @@
                 openLoginModal(portal);
             } else {
                 // Fallback: directly show the modal
-                const loginModal = document.getElementById('loginModal');
-                if (loginModal) {
-                    loginModal.style.display = 'block';
+                const fallbackModal = document.getElementById('loginModal');
+                if (fallbackModal) {
+                    fallbackModal.style.display = 'block';
                     // Clear previous values
                     const usernameInput = document.getElementById('username') || document.getElementById('loginUsername');
                     const passwordInput = document.getElementById('password') || document.getElementById('loginPassword');
