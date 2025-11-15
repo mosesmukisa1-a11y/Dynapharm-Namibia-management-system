@@ -3970,33 +3970,44 @@
                     { id: 1, username: 'admin', password: 'walker33', role: 'admin', fullName: 'Administrator', email: 'admin@dynapharm.com' },
                     { id: 2, username: 'moses', password: 'walker33', role: 'consultant', fullName: 'MOSES MUKISA', email: 'moses@dynapharm.com' },
                     { id: 3, username: 'Geneva', password: 'Pearl_11', role: 'consultant', fullName: 'Jennifer Joseph', email: 'geneva@dynapharm.com', branch: 'Geneva' },
-                    { id: 4, username: 'NAEM', password: 'PASSWORD', role: 'dispenser', fullName: 'NAEM HANGULA', email: 'naem@dynapharm.com', branch: 'Main Branch' },
+                    { id: 4, username: 'NAEM', password: 'password', role: 'dispenser', fullName: 'NAEM HANGULA', email: 'naem@dynapharm.com', branch: 'Main Branch' },
                     { id: 5, username: 'GEINGOS', password: 'ALBERTO99', role: 'consultant', fullName: 'HILMA C', email: 'geingos@dynapharm.com', branch: 'GEINGOS' }
                 ];
+                
+                console.log('🔍 Login attempt - Username:', username.toLowerCase(), '| Password length:', password?.length);
                 
                 const user = localUsers.find(u => 
                     u.username.toLowerCase() === username.toLowerCase() && 
                     u.password === password
                 );
                 
-                if (user) {
-                    console.log('✅ Local authentication successful:', user.username);
-                    return { 
-                        success: true, 
-                        user: {
-                            id: user.id,
-                            username: user.username,
-                            role: user.role,
-                            fullName: user.fullName,
-                            full_name: user.fullName,
-                            email: user.email,
-                            branch: user.branch || null,
-                            branches: []
-                        }
-                    };
+                if (!user) {
+                    // Check if username exists but password is wrong
+                    const userExists = localUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+                    if (userExists) {
+                        console.error('❌ Username found but password incorrect for:', username);
+                        throw new Error('Invalid password. Passwords are case-sensitive.');
+                    } else {
+                        console.error('❌ Username not found:', username);
+                        throw new Error('Username not found.');
+                    }
                 }
                 
-                throw new Error('Invalid username or password');
+                // User authenticated successfully
+                console.log('✅ Local authentication successful:', user.username);
+                return { 
+                    success: true, 
+                    user: {
+                        id: user.id,
+                        username: user.username,
+                        role: user.role,
+                        fullName: user.fullName,
+                        full_name: user.fullName,
+                        email: user.email,
+                        branch: user.branch || null,
+                        branches: []
+                    }
+                };
             };
         }
         
