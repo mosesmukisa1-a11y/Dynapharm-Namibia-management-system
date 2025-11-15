@@ -4487,37 +4487,37 @@
                 // Check if currentUser exists (safely check window.currentUser first)
                 try {
                     const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
-                    if (user) {
-                        resetSessionTimer();
-                    }
-                } catch (e) {
-                    // Silently ignore if currentUser is not defined yet
-                }
-            }, { passive: true });
-        });
-        
-        // Initialize session timer when user logs in
-        const originalHandlePortalLoginSuccess = window.handlePortalLoginSuccess;
-        if (originalHandlePortalLoginSuccess) {
-            window.handlePortalLoginSuccess = function(user, options) {
-                originalHandlePortalLoginSuccess(user, options);
-                resetSessionTimer();
-            };
-        }
-        
-        // Portal Quick Access, Favorites, and Search
-        const PORTAL_INFO = {
-            'client': { name: 'Distributor / Guest', icon: '🛒', category: 'Client' },
-            'frontdesk': { name: 'Front Desk Portal', icon: '🏢', category: 'Operations' },
-            'consultant': { name: 'Consultant Portal', icon: '👨‍⚕️', category: 'Operations' },
-            'dispenser': { name: 'Branch Portal', icon: '💊', category: 'Operations' },
-            'hr-portal': { name: 'HR Portal', icon: '👔', category: 'Management' },
-            'finance': { name: 'Finance Portal', icon: '💰', category: 'Management' },
-            'gm': { name: 'GM Portal', icon: '👑', category: 'Executive' },
-            'director': { name: 'Director Portal', icon: '🎯', category: 'Executive' },
-            'mis': { name: 'MIS Portal', icon: '📊', category: 'Management' },
-            'stock': { name: 'Stock Management', icon: '📦', category: 'Operations' },
-            'admin': { name: 'Admin Portal', icon: '⚙️', category: 'Administration' }
+//                     if (user) {
+//                         resetSessionTimer();
+//                     }
+//                 } catch (e) {
+//                     // Silently ignore if currentUser is not defined yet
+//                 }
+//             }, { passive: true });
+//         });
+//         
+//         // Initialize session timer when user logs in
+//         const originalHandlePortalLoginSuccess = window.handlePortalLoginSuccess;
+//         if (originalHandlePortalLoginSuccess) {
+//             window.handlePortalLoginSuccess = function(user, options) {
+//                 originalHandlePortalLoginSuccess(user, options);
+//                 resetSessionTimer();
+//             };
+//         }
+//         
+//         // Portal Quick Access, Favorites, and Search
+//         const PORTAL_INFO = {
+//             'client': { name: 'Distributor / Guest', icon: '🛒', category: 'Client' },
+//             'frontdesk': { name: 'Front Desk Portal', icon: '🏢', category: 'Operations' },
+//             'consultant': { name: 'Consultant Portal', icon: '👨‍⚕️', category: 'Operations' },
+//             'dispenser': { name: 'Branch Portal', icon: '💊', category: 'Operations' },
+//             'hr-portal': { name: 'HR Portal', icon: '👔', category: 'Management' },
+//             'finance': { name: 'Finance Portal', icon: '💰', category: 'Management' },
+//             'gm': { name: 'GM Portal', icon: '👑', category: 'Executive' },
+//             'director': { name: 'Director Portal', icon: '🎯', category: 'Executive' },
+//             'mis': { name: 'MIS Portal', icon: '📊', category: 'Management' },
+//             'stock': { name: 'Stock Management', icon: '📦', category: 'Operations' },
+//             'admin': { name: 'Admin Portal', icon: '⚙️', category: 'Administration' }
         };
         
         function getFavoritePortals() {
