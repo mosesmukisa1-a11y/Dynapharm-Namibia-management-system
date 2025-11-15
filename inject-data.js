@@ -64,6 +64,30 @@ const LOCAL_DATA = {
             "branch": "townshop",
             "branches": ["townshop", "khomasdal", "katima", "outapi", "ondangwa", "okongo", "okahao", "nkurenkuru", "swakopmund", "hochland-park", "rundu", "gobabis", "walvisbay", "eenhana", "otjiwarongo"],
             "createdAt": "2025-10-08T12:55:53.488Z"
+        },
+        {
+            "id": "USR2000000000001",
+            "username": "stock",
+            "password": "stock123",
+            "fullName": "Stock Manager",
+            "email": "stock@dynapharm.com.na",
+            "phone": "0812000000",
+            "role": "stock",
+            "branch": "townshop",
+            "branches": ["townshop"],
+            "createdAt": "2025-01-20T10:00:00.000Z"
+        },
+        {
+            "id": "USR2000000000002",
+            "username": "mis",
+            "password": "mis123",
+            "fullName": "MIS Manager",
+            "email": "mis@dynapharm.com.na",
+            "phone": "0813000000",
+            "role": "mis",
+            "branch": "townshop",
+            "branches": ["townshop"],
+            "createdAt": "2025-01-20T10:00:00.000Z"
         }
     ],
     branches: [

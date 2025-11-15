@@ -3861,6 +3861,7 @@
         // Role to Portal Access Mapping
         const ROLE_PORTAL_ACCESS = {
             'admin': ['admin', 'client', 'frontdesk', 'consultant', 'dispenser', 'hr-portal', 'finance', 'gm', 'director', 'mis', 'stock'],
+            'frontdesk': ['frontdesk', 'client'],
             'consultant': ['consultant', 'frontdesk', 'client'],
             'sales_staff': ['dispenser', 'frontdesk', 'client'],
             'dispenser': ['dispenser', 'frontdesk', 'client'],
@@ -3868,6 +3869,7 @@
             'finance': ['finance', 'client'],
             'hr_manager': ['hr-portal', 'client'],
             'hr_admin': ['hr-portal', 'client'],
+            'hr-portal': ['hr-portal', 'client'],
             'gm': ['gm', 'director', 'client'],
             'director': ['director', 'gm', 'client'],
             'mis': ['mis', 'client'],
@@ -3875,8 +3877,38 @@
             'warehouse_manager': ['stock', 'client'],
             'warehouse_manager_ondangwa': ['stock', 'client'],
             'warehouse_manager_windhoek': ['stock', 'client'],
+            'client': ['client'],
             'guest': ['client'] // Guest can only access shop
         };
+
+        const ROLE_ACCESS_ALIASES = {
+            'distributor': 'client',
+            'finance_manager': 'finance',
+            'general_manager': 'gm',
+            'stock_manager': 'stock',
+            'warehouse': 'stock',
+            'hr': 'hr-portal',
+            'hr_portal': 'hr-portal',
+            'mlm': 'client',
+            'lrp': 'client',
+            'reports': 'mis'
+        };
+
+        Object.entries(ROLE_ACCESS_ALIASES).forEach(([alias, baseRole]) => {
+            if (!ROLE_PORTAL_ACCESS[alias] && ROLE_PORTAL_ACCESS[baseRole]) {
+                ROLE_PORTAL_ACCESS[alias] = ROLE_PORTAL_ACCESS[baseRole];
+            }
+        });
+
+        function getDefaultPortalForRole(role) {
+            const normalized = (role || '').toLowerCase();
+            const allowed = ROLE_PORTAL_ACCESS[normalized];
+            if (Array.isArray(allowed) && allowed.length) {
+                const primary = allowed.find(portal => portal !== 'client') || allowed[0];
+                return primary || 'client';
+            }
+            return 'dispenser';
+        }
         
         // Warehouse assignment mapping
         const WAREHOUSE_ASSIGNMENTS = {
@@ -3993,13 +4025,15 @@
                 }
                 
                 // Local fallback authentication
-                const localUsers = [
-                    { id: 1, username: 'admin', password: 'walker33', role: 'admin', fullName: 'Administrator', email: 'admin@dynapharm.com' },
-                    { id: 2, username: 'moses', password: 'walker33', role: 'consultant', fullName: 'MOSES MUKISA', email: 'moses@dynapharm.com' },
-                    { id: 3, username: 'Geneva', password: 'Pearl_11', role: 'consultant', fullName: 'Jennifer Joseph', email: 'geneva@dynapharm.com', branch: 'Geneva' },
-                    { id: 4, username: 'NAEM', password: 'password', role: 'dispenser', fullName: 'NAEM HANGULA', email: 'naem@dynapharm.com', branch: 'Main Branch' },
-                    { id: 5, username: 'GEINGOS', password: 'ALBERTO99', role: 'consultant', fullName: 'HILMA C', email: 'geingos@dynapharm.com', branch: 'GEINGOS' }
-                ];
+                const fallbackUsers = safeParseFromStorage('dyna_users', DEFAULT_USERS_JSON);
+                let localUsers = Array.isArray(fallbackUsers) ? fallbackUsers : [];
+                if (!localUsers.some(user => typeof user?.password === 'string' && user.password.length > 0)) {
+                    try {
+                        localUsers = JSON.parse(DEFAULT_USERS_JSON);
+                    } catch (_) {
+                        localUsers = [];
+                    }
+                }
                 
                 console.log('🔍 Login attempt - Username:', username.toLowerCase(), '| Password length:', password?.length);
                 
@@ -4311,6 +4345,552 @@
                 return originalShowStockTab.apply(this, arguments);
             };
         }
+        
+        // =============================================================================
+        // Stock Management Portal — Data Helpers & Workflows
+        // =============================================================================
+        const STOCK_STORAGE_KEYS = {
+            purchaseOrders: 'dyna_purchase_orders_v3',
+            supplierScores: 'dyna_supplier_scores_v1',
+            forecasts: 'dyna_stock_forecasts_v1'
+        };
+
+        const DEFAULT_PURCHASE_ORDERS = [
+            {
+                id: 'PO-2025-0001',
+                supplier: 'Dynapharm Malaysia',
+                eta: '2025-11-12',
+                currency: 'NAD',
+                value: 48200,
+                status: 'In Transit',
+                notes: 'Priority replenishment for year-end sales',
+                createdAt: '2025-10-30T08:15:00.000Z',
+                items: [
+                    { cartonNo: 'A1-92', description: "DI LIQUID ALFALFA 500ml", batchNo: 'DL-2412', expiry: '2026-12', quantity: 180, totalCtns: 18 },
+                    { cartonNo: 'B4-11', description: "D.I NONI 500ml", batchNo: 'DN-2408', expiry: '2026-08', quantity: 150, totalCtns: 15 }
+                ]
+            },
+            {
+                id: 'PO-2025-0002',
+                supplier: 'Dynapharm Singapore',
+                eta: '2025-12-04',
+                currency: 'NAD',
+                value: 26350,
+                status: 'Open',
+                notes: 'Includes promotional packs for Q1 launch',
+                createdAt: '2025-11-05T09:00:00.000Z',
+                items: [
+                    { cartonNo: 'S3-07', description: "SPIRULINA TABLET (300's)", batchNo: 'SP-2501', expiry: '2027-01', quantity: 120, totalCtns: 12 },
+                    { cartonNo: 'H8-19', description: "HIGH FIBER NUTRITION FOOD", batchNo: 'HF-2502', expiry: '2026-10', quantity: 90, totalCtns: 9 }
+                ]
+            }
+        ];
+
+        const DEFAULT_STOCK_FORECASTS = [
+            { id: 'fc-1', product: "DI LIQUID ALFALFA 500ml", demand: 280, coverageDays: 12, action: 'Reorder', risk: 'High' },
+            { id: 'fc-2', product: "SPIRULINA TABLET (300's)", demand: 190, coverageDays: 22, action: 'Monitor', risk: 'Medium' },
+            { id: 'fc-3', product: "D.I NONI 500ml", demand: 320, coverageDays: 9, action: 'Expedite', risk: 'High' },
+            { id: 'fc-4', product: "GANODERMA LOTION 150ML", demand: 140, coverageDays: 35, action: 'Healthy', risk: 'Low' }
+        ];
+
+        const DEFAULT_SUPPLIER_SCORES = [
+            { supplier: 'Dynapharm Malaysia', otif: 96, avgLeadTime: 28, openOrders: 1, totalValue: 48200 },
+            { supplier: 'Dynapharm Singapore', otif: 92, avgLeadTime: 32, openOrders: 1, totalValue: 26350 }
+        ];
+
+        function cloneDefault(value) {
+            return JSON.parse(JSON.stringify(value));
+        }
+
+        function getStockStorageValue(key, fallbackValue) {
+            try {
+                if (typeof safeParseFromStorage === 'function') {
+                    const parsed = safeParseFromStorage(key, JSON.stringify(fallbackValue));
+                    if (Array.isArray(fallbackValue)) {
+                        return Array.isArray(parsed) && parsed.length ? parsed : cloneDefault(fallbackValue);
+                    }
+                    if (fallbackValue && typeof fallbackValue === 'object') {
+                        return parsed && typeof parsed === 'object' ? parsed : cloneDefault(fallbackValue);
+                    }
+                    return parsed ?? fallbackValue;
+                }
+                const raw = localStorage.getItem(key);
+                if (!raw) return cloneDefault(fallbackValue);
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(fallbackValue) && !Array.isArray(parsed)) return cloneDefault(fallbackValue);
+                if (fallbackValue && typeof fallbackValue === 'object' && typeof parsed !== 'object') return cloneDefault(fallbackValue);
+                return parsed ?? cloneDefault(fallbackValue);
+            } catch (error) {
+                console.warn('Stock storage parse error for', key, error);
+                return cloneDefault(fallbackValue);
+            }
+        }
+
+        function setStockStorageValue(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (error) {
+                console.warn('Unable to persist stock data for', key, error);
+            }
+        }
+
+        function notifyStock(message, variant = 'info') {
+            if (typeof showToast === 'function') {
+                showToast(message, variant);
+            } else {
+                console.log(`[Stock:${variant}]`, message);
+            }
+        }
+
+        function formatCurrency(value, currency = 'N$') {
+            const num = Number(value) || 0;
+            return `${currency} ${num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        }
+
+        function sanitizeInputValue(value) {
+            if (value === undefined || value === null) return '';
+            return String(value).replace(/"/g, '&quot;');
+        }
+
+        function getStoredPurchaseOrders() {
+            return getStockStorageValue(STOCK_STORAGE_KEYS.purchaseOrders, DEFAULT_PURCHASE_ORDERS);
+        }
+
+        function savePurchaseOrders(orders) {
+            setStockStorageValue(STOCK_STORAGE_KEYS.purchaseOrders, orders);
+        }
+
+        function getStockForecastData() {
+            let forecasts = getStockStorageValue(STOCK_STORAGE_KEYS.forecasts, DEFAULT_STOCK_FORECASTS);
+            if (!Array.isArray(forecasts) || forecasts.length === 0) {
+                forecasts = cloneDefault(DEFAULT_STOCK_FORECASTS);
+            }
+            try {
+                const barcodeStock = getStockStorageValue('dyna_barcode_stock', []);
+                if (Array.isArray(barcodeStock) && barcodeStock.length) {
+                    const aggregated = {};
+                    barcodeStock.forEach(batch => {
+                        const label = batch.description || batch.productName || batch.name;
+                        if (!label) return;
+                        aggregated[label] = (aggregated[label] || 0) + Number(batch.remainingQuantity ?? batch.quantity ?? 0);
+                    });
+                    forecasts = forecasts.map(entry => {
+                        const currentStock = aggregated[entry.product] || entry.currentStock || 0;
+                        const dailyDemand = entry.demand ? entry.demand / 30 : 8;
+                        const coverage = dailyDemand > 0 ? Math.round(currentStock / dailyDemand) : entry.coverageDays;
+                        return Object.assign({}, entry, { currentStock, coverageDays: coverage });
+                    });
+                }
+            } catch (error) {
+                console.debug('Forecast enrichment skipped:', error.message);
+            }
+            return forecasts;
+        }
+
+        function updateStockOverviewMetrics({ orders = [], forecasts = [] } = {}) {
+            const totalValue = orders.reduce((sum, order) => sum + Number(order.value || 0), 0);
+            const pendingOrders = orders.filter(order => (order.status || '').toLowerCase() !== 'delivered').length;
+            const lowStock = forecasts.filter(item => (item.action || '').toLowerCase() !== 'healthy').length;
+
+            const totalValueEl = document.getElementById('overviewTotalValue');
+            if (totalValueEl) {
+                totalValueEl.textContent = formatCurrency(totalValue);
+            }
+
+            const pendingEl = document.getElementById('overviewPendingOrders');
+            if (pendingEl) {
+                pendingEl.textContent = pendingOrders;
+            }
+            window.pendingOrdersCount = pendingOrders;
+
+            const lowStockEl = document.getElementById('overviewLowStock');
+            if (lowStockEl) {
+                lowStockEl.textContent = lowStock;
+            }
+        }
+
+        function handleStockQuickAction(action) {
+            try {
+                if (typeof showStockTab === 'function') {
+                    showStockTab(action);
+                }
+                const target = document.getElementById(`${action}Tab`) || document.getElementById('stock');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                notifyStock('Navigated to ' + action.replace(/([A-Z])/g, ' $1'), 'info');
+            } catch (error) {
+                console.warn('handleStockQuickAction error:', error);
+            }
+        }
+        window.handleStockQuickAction = handleStockQuickAction;
+
+        function createPurchaseOrderRow(prefill = {}) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="po-carton-no" placeholder="A1-98"></td>
+                <td><input type="text" class="po-description" placeholder="Product description" required></td>
+                <td><input type="text" class="po-batch-no" placeholder="DP24265" required></td>
+                <td><input type="month" class="po-expiry-date" placeholder="YYYY-MM" required></td>
+                <td><input type="number" class="po-quantity" placeholder="Qty" min="1" required></td>
+                <td><input type="number" class="po-total-ctns" placeholder="CTNS" min="1" required></td>
+                <td style="text-align:center;"><button type="button" class="btn btn-danger" onclick="removePurchaseOrderRow(this)">Remove</button></td>
+            `;
+            const mapping = {
+                '.po-carton-no': prefill.cartonNo,
+                '.po-description': prefill.description,
+                '.po-batch-no': prefill.batchNo,
+                '.po-expiry-date': prefill.expiry,
+                '.po-quantity': prefill.quantity,
+                '.po-total-ctns': prefill.totalCtns
+            };
+            Object.keys(mapping).forEach(selector => {
+                const input = tr.querySelector(selector);
+                if (input && mapping[selector] !== undefined) {
+                    input.value = mapping[selector];
+                }
+            });
+            return tr;
+        }
+
+        function addPurchaseOrderRow(prefill = {}) {
+            const tbody = document.getElementById('purchaseOrderTableBody');
+            if (!tbody) return;
+            const row = createPurchaseOrderRow(prefill);
+            tbody.appendChild(row);
+        }
+        window.addPurchaseOrderRow = addPurchaseOrderRow;
+
+        function removePurchaseOrderRow(button) {
+            if (!button) return;
+            const row = button.closest('tr');
+            const tbody = document.getElementById('purchaseOrderTableBody');
+            if (row && tbody) {
+                row.remove();
+                if (!tbody.querySelector('tr')) {
+                    addPurchaseOrderRow();
+                }
+            }
+        }
+        window.removePurchaseOrderRow = removePurchaseOrderRow;
+
+        function clearPurchaseOrderForm() {
+            const form = document.getElementById('purchaseOrderForm');
+            const tbody = document.getElementById('purchaseOrderTableBody');
+            if (form) {
+                form.reset();
+            }
+            if (tbody) {
+                tbody.innerHTML = '';
+                addPurchaseOrderRow();
+            }
+            notifyStock('Purchase order form cleared.', 'info');
+        }
+        window.clearPurchaseOrderForm = clearPurchaseOrderForm;
+
+        function collectPurchaseOrderRows() {
+            const tbody = document.getElementById('purchaseOrderTableBody');
+            if (!tbody) return [];
+            return Array.from(tbody.querySelectorAll('tr')).map(row => {
+                const get = selector => row.querySelector(selector)?.value?.trim() || '';
+                return {
+                    cartonNo: get('.po-carton-no'),
+                    description: get('.po-description'),
+                    batchNo: get('.po-batch-no'),
+                    expiry: get('.po-expiry-date'),
+                    quantity: Number(get('.po-quantity')) || 0,
+                    totalCtns: Number(get('.po-total-ctns')) || 0
+                };
+            }).filter(item => item.description);
+        }
+
+        function autoGeneratePurchaseOrdersFromMovements() {
+            const branchStock = getStockStorageValue('dyna_branch_stock', {});
+            const aggregated = {};
+            if (branchStock && typeof branchStock === 'object') {
+                Object.values(branchStock).forEach(stock => {
+                    if (!stock || typeof stock !== 'object') return;
+                    Object.keys(stock).forEach(productName => {
+                        const qty = Number(stock[productName] || 0);
+                        if (qty <= 5) {
+                            if (!aggregated[productName]) {
+                                aggregated[productName] = { description: productName, requested: 0 };
+                            }
+                            aggregated[productName].requested += Math.max(20 - qty, 10);
+                        }
+                    });
+                });
+            }
+            let suggestions = Object.values(aggregated).sort((a, b) => b.requested - a.requested).slice(0, 5);
+            if (!suggestions.length && Array.isArray(window.PRICE_LIST)) {
+                suggestions = window.PRICE_LIST.slice(0, 3).map(item => ({
+                    description: item.description,
+                    requested: 30
+                }));
+            }
+            const tbody = document.getElementById('purchaseOrderTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!suggestions.length) {
+                addPurchaseOrderRow();
+                notifyStock('No demand signals available. Added a blank row instead.', 'info');
+                return;
+            }
+            suggestions.forEach((item, index) => {
+                const today = new Date();
+                const expiryDate = new Date(today);
+                expiryDate.setMonth(expiryDate.getMonth() + 12);
+                const row = createPurchaseOrderRow({
+                    cartonNo: `AUTO-${index + 1}`,
+                    description: item.description,
+                    batchNo: `AUTO-${today.getFullYear()}${index + 1}`,
+                    expiry: expiryDate.toISOString().slice(0, 7),
+                    quantity: Math.max(10, item.requested || 10),
+                    totalCtns: Math.ceil(Math.max(10, item.requested || 10) / 10)
+                });
+                tbody.appendChild(row);
+            });
+            notifyStock('Generated purchase order lines from movement history.', 'success');
+        }
+        window.autoGeneratePurchaseOrdersFromMovements = autoGeneratePurchaseOrdersFromMovements;
+
+        function handlePurchaseOrderSubmit(event) {
+            event?.preventDefault();
+            const form = document.getElementById('purchaseOrderForm');
+            if (!form) return;
+            const supplier = document.getElementById('poSupplier')?.value?.trim() || '';
+            const poNumber = document.getElementById('poNumber')?.value?.trim() || `PO-${Date.now()}`;
+            const eta = document.getElementById('poEta')?.value || '';
+            const value = Number(document.getElementById('poValue')?.value || 0);
+            const currency = document.getElementById('poCurrency')?.value || 'NAD';
+            const status = document.getElementById('poStatus')?.value || 'Open';
+            const notes = document.getElementById('poNotes')?.value?.trim() || '';
+            const items = collectPurchaseOrderRows();
+            if (!supplier || !items.length) {
+                notifyStock('Supplier and at least one line item are required.', 'error');
+                return;
+            }
+            const orders = getStoredPurchaseOrders();
+            const newOrder = {
+                id: poNumber,
+                supplier,
+                eta,
+                value,
+                currency,
+                status,
+                notes,
+                items,
+                createdAt: new Date().toISOString()
+            };
+            const existingIndex = orders.findIndex(order => order.id === poNumber);
+            if (existingIndex >= 0) {
+                orders[existingIndex] = newOrder;
+            } else {
+                orders.unshift(newOrder);
+            }
+            savePurchaseOrders(orders);
+            renderPurchaseOrders();
+            renderSupplierScorecard();
+            renderPlanInsights();
+            clearPurchaseOrderForm();
+            notifyStock('Purchase order saved locally.', 'success');
+        }
+        window.handlePurchaseOrderSubmit = handlePurchaseOrderSubmit;
+
+        function renderPurchaseOrders() {
+            const container = document.getElementById('purchaseOrderList');
+            if (!container) return;
+            const orders = getStoredPurchaseOrders();
+            if (!orders.length) {
+                container.innerHTML = '<div class="hub-activity-empty">No purchase orders yet. Create one to get started.</div>';
+                updateStockOverviewMetrics({ orders, forecasts: getStockForecastData() });
+                return;
+            }
+            container.innerHTML = orders.map(order => {
+                const itemsHtml = order.items?.slice(0, 4).map(item => `
+                    <li style="display:flex; justify-content:space-between;">
+                        <span>${sanitizeInputValue(item.description)}</span>
+                        <span style="font-weight:600;">${item.quantity || 0} pcs</span>
+                    </li>
+                `).join('') || '<li>No line items captured.</li>';
+                const statusClass = (order.status || 'open').toLowerCase();
+                return `
+                    <article class="hub-card hub-card--surface" style="border:1px solid rgba(15,23,42,0.08);">
+                        <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <div>
+                                <strong>${sanitizeInputValue(order.id)}</strong>
+                                <div style="color:#64748b; font-size:0.9rem;">${sanitizeInputValue(order.supplier)}</div>
+                            </div>
+                            <span class="status-chip status-${statusClass}" style="padding:4px 10px; border-radius:999px; font-size:0.85rem; text-transform:capitalize; background:#f1f5f9;">
+                                ${sanitizeInputValue(order.status || 'Open')}
+                            </span>
+                        </header>
+                        <dl style="display:grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap:6px; font-size:0.85rem; color:#475569; margin-bottom:10px;">
+                            <div><dt style="text-transform:uppercase; font-size:0.7rem; color:#94a3b8;">ETA</dt><dd style="margin:0; font-weight:600;">${order.eta || 'TBC'}</dd></div>
+                            <div><dt style="text-transform:uppercase; font-size:0.7rem; color:#94a3b8;">Value</dt><dd style="margin:0; font-weight:600;">${formatCurrency(order.value, order.currency || 'N$')}</dd></div>
+                            <div><dt style="text-transform:uppercase; font-size:0.7rem; color:#94a3b8;">Lines</dt><dd style="margin:0; font-weight:600;">${order.items?.length || 0}</dd></div>
+                        </dl>
+                        <ul style="margin:0; padding-left:16px; color:#475569; font-size:0.9rem;">${itemsHtml}</ul>
+                    </article>
+                `;
+            }).join('');
+            updateStockOverviewMetrics({ orders, forecasts: getStockForecastData() });
+        }
+        window.renderPurchaseOrders = renderPurchaseOrders;
+
+        function exportPurchaseOrders() {
+            const orders = getStoredPurchaseOrders();
+            if (!orders.length) {
+                notifyStock('There are no purchase orders to export.', 'warning');
+                return;
+            }
+            const headers = ['PO Number', 'Supplier', 'ETA', 'Status', 'Value', 'Currency', 'Items'];
+            const rows = orders.map(order => {
+                const lineSummary = (order.items || []).map(item => `${item.description} (${item.quantity})`).join('; ');
+                return [
+                    order.id,
+                    order.supplier,
+                    order.eta,
+                    order.status,
+                    order.value,
+                    order.currency,
+                    lineSummary
+                ];
+            });
+            const csv = [headers, ...rows].map(row => row.map(value => {
+                const cell = value === undefined || value === null ? '' : String(value);
+                return `"${cell.replace(/"/g, '""')}"`;
+            }).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `purchase-orders-${Date.now()}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            notifyStock('Purchase orders exported.', 'success');
+        }
+        window.exportPurchaseOrders = exportPurchaseOrders;
+
+        function renderForecastList() {
+            const list = document.getElementById('planInsights');
+            if (!list) return;
+            const forecasts = getStockForecastData();
+            if (!forecasts.length) {
+                list.innerHTML = '<li>No forecast data available yet.</li>';
+                updateStockOverviewMetrics({ orders: getStoredPurchaseOrders(), forecasts });
+                return;
+            }
+            list.innerHTML = forecasts.map(item => {
+                const badgeColor = (item.action || '').toLowerCase() === 'healthy' ? '#10b981' : (item.action || '').toLowerCase() === 'monitor' ? '#f59e0b' : '#ef4444';
+                return `
+                    <li style="margin-bottom:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:600;">${sanitizeInputValue(item.product)}</span>
+                            <span style="padding:2px 8px; border-radius:999px; font-size:0.8rem; background:${badgeColor}; color:white;">${sanitizeInputValue(item.action)}</span>
+                        </div>
+                        <div style="font-size:0.85rem; color:#64748b;">
+                            Demand: ${item.demand || 0} / month • Coverage: ${item.coverageDays || 0} days • Risk: ${item.risk || 'N/A'}
+                        </div>
+                    </li>
+                `;
+            }).join('');
+            updateStockOverviewMetrics({ orders: getStoredPurchaseOrders(), forecasts });
+        }
+        window.renderForecastList = renderForecastList;
+
+        function renderPlanInsights() {
+            renderForecastList();
+        }
+        window.renderPlanInsights = renderPlanInsights;
+
+        function renderSupplierScorecard() {
+            const container = document.getElementById('supplierScorecard');
+            if (!container) return;
+            const orders = getStoredPurchaseOrders();
+            if (!orders.length) {
+                const defaults = getStockStorageValue(STOCK_STORAGE_KEYS.supplierScores, DEFAULT_SUPPLIER_SCORES);
+                if (!defaults.length) {
+                    container.innerHTML = '<div class="hub-activity-empty">Supplier scorecard will appear once purchase orders are captured.</div>';
+                    return;
+                }
+                container.innerHTML = buildSupplierScorecardTable(defaults);
+                return;
+            }
+            const metricsMap = {};
+            orders.forEach(order => {
+                const supplier = order.supplier || 'Unknown Supplier';
+                if (!metricsMap[supplier]) {
+                    metricsMap[supplier] = { supplier, delivered: 0, total: 0, totalValue: 0, leadTimes: [], openOrders: 0 };
+                }
+                const metric = metricsMap[supplier];
+                metric.total += 1;
+                metric.totalValue += Number(order.value || 0);
+                metric.openOrders += (order.status || '').toLowerCase() === 'delivered' ? 0 : 1;
+                if ((order.status || '').toLowerCase() === 'delivered') {
+                    metric.delivered += 1;
+                }
+                if (order.eta && order.createdAt) {
+                    const eta = new Date(order.eta);
+                    const created = new Date(order.createdAt);
+                    const leadTime = Math.max(1, Math.round((eta - created) / (1000 * 60 * 60 * 24)));
+                    if (isFinite(leadTime)) {
+                        metric.leadTimes.push(leadTime);
+                    }
+                }
+            });
+            const metrics = Object.values(metricsMap).map(entry => ({
+                supplier: entry.supplier,
+                otif: entry.total ? Math.round((entry.delivered / entry.total) * 100) : 0,
+                avgLeadTime: entry.leadTimes.length ? Math.round(entry.leadTimes.reduce((a, b) => a + b, 0) / entry.leadTimes.length) : 30,
+                openOrders: entry.openOrders,
+                totalValue: entry.totalValue
+            }));
+            setStockStorageValue(STOCK_STORAGE_KEYS.supplierScores, metrics);
+            container.innerHTML = buildSupplierScorecardTable(metrics);
+        }
+        window.renderSupplierScorecard = renderSupplierScorecard;
+
+        function buildSupplierScorecardTable(metrics) {
+            if (!metrics.length) {
+                return '<div class="hub-activity-empty">No supplier insights available.</div>';
+            }
+            const rows = metrics.map(metric => `
+                <tr>
+                    <td>${sanitizeInputValue(metric.supplier)}</td>
+                    <td style="text-align:center;">${metric.otif}%</td>
+                    <td style="text-align:center;">${metric.avgLeadTime} days</td>
+                    <td style="text-align:center;">${metric.openOrders}</td>
+                    <td style="text-align:right;">${formatCurrency(metric.totalValue)}</td>
+                </tr>
+            `).join('');
+            return `
+                <table class="hub-table" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="text-align:left; padding:8px;">Supplier</th>
+                            <th style="text-align:center; padding:8px;">OTIF %</th>
+                            <th style="text-align:center; padding:8px;">Avg Lead Time</th>
+                            <th style="text-align:center; padding:8px;">Open Orders</th>
+                            <th style="text-align:right; padding:8px;">Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                renderPurchaseOrders();
+                renderPlanInsights();
+                renderSupplierScorecard();
+            } catch (error) {
+                console.debug('Stock widgets deferred:', error.message);
+            }
+        });
         
         function extractArray(data, fallback = []) {
             if (Array.isArray(data)) return data;
@@ -5107,21 +5687,7 @@
                                 if (portalTabs) portalTabs.style.display = 'flex';
                                 
                                 // Determine portal based on role
-                                const rolePortalMap = {
-                                    'admin': 'admin',
-                                    'consultant': 'consultant',
-                                    'dispenser': 'dispenser',
-                                    'branch_manager': 'dispenser',
-                                    'finance': 'finance',
-                                    'hr_manager': 'hr-portal',
-                                    'hr_admin': 'hr-portal',
-                                    'gm': 'gm',
-                                    'director': 'director',
-                                    'mis': 'mis',
-                                    'stock': 'stock',
-                                    'warehouse_manager': 'stock'
-                                };
-                                const targetPortal = rolePortalMap[user.role] || 'dispenser';
+                                const targetPortal = getDefaultPortalForRole(user.role) || 'dispenser';
                                 
                                 console.log('📍 Opening portal manually:', targetPortal);
                                 
@@ -27284,27 +27850,10 @@ function handlePortalLoginSuccess(user, options = {}) {
     // Get the portal that was requested for login (after restoration)
     let portal = currentPortal || window.currentPortal;
     
-    // Map roles to their primary portals
-    const rolePortalMap = {
-        'admin': 'admin',
-        'consultant': 'consultant',
-        'dispenser': 'dispenser',
-        'branch_manager': 'dispenser',
-        'finance': 'finance',
-        'hr_manager': 'hr-portal',
-        'hr_admin': 'hr-portal',
-        'gm': 'gm',
-        'director': 'director',
-        'mis': 'mis',
-        'stock': 'stock',
-        'warehouse_manager': 'stock',
-        'warehouse_manager_ondangwa': 'stock',
-        'warehouse_manager_windhoek': 'stock',
-        'frontdesk': 'frontdesk'
-    };
+    // Determine default portal for this role
+    const roleDefaultPortal = getDefaultPortalForRole(role);
     
-    // If no portal specified or role-based portal should override, use role's default portal
-    const roleDefaultPortal = rolePortalMap[role];
+    // If no portal specified or value is placeholder, use role's default portal
     if (!portal || portal === 'default' || portal === 'dispenser') {
         portal = roleDefaultPortal || 'dispenser';
     }
