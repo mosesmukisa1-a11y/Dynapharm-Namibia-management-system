@@ -26796,22 +26796,8 @@ function closeLoginModal() {
 }
 
 // Make loginPortalRequest globally available
-window.loginPortalRequest = async function loginPortalRequest(username, password) {
-    const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        credentials: 'include'
-    });
-    let data = null;
-    try {
-        data = await response.json();
-    } catch (_) {}
-    if (!response.ok) {
-        throw new Error(data?.error || 'Invalid username or password');
-    }
-    return data;
-}
+// loginPortalRequest is already defined earlier at line 3946 with local fallback
+// This duplicate has been removed to prevent overriding the working version
 
 async function logoutRequest() {
     try {
