@@ -27038,6 +27038,33 @@ if (typeof window !== 'undefined') {
     window.handlePortalLoginSuccess = handlePortalLoginSuccess;
 }
 
+// =============================================================================
+// CRITICAL: Mark core login functions as loaded (EARLY FLAG)
+// =============================================================================
+// Set this flag as soon as handlePortalLoginSuccess and openTab are defined
+// Don't wait for the entire 40K line file to finish parsing
+console.log('✅ Core login functions loaded! (handlePortalLoginSuccess, openTab)');
+window.functionsLoaded = true;
+window.dispatchEvent(new Event('functionsReady'));
+
+// Update loading overlay
+setTimeout(() => {
+    const loadingStatus = document.getElementById('loadingStatus');
+    if (loadingStatus) {
+        loadingStatus.textContent = 'Ready! ✓';
+    }
+    
+    // Hide loading overlay
+    const overlay = document.getElementById('globalLoadingOverlay');
+    if (overlay) {
+        overlay.style.transition = 'opacity 0.5s ease-out';
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 500);
+    }
+}, 100);
+
 if (loginCancelButton) {
     loginCancelButton.addEventListener('click', () => {
         closeLoginModal();
@@ -40260,31 +40287,11 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
         }
         
         // =============================================================================
-        // CRITICAL: Mark all functions as loaded
+        // END OF FILE: All 40K+ lines parsed
         // =============================================================================
-        console.log('🎉 All functions loaded successfully!');
-        window.functionsLoaded = true;
-        
-        // Update loading overlay status
-        const loadingStatus = document.getElementById('loadingStatus');
-        if (loadingStatus) {
-            loadingStatus.textContent = 'Ready! ✓';
-        }
-        
-        // Hide loading overlay after a brief moment
-        setTimeout(() => {
-            const overlay = document.getElementById('globalLoadingOverlay');
-            if (overlay) {
-                overlay.style.transition = 'opacity 0.5s ease-out';
-                overlay.style.opacity = '0';
-                setTimeout(() => {
-                    overlay.style.display = 'none';
-                }, 500);
-            }
-        }, 300);
-        
-        // Dispatch event for other code to listen to
-        window.dispatchEvent(new Event('functionsReady'));
+        // Note: functionsLoaded was already set to true at line 27047
+        // This is just a completion marker for the end of the script
+        console.log('🎉 End of file reached - all 40,000+ lines parsed successfully!');
         
     </script>
 </body>
