@@ -3848,6 +3848,48 @@
         // Current warehouse filter (for warehouse managers)
         let currentWarehouseFilter = null;
         
+        // Auto-restore session on page load
+        function restoreSession() {
+            try {
+                const stored = localStorage.getItem('dyna_portal_user');
+                if (!stored) return false;
+                
+                const userData = JSON.parse(stored);
+                const age = Date.now() - (userData.timestamp || 0);
+                const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+                
+                if (age > maxAge) {
+                    console.log('Session expired, clearing...');
+                    localStorage.removeItem('dyna_portal_user');
+                    return false;
+                }
+                
+                console.log('✅ Restoring session for:', userData.username);
+                window.currentUser = userData;
+                
+                // Wait for handlePortalLoginSuccess to be available
+                const tryLogin = () => {
+                    if (typeof window.handlePortalLoginSuccess === 'function') {
+                        window.handlePortalLoginSuccess(userData, { silent: true });
+                    } else if (typeof handlePortalLoginSuccess === 'function') {
+                        handlePortalLoginSuccess(userData, { silent: true });
+                    } else {
+                        console.log('Waiting for login handler...');
+                        setTimeout(tryLogin, 200);
+                    }
+                };
+                
+                setTimeout(tryLogin, 300);
+                return true;
+            } catch (e) {
+                console.warn('Failed to restore session:', e);
+                return false;
+            }
+        }
+        
+        // Try to restore session on load
+        setTimeout(restoreSession, 500);
+        
         // Define loginPortalRequest early for staff login
         if (typeof window.loginPortalRequest === 'undefined') {
             window.loginPortalRequest = async function loginPortalRequest(username, password) {
@@ -4902,9 +4944,12 @@
                         } else if (typeof handlePortalLoginSuccess === 'function') {
                             handlePortalLoginSuccess(user, { silent: true });
                         } else {
-                            console.error('❌ handlePortalLoginSuccess not found! Reloading page...');
-                            // Last resort: reload page and let it detect the stored user
-                            window.location.reload();
+                            console.error('❌ handlePortalLoginSuccess not found! Opening portal manually...');
+                            // Fallback: manually show the portal without full handler
+                            hideLandingPage();
+                            if (typeof openTab === 'function') {
+                                openTab('dispenser', null);
+                            }
                         }
                     }, 100);
                 } else {
