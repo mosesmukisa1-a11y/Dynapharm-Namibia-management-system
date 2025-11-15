@@ -4599,6 +4599,8 @@
         }
         
         function performLogout(isAutoLogout = false) {
+            console.log('🚪 Performing logout...');
+            
             const modal = document.getElementById('sessionTimeoutModal');
             if (modal) modal.remove();
             
@@ -4606,16 +4608,37 @@
             clearTimeout(sessionTimeoutWarning);
             clearTimeout(sessionTimeoutTimer);
             
-            // Clear user data (handled by centralized auth system)
-            // currentUser = null;
-            // window.currentUser = null;
-            // localStorage.removeItem('currentUser');
-            // localStorage.removeItem('currentUserRole');
-            // localStorage.removeItem('rememberedSession');
+            // Clear user data from memory and localStorage
+            currentUser = null;
+            window.currentUser = null;
+            currentPortal = null;
+            window.currentPortal = null;
+            
+            // Clear ALL session-related localStorage items
+            try {
+                localStorage.removeItem('dyna_portal_user'); // New session storage key
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('currentUserRole');
+                localStorage.removeItem('rememberedSession');
+                localStorage.removeItem('warehouseFilter');
+                console.log('✅ Session data cleared from localStorage');
+            } catch (e) {
+                console.warn('Failed to clear localStorage:', e);
+            }
             
             // Call logout API if available
             if (typeof logoutRequest === 'function') {
                 logoutRequest().catch(err => console.error('Logout API error:', err));
+            }
+            
+            // Stop auto-refresh
+            if (typeof stopAutoRefresh === 'function') {
+                stopAutoRefresh();
+            }
+            
+            // Hide realtime status
+            if (typeof hideRealtimeStatus === 'function') {
+                hideRealtimeStatus();
             }
             
             // Hide portal tabs
@@ -4629,6 +4652,10 @@
             if (navLoginSection) navLoginSection.style.display = 'block';
             if (navUserSection) navUserSection.style.display = 'none';
             
+            // Hide main container
+            const container = document.querySelector('.container');
+            if (container) container.style.display = 'none';
+            
             // Show landing page
             showLandingPage();
             
@@ -4639,6 +4666,8 @@
             document.querySelectorAll('[id$="Content"]').forEach(el => {
                 el.style.display = 'none';
             });
+            
+            console.log('✅ Logout complete - returning to landing page');
             
             if (!isAutoLogout) {
                 showToast('Logged out successfully', 'success');
@@ -27161,34 +27190,9 @@ if (loginForm) {
     });
 }
 
-async function logout() {
-    const portal = currentPortal;
-//     await logoutRequest();
-//             currentUser = null;
-//     window.currentUser = null;
-//     currentPortal = null;
-//     window.currentPortal = null;
-//     try { localStorage.removeItem('currentUser'); } catch (_) {}
-//     setCurrentUserRole('guest');
-//             stopAutoRefresh();
-//             hideRealtimeStatus();
-//     closeLoginModal();
-//     if (portal) {
-//         const authElement = document.getElementById(portal + 'Auth');
-//         const contentElement = document.getElementById(portal + 'Content');
-//         if (authElement) authElement.style.display = 'block';
-//         if (contentElement) contentElement.style.display = 'none';
-//     }
-//             openTab('client');
-//     showLandingPage();
-    showLandingTab('shop');
-    setTimeout(() => {
-        if (typeof loadShopProducts === 'function') {
-            loadShopProducts();
-        }
-    }, 500);
-        }
-
+        // Logout function is defined earlier at line 4677 (with confirmation modal)
+        // and performLogout() at line 4601 (actual logout logic)
+        
         async function displayClients(options = {}) {
             const { skipLoad = false } = options || {};
             if (!skipLoad) {
