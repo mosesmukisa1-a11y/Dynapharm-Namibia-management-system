@@ -33407,6 +33407,32 @@ async function reverseLastPrescriptionPayment(reportId){
             }
         }
 
+        // =============================================================================
+        // DISPENSER PORTAL - Walk-in Sales Functions
+        // =============================================================================
+        
+        function showWalkInSaleModal(saleType = 'customer') {
+            console.log('🛒 Opening walk-in sale modal:', saleType);
+            
+            // TODO: Implement full walk-in sale modal
+            // For now, show a temporary alert
+            alert('Walk-in Sale Feature\n\nThis feature is under development.\n\nExpected functionality:\n• Process walk-in customer purchases\n• Add products to cart\n• Calculate totals\n• Generate receipts\n• Track sales history');
+            
+            // Future implementation would:
+            // 1. Show modal with product selection
+            // 2. Allow adding items to cart
+            // 3. Calculate total with tax
+            // 4. Process payment
+            // 5. Generate receipt
+            // 6. Update inventory
+            // 7. Record sale in database
+        }
+        
+        // Make function globally accessible
+        window.showWalkInSaleModal = showWalkInSaleModal;
+        
+        // =============================================================================
+        
         function showDispenserTab(tab) {
             // Hide all sections
             const sections = ['dispenserWalkInSection', 'dispenserPrescriptionSection', 'dispenserStockSection', 'dispenserBankingSection', 'dispenserPaymentsSection', 'dispenserOnlineOrdersSection', 'dispenserBonusSection', 'dispenserCommunicationSection', 'dispenserStaffSection', 'dispenserDistributorRegistrationSection', 'dispenserFieldProgramSection'];
