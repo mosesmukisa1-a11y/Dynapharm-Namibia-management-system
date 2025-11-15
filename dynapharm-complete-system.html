@@ -6386,6 +6386,28 @@
             }
         }
         
+        function toggleStockView(mode = 'main') {
+            const normalized = (mode || 'main').toLowerCase();
+            const tabsContainer = document.getElementById('stockTabsContainer');
+            const workflowNav = document.getElementById('stockWorkflowNav');
+            const staffSection = document.getElementById('stockStaffSection');
+            const mainBtn = document.getElementById('stockMainTabBtn');
+            const staffBtn = document.getElementById('stockStaffTabBtn');
+            
+            if (mainBtn) mainBtn.classList.toggle('hub-toggle-btn--active', normalized !== 'staff');
+            if (staffBtn) staffBtn.classList.toggle('hub-toggle-btn--active', normalized === 'staff');
+            
+            const showMain = normalized !== 'staff';
+            if (tabsContainer) tabsContainer.style.display = showMain ? 'block' : 'none';
+            if (workflowNav) workflowNav.style.display = showMain ? 'flex' : 'none';
+            if (staffSection) staffSection.style.display = showMain ? 'none' : 'block';
+            
+            if (showMain) {
+                showStockTab('overview');
+            }
+        }
+        window.toggleStockView = toggleStockView;
+        
         /**
          * Show Front Desk CRM tabs
          */
@@ -20500,6 +20522,43 @@
             return API_BASE;
         })();
         const USE_OFFLINE_MODE = false; // Prefer online API; only fallback if truly offline
+        
+        const STOCK_MOVEMENTS_API_PREF = (() => {
+            if (typeof window.STOCK_MOVEMENTS_API_OVERRIDE === 'boolean') {
+                return window.STOCK_MOVEMENTS_API_OVERRIDE;
+            }
+            try {
+                const storedPref = localStorage.getItem('dynapharm_stock_movements_api');
+                if (storedPref === 'true') return true;
+                if (storedPref === 'false') return false;
+            } catch (_) {}
+            const meta = document.querySelector('meta[name="stock-movements-api"]');
+            if (meta?.content) {
+                const val = meta.content.trim().toLowerCase();
+                if (val === 'true') return true;
+                if (val === 'false') return false;
+            }
+            const hostname = window.location?.hostname || '';
+            const staticIndicators = ['github.io', 'vercel.app', 'netlify.app'];
+            if (staticIndicators.some((token) => hostname.endsWith(token) || hostname.includes(token))) {
+                return false;
+            }
+            return true;
+        })();
+        let canUseStockMovementsApi = STOCK_MOVEMENTS_API_PREF;
+        let loggedStockMovementsWarning = false;
+        function disableStockMovementsApi(reason = '') {
+            if (!canUseStockMovementsApi) return;
+            canUseStockMovementsApi = false;
+            if (!loggedStockMovementsWarning) {
+                console.warn(
+                    reason
+                        ? `Stock movements API disabled: ${reason}. Falling back to offline/local data.`
+                        : 'Stock movements API disabled. Falling back to offline/local data.'
+                );
+                loggedStockMovementsWarning = true;
+            }
+        }
 
         (function patchFetchForApiRouting(){
             if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
@@ -21667,19 +21726,31 @@
         }
 
         async function trySyncPendingMovements(){
+            if (!canUseStockMovementsApi) return false;
             const token = getGitHubTokenForWrites();
             if (!token) return false;
             let pending = getPendingMovements();
             if (!Array.isArray(pending) || pending.length === 0) return true;
             const keep = [];
             for (const mov of pending){
+                if (!canUseStockMovementsApi) {
+                    keep.push(mov);
+                    continue;
+                }
                 try {
                     const resp = await fetch('/api/stock-movements', {
                         method: 'POST',
                         headers: { 'Content-Type':'application/json', 'x-github-token': token },
                         body: JSON.stringify({ movement: mov })
                     });
-                    if (!resp.ok) { keep.push(mov); }
+                    if (!resp.ok) {
+                        if (resp.status === 404) {
+                            disableStockMovementsApi('endpoint returned 404');
+                            keep.push(mov);
+                            continue;
+                        }
+                        keep.push(mov);
+                    }
                 } catch(_){ keep.push(mov); }
             }
             setPendingMovements(keep);
@@ -21692,10 +21763,18 @@
                 
                 // 1. Fetch cloud movements
                 let cloud = [];
-                try {
-                    const r = await fetch('/api/stock-movements');
-                    if (r.ok) cloud = await r.json();
-                } catch(_){ cloud = []; }
+                if (canUseStockMovementsApi) {
+                    try {
+                        const r = await fetch('/api/stock-movements');
+                        if (r.ok) {
+                            cloud = await r.json();
+                        } else if (r.status === 404) {
+                            disableStockMovementsApi('endpoint returned 404');
+                        }
+                    } catch(error){
+                        console.debug('Stock movements API fetch skipped:', error?.message || error);
+                    }
+                }
                 
                 // 2. Local queued movements
                 const localPending = getPendingMovements();
