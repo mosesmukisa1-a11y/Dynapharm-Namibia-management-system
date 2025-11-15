@@ -3314,6 +3314,12 @@
         console.log('🚀 Starting JavaScript initialization...');
         window.functionsLoaded = false;
         
+        // Update loading status
+        setTimeout(() => {
+            const status = document.getElementById('loadingStatus');
+            if (status) status.textContent = 'Loading functions (40,000+ lines)...';
+        }, 100);
+        
         // Legacy openPortalLogin function - now redirects to showLogin for backward compatibility
         // This function is deprecated but kept for any legacy code that might still reference it
         function openPortalLogin(portalKey) {
@@ -5724,6 +5730,53 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
+    <!-- Loading Overlay - Shows while JavaScript is parsing -->
+    <div id="globalLoadingOverlay" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 99999;
+        color: white;
+    ">
+        <div style="text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 20px;">🏥</div>
+            <h1 style="font-size: 2rem; margin: 0 0 10px; font-weight: 600;">Dynapharm Namibia</h1>
+            <p style="font-size: 1rem; margin: 0 0 30px; opacity: 0.9;">Loading system...</p>
+            
+            <!-- Loading Spinner -->
+            <div style="
+                width: 50px;
+                height: 50px;
+                border: 4px solid rgba(255, 255, 255, 0.3);
+                border-top-color: white;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 0 auto;
+            "></div>
+            
+            <p id="loadingStatus" style="
+                font-size: 0.9rem;
+                margin-top: 20px;
+                opacity: 0.8;
+                font-family: monospace;
+            ">Initializing functions...</p>
+        </div>
+        
+        <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
+    </div>
+    
     <!-- Unified Login/Welcome Overlay -->
     <!-- Navigation Bar -->
     <nav id="mainNavbar" style="background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 9999; padding: 15px 0;">
@@ -40205,6 +40258,26 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
         // =============================================================================
         console.log('🎉 All functions loaded successfully!');
         window.functionsLoaded = true;
+        
+        // Update loading overlay status
+        const loadingStatus = document.getElementById('loadingStatus');
+        if (loadingStatus) {
+            loadingStatus.textContent = 'Ready! ✓';
+        }
+        
+        // Hide loading overlay after a brief moment
+        setTimeout(() => {
+            const overlay = document.getElementById('globalLoadingOverlay');
+            if (overlay) {
+                overlay.style.transition = 'opacity 0.5s ease-out';
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 500);
+            }
+        }, 300);
+        
+        // Dispatch event for other code to listen to
         window.dispatchEvent(new Event('functionsReady'));
         
     </script>
