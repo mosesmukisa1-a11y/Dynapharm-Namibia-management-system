@@ -4539,11 +4539,12 @@
                     btn.classList.remove('hub-action--active');
                     btn.classList.remove('stock-quick-btn--active');
                 });
-                if (evt?.currentTarget) {
-                    if (evt.currentTarget.classList.contains('stock-quick-btn')) {
-                        evt.currentTarget.classList.add('stock-quick-btn--active');
+                const trigger = evt?.currentTarget || null;
+                if (trigger) {
+                    if (trigger.classList.contains('stock-quick-btn')) {
+                        trigger.classList.add('stock-quick-btn--active');
                     } else {
-                        evt.currentTarget.classList.add('hub-action--active');
+                        trigger.classList.add('hub-action--active');
                     }
                 } else {
                     const fallbackBtn = document.querySelector(`#stockContent .hub-action[data-stock-action="${action}"], #stockContent .stock-quick-btn[data-stock-action="${action}"]`);
@@ -4557,10 +4558,18 @@
                 }
 
                 requestAnimationFrame(() => {
-                    const target =
-                        document.getElementById(`${action}Tab`) ||
-                        document.getElementById(`stock-tab-${action}`) ||
-                        document.getElementById('stockTabsContainer');
+                    const customTargetId = trigger?.dataset?.target;
+                    const candidates = [
+                        customTargetId,
+                        `${action}Tab`,
+                        `stock-tab-${action}`,
+                        `${action}-tab`,
+                        `${action}_tab`,
+                        'stockTabsContainer'
+                    ].filter(Boolean);
+                    const target = candidates
+                        .map(id => document.getElementById(id))
+                        .find(Boolean);
                     if (target) {
                         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }
@@ -10970,23 +10979,23 @@
                         <div class="stock-sidebar-card">
                             <h4>Quick Actions</h4>
                             <div class="stock-quick-list">
-                                <button class="stock-quick-btn" data-stock-action="countryImport" onclick="handleStockQuickAction(event, 'countryImport')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" onclick="handleStockQuickAction(event, 'countryImport')">
                                     <span class="quick-icon" aria-hidden="true">📥</span>
                                     <span class="quick-label">Import Country Stock</span>
                                 </button>
-                                <button class="stock-quick-btn" data-stock-action="warehouseDistribution" onclick="handleStockQuickAction(event, 'warehouseDistribution')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="warehouseDistribution" data-target="warehouseDistributionTab" onclick="handleStockQuickAction(event, 'warehouseDistribution')">
                                     <span class="quick-icon" aria-hidden="true">🏢</span>
                                     <span class="quick-label">Refill Warehouses</span>
                                 </button>
-                                <button class="stock-quick-btn" data-stock-action="branchDistribution" onclick="handleStockQuickAction(event, 'branchDistribution')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="branchDistribution" data-target="branchDistributionTab" onclick="handleStockQuickAction(event, 'branchDistribution')">
                                     <span class="quick-icon" aria-hidden="true">🏬</span>
                                     <span class="quick-label">Supply Branches</span>
                                 </button>
-                                <button class="stock-quick-btn" data-stock-action="transfers" onclick="handleStockQuickAction(event, 'transfers')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="transfers" data-target="transfersTab" onclick="handleStockQuickAction(event, 'transfers')">
                                     <span class="quick-icon" aria-hidden="true">🔄</span>
                                     <span class="quick-label">Manage Transfers</span>
                                 </button>
-                                <button class="stock-quick-btn" data-stock-action="countryInventory" onclick="handleStockQuickAction(event, 'countryInventory')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="countryInventory" data-target="countryInventoryTab" onclick="handleStockQuickAction(event, 'countryInventory')">
                                     <span class="quick-icon" aria-hidden="true">🌍</span>
                                     <span class="quick-label">View Inventory</span>
                                 </button>
@@ -10996,31 +11005,31 @@
                             <h4>Reports & Tools</h4>
                             <ul class="stock-sidebar-links">
                                 <li>
-                                    <button type="button" onclick="showStockTab('overview')">
+                                    <button type="button" data-stock-action="overview" data-target="overviewTab" onclick="handleStockQuickAction(event, 'overview')">
                                         <span class="quick-icon" aria-hidden="true">📊</span>
                                         <span class="quick-label">Executive Overview</span>
                                     </button>
                                 </li>
                                 <li>
-                                    <button type="button" onclick="showStockTab('orders')">
+                                    <button type="button" data-stock-action="orders" data-target="ordersTab" onclick="handleStockQuickAction(event, 'orders')">
                                         <span class="quick-icon" aria-hidden="true">🧾</span>
                                         <span class="quick-label">Auto &amp; Manual Orders</span>
                                     </button>
                                 </li>
                                 <li>
-                                    <button type="button" onclick="showStockTab('invoices')">
+                                    <button type="button" data-stock-action="invoices" data-target="invoicesTab" onclick="handleStockQuickAction(event, 'invoices')">
                                         <span class="quick-icon" aria-hidden="true">📑</span>
                                         <span class="quick-label">Invoices &amp; Billing</span>
                                     </button>
                                 </li>
                                 <li>
-                                    <button type="button" onclick="showStockTab('realtime')">
+                                    <button type="button" data-stock-action="realtime" data-target="realtimeTab" onclick="handleStockQuickAction(event, 'realtime')">
                                         <span class="quick-icon" aria-hidden="true">⚡</span>
                                         <span class="quick-label">Sync Status</span>
                                     </button>
                                 </li>
                                 <li>
-                                    <button type="button" onclick="showStockTab('barcode')">
+                                    <button type="button" data-stock-action="barcode" data-target="barcodeTab" onclick="handleStockQuickAction(event, 'barcode')">
                                         <span class="quick-icon" aria-hidden="true">🏷️</span>
                                         <span class="quick-label">Barcode &amp; Scans</span>
                                     </button>
