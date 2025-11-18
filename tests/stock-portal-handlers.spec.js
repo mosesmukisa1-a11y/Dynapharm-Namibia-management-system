@@ -94,6 +94,93 @@ describe('stock-portal-handlers', () => {
     expect(summary.style.display).toBe('block');
   });
 
+  it('keeps separate batches for the same product during country import', () => {
+    const form = document.createElement('form');
+    form.innerHTML = `
+      <table>
+        <tbody data-stock-import-body="true">
+          <tr>
+            <td><input class="stock-carton-no" value="A1-01"></td>
+            <td><input class="stock-description" value="BATCHED PRODUCT"></td>
+            <td><input class="stock-batch-no" value="BATCH-001"></td>
+            <td><input class="stock-expiry-date" type="month" value="2026-10"></td>
+            <td><input class="stock-quantity" type="number" value="10"></td>
+            <td><input class="stock-total-ctns" type="number" value="1"></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><input class="stock-carton-no" value="A1-02"></td>
+            <td><input class="stock-description" value="BATCHED PRODUCT"></td>
+            <td><input class="stock-batch-no" value="BATCH-002"></td>
+            <td><input class="stock-expiry-date" type="month" value="2026-12"></td>
+            <td><input class="stock-quantity" type="number" value="15"></td>
+            <td><input class="stock-total-ctns" type="number" value="2"></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+
+    document.body.appendChild(form);
+
+    window.handleBulkStockImportSubmit({
+      preventDefault: () => {},
+      target: form
+    });
+
+    const matches = window.countryStock.filter(
+      (item) => item.description === 'BATCHED PRODUCT'
+    );
+
+    expect(matches).toHaveLength(2);
+    expect(matches.map((item) => item.batchNo).sort()).toEqual(['BATCH-001', 'BATCH-002']);
+    const batch1 = matches.find((item) => item.batchNo === 'BATCH-001');
+    const batch2 = matches.find((item) => item.batchNo === 'BATCH-002');
+    expect(batch1.quantity).toBe(10);
+    expect(batch2.quantity).toBe(15);
+  });
+
+  it('parses CSV imports even when total cartons column is missing', () => {
+    const csv = `Cartons No.,Description,Batch No.,Expiry Date,Quantity\n`
+      + `A1,CSV PRODUCT,B-123,2026-05-01,25`;
+    const { valid, rows } = window.StockPortalHandlers.parseImportCsv(csv);
+    expect(valid).toBe(true);
+    expect(rows).toEqual([
+      {
+        cartonNo: 'A1',
+        description: 'CSV PRODUCT',
+        batchNo: 'B-123',
+        expiryDate: '2026-05',
+        quantity: '25',
+        totalCtns: '25'
+      }
+    ]);
+  });
+
+  it('populates rows from parsed CSV data into the import form', () => {
+    const form = document.createElement('form');
+    form.innerHTML = `
+      <table>
+        <tbody data-stock-import-body="true"></tbody>
+      </table>
+    `;
+    const rows = [
+      {
+        cartonNo: 'BX-9',
+        description: 'CSV POPULATED',
+        batchNo: 'CSV-01',
+        expiryDate: '2025-09',
+        quantity: '12',
+        totalCtns: '3'
+      }
+    ];
+    window.StockPortalHandlers.populateImportRows(form, rows);
+    const inputs = form.querySelectorAll('tbody tr input');
+    expect(inputs.length).toBe(6);
+    expect(form.querySelector('.stock-description').value).toBe('CSV POPULATED');
+    expect(form.querySelector('.stock-total-ctns').value).toBe('3');
+  });
+
   it('distributes warehouse stock to a branch and resolves requests', () => {
     const distForm = document.createElement('form');
     distForm.innerHTML = `
@@ -124,6 +211,21 @@ describe('stock-portal-handlers', () => {
     const requests = JSON.parse(localStorage.getItem('dyna_branch_requests_v1'));
     const resolved = requests.find((req) => req.id === 'REQ-BR-0001');
     expect(resolved.status).toBe('completed');
+  });
+
+  it('prevents partial depletion when distribution stock is insufficient', () => {
+    const before = JSON.parse(localStorage.getItem('dyna_warehouse_stock_v2'));
+    const originalQty = before.windhoek.find((item) => item.description === "SPIRULINA TABLET (300's)").quantity;
+    const result = window.StockPortalHandlers.moveBetweenLocations(
+      'warehouse:windhoek',
+      'branch:townshop',
+      "SPIRULINA TABLET (300's)",
+      originalQty + 50
+    );
+    expect(result.ok).toBe(false);
+    const after = JSON.parse(localStorage.getItem('dyna_warehouse_stock_v2'));
+    const currentQty = after.windhoek.find((item) => item.description === "SPIRULINA TABLET (300's)").quantity;
+    expect(currentQty).toBe(originalQty);
   });
 
   it('adds sharing rules via the sharing form handler', () => {
