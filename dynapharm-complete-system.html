@@ -4530,6 +4530,10 @@
             try {
                 if (evt?.preventDefault) evt.preventDefault();
 
+                if (typeof toggleStockView === 'function') {
+                    toggleStockView('main');
+                }
+
                 if (typeof showStockTab === 'function') {
                     showStockTab(action, evt);
                 }
@@ -6350,6 +6354,22 @@
             }
             if (activeButton) {
                 activeButton.classList.add('active');
+            }
+
+            if (stockContent) {
+                const cap = capitalize(tabName);
+                const primaryTabButton = stockContent.querySelector(`#stockTab${cap}`);
+                if (primaryTabButton && primaryTabButton !== activeButton) {
+                    primaryTabButton.classList.add('active');
+                }
+                const workflowButton = stockContent.querySelector(`.stock-hub-journey .workflow-tab[data-tab="${tabName}"]`);
+                if (workflowButton && workflowButton !== activeButton) {
+                    workflowButton.classList.add('active');
+                }
+                const secondaryButton = stockContent.querySelector(`.stock-hub-tab-row--secondary .tab-button[data-stock-tab="${tabName}"]`);
+                if (secondaryButton && secondaryButton !== activeButton) {
+                    secondaryButton.classList.add('active');
+                }
             }
             
             // Load data for specific tabs
@@ -10966,7 +10986,7 @@
                                 <h4>Workflow Journey</h4>
                                 <p>Navigate each stage of the national stock lifecycle.</p>
                             </div>
-                            <div id="stockWorkflowNav" class="stock-workflow-stack">
+                            <div id="stockWorkflowNav" class="stock-workflow-stack stock-hub-journey">
                                 <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
                                 <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
                                 <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
