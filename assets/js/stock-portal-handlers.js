@@ -369,9 +369,49 @@
       },
       invoiceSearch: '',
       invoiceSearchTimer: null,
-      invoiceSelection: new Set()
+      invoiceSelection: new Set(),
+      warehouseFilter: null // 'ondangwa' or 'windhoek'
     },
     syncingBackend: false,
+
+    setWarehouseFilter(warehouse) {
+      this.state.warehouseFilter = warehouse || null;
+      if (warehouse) {
+        localStorage.setItem('dyna_warehouse_filter', warehouse);
+        console.log(`🏭 Warehouse filter set to: ${warehouse}`);
+        // Re-render all views with warehouse filter
+        this.renderAll();
+      } else {
+        localStorage.removeItem('dyna_warehouse_filter');
+      }
+    },
+
+    getWarehouseFilter() {
+      return this.state.warehouseFilter || localStorage.getItem('dyna_warehouse_filter') || null;
+    },
+
+    filterByWarehouse(data) {
+      const warehouse = this.getWarehouseFilter();
+      if (!warehouse || !data) return data;
+      
+      if (Array.isArray(data)) {
+        return data.filter(item => {
+          const location = (item.location || item.warehouse || '').toLowerCase();
+          return location.includes(warehouse.toLowerCase());
+        });
+      }
+      
+      if (typeof data === 'object') {
+        // For warehouse stock objects, return only the relevant warehouse
+        if (warehouse === 'ondangwa' && data.ondangwa) {
+          return { ondangwa: data.ondangwa };
+        } else if (warehouse === 'windhoek' && data.windhoek) {
+          return { windhoek: data.windhoek };
+        }
+      }
+      
+      return data;
+    },
 
     ensureInit() {
       if (this.initScheduled) return;

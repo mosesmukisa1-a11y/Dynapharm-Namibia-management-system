@@ -6364,42 +6364,83 @@
             const triggerEvent = evt || window.event || null;
             const stockContent = document.getElementById('stockContent');
             
-            // Hide all stock tab contents
-            const tabContents = stockContent ? stockContent.querySelectorAll('.stock-tab-content') : [];
-            tabContents.forEach(tab => {
+            if (!stockContent) {
+                console.warn('stockContent element not found');
+                return;
+            }
+            
+            // Hide all stock tab contents - search in both stockContent and document
+            const tabContents = [
+                ...(stockContent.querySelectorAll('.stock-tab-content') || []),
+                ...(document.querySelectorAll('.stock-tab-content') || [])
+            ];
+            // Remove duplicates
+            const uniqueTabs = Array.from(new Set(tabContents));
+            uniqueTabs.forEach(tab => {
                 tab.style.display = 'none';
             });
             
             // Remove active class from all tab buttons, workflow tabs, quick actions, and sidebar links
-            if (stockContent) {
-                const allButtons = stockContent.querySelectorAll(
-                    '.stock-hub-tab-row .tab-button, ' +
-                    '.stock-hub-journey .workflow-tab, ' +
-                    '.stock-quick-btn, ' +
-                    '.stock-sidebar-links button, ' +
-                    '.hub-action'
-                );
-                allButtons.forEach(btn => {
-                    btn.classList.remove('active');
-                    btn.classList.remove('stock-quick-btn--active');
-                    btn.classList.remove('hub-action--active');
-                });
+            const allButtons = stockContent.querySelectorAll(
+                '.stock-hub-tab-row .tab-button, ' +
+                '.stock-hub-journey .workflow-tab, ' +
+                '.stock-quick-btn, ' +
+                '.stock-sidebar-links button, ' +
+                '.hub-action'
+            );
+            allButtons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.remove('stock-quick-btn--active');
+                btn.classList.remove('hub-action--active');
+            });
+            
+            // Determine target tab element - try multiple strategies
+            const candidateIds = [
+                `${tabName}Tab`,           // Most common: countryImportTab
+                `stock-tab-${tabName}`,    // Alternative: stock-tab-countryImport
+                `${tabName}-tab`,          // Alternative: countryImport-tab
+                `${tabName}_tab`           // Alternative: countryImport_tab
+            ];
+            
+            let selectedTab = null;
+            for (const id of candidateIds) {
+                // First try within stockContent
+                selectedTab = stockContent.querySelector(`#${id}`);
+                if (selectedTab) break;
+                // Then try globally
+                selectedTab = document.getElementById(id);
+                if (selectedTab) break;
             }
             
-            // Determine target tab element
-            const candidateIds = [
-                `stock-tab-${tabName}`,
-                `${tabName}Tab`,
-                `${tabName}-tab`,
-                `${tabName}_tab`
-            ];
-            const selectedTab = candidateIds
-                .map(id => document.getElementById(id))
-                .find(Boolean);
             if (selectedTab) {
+                // Ensure parent containers are visible
+                const tabsContainer = document.getElementById('stockTabsContainer');
+                if (tabsContainer) {
+                    tabsContainer.style.display = 'block';
+                    tabsContainer.style.visibility = 'visible';
+                }
+                
+                // Ensure stock-main section is visible
+                const stockMain = stockContent.querySelector('.stock-main');
+                if (stockMain) {
+                    stockMain.style.display = 'block';
+                    stockMain.style.visibility = 'visible';
+                }
+                
+                // Show the selected tab
                 selectedTab.style.display = 'block';
+                selectedTab.style.visibility = 'visible';
+                selectedTab.style.opacity = '1';
+                
+                // Force a reflow to ensure display changes take effect
+                selectedTab.offsetHeight;
+                
+                console.log(`✅ Tab ${tabName} displayed (found as ${selectedTab.id})`);
             } else {
-                console.warn(`Stock tab content not found for ${tabName}`);
+                console.warn(`❌ Stock tab content not found for ${tabName}. Tried IDs:`, candidateIds);
+                // Try to find any tab with similar name
+                const allTabs = document.querySelectorAll('.stock-tab-content');
+                console.log('Available tabs:', Array.from(allTabs).map(t => t.id));
             }
             
             // Highlight the triggering button (or fallback)
@@ -11100,8 +11141,16 @@
                     <p style="font-size: 1.2rem; margin-bottom: 20px;">Please login to access stock management portal</p>
                     <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                         <button class="btn" onclick="showLogin('stock')">🔐 Staff Login</button>
-                        <button class="btn" onclick="showLogin('stock')" style="background: #10b981; color: white; border: none;">🏭 Warehouse Manager Login</button>
+                        <button class="btn" onclick="showLogin('stock')" style="background: linear-gradient(135deg, #2563eb, #10b981); color: white; border: none;">
+                            🏭 Ondangwa Warehouse Login
+                        </button>
+                        <button class="btn" onclick="showLogin('stock')" style="background: linear-gradient(135deg, #f97316, #c41e3a); color: white; border: none;">
+                            🏢 Windhoek Warehouse Login
+                        </button>
                     </div>
+                    <p style="margin-top: 20px; color: #64748b; font-size: 0.9rem;">
+                        Warehouse managers will see a customized portal with warehouse-specific data and operations.
+                    </p>
                 </div>
             </div>
             <div id="stockContent" style="display: none;">
@@ -42292,6 +42341,238 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 alert('Failed to delete branch. Please try again.');
             }
         }
+        
+        // =============================================================================
+        // WAREHOUSE PORTAL REDESIGN - Ondangwa & Windhoek Warehouse Managers
+        // =============================================================================
+        
+        /**
+         * Warehouse Portal Transformation
+         * Automatically transforms the stock portal for warehouse managers
+         * with warehouse-specific branding, filtering, and UI
+         */
+        (function initWarehousePortal() {
+            'use strict';
+            
+            const WAREHOUSE_CONFIG = {
+                ondangwa: {
+                    name: 'Ondangwa Warehouse',
+                    shortName: 'Ondangwa',
+                    region: 'Northern Region',
+                    color: '#2563eb', // Blue
+                    accent: '#10b981', // Green
+                    gradient: 'linear-gradient(135deg, #2563eb 0%, #10b981 100%)',
+                    icon: '🏭',
+                    branches: ['Ondangwa', 'Rundu', 'Oshakati'] // Example branches
+                },
+                windhoek: {
+                    name: 'Windhoek Warehouse',
+                    shortName: 'Windhoek',
+                    region: 'Central Region',
+                    color: '#f97316', // Orange
+                    accent: '#c41e3a', // Red
+                    gradient: 'linear-gradient(135deg, #f97316 0%, #c41e3a 100%)',
+                    icon: '🏢',
+                    branches: ['Windhoek', 'Swakopmund', 'Walvis Bay'] // Example branches
+                }
+            };
+            
+            let currentWarehouse = null;
+            let warehouseConfig = null;
+            
+            /**
+             * Detect warehouse manager and get warehouse config
+             */
+            function detectWarehouse() {
+                const user = window.currentUser || currentUser;
+                if (!user || !user.role) return null;
+                
+                const role = (user.role || '').toLowerCase();
+                if (role === 'warehouse_manager_ondangwa') {
+                    return 'ondangwa';
+                } else if (role === 'warehouse_manager_windhoek') {
+                    return 'windhoek';
+                }
+                return null;
+            }
+            
+            /**
+             * Transform stock portal header for warehouse
+             */
+            function transformWarehouseHeader() {
+                const hero = document.querySelector('#stockContent .stock-hub-hero');
+                if (!hero || !warehouseConfig) return;
+                
+                const heroText = hero.querySelector('.stock-hub-hero__text');
+                if (heroText) {
+                    const eyebrow = heroText.querySelector('.stock-hub-hero__eyebrow');
+                    const title = heroText.querySelector('h2');
+                    
+                    if (eyebrow) {
+                        eyebrow.textContent = `${warehouseConfig.icon} ${warehouseConfig.region}`;
+                        eyebrow.style.color = warehouseConfig.color;
+                    }
+                    
+                    if (title) {
+                        title.textContent = `${warehouseConfig.name} Management Portal`;
+                        title.style.background = warehouseConfig.gradient;
+                        title.style.webkitBackgroundClip = 'text';
+                        title.style.webkitTextFillColor = 'transparent';
+                        title.style.backgroundClip = 'text';
+                    }
+                    
+                    // Add warehouse badge
+                    const existingBadge = heroText.querySelector('.warehouse-badge');
+                    if (!existingBadge) {
+                        const badge = document.createElement('div');
+                        badge.className = 'warehouse-badge';
+                        badge.style.cssText = `
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 8px;
+                            padding: 8px 16px;
+                            background: ${warehouseConfig.gradient};
+                            color: white;
+                            border-radius: 20px;
+                            font-weight: 600;
+                            font-size: 0.9rem;
+                            margin-top: 12px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        `;
+                        badge.innerHTML = `
+                            <span>${warehouseConfig.icon}</span>
+                            <span>${warehouseConfig.name}</span>
+                        `;
+                        heroText.appendChild(badge);
+                    }
+                }
+                
+                // Apply warehouse theme to hero
+                hero.style.borderLeft = `4px solid ${warehouseConfig.color}`;
+            }
+            
+            /**
+             * Filter and transform dashboard cards for warehouse
+             */
+            function transformWarehouseDashboard() {
+                if (!warehouseConfig) return;
+                
+                // Update summary cards with warehouse-specific data
+                const cards = document.querySelectorAll('#stockContent .stock-summary-card');
+                cards.forEach((card, index) => {
+                    card.style.borderTop = `3px solid ${warehouseConfig.color}`;
+                    if (index === 0) {
+                        const label = card.querySelector('.stock-summary-label');
+                        if (label) {
+                            label.textContent = `${warehouseConfig.shortName} Stock Value`;
+                        }
+                    }
+                });
+            }
+            
+            /**
+             * Filter sidebar navigation for warehouse
+             */
+            function filterWarehouseNavigation() {
+                if (!warehouseConfig) return;
+                
+                const sidebar = document.querySelector('#stockContent .stock-sidebar');
+                if (!sidebar) return;
+                
+                // Hide country import for warehouse managers (they receive from country)
+                const countryImportBtn = sidebar.querySelector('[data-stock-action="countryImport"]');
+                if (countryImportBtn) {
+                    countryImportBtn.style.display = 'none';
+                }
+                
+                // Update workflow journey text
+                const workflowText = sidebar.querySelector('.stock-sidebar-card__header p');
+                if (workflowText) {
+                    workflowText.textContent = `Manage ${warehouseConfig.shortName} warehouse operations and distribution.`;
+                }
+            }
+            
+            /**
+             * Apply warehouse theme to entire portal
+             */
+            function applyWarehouseTheme() {
+                if (!warehouseConfig) return;
+                
+                const stockContent = document.getElementById('stockContent');
+                if (!stockContent) return;
+                
+                // Add warehouse theme class
+                stockContent.setAttribute('data-warehouse', currentWarehouse);
+                stockContent.style.setProperty('--warehouse-color', warehouseConfig.color);
+                stockContent.style.setProperty('--warehouse-accent', warehouseConfig.accent);
+                
+                // Style active buttons with warehouse colors
+                const style = document.createElement('style');
+                style.id = 'warehouse-theme-styles';
+                style.textContent = `
+                    #stockContent[data-warehouse="${currentWarehouse}"] .stock-quick-btn--active {
+                        background: ${warehouseConfig.gradient} !important;
+                        border-color: ${warehouseConfig.color} !important;
+                    }
+                    #stockContent[data-warehouse="${currentWarehouse}"] .workflow-tab.active,
+                    #stockContent[data-warehouse="${currentWarehouse}"] .tab-button.active {
+                        background: ${warehouseConfig.gradient} !important;
+                        color: white !important;
+                    }
+                    #stockContent[data-warehouse="${currentWarehouse}"] .stock-sidebar-links button.active {
+                        background: ${warehouseConfig.gradient} !important;
+                        color: white !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            /**
+             * Initialize warehouse portal
+             */
+            function initWarehousePortalView() {
+                currentWarehouse = detectWarehouse();
+                if (!currentWarehouse) return;
+                
+                warehouseConfig = WAREHOUSE_CONFIG[currentWarehouse];
+                if (!warehouseConfig) return;
+                
+                console.log(`🏭 Initializing ${warehouseConfig.name} Portal`);
+                
+                // Wait for stock portal to be visible
+                const checkInterval = setInterval(() => {
+                    const stockContent = document.getElementById('stockContent');
+                    if (stockContent && stockContent.style.display !== 'none') {
+                        clearInterval(checkInterval);
+                        
+                        // Apply transformations
+                        transformWarehouseHeader();
+                        transformWarehouseDashboard();
+                        filterWarehouseNavigation();
+                        applyWarehouseTheme();
+                        
+                        // Filter data by warehouse
+                        if (typeof window.StockPortalHandlers !== 'undefined') {
+                            window.StockPortalHandlers.setWarehouseFilter(currentWarehouse);
+                        }
+                    }
+                }, 100);
+            }
+            
+            // Initialize on page load and when user logs in
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initWarehousePortalView);
+            } else {
+                initWarehousePortalView();
+            }
+            
+            // Re-initialize when user changes
+            window.addEventListener('user:logged-in', initWarehousePortalView);
+            
+            // Expose warehouse config globally
+            window.getWarehouseConfig = () => warehouseConfig;
+            window.getCurrentWarehouse = () => currentWarehouse;
+        })();
         
         // =============================================================================
         // END OF FILE: All 40K+ lines parsed
