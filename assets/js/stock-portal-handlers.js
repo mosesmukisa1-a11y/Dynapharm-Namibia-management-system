@@ -2821,6 +2821,7 @@
     importFromCSV: (trigger) => StockPortal.importFromCSV(trigger),
     clearStockImportForm: (trigger) => StockPortal.clearStockImportForm(trigger),
     handleQualitySubmit: (event) => StockPortal.handleQualitySubmit(event),
+    renderQualityList: () => StockPortal.renderQualityList(),
     handleTransferToWindhoek: (event) => StockPortal.handleTransferToWindhoek(event),
     handleTransferToOndangwa: (event) => StockPortal.handleTransferToOndangwa(event),
     handleBranchDistribution: (event) => StockPortal.handleBranchDistribution(event),

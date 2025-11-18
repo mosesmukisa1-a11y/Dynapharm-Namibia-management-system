@@ -4531,7 +4531,7 @@
                 if (evt?.preventDefault) evt.preventDefault();
 
                 if (typeof toggleStockView === 'function') {
-                    toggleStockView('main');
+                    toggleStockView('main', true); // Skip auto-switch to overview
                 }
 
                 if (typeof showStockTab === 'function') {
@@ -6430,7 +6430,7 @@
             }
         }
         
-        function toggleStockView(mode = 'main') {
+        function toggleStockView(mode = 'main', skipAutoSwitch = false) {
             const normalized = (mode || 'main').toLowerCase();
             const tabsContainer = document.getElementById('stockTabsContainer');
             const workflowNav = document.getElementById('stockWorkflowNav');
@@ -6438,15 +6438,19 @@
             const mainBtn = document.getElementById('stockMainTabBtn');
             const staffBtn = document.getElementById('stockStaffTabBtn');
             
+            // Check if we're currently in staff view
+            const wasStaffView = staffSection && staffSection.style.display !== 'none';
+            const showMain = normalized !== 'staff';
+            
             if (mainBtn) mainBtn.classList.toggle('hub-toggle-btn--active', normalized !== 'staff');
             if (staffBtn) staffBtn.classList.toggle('hub-toggle-btn--active', normalized === 'staff');
             
-            const showMain = normalized !== 'staff';
             if (tabsContainer) tabsContainer.style.display = showMain ? 'block' : 'none';
             if (workflowNav) workflowNav.style.display = showMain ? 'flex' : 'none';
             if (staffSection) staffSection.style.display = showMain ? 'none' : 'block';
             
-            if (showMain) {
+            // Only auto-switch to overview if we're switching FROM staff TO main, and not skipping
+            if (showMain && wasStaffView && !skipAutoSwitch) {
                 showStockTab('overview');
             }
         }
