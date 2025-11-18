@@ -978,6 +978,64 @@
       });
     },
 
+    normalizeHeader(header) {
+      return header
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+    },
+
+    parseImportCsv(content) {
+      const lines = String(content || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!lines.length) return { valid: false, rows: [] };
+
+      const [header, ...dataRows] = lines;
+      const headers = header.split(',').map((h) => this.normalizeHeader(h));
+      const required = ['cartonsno', 'description', 'batchno', 'expirydate', 'quantity'];
+      const hasRequired = required.every((key) => headers.includes(key));
+      const hasTotal = headers.includes('totalctns');
+
+      if (!hasRequired) return { valid: false, rows: [] };
+
+      const rows = dataRows
+        .map((line) => line.split(','))
+        .filter((cells) => cells.some((value) => value && value.trim()))
+        .map((cells) => ({
+          cartonNo: cells[0] || '',
+          description: cells[1] || '',
+          batchNo: cells[2] || '',
+          expiryDate: (cells[3] || '').slice(0, 7),
+          quantity: cells[4] || '',
+          totalCtns: (hasTotal ? cells[5] : cells[4]) || ''
+        }));
+
+      return { valid: true, rows };
+    },
+
+    populateImportRows(form, rows) {
+      const body = form.querySelector('tbody[data-stock-import-body="true"]') || form.querySelector('tbody');
+      if (!body) return;
+      body.innerHTML = '';
+      rows.forEach((item) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><input type="text" class="stock-carton-no" value="${item.cartonNo || ''}"></td>
+          <td><input type="text" class="stock-description" value="${item.description || ''}" required></td>
+          <td><input type="text" class="stock-batch-no" value="${item.batchNo || ''}" required></td>
+          <td><input type="month" class="stock-expiry-date" value="${(item.expiryDate || '').slice(0, 7)}" required></td>
+          <td><input type="number" class="stock-quantity" value="${item.quantity || ''}" min="1" required></td>
+          <td><input type="number" class="stock-total-ctns" value="${item.totalCtns || ''}" min="1"></td>
+          <td style="text-align:center;">
+            <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)">Remove</button>
+          </td>
+        `;
+        body.appendChild(row);
+      });
+    },
+
     importFromCSV(trigger) {
       this.ensureInit();
       this.onReady(() => {
@@ -992,42 +1050,19 @@
           if (!file) return;
           const reader = new FileReader();
           reader.onload = () => {
-            const body = form.querySelector('tbody[data-stock-import-body="true"]') || form.querySelector('tbody');
-            if (!body) return;
-            const rows = String(reader.result || '')
-              .split(/\r?\n/)
-              .map((line) => line.trim())
-              .filter(Boolean);
+            const { valid, rows } = this.parseImportCsv(reader.result);
+            if (!valid) {
+              this.notify('CSV header not recognized. Please use the default template.', 'error');
+              return;
+            }
             if (!rows.length) {
               this.notify('CSV file is empty.', 'warning');
               return;
             }
-            const [header, ...dataRows] = rows;
-            const headers = header.split(',').map((h) => h.trim().toLowerCase());
-            const expected = ['cartons no.', 'description', 'batch no.', 'expiry date', 'quantity', 'total (ctns)'];
-            if (headers.length && headers.every((h) => expected.includes(h))) {
-              body.innerHTML = '';
-              dataRows.forEach((line) => {
-                const cells = line.split(',');
-                if (!cells.length) return;
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                  <td><input type="text" class="stock-carton-no" value="${cells[0] || ''}"></td>
-                  <td><input type="text" class="stock-description" value="${cells[1] || ''}" required></td>
-                  <td><input type="text" class="stock-batch-no" value="${cells[2] || ''}" required></td>
-                  <td><input type="month" class="stock-expiry-date" value="${(cells[3] || '').slice(0, 7)}" required></td>
-                  <td><input type="number" class="stock-quantity" value="${cells[4] || ''}" min="1" required></td>
-                  <td><input type="number" class="stock-total-ctns" value="${cells[5] || ''}" min="1"></td>
-                  <td style="text-align:center;">
-                    <button type="button" class="btn btn-danger" onclick="removeStockImportRow(this)">Remove</button>
-                  </td>
-                `;
-                body.appendChild(row);
-              });
-              this.notify(`Imported ${dataRows.length} row(s) from CSV.`, 'success');
-            } else {
-              this.notify('CSV header not recognized. Please use the default template.', 'error');
-            }
+
+            this.populateImportRows(form, rows);
+            this.renderImportSummary(this.collectImportRows(form));
+            this.notify(`Imported ${rows.length} row(s) from CSV.`, 'success');
           };
           reader.readAsText(file);
         });
@@ -1049,9 +1084,12 @@
           return;
         }
         const current = this.getCountryStock();
+        const normalize = (value) => (value || '').trim().toLowerCase();
         entries.forEach((entry) => {
           const existing = current.find(
-            (item) => (item.description || '').toLowerCase() === entry.description.toLowerCase()
+            (item) =>
+              normalize(item.description) === normalize(entry.description) &&
+              normalize(item.batchNo) === normalize(entry.batchNo)
           );
           if (existing) {
             existing.quantity = Number(existing.quantity || 0) + entry.quantity;
@@ -2007,20 +2045,23 @@
       let remaining = delta;
       if (!targetName) return { ok: false, message: 'Product is required.' };
       if (delta < 0) {
+        const available = list
+          .filter((item) => (item.description || '').toLowerCase() === targetName)
+          .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+        if (available < Math.abs(delta)) {
+          return { ok: false, message: 'Insufficient country stock.' };
+        }
         const matching = list.filter(
           (item) => (item.description || '').toLowerCase() === targetName && Number(item.quantity || 0) > 0
         );
         let needed = Math.abs(delta);
         for (const item of matching) {
           if (needed <= 0) break;
-          const available = Number(item.quantity || 0);
-          const take = Math.min(available, needed);
-          item.quantity = available - take;
+          const currentQty = Number(item.quantity || 0);
+          const take = Math.min(currentQty, needed);
+          item.quantity = currentQty - take;
           item.totalCtns = Math.max(0, Number(item.totalCtns || 0) - take);
           needed -= take;
-        }
-        if (needed > 0) {
-          return { ok: false, message: 'Insufficient country stock.' };
         }
       } else if (delta > 0) {
         const existing = list.find((item) => (item.description || '').toLowerCase() === targetName);
@@ -2049,17 +2090,20 @@
       const targetName = (productName || '').toLowerCase();
       if (!targetName) return { ok: false, message: 'Product is required.' };
       if (delta < 0) {
+        const available = list
+          .filter((item) => (item.description || '').toLowerCase() === targetName)
+          .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+        if (available < Math.abs(delta)) {
+          return { ok: false, message: `Insufficient stock in ${warehouse}.` };
+        }
         let needed = Math.abs(delta);
         for (const item of list) {
           if ((item.description || '').toLowerCase() !== targetName) continue;
           if (needed <= 0) break;
-          const available = Number(item.quantity || 0);
-          const take = Math.min(available, needed);
-          item.quantity = available - take;
+          const currentQty = Number(item.quantity || 0);
+          const take = Math.min(currentQty, needed);
+          item.quantity = currentQty - take;
           needed -= take;
-        }
-        if (needed > 0) {
-          return { ok: false, message: `Insufficient stock in ${warehouse}.` };
         }
       } else if (delta > 0) {
         const existing = list.find((item) => (item.description || '').toLowerCase() === targetName);
