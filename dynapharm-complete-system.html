@@ -4219,7 +4219,8 @@
         function applyWarehouseFilter() {
             if (!currentWarehouseFilter) {
                 const savedFilter = localStorage.getItem('warehouseFilter');
-                const userRole = (currentUser?.role || '').toLowerCase();
+                const activeUser = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : window.currentUser;
+                const userRole = ((activeUser && activeUser.role) || '').toLowerCase();
                 if (userRole === 'warehouse_manager_ondangwa') {
                     currentWarehouseFilter = 'Ondangwa';
                 } else if (userRole === 'warehouse_manager_windhoek') {
