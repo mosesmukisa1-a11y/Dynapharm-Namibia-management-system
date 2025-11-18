@@ -22,7 +22,15 @@
     transfers: 'dyna_stock_transfers_v2',
     invoices: 'dyna_invoice_records_v1',
     sharingRules: 'dyna_sharing_rules_v1',
-    branchRequests: 'dyna_branch_requests_v1'
+    branchRequests: 'dyna_branch_requests_v1',
+    asnQueue: 'dyna_asn_queue_v1',
+    putawayQueue: 'dyna_putaway_queue_v1',
+    warehouseCapacity: 'dyna_warehouse_capacity_v1',
+    replenishment: 'dyna_replenishment_suggestions_v1',
+    returnsQueue: 'dyna_returns_queue_v1',
+    routeBoard: 'dyna_route_board_v1',
+    inventoryAlerts: 'dyna_inventory_alerts_v1',
+    reorderPlans: 'dyna_reorder_plans_v1'
   };
 
   const DEFAULT_BRANCH_LIST = [
@@ -216,6 +224,100 @@
         priority: 'normal',
         status: 'pending',
         createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
+      }
+    ],
+    asnQueue: [
+      {
+        id: 'ASN-8891',
+        supplier: 'Dynapharm Malaysia',
+        cartons: 42,
+        pallets: 6,
+        eta: new Date(Date.now() + 86400000 * 4).toISOString().slice(0, 10),
+        status: 'In transit'
+      },
+      {
+        id: 'ASN-8892',
+        supplier: 'Dynapharm South Africa',
+        cartons: 24,
+        pallets: 3,
+        eta: new Date(Date.now() + 86400000 * 9).toISOString().slice(0, 10),
+        status: 'Awaiting documents'
+      }
+    ],
+    putawayQueue: [
+      {
+        id: 'PUT-2401',
+        warehouse: 'Windhoek',
+        zone: 'Ambient A2',
+        pallets: 4,
+        priority: 'High'
+      },
+      {
+        id: 'PUT-2402',
+        warehouse: 'Ondangwa',
+        zone: 'Chill C1',
+        pallets: 2,
+        priority: 'Normal'
+      }
+    ],
+    returnsQueue: [
+      {
+        id: 'RET-102',
+        branch: 'Swakopmund',
+        product: 'GANODERMA LOTION 150ML',
+        quantity: 3,
+        reason: 'Damaged carton',
+        status: 'Awaiting QA'
+      }
+    ],
+    routeBoard: [
+      {
+        id: 'route-windhoek-rundu',
+        vehicle: 'Truck 4T - DNP 5124',
+        driver: 'Tomas',
+        origin: 'Windhoek',
+        destination: 'Rundu',
+        eta: 'Today 16:00',
+        status: 'On route'
+      },
+      {
+        id: 'route-windhoek-walvis',
+        vehicle: 'Sprinter - DNP 4188',
+        driver: 'Maria',
+        origin: 'Windhoek',
+        destination: 'Walvis Bay',
+        eta: 'Today 13:30',
+        status: 'Loading'
+      }
+    ],
+    inventoryAlerts: [
+      {
+        id: 'alert-low-spirulina',
+        severity: 'warning',
+        message: "Spirulina (Windhoek) below safety stock",
+        action: 'Trigger replenishment'
+      },
+      {
+        id: 'alert-expiry-noni',
+        severity: 'info',
+        message: 'Noni batch NONI-2502 expires in 75 days',
+        action: 'Prioritize branch promotions'
+      }
+    ],
+    reorderPlans: [
+      {
+        id: 'plan-spirulina',
+        product: "SPIRULINA TABLET (300's)",
+        scenario: 'Maintain promo buffers',
+        recommendation: 'Order 220 units',
+        impact: '+12 days cover'
+      },
+      {
+        id: 'plan-noni',
+        product: 'D.I NONI 500ml',
+        scenario: 'Country push campaign',
+        recommendation: 'Order 150 units',
+        impact: '+18 days cover'
       }
     ]
   };
@@ -1004,6 +1106,247 @@
         targets.forEach((node) => {
           node.innerHTML = html;
         });
+      });
+    },
+
+    renderASNList() {
+      this.onReady(() => {
+        const container = document.getElementById('asnList');
+        if (!container) return;
+        const queue = this.readStorage(STORAGE_KEYS.asnQueue, DEFAULTS.asnQueue);
+        if (!Array.isArray(queue) || !queue.length) {
+          container.innerHTML =
+            '<p style="text-align:center;color:#7f8c8d;">All supplier ASN have been cleared.</p>';
+          return;
+        }
+        const html = queue
+          .map(
+            (asn) => `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml(asn.id)}</strong>
+                <span style="font-size:0.85rem;color:#94a3b8;">${this.escapeHtml(asn.status || '')}</span>
+              </div>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(asn.supplier || 'Supplier TBC')}</p>
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;">
+                <span>${asn.cartons || 0} cartons • ${asn.pallets || 0} pallets</span>
+                <span>ETA ${this.escapeHtml(asn.eta || 'TBC')}</span>
+              </div>
+            </div>`
+          )
+          .join('');
+        container.innerHTML = html;
+      });
+    },
+
+    renderPutawayQueue() {
+      this.onReady(() => {
+        const container =
+          document.getElementById('putawayQueue') || document.querySelector('[data-putaway-queue]');
+        if (!container) return;
+        const queue = this.readStorage(STORAGE_KEYS.putawayQueue, DEFAULTS.putawayQueue);
+        container.innerHTML = queue.length
+          ? queue
+              .map(
+                (task) => `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml(task.id)}</strong>
+                <span class="badge badge--${(task.priority || 'normal').toLowerCase()}">${this.escapeHtml(
+                  task.priority || 'Normal'
+                )}</span>
+              </div>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(task.warehouse || 'Warehouse')}</p>
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;">
+                <span>Zone ${this.escapeHtml(task.zone || '-')}</span>
+                <span>${task.pallets || 0} pallets</span>
+              </div>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">No put-away tasks pending.</p>';
+      });
+    },
+
+    renderWarehouseCapacity() {
+      this.onReady(() => {
+        const container =
+          document.getElementById('warehouseCapacity') ||
+          document.querySelector('[data-warehouse-capacity]');
+        if (!container) return;
+        const fallback = [
+          { id: 'windhoek', name: 'Windhoek', max: 800 },
+          { id: 'ondangwa', name: 'Ondangwa', max: 420 }
+        ];
+        const overrides = this.readStorage(STORAGE_KEYS.warehouseCapacity, fallback);
+        const stock = this.getWarehouseStock();
+        const cards = overrides.map((warehouse) => {
+          const batches = stock[warehouse.id] || [];
+          const used = batches.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+          const max = warehouse.max || 100;
+          const pct = Math.min(100, Math.round((used / max) * 100));
+          return `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml(warehouse.name || warehouse.id)}</strong>
+                <span>${used}/${max} units</span>
+              </div>
+              <div class="progress">
+                <div class="progress__bar" style="width:${pct}%;"></div>
+              </div>
+              <p style="margin:4px 0;color:#475569;">${pct}% utilized</p>
+            </div>`;
+        });
+        container.innerHTML = cards.join('');
+      });
+    },
+
+    renderReplenishmentSuggestions() {
+      this.onReady(() => {
+        const container =
+          document.getElementById('replenishmentSuggestions') ||
+          document.querySelector('[data-replenishment-list]');
+        if (!container) return;
+        const suggestions = this.readStorage(STORAGE_KEYS.replenishment, DEFAULTS.reorderPlans);
+        const html = suggestions.length
+          ? suggestions
+              .map(
+                (item) => `
+            <div class="hub-card hub-card--tight">
+              <strong>${this.escapeHtml(item.product)}</strong>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(item.scenario || 'Scenario')}</p>
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;">
+                <span>${this.escapeHtml(item.recommendation || '')}</span>
+                <span>${this.escapeHtml(item.impact || '')}</span>
+              </div>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">No replenishment actions required.</p>';
+        container.innerHTML = html;
+      });
+    },
+
+    renderBranchRequestList() {
+      this.renderBranchRequests();
+    },
+
+    updateBranchMetrics() {
+      this.onReady(() => {
+        const requests = this.getBranchRequests();
+        const total = requests.length;
+        const pending = requests.filter((req) => (req.status || 'pending') === 'pending').length;
+        const completed = total - pending;
+        const totalUnits = requests.reduce((sum, req) => sum + (Number(req.quantity) || 0), 0);
+        const write = (id, value) => {
+          const node =
+            document.getElementById(id) ||
+            document.querySelector(`[data-branch-metric="${id}"]`);
+          if (node) node.textContent = value;
+        };
+        write('branchMetricTotal', total);
+        write('branchMetricPending', pending);
+        write('branchMetricCompleted', completed);
+        write('branchMetricUnits', totalUnits);
+      });
+    },
+
+    renderReturnsList() {
+      this.onReady(() => {
+        const container = document.getElementById('returnsList');
+        if (!container) return;
+        const returns = this.readStorage(STORAGE_KEYS.returnsQueue, DEFAULTS.returnsQueue);
+        container.innerHTML = returns.length
+          ? returns
+              .map(
+                (item) => `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml(item.branch || 'Branch')}</strong>
+                <span class="badge">${this.escapeHtml(item.status || 'Pending')}</span>
+              </div>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(item.product || '')}</p>
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;">
+                <span>${item.quantity || 0} units</span>
+                <span>${this.escapeHtml(item.reason || '')}</span>
+              </div>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">No branch returns awaiting action.</p>';
+      });
+    },
+
+    renderRouteBoard() {
+      this.onReady(() => {
+        const container =
+          document.getElementById('routeBoard') || document.querySelector('[data-route-board]');
+        if (!container) return;
+        const routes = this.readStorage(STORAGE_KEYS.routeBoard, DEFAULTS.routeBoard);
+        container.innerHTML = routes.length
+          ? routes
+              .map(
+                (route) => `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml(route.origin || '')} ➜ ${this.escapeHtml(route.destination || '')}</strong>
+                <span>${this.escapeHtml(route.status || '')}</span>
+              </div>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(route.vehicle || '')} • ${
+                  route.driver || 'Driver TBC'
+                }</p>
+              <div style="font-size:0.85rem;color:#475569;">ETA ${this.escapeHtml(route.eta || '')}</div>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">No live delivery routes captured.</p>';
+      });
+    },
+
+    renderInventoryAlerts() {
+      this.onReady(() => {
+        const container =
+          document.getElementById('inventoryAlerts') ||
+          document.querySelector('[data-inventory-alerts]');
+        if (!container) return;
+        const alerts = this.readStorage(STORAGE_KEYS.inventoryAlerts, DEFAULTS.inventoryAlerts);
+        container.innerHTML = alerts.length
+          ? alerts
+              .map(
+                (alert) => `
+            <div class="hub-card hub-card--tight">
+              <div class="hub-card__row">
+                <strong>${this.escapeHtml((alert.severity || 'info').toUpperCase())}</strong>
+                <span>${this.escapeHtml(alert.action || '')}</span>
+              </div>
+              <p style="margin:0;color:#475569;">${this.escapeHtml(alert.message || '')}</p>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">Inventory levels steady.</p>';
+      });
+    },
+
+    renderReorderScenarioResults() {
+      this.onReady(() => {
+        const container = document.getElementById('reorderScenarioResults');
+        if (!container) return;
+        const plans = this.readStorage(STORAGE_KEYS.reorderPlans, DEFAULTS.reorderPlans);
+        container.innerHTML = plans.length
+          ? plans
+              .map(
+                (plan) => `
+            <div class="hub-card hub-card--tight">
+              <strong>${this.escapeHtml(plan.product)}</strong>
+              <p style="margin:4px 0;color:#475569;">${this.escapeHtml(plan.scenario || '')}</p>
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;">
+                <span>${this.escapeHtml(plan.recommendation || '')}</span>
+                <span>${this.escapeHtml(plan.impact || '')}</span>
+              </div>
+            </div>`
+              )
+              .join('')
+          : '<p style="text-align:center;color:#7f8c8d;">No simulation results yet.</p>';
       });
     },
 
@@ -2506,7 +2849,17 @@
     printInvoices: (mode) => StockPortal.printInvoices(mode),
     loadShopWarehouseSharing: () => StockPortal.loadShopWarehouseSharing(),
     populateSharingLocations: () => StockPortal.populateSharingLocations(),
-    handleSharingRule: (event) => StockPortal.handleSharingRule(event)
+    handleSharingRule: (event) => StockPortal.handleSharingRule(event),
+    renderASNList: () => StockPortal.renderASNList(),
+    renderPutawayQueue: () => StockPortal.renderPutawayQueue(),
+    renderWarehouseCapacity: () => StockPortal.renderWarehouseCapacity(),
+    renderReplenishmentSuggestions: () => StockPortal.renderReplenishmentSuggestions(),
+    renderBranchRequestList: () => StockPortal.renderBranchRequestList(),
+    updateBranchMetrics: () => StockPortal.updateBranchMetrics(),
+    renderReturnsList: () => StockPortal.renderReturnsList(),
+    renderRouteBoard: () => StockPortal.renderRouteBoard(),
+    renderInventoryAlerts: () => StockPortal.renderInventoryAlerts(),
+    renderReorderScenarioResults: () => StockPortal.renderReorderScenarioResults()
   };
 
   Object.entries(API_EXPORTS).forEach(([name, fn]) => {
