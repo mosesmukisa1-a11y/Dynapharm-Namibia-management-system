@@ -4534,13 +4534,26 @@
                     showStockTab(action, evt);
                 }
 
-                const quickButtons = document.querySelectorAll('#stockContent .hub-action');
-                quickButtons.forEach(btn => btn.classList.remove('hub-action--active'));
+                const quickButtons = document.querySelectorAll('#stockContent .hub-action, #stockContent .stock-quick-btn');
+                quickButtons.forEach(btn => {
+                    btn.classList.remove('hub-action--active');
+                    btn.classList.remove('stock-quick-btn--active');
+                });
                 if (evt?.currentTarget) {
-                    evt.currentTarget.classList.add('hub-action--active');
+                    if (evt.currentTarget.classList.contains('stock-quick-btn')) {
+                        evt.currentTarget.classList.add('stock-quick-btn--active');
+                    } else {
+                        evt.currentTarget.classList.add('hub-action--active');
+                    }
                 } else {
-                    const fallbackBtn = document.querySelector(`#stockContent .hub-action[data-stock-action="${action}"]`);
-                    if (fallbackBtn) fallbackBtn.classList.add('hub-action--active');
+                    const fallbackBtn = document.querySelector(`#stockContent .hub-action[data-stock-action="${action}"], #stockContent .stock-quick-btn[data-stock-action="${action}"]`);
+                    if (fallbackBtn) {
+                        if (fallbackBtn.classList.contains('stock-quick-btn')) {
+                            fallbackBtn.classList.add('stock-quick-btn--active');
+                        } else {
+                            fallbackBtn.classList.add('hub-action--active');
+                        }
+                    }
                 }
 
                 requestAnimationFrame(() => {
@@ -10909,71 +10922,145 @@
                     <div class="stock-hub-hero__profile user-profile" id="stockProfile"></div>
                 </header>
 
+                <div class="stock-summary-grid">
+                    <article class="stock-summary-card">
+                        <span class="stock-summary-label">Total Stock Value</span>
+                        <strong id="overviewTotalValue">N$ 0.00</strong>
+                        <small>Country, warehouse & branch holdings</small>
+                    </article>
+                    <article class="stock-summary-card">
+                        <span class="stock-summary-label">Pending Orders</span>
+                        <strong id="overviewPendingOrders">0</strong>
+                        <small>Awaiting fulfillment or approval</small>
+                    </article>
+                    <article class="stock-summary-card">
+                        <span class="stock-summary-label">Low Stock Items</span>
+                        <strong id="overviewLowStock">0</strong>
+                        <small>Below configured reorder thresholds</small>
+                    </article>
+                    <article class="stock-summary-card">
+                        <span class="stock-summary-label">Active Transfers</span>
+                        <strong id="overviewActiveTransfers">0</strong>
+                        <small>Movements in progress</small>
+                    </article>
+                </div>
+
                 <nav class="stock-hub-mode-toggle">
                     <button id="stockMainTabBtn" class="btn hub-toggle-btn hub-toggle-btn--active" onclick="toggleStockView('main')">📦 Stock Tools</button>
                     <button id="stockStaffTabBtn" class="btn hub-toggle-btn" onclick="toggleStockView('staff')">👤 Staff Services</button>
                 </nav>
 
-                <div id="stockWorkflowNav" class="stock-hub-journey">
-                    <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="branchDistribution" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="transfers" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="orders" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
-                    <button type="button" class="tab-button workflow-tab" data-tab="distribution" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
-                </div>
+                <div class="stock-layout">
+                    <aside class="stock-sidebar">
+                        <div class="stock-sidebar-card">
+                            <div class="stock-sidebar-card__header">
+                                <h4>Workflow Journey</h4>
+                                <p>Navigate each stage of the national stock lifecycle.</p>
+                            </div>
+                            <div id="stockWorkflowNav" class="stock-workflow-stack">
+                                <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="branchDistribution" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="transfers" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="orders" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
+                                <button type="button" class="tab-button workflow-tab" data-tab="distribution" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
+                            </div>
+                        </div>
+                        <div class="stock-sidebar-card">
+                            <h4>Quick Actions</h4>
+                            <div class="stock-quick-list">
+                                <button class="stock-quick-btn" data-stock-action="countryImport" onclick="handleStockQuickAction(event, 'countryImport')">
+                                    <span class="quick-icon" aria-hidden="true">📥</span>
+                                    <span class="quick-label">Import Country Stock</span>
+                                </button>
+                                <button class="stock-quick-btn" data-stock-action="warehouseDistribution" onclick="handleStockQuickAction(event, 'warehouseDistribution')">
+                                    <span class="quick-icon" aria-hidden="true">🏢</span>
+                                    <span class="quick-label">Refill Warehouses</span>
+                                </button>
+                                <button class="stock-quick-btn" data-stock-action="branchDistribution" onclick="handleStockQuickAction(event, 'branchDistribution')">
+                                    <span class="quick-icon" aria-hidden="true">🏬</span>
+                                    <span class="quick-label">Supply Branches</span>
+                                </button>
+                                <button class="stock-quick-btn" data-stock-action="transfers" onclick="handleStockQuickAction(event, 'transfers')">
+                                    <span class="quick-icon" aria-hidden="true">🔄</span>
+                                    <span class="quick-label">Manage Transfers</span>
+                                </button>
+                                <button class="stock-quick-btn" data-stock-action="countryInventory" onclick="handleStockQuickAction(event, 'countryInventory')">
+                                    <span class="quick-icon" aria-hidden="true">🌍</span>
+                                    <span class="quick-label">View Inventory</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="stock-sidebar-card">
+                            <h4>Reports & Tools</h4>
+                            <ul class="stock-sidebar-links">
+                                <li>
+                                    <button type="button" onclick="showStockTab('overview')">
+                                        <span class="quick-icon" aria-hidden="true">📊</span>
+                                        <span class="quick-label">Executive Overview</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" onclick="showStockTab('orders')">
+                                        <span class="quick-icon" aria-hidden="true">🧾</span>
+                                        <span class="quick-label">Auto &amp; Manual Orders</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" onclick="showStockTab('invoices')">
+                                        <span class="quick-icon" aria-hidden="true">📑</span>
+                                        <span class="quick-label">Invoices &amp; Billing</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" onclick="showStockTab('realtime')">
+                                        <span class="quick-icon" aria-hidden="true">⚡</span>
+                                        <span class="quick-label">Sync Status</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" onclick="showStockTab('barcode')">
+                                        <span class="quick-icon" aria-hidden="true">🏷️</span>
+                                        <span class="quick-label">Barcode &amp; Scans</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </aside>
+                    <section class="stock-main">
+                        <div class="stock-tab-nav">
+                            <!-- Stock Management Tabs -->
+                            <nav class="stock-hub-tab-row">
+                                <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
+                                <button class="tab-button" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
+                                <button class="tab-button" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse Distribution</button>
+                                <button class="tab-button" onclick="showStockTab('branchDistribution')" id="stockTabBranchDistribution">🏬 Branch Distribution</button>
+                                <button class="tab-button" onclick="showStockTab('transfers')" id="stockTabTransfers">🔄 Transfers</button>
+                                <button class="tab-button" onclick="showStockTab('sharing')" id="stockTabSharing">🤝 Shop & Warehouse Sharing</button>
+                                <button class="tab-button" onclick="showStockTab('orders')" id="stockTabOrders">📋 Orders (Auto & Manual)</button>
+                                <button class="tab-button" onclick="showStockTab('invoices')" id="stockTabInvoices">🧾 Invoices</button>
+                                <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
+                                <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
+                            </nav>
 
-                <div id="stockTabsContainer" class="stock-hub-tabs">
-                <!-- Stock Management Tabs -->
-                <nav class="stock-hub-tab-row">
-                    <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
-                    <button class="tab-button" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
-                    <button class="tab-button" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse Distribution</button>
-                    <button class="tab-button" onclick="showStockTab('branchDistribution')" id="stockTabBranchDistribution">🏬 Branch Distribution</button>
-                    <button class="tab-button" onclick="showStockTab('transfers')" id="stockTabTransfers">🔄 Transfers</button>
-                    <button class="tab-button" onclick="showStockTab('sharing')" id="stockTabSharing">🤝 Shop & Warehouse Sharing</button>
-                    <button class="tab-button" onclick="showStockTab('orders')" id="stockTabOrders">📋 Orders (Auto & Manual)</button>
-                    <button class="tab-button" onclick="showStockTab('invoices')" id="stockTabInvoices">🧾 Invoices</button>
-                    <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
-                    <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
-                </nav>
+                            <nav class="stock-hub-tab-row stock-hub-tab-row--secondary">
+                                <span class="stock-hub-tab-label">Advanced Tools:</span>
+                                <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode &amp; Scans</button>
+                                <button class="tab-button" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder Plans</button>
+                                <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch &amp; Returns</button>
+                                <button class="tab-button" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
+                                <button class="tab-button" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Legacy Country</button>
+                                <button class="tab-button" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Legacy Windhoek</button>
+                                <button class="tab-button" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Legacy Ondangwa</button>
+                                <button class="tab-button" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Legacy Distribution</button>
+                                <button class="tab-button" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Inventory Log</button>
+                            </nav>
+                        </div>
 
-                <nav class="stock-hub-tab-row stock-hub-tab-row--secondary">
-                    <span class="stock-hub-tab-label">Advanced Tools:</span>
-                    <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode &amp; Scans</button>
-                    <button class="tab-button" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder Plans</button>
-                    <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch &amp; Returns</button>
-                    <button class="tab-button" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
-                    <button class="tab-button" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Legacy Country</button>
-                    <button class="tab-button" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Legacy Windhoek</button>
-                    <button class="tab-button" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Legacy Ondangwa</button>
-                    <button class="tab-button" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Legacy Distribution</button>
-                    <button class="tab-button" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Inventory Log</button>
-                </nav>
-
+                        <div id="stockTabsContainer" class="stock-hub-tabs">
                 <!-- Overview Tab - Stock Management Dashboard -->
                 <div id="overviewTab" class="stock-tab-content" style="display: block;">
-                    <!-- KPI Dashboard -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                        <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px; text-align: center;">
-                            <div style="font-size: 0.9rem; opacity: 0.9;">Total Stock Value</div>
-                            <div id="overviewTotalValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white; padding: 20px; border-radius: 12px; text-align: center;">
-                            <div style="font-size: 0.9rem; opacity: 0.9;">Pending Orders</div>
-                            <div id="overviewPendingOrders" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; padding: 20px; border-radius: 12px; text-align: center;">
-                            <div style="font-size: 0.9rem; opacity: 0.9;">Low Stock Items</div>
-                            <div id="overviewLowStock" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #ffa726, #fb8c00); color: white; padding: 20px; border-radius: 12px; text-align: center;">
-                            <div style="font-size: 0.9rem; opacity: 0.9;">Active Transfers</div>
-                            <div id="overviewActiveTransfers" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
-                        </div>
-                    </div>
-
                     <!-- Inventory Timely Report -->
                     <section class="hub-section">
                         <div class="hub-section__header">
@@ -11088,20 +11175,6 @@
                         </div>
                         <div id="overviewRecentMovements" class="hub-activity-feed">
                             <div class="hub-activity-empty">Loading movements...</div>
-                        </div>
-                    </section>
-                    <!-- Quick Actions -->
-                    <section class="hub-section">
-                        <div class="hub-section__header">
-                            <h3 class="hub-section__title">Quick Actions</h3>
-                            <p class="hub-section__meta">Jump directly into the flow you need.</p>
-                        </div>
-                        <div class="hub-action-grid">
-                            <button class="hub-action" data-stock-action="countryImport" onclick="handleStockQuickAction(event, 'countryImport')">📥 Import Country Stock</button>
-                            <button class="hub-action" data-stock-action="warehouseDistribution" onclick="handleStockQuickAction(event, 'warehouseDistribution')">🏢 Distribute to Warehouse</button>
-                            <button class="hub-action" data-stock-action="branchDistribution" onclick="handleStockQuickAction(event, 'branchDistribution')">🏬 Distribute to Branch</button>
-                            <button class="hub-action" data-stock-action="orders" onclick="handleStockQuickAction(event, 'orders')">📋 Manage Orders</button>
-                            <button class="hub-action" data-stock-action="countryInventory" onclick="handleStockQuickAction(event, 'countryInventory')">🌍 Country Inventory</button>
                         </div>
                     </section>
                     <section class="hub-section">
@@ -12326,6 +12399,8 @@
                     </div>
                 </div>
                 </div> <!-- /#stockTabsContainer -->
+                </section>
+                </div> <!-- /.stock-layout -->
 
                 <div id="stockStaffSection" style="display:none;">
                     <div class="form-section">

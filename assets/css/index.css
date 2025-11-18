@@ -1129,6 +1129,214 @@
             margin-top: 10px;
         }
 
+        /* Stock portal redesign */
+        .stock-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 18px;
+            margin-top: 24px;
+        }
+
+        .stock-summary-card {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            color: #f8fafc;
+            border-radius: 16px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+        }
+
+        .stock-summary-card strong {
+            font-size: 1.8rem;
+            letter-spacing: -0.02em;
+        }
+
+        .stock-summary-card small {
+            color: rgba(248, 250, 252, 0.7);
+            font-size: 0.85rem;
+        }
+
+        .stock-summary-label {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.75rem;
+            color: rgba(248, 250, 252, 0.65);
+        }
+
+        .stock-layout {
+            display: grid;
+            grid-template-columns: minmax(240px, 300px) 1fr;
+            gap: 24px;
+            margin-top: 32px;
+            align-items: flex-start;
+        }
+
+        .stock-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: sticky;
+            top: 140px;
+        }
+
+        .stock-sidebar-card {
+            background: #ffffff;
+            border-radius: 20px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            padding: 20px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+        }
+
+        .stock-sidebar-card__header p {
+            margin: 6px 0 0;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .stock-workflow-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .stock-workflow-stack .workflow-tab {
+            width: 100%;
+            text-align: left;
+            border-radius: 999px;
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            color: #1e293b;
+            background: #f8fafc;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        .stock-workflow-stack .workflow-tab:hover,
+        .stock-workflow-stack .workflow-tab.active {
+            background: #1d4ed8;
+            color: #ffffff;
+            transform: translateX(4px);
+        }
+
+        .stock-quick-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .stock-quick-btn {
+            border: none;
+            border-radius: 14px;
+            padding: 12px 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #f1f5f9;
+            color: #0f172a;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        .stock-quick-btn:hover {
+            background: #e0e7ff;
+            transform: translateX(4px);
+        }
+
+        .stock-quick-btn--active {
+            background: #1d4ed8;
+            color: #ffffff;
+            box-shadow: 0 10px 20px rgba(29, 78, 216, 0.3);
+        }
+
+        .stock-quick-btn--active .quick-icon {
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+        }
+
+        .stock-quick-btn .quick-icon,
+        .stock-sidebar-links .quick-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(59, 130, 246, 0.25));
+            font-size: 1.2rem;
+            box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.2);
+        }
+
+        .stock-quick-btn .quick-label,
+        .stock-sidebar-links .quick-label {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .stock-sidebar-links {
+            list-style: none;
+            margin: 16px 0 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stock-sidebar-links button {
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: transparent;
+            color: #475569;
+            font-weight: 600;
+            padding: 6px 0;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stock-sidebar-links button:hover {
+            color: #1d4ed8;
+        }
+
+        .stock-main {
+            background: #ffffff;
+            border-radius: 32px;
+            border: 1px solid rgba(15, 23, 42, 0.05);
+            padding: 24px;
+            box-shadow: 0 30px 60px rgba(15, 23, 42, 0.08);
+        }
+
+        .stock-tab-nav {
+            position: sticky;
+            top: 90px;
+            background: linear-gradient(180deg, #ffffff 60%, rgba(255, 255, 255, 0));
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            z-index: 5;
+        }
+
+        @media (max-width: 1024px) {
+            .stock-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .stock-sidebar {
+                position: static;
+            }
+
+            .stock-tab-nav {
+                position: static;
+                background: none;
+                padding-bottom: 0;
+                margin-bottom: 16px;
+            }
+        }
+
         /* About Us Section */
         .about-section {
             background: transparent;
