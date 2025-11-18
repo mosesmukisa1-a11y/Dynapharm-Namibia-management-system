@@ -4534,55 +4534,113 @@
                     toggleStockView('main', true); // Skip auto-switch to overview
                 }
 
+                // Handle countryImport with mode detection
+                if (action === 'countryImport' && evt?.currentTarget) {
+                    const mode = evt.currentTarget.dataset?.importMode || 'manual';
+                    setTimeout(() => {
+                        if (typeof spotlightCountryImport === 'function') {
+                            spotlightCountryImport(mode);
+                        }
+                    }, 150);
+                }
+
                 if (typeof showStockTab === 'function') {
                     showStockTab(action, evt);
                 }
 
-                const quickButtons = document.querySelectorAll('#stockContent .hub-action, #stockContent .stock-quick-btn');
+                // Remove active states from all quick action buttons and sidebar links
+                const quickButtons = document.querySelectorAll('#stockContent .hub-action, #stockContent .stock-quick-btn, #stockContent .stock-sidebar-links button');
                 quickButtons.forEach(btn => {
                     btn.classList.remove('hub-action--active');
                     btn.classList.remove('stock-quick-btn--active');
+                    btn.classList.remove('active');
                 });
+
+                // Add active state to the triggering button
                 const trigger = evt?.currentTarget || null;
                 if (trigger) {
                     if (trigger.classList.contains('stock-quick-btn')) {
                         trigger.classList.add('stock-quick-btn--active');
+                    } else if (trigger.classList.contains('stock-sidebar-links') || trigger.closest('.stock-sidebar-links')) {
+                        trigger.classList.add('active');
                     } else {
                         trigger.classList.add('hub-action--active');
                     }
                 } else {
-                    const fallbackBtn = document.querySelector(`#stockContent .hub-action[data-stock-action="${action}"], #stockContent .stock-quick-btn[data-stock-action="${action}"]`);
+                    // Fallback: find button by data attribute
+                    const fallbackBtn = document.querySelector(`#stockContent [data-stock-action="${action}"]`);
                     if (fallbackBtn) {
                         if (fallbackBtn.classList.contains('stock-quick-btn')) {
                             fallbackBtn.classList.add('stock-quick-btn--active');
+                        } else if (fallbackBtn.closest('.stock-sidebar-links')) {
+                            fallbackBtn.classList.add('active');
                         } else {
                             fallbackBtn.classList.add('hub-action--active');
                         }
                     }
                 }
 
+                // Scroll to target after a brief delay to ensure tab is visible
                 requestAnimationFrame(() => {
-                    const customTargetId = trigger?.dataset?.target;
-                    const candidates = [
-                        customTargetId,
-                        `${action}Tab`,
-                        `stock-tab-${action}`,
-                        `${action}-tab`,
-                        `${action}_tab`,
-                        'stockTabsContainer'
-                    ].filter(Boolean);
-                    const target = candidates
-                        .map(id => document.getElementById(id))
-                        .find(Boolean);
-                    if (target) {
-                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
+                    setTimeout(() => {
+                        const customTargetId = trigger?.dataset?.target;
+                        const candidates = [
+                            customTargetId,
+                            `${action}Tab`,
+                            `stock-tab-${action}`,
+                            `${action}-tab`,
+                            `${action}_tab`
+                        ].filter(Boolean);
+                        const target = candidates
+                            .map(id => document.getElementById(id))
+                            .find(Boolean);
+                        if (target) {
+                            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 200);
                 });
             } catch (error) {
                 console.warn('handleStockQuickAction error:', error);
             }
         }
         window.handleStockQuickAction = handleStockQuickAction;
+
+        function spotlightCountryImport(mode = 'prompt') {
+            const launchpad = document.getElementById('countryImportLaunchpad');
+            if (launchpad) {
+                launchpad.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                launchpad.classList.add('pulse-highlight');
+                setTimeout(() => launchpad.classList.remove('pulse-highlight'), 1200);
+            }
+            if (mode === 'manual') {
+                focusManualImportCapture();
+            } else if (mode === 'csv') {
+                startCsvImportWorkflow();
+            }
+        }
+
+        function focusManualImportCapture() {
+            requestAnimationFrame(() => {
+                const form = document.getElementById('bulkStockImportForm');
+                if (!form) return;
+                form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                form.classList.add('pulse-highlight');
+                setTimeout(() => form.classList.remove('pulse-highlight'), 1200);
+                const focusField = form.querySelector('.stock-description');
+                if (focusField) {
+                    focusField.focus({ preventScroll: true });
+                }
+            });
+        }
+
+        function startCsvImportWorkflow() {
+            requestAnimationFrame(() => {
+                const trigger = document.querySelector('#bulkStockImportForm button[data-import-csv-trigger="true"]');
+                if (typeof importFromCSV === 'function') {
+                    importFromCSV(trigger || document.getElementById('bulkStockImportForm'));
+                }
+            });
+        }
 
         function createPurchaseOrderRow(prefill = {}) {
             const tr = document.createElement('tr');
@@ -6312,10 +6370,20 @@
                 tab.style.display = 'none';
             });
             
-            // Remove active class from tab buttons and workflow tabs
+            // Remove active class from all tab buttons, workflow tabs, quick actions, and sidebar links
             if (stockContent) {
-                const tabButtons = stockContent.querySelectorAll('.stock-hub-tab-row .tab-button, .stock-hub-journey .workflow-tab');
-                tabButtons.forEach(btn => btn.classList.remove('active'));
+                const allButtons = stockContent.querySelectorAll(
+                    '.stock-hub-tab-row .tab-button, ' +
+                    '.stock-hub-journey .workflow-tab, ' +
+                    '.stock-quick-btn, ' +
+                    '.stock-sidebar-links button, ' +
+                    '.hub-action'
+                );
+                allButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.classList.remove('stock-quick-btn--active');
+                    btn.classList.remove('hub-action--active');
+                });
             }
             
             // Determine target tab element
@@ -6342,7 +6410,9 @@
                 const selectors = [
                     `#stockTab${cap}`,
                     `.workflow-tab[data-tab="${tabName}"]`,
-                    `.tab-button[data-stock-tab="${tabName}"]`
+                    `.tab-button[data-stock-tab="${tabName}"]`,
+                    `.stock-sidebar-links button[data-stock-action="${tabName}"]`,
+                    `.stock-quick-btn[data-stock-action="${tabName}"]`
                 ];
                 for (const selector of selectors) {
                     const candidate = stockContent.querySelector(selector);
@@ -6354,6 +6424,10 @@
             }
             if (activeButton) {
                 activeButton.classList.add('active');
+                // Also add appropriate class based on button type
+                if (activeButton.classList.contains('stock-quick-btn')) {
+                    activeButton.classList.add('stock-quick-btn--active');
+                }
             }
 
             if (stockContent) {
@@ -6370,6 +6444,16 @@
                 if (secondaryButton && secondaryButton !== activeButton) {
                     secondaryButton.classList.add('active');
                 }
+                // Also highlight sidebar links
+                const sidebarLink = stockContent.querySelector(`.stock-sidebar-links button[data-stock-action="${tabName}"]`);
+                if (sidebarLink && sidebarLink !== activeButton) {
+                    sidebarLink.classList.add('active');
+                }
+                // Also highlight quick action buttons
+                const quickBtn = stockContent.querySelector(`.stock-quick-btn[data-stock-action="${tabName}"]:not([data-import-mode])`);
+                if (quickBtn && quickBtn !== activeButton) {
+                    quickBtn.classList.add('stock-quick-btn--active');
+                }
             }
             
             // Load data for specific tabs
@@ -6378,39 +6462,109 @@
                     if (typeof loadStockOverview === 'function') {
                         loadStockOverview();
                     }
-                    renderPurchaseOrders();
-                    renderPlanInsights();
-                    renderSupplierScorecard();
+                    if (typeof renderPurchaseOrders === 'function') renderPurchaseOrders();
+                    if (typeof renderPlanInsights === 'function') renderPlanInsights();
+                    if (typeof renderSupplierScorecard === 'function') renderSupplierScorecard();
                     break;
                 case 'countryImport':
                     if (typeof loadCountryImports === 'function') {
                         loadCountryImports();
                     }
+                    setTimeout(() => {
+                        if (typeof spotlightCountryImport === 'function') {
+                            spotlightCountryImport('manual');
+                        }
+                    }, 100);
                     break;
                 case 'warehouseDistribution':
                     if (typeof loadWarehouseDistribution === 'function') {
                         loadWarehouseDistribution();
                     }
+                    setTimeout(() => {
+                        const form = document.querySelector('#warehouseDistributionTab form, #warehouseDistributionTab .hub-card');
+                        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
                     break;
                 case 'branchDistribution':
                     if (typeof loadBranchDistribution === 'function') {
                         loadBranchDistribution();
                     }
+                    setTimeout(() => {
+                        const form = document.querySelector('#branchDistributionTab form, #branchDistributionTab .hub-card');
+                        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
                     break;
                 case 'transfers':
                     if (typeof loadStockTransfers === 'function') {
                         loadStockTransfers();
                     }
+                    setTimeout(() => {
+                        const list = document.querySelector('#transfersTab .hub-scroll, #transfersTab table');
+                        if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
                     break;
                 case 'orders':
-                    renderPurchaseOrders();
-                    renderPlanInsights();
-                    renderSupplierScorecard();
+                    if (typeof renderPurchaseOrders === 'function') renderPurchaseOrders();
+                    if (typeof renderPlanInsights === 'function') renderPlanInsights();
+                    if (typeof renderSupplierScorecard === 'function') renderSupplierScorecard();
+                    setTimeout(() => {
+                        const form = document.querySelector('#ordersTab form, #ordersTab .hub-card');
+                        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                    break;
+                case 'invoices':
+                    if (typeof renderInvoiceReports === 'function') {
+                        renderInvoiceReports();
+                    }
+                    setTimeout(() => {
+                        const table = document.querySelector('#invoicesTab table, #invoicesTab .hub-table-wrapper');
+                        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
                     break;
                 case 'countryInventory':
                     if (typeof displayCountryStock === 'function') {
                         displayCountryStock();
                     }
+                    setTimeout(() => {
+                        const list = document.querySelector('#countryInventoryTab #countryStockList, #countryInventoryTab table');
+                        if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                    break;
+                case 'realtime':
+                    if (typeof loadRealtimeSyncStatus === 'function') {
+                        loadRealtimeSyncStatus();
+                    }
+                    setTimeout(() => {
+                        const status = document.querySelector('#realtimeTab .hub-card, #realtimeTab .hub-section');
+                        if (status) status.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                    break;
+                case 'barcode':
+                    if (typeof loadBarcodeScans === 'function') {
+                        loadBarcodeScans();
+                    }
+                    setTimeout(() => {
+                        const scanner = document.querySelector('#barcodeTab form, #barcodeTab .hub-card');
+                        if (scanner) scanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                    break;
+                case 'sharing':
+                    if (typeof loadShopWarehouseSharing === 'function') {
+                        loadShopWarehouseSharing();
+                    }
+                    setTimeout(() => {
+                        const form = document.querySelector('#sharingTab form, #sharingTab .hub-card');
+                        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                    break;
+                case 'distribution':
+                    if (typeof displayDistributionHistory === 'function') {
+                        displayDistributionHistory();
+                    }
+                    setTimeout(() => {
+                        const list = document.querySelector('#distributionTab .hub-scroll, #distributionTab table');
+                        if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
                     break;
                 case 'windhoek':
                     if (typeof loadWindhoekProducts === 'function') {
@@ -6425,6 +6579,16 @@
                 case 'inventory':
                     if (typeof loadInventoryLog === 'function') {
                         loadInventoryLog();
+                    }
+                    break;
+                case 'reorder':
+                    if (typeof renderReorderScenarioResults === 'function') {
+                        renderReorderScenarioResults();
+                    }
+                    break;
+                case 'batch':
+                    if (typeof renderReturnsList === 'function') {
+                        renderReturnsList();
                     }
                     break;
             }
@@ -11003,9 +11167,17 @@
                         <div class="stock-sidebar-card">
                             <h4>Quick Actions</h4>
                             <div class="stock-quick-list">
-                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" onclick="handleStockQuickAction(event, 'countryImport')">
+                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" onclick="handleStockQuickAction(event, 'countryImport')" data-import-mode="prompt">
                                     <span class="quick-icon" aria-hidden="true">📥</span>
                                     <span class="quick-label">Import Country Stock</span>
+                                </button>
+                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" data-import-mode="manual" onclick="handleStockQuickAction(event, 'countryImport')">
+                                    <span class="quick-icon" aria-hidden="true">✍️</span>
+                                    <span class="quick-label">Manual Intake</span>
+                                </button>
+                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" data-import-mode="csv" onclick="handleStockQuickAction(event, 'countryImport')">
+                                    <span class="quick-icon" aria-hidden="true">📁</span>
+                                    <span class="quick-label">Upload CSV</span>
                                 </button>
                                 <button type="button" class="stock-quick-btn" data-stock-action="warehouseDistribution" data-target="warehouseDistributionTab" onclick="handleStockQuickAction(event, 'warehouseDistribution')">
                                     <span class="quick-icon" aria-hidden="true">🏢</span>
@@ -11342,6 +11514,16 @@
                             <h3 class="hub-section__title">Country Stock Intake &amp; Quality Assurance</h3>
                             <p class="hub-section__meta">Import stock into country inventory with batch tracking, quality checks, and FEFO enforcement.</p>
                         </div>
+                        <div id="countryImportLaunchpad" class="hub-card hub-card--surface hub-import-launchpad">
+                            <div>
+                                <p class="hub-section__meta" style="margin-bottom:8px;">Choose how you want to capture the inbound ASN.</p>
+                                <div class="import-launchpad__actions">
+                                    <button type="button" class="hub-btn hub-btn--primary" onclick="focusManualImportCapture()">✍️ Manual Intake</button>
+                                    <button type="button" class="hub-btn hub-btn--ghost" onclick="startCsvImportWorkflow()">📁 Upload CSV</button>
+                                </div>
+                                <small style="color:#475569;display:block;margin-top:6px;">Manual intake lets teams capture line items directly; CSV mode opens a template-friendly importer.</small>
+                            </div>
+                        </div>
                         <div class="hub-split">
                             <article class="hub-card hub-card--surface">
                                 <h4 class="hub-card__title">🚚 Supplier ASNs</h4>
@@ -11457,7 +11639,7 @@
                                                 <td colspan="7">
                                                     <div class="hub-table-actions">
                                                         <button type="button" class="btn btn-success" onclick="addStockImportRow(this)">➕ Add Row</button>
-                                                        <button type="button" class="btn btn-info" onclick="importFromCSV(this)">📁 Import from CSV</button>
+                                                        <button type="button" class="btn btn-info" onclick="importFromCSV(this)" data-import-csv-trigger="true">📁 Import from CSV</button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -11625,7 +11807,7 @@
                                             <tr>
                                                 <td colspan="7" style="padding: 10px; border: 1px solid #ddd;">
                                                     <button type="button" class="btn btn-success" onclick="addStockImportRow(this)">➕ Add Row</button>
-                                                    <button type="button" class="btn btn-info" onclick="importFromCSV(this)" style="margin-left: 10px;">📁 Import from CSV</button>
+                                                    <button type="button" class="btn btn-info" onclick="importFromCSV(this)" data-import-csv-trigger="true" style="margin-left: 10px;">📁 Import from CSV</button>
                                                 </td>
                                             </tr>
                                         </tfoot>
