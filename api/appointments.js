@@ -15,18 +15,29 @@ export default async function handler(req, res) {
   const branch = searchParams.get('branch');
   const date = searchParams.get('date');
   const status = searchParams.get('status');
+  const type = searchParams.get('type');
 
   try {
     if (method === 'GET') {
       let queryText = 'SELECT * FROM appointments';
       const params = [];
       const conditions = [];
+
+      const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
+      const userBranch = req.user ? (req.user.branch || '') : '';
+      if (req.user && userRole !== 'admin' && userBranch && !branch) {
+        conditions.push('branch = $' + (params.length + 1));
+        params.push(userBranch);
+      }
       
       if (id) {
         conditions.push('id = $' + (params.length + 1));
         params.push(id);
       }
       if (branch) {
+        if (req.user && userRole !== 'admin' && userBranch && branch !== userBranch) {
+          return res.status(403).json({ error: 'Access denied to this branch' });
+        }
         conditions.push('branch = $' + (params.length + 1));
         params.push(branch);
       }
@@ -37,6 +48,10 @@ export default async function handler(req, res) {
       if (status) {
         conditions.push('status = $' + (params.length + 1));
         params.push(status);
+      }
+      if (type) {
+        conditions.push('type = $' + (params.length + 1));
+        params.push(type);
       }
       
       if (conditions.length > 0) {
@@ -122,7 +137,21 @@ export default async function handler(req, res) {
 
     if (method === 'PUT') {
       const body = req.body;
-      const oldAppointment = body.id ? await getOne('SELECT * FROM appointments WHERE id = $1', [body.id]) : null;
+      if (!body.id) return res.status(400).json({ error: 'Missing appointment id' });
+      const oldAppointment = await getOne('SELECT * FROM appointments WHERE id = $1', [body.id]);
+      if (!oldAppointment) return res.status(404).json({ error: 'Appointment not found' });
+
+      const putUserRole = req.user ? (req.user.role || '').toLowerCase() : '';
+      const putUserBranch = req.user ? (req.user.branch || '') : '';
+      if (req.user && putUserRole !== 'admin' && putUserBranch && oldAppointment.branch !== putUserBranch) {
+        return res.status(403).json({ error: 'Access denied to this appointment' });
+      }
+
+      const allowedStatusValues = ['pending', 'walk-in', 'checked_in', 'in_progress', 'completed', 'cancelled', 'scheduled'];
+      if (body.status && !allowedStatusValues.includes(body.status.toLowerCase())) {
+        return res.status(400).json({ error: 'Invalid status value' });
+      }
+
       const appointment = await update('appointments', body.id, body, 'id');
       await publishRealtimeEvent('appointments', 'update', appointment);
 

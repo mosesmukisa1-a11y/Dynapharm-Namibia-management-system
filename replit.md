@@ -58,7 +58,9 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
 - Staff login modal has Login / Sign Up tabs; Sign Up collects name, DOB, position, password (pending admin approval)
 - Admin portal has "Staff Registration Approvals" section to approve/reject pending signups
-- Full Body Check Up form: Preview/Print/Submit buttons. Preview opens modal with formatted table (XSS-safe HTML escaping). Print opens new window with logo, structured sections, signature lines (handles popup-block). Modal closable via Close button, Esc key, or backdrop click. Online client signature pad (canvas-based, mouse+touch) with initials extracted from name — signature image and initials appear on preview/print output. Appointment POST is public (no auth required).
+- Full Body Check Up form: Preview/Print/Submit buttons. Preview opens modal with formatted table (XSS-safe HTML escaping). Print opens new window with logo, structured sections (handles popup-block). Modal closable via Close button, Esc key, or backdrop click. Declaration checkbox replaces signature pad — captures client full name, initials, and date as acknowledgment on preview/print. Appointment POST is public (no auth required). API supports `type` query filter.
+- Consultant Portal: Checkup Forms section shows submitted forms filtered by the consultant's branch. Split into Upcoming (pending/walk-in/in_progress) and Completed tabs. Most recent first. Consultants can View Details (opens preview modal), Check In, Start Checkup, Mark Complete. Acknowledgment details (name, initials, date) shown on each form card.
+- Staff login hides Shop/Health Check nav links; logout restores them.
 - Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password), logo on login card and dashboard header
   - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
   - Sign Up: select distributor from 12K+ dropdown, DOB, email, password (POST `/api/distributors/set-password`, first-time only — rejects if account exists, verifies DOB)

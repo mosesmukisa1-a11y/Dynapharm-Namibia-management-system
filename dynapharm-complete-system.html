@@ -5024,6 +5024,20 @@
             if (navUserDisplay && user) {
                 navUserDisplay.textContent = `${user.fullName || user.username} (${role})`;
             }
+            var publicLinks = document.querySelectorAll('#desktopNavLinks > a');
+            publicLinks.forEach(function(link) {
+                var text = link.textContent.trim().toLowerCase();
+                if (text === 'shop' || text === 'health check') {
+                    link.style.display = 'none';
+                }
+            });
+            var mobileLinks = document.querySelectorAll('#mobileMenu > a');
+            mobileLinks.forEach(function(link) {
+                var text = link.textContent.trim().toLowerCase();
+                if (text === 'shop' || text === 'health check') {
+                    link.style.display = 'none';
+                }
+            });
         }
         
         // Landing Page Tab Functions
@@ -5476,65 +5490,6 @@
             return d.innerHTML;
         }
 
-        var _chkSigCtx = null, _chkSigDrawing = false, _chkSigHasData = false;
-        function _initCheckupSignature() {
-            var canvas = document.getElementById('chkSignatureCanvas');
-            if (!canvas || _chkSigCtx) return;
-            _chkSigCtx = canvas.getContext('2d');
-            _chkSigCtx.strokeStyle = '#1f2937';
-            _chkSigCtx.lineWidth = 2;
-            _chkSigCtx.lineCap = 'round';
-            _chkSigCtx.lineJoin = 'round';
-
-            function getPos(e) {
-                var rect = canvas.getBoundingClientRect();
-                var scaleX = canvas.width / rect.width;
-                var scaleY = canvas.height / rect.height;
-                var t = e.touches ? e.touches[0] : e;
-                return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
-            }
-            function startDraw(e) {
-                e.preventDefault();
-                _chkSigDrawing = true;
-                var p = getPos(e);
-                _chkSigCtx.beginPath();
-                _chkSigCtx.moveTo(p.x, p.y);
-            }
-            function draw(e) {
-                if (!_chkSigDrawing) return;
-                e.preventDefault();
-                var p = getPos(e);
-                _chkSigCtx.lineTo(p.x, p.y);
-                _chkSigCtx.stroke();
-                _chkSigHasData = true;
-                var st = document.getElementById('chkSignatureStatus');
-                if (st) st.textContent = 'Signed';
-                if (st) st.style.color = '#059669';
-            }
-            function stopDraw() { _chkSigDrawing = false; }
-
-            canvas.addEventListener('mousedown', startDraw);
-            canvas.addEventListener('mousemove', draw);
-            canvas.addEventListener('mouseup', stopDraw);
-            canvas.addEventListener('mouseleave', stopDraw);
-            canvas.addEventListener('touchstart', startDraw, { passive: false });
-            canvas.addEventListener('touchmove', draw, { passive: false });
-            canvas.addEventListener('touchend', stopDraw);
-        }
-        function clearCheckupSignature() {
-            var canvas = document.getElementById('chkSignatureCanvas');
-            if (canvas && _chkSigCtx) {
-                _chkSigCtx.clearRect(0, 0, canvas.width, canvas.height);
-                _chkSigHasData = false;
-                var st = document.getElementById('chkSignatureStatus');
-                if (st) { st.textContent = 'Cleared'; st.style.color = '#9ca3af'; }
-            }
-        }
-        function getCheckupSignatureDataURL() {
-            if (!_chkSigHasData) return '';
-            var canvas = document.getElementById('chkSignatureCanvas');
-            return canvas ? canvas.toDataURL('image/png') : '';
-        }
         function _getCheckupInitials(name) {
             if (!name) return '';
             var parts = name.trim().split(/\s+/);
@@ -5544,7 +5499,10 @@
             }
             return initials;
         }
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(_initCheckupSignature, 500); });
+        function _isCheckupAcknowledged() {
+            var cb = document.getElementById('chkAcknowledge');
+            return cb && cb.checked;
+        }
 
         function _getCheckupFormData() {
             var visitType = (document.getElementById('checkupVisitType') || {}).value || 'appointment';
@@ -5580,7 +5538,8 @@
                 distributorName: distName, distributorNB: distNB,
                 concern: concern, conditions: conditions,
                 medications: medications, notes: notes,
-                signatureDataURL: getCheckupSignatureDataURL(),
+                acknowledged: _isCheckupAcknowledged(),
+                acknowledgedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
                 initials: _getCheckupInitials(fullName)
             };
         }
@@ -5632,19 +5591,21 @@
 
             html += '</table>';
 
-            html += '<div style="margin-top:30px; padding-top:16px; border-top:2px solid #e5e7eb;">';
-            html += '<div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:20px;">';
-            html += '<div style="flex:1; text-align:center; margin:0 15px;">';
-            if (data.signatureDataURL) {
-                html += '<img src="' + data.signatureDataURL + '" alt="Client Signature" style="max-width:180px; height:60px; object-fit:contain; display:block; margin:0 auto 4px;">';
+            if (data.acknowledged) {
+                html += '<div style="margin-top:24px; padding:16px; background:#f0fdf4; border:2px solid #22c55e; border-radius:10px;">';
+                html += '<p style="margin:0 0 8px; font-weight:700; color:#166534; font-size:0.95rem;">Declaration</p>';
+                html += '<p style="margin:0 0 12px; font-size:0.85rem; color:#374151;">I hereby confirm that all information provided is true and correct to the best of my knowledge.</p>';
+                html += '<div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:16px; flex-wrap:wrap; gap:16px;">';
+                html += '<div style="flex:1; min-width:140px;"><div style="font-weight:700; font-size:1rem; color:#1f2937; margin-bottom:4px;">' + e(data.fullName) + '</div>';
+                html += '<div style="font-size:0.8rem; color:#6b7280;">Initials: <strong>' + e(data.initials) + '</strong></div>';
+                html += '<div style="border-top:1px solid #374151; margin-top:6px; padding-top:4px; font-size:0.8rem; color:#374151;">Client Name &amp; Initials</div></div>';
+                html += '<div style="flex:1; min-width:140px; text-align:center;"><div style="font-weight:600; font-size:0.95rem; color:#1f2937; margin-bottom:4px;">' + e(data.acknowledgedDate) + '</div>';
+                html += '<div style="border-top:1px solid #374151; padding-top:4px; font-size:0.8rem; color:#374151;">Date</div></div>';
+                html += '<div style="flex:1; min-width:140px; text-align:right;"><div style="height:24px;"></div>';
+                html += '<div style="border-top:1px solid #374151; padding-top:4px; font-size:0.8rem; color:#374151;">Consultant Signature</div></div>';
+                html += '</div>';
+                html += '</div>';
             }
-            html += '<div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Client Signature';
-            if (data.initials) html += ' <strong>(' + e(data.initials) + ')</strong>';
-            html += '</div></div>';
-            html += '<div style="flex:1; text-align:center; margin:0 15px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Date</div></div>';
-            html += '<div style="flex:1; text-align:center; margin:0 15px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Consultant Signature</div></div>';
-            html += '</div>';
-            html += '</div>';
 
             html += '<p style="text-align:center; margin-top:16px; color:#9ca3af; font-size:0.75rem;">Dynapharm International Namibia &mdash; Health | Wealth | Freedom</p>';
             html += '</div>';
@@ -5658,10 +5619,10 @@
                 if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before previewing.'; errEl.style.display = 'block'; }
                 return;
             }
-            if (!data.signatureDataURL) {
-                if (errEl) { errEl.textContent = 'Please provide your signature before previewing.'; errEl.style.display = 'block'; }
-                var sigCanvas = document.getElementById('chkSignatureCanvas');
-                if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (!data.acknowledged) {
+                if (errEl) { errEl.textContent = 'Please tick the declaration checkbox to confirm your information is correct.'; errEl.style.display = 'block'; }
+                var ackCb = document.getElementById('chkAcknowledge');
+                if (ackCb) ackCb.closest('div').scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
             }
             if (errEl) errEl.style.display = 'none';
@@ -5684,10 +5645,10 @@
                 if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before printing.'; errEl.style.display = 'block'; }
                 return;
             }
-            if (!data.signatureDataURL) {
-                if (errEl) { errEl.textContent = 'Please provide your signature before printing.'; errEl.style.display = 'block'; }
-                var sigCanvas = document.getElementById('chkSignatureCanvas');
-                if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (!data.acknowledged) {
+                if (errEl) { errEl.textContent = 'Please tick the declaration checkbox to confirm your information is correct.'; errEl.style.display = 'block'; }
+                var ackCb = document.getElementById('chkAcknowledge');
+                if (ackCb) ackCb.closest('div').scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
             }
             if (errEl) errEl.style.display = 'none';
@@ -5723,7 +5684,6 @@
             });
             var backBtn = document.getElementById('checkupBackBtn');
             if (backBtn) backBtn.style.display = 'inline-block';
-            setTimeout(_initCheckupSignature, 300);
         }
 
         function exitCheckupMode() {
@@ -5797,11 +5757,11 @@
                         errEl.style.display = 'block';
                         return;
                     }
-                    if (!_chkSigHasData) {
-                        errEl.textContent = 'Please provide your signature before submitting.';
+                    if (!_isCheckupAcknowledged()) {
+                        errEl.textContent = 'Please tick the declaration checkbox to confirm your information is correct.';
                         errEl.style.display = 'block';
-                        var sigCanvas = document.getElementById('chkSignatureCanvas');
-                        if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        var ackCb = document.getElementById('chkAcknowledge');
+                        if (ackCb) ackCb.closest('div').scrollIntoView({ behavior: 'smooth', block: 'center' });
                         return;
                     }
 
@@ -5818,7 +5778,10 @@
                         additionalNotes: notes,
                         clientType: clientType,
                         distributorName: distributorName,
-                        distributorNB: distributorNB
+                        distributorNB: distributorNB,
+                        acknowledgedBy: fullName,
+                        acknowledgedInitials: _getCheckupInitials(fullName),
+                        acknowledgedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
                     };
                     var refLabel = clientType === 'member' ? 'Member' : 'Referred by';
                     var payload = {
@@ -6092,6 +6055,9 @@
             const navUserSection = document.getElementById('navUserSection');
             if (navLoginSection) navLoginSection.style.display = 'block';
             if (navUserSection) navUserSection.style.display = 'none';
+            document.querySelectorAll('#desktopNavLinks > a, #mobileMenu > a').forEach(function(link) {
+                link.style.display = '';
+            });
             
             // Hide main container
             const container = document.querySelector('.container');
@@ -8156,13 +8122,11 @@
                         </div>
 
                         <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 14px;">
-                            <label style="font-weight: 700; font-size: 0.95rem; display: block; margin-bottom: 8px; color: #1f2937;">Client Signature <span style="color: #c41e3a;">*</span></label>
-                            <p style="font-size: 0.82rem; color: #6b7280; margin: 0 0 10px;">Sign below using your mouse or finger. Your signature will appear on the printed form.</p>
-                            <canvas id="chkSignatureCanvas" width="500" height="150" style="border: 2px solid #d1d5db; border-radius: 8px; background: white; cursor: crosshair; display: block; width: 100%; touch-action: none;"></canvas>
-                            <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                <button type="button" onclick="clearCheckupSignature()" style="padding: 6px 16px; background: #ef4444; color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">Clear</button>
-                                <span id="chkSignatureStatus" style="font-size: 0.82rem; color: #9ca3af; align-self: center;"></span>
-                            </div>
+                            <label style="font-weight: 700; font-size: 0.95rem; display: block; margin-bottom: 10px; color: #1f2937;">Declaration <span style="color: #c41e3a;">*</span></label>
+                            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 12px; background: white; border: 2px solid #d1d5db; border-radius: 8px;">
+                                <input type="checkbox" id="chkAcknowledge" style="margin-top: 3px; width: 20px; height: 20px; accent-color: #c41e3a; flex-shrink: 0;">
+                                <span style="font-size: 0.9rem; color: #374151; line-height: 1.5;">I hereby confirm that all the information provided above is true and correct to the best of my knowledge. I consent to the health assessment and understand that the results will be shared with the assigned consultant.</span>
+                            </label>
                         </div>
 
                         <div id="checkupFormError" style="display:none; color: #c41e3a; background: #fef2f2; padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem;"></div>
@@ -10458,28 +10422,14 @@
                 </div>
 
                 <div class="form-section" style="margin-top: 30px;">
-                    <h3>📅 Appointment Calendar</h3>
-                    <div class="search-box">
-                        <select id="calendarView" onchange="changeCalendarView()" style="padding: 10px; margin-right: 10px;">
-                            <option value="dayGridMonth">Monthly</option>
-                            <option value="timeGridWeek">Weekly</option>
-                            <option value="timeGridDay">Daily</option>
-                        </select>
-                        <button class="btn btn-success" onclick="initFullCalendar()">📅 Open Calendar</button>
-                        <button class="btn btn-primary" onclick="showAppointmentBookingModal()">➕ Book Appointment</button>
-                        <button class="btn btn-info" onclick="showTimeSlotManagement()">⏰ Manage Time Slots</button>
-                        <button class="btn btn-warning" onclick="showAppointmentAnalytics()">📊 Analytics</button>
-                        <a href="/appointments-admin.html" target="_blank" style="background:#ffffff;border:2px solid #1f2937;color:#1f2937;padding:6px 10px;border-radius:6px;text-decoration:none;font-weight:700;">Appointments Admin</a>
+                    <h3 style="margin-bottom: 0;">Checkup Forms</h3>
+                    <p style="color: #6b7280; font-size: 0.9rem; margin: 4px 0 16px;">Forms submitted by clients to your branch</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <button id="consultantUpcomingBtn" class="btn btn-primary" onclick="showConsultantCheckups('upcoming')" style="font-weight: 700;">Upcoming</button>
+                        <button id="consultantCompletedBtn" class="btn" onclick="showConsultantCheckups('completed')">Completed</button>
+                        <button class="btn btn-success" onclick="loadConsultantCheckups()">Refresh</button>
                     </div>
-                    <div id="appointmentCalendar" style="display: none; margin-top: 20px;"></div>
-                    <div id="appointmentsList"></div>
-                </div>
-                
-                <!-- Client Self-Service Booking Page -->
-                <div class="form-section" style="margin-top: 30px;">
-                    <h3>🔗 Client Booking Page</h3>
-                    <button class="btn btn-success" onclick="showClientBookingPage()">🌐 Open Client Booking Page</button>
-                    <button class="btn btn-info" onclick="copyBookingLink()">📋 Copy Booking Link</button>
+                    <div id="consultantCheckupsList"></div>
                 </div>
                 </div>
 
@@ -29976,6 +29926,7 @@ if (loginForm) {
             await displayFollowUps();
             await refreshAnalytics();
             viewTodayAppointments();
+            loadConsultantCheckups();
         }
 
         async function refreshAnalytics() {
@@ -31818,6 +31769,152 @@ if (loginForm) {
             alert('✅ Appointment cancelled');
             renderCalendar(window.currentCalendarDate || new Date());
             viewTodayAppointments();
+        }
+
+        var _consultantCheckups = [];
+        var _consultantCheckupsView = 'upcoming';
+
+        async function loadConsultantCheckups() {
+            if (!currentUser) return;
+            var userBranch = currentUser.branch || '';
+            var listDiv = document.getElementById('consultantCheckupsList');
+            if (listDiv) listDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#6b7280;">Loading checkup forms...</div>';
+            try {
+                var url = '/api/appointments?type=Full+Body+Check-Up';
+                if (userBranch) url += '&branch=' + encodeURIComponent(userBranch);
+                var res = await fetch(url);
+                if (!res.ok) throw new Error('Failed to load');
+                _consultantCheckups = await res.json();
+                if (!Array.isArray(_consultantCheckups)) _consultantCheckups = [];
+                showConsultantCheckups(_consultantCheckupsView);
+            } catch (err) {
+                if (listDiv) listDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#c41e3a;">Failed to load checkup forms. Please try again.</div>';
+            }
+        }
+
+        function showConsultantCheckups(view) {
+            _consultantCheckupsView = view || 'upcoming';
+            var upBtn = document.getElementById('consultantUpcomingBtn');
+            var compBtn = document.getElementById('consultantCompletedBtn');
+            if (upBtn && compBtn) {
+                upBtn.className = view === 'upcoming' ? 'btn btn-primary' : 'btn';
+                upBtn.style.fontWeight = view === 'upcoming' ? '700' : '500';
+                compBtn.className = view === 'completed' ? 'btn btn-primary' : 'btn';
+                compBtn.style.fontWeight = view === 'completed' ? '700' : '500';
+            }
+            var listDiv = document.getElementById('consultantCheckupsList');
+            if (!listDiv) return;
+            var completed = [];
+            var upcoming = [];
+            _consultantCheckups.forEach(function(apt) {
+                var s = (apt.status || '').toLowerCase();
+                if (s === 'completed') completed.push(apt);
+                else if (s !== 'cancelled') upcoming.push(apt);
+            });
+            upcoming.sort(function(a, b) {
+                var da = (a.created_at || a.date || '');
+                var db = (b.created_at || b.date || '');
+                return db.localeCompare(da);
+            });
+            completed.sort(function(a, b) {
+                var da = (a.updated_at || a.created_at || '');
+                var db = (b.updated_at || b.created_at || '');
+                return db.localeCompare(da);
+            });
+            var items = view === 'completed' ? completed : upcoming;
+            if (items.length === 0) {
+                listDiv.innerHTML = '<div style="text-align:center;padding:30px;color:#6b7280;"><p style="font-size:1.1rem;">' +
+                    (view === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your branch.') + '</p></div>';
+                return;
+            }
+            var html = '';
+            items.forEach(function(apt) {
+                var data = {};
+                try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+                var statusColor = '#3b82f6';
+                var statusLabel = apt.status || 'pending';
+                var sl = statusLabel.toLowerCase();
+                if (sl === 'completed') { statusColor = '#22c55e'; }
+                else if (sl === 'walk-in') { statusColor = '#f59e0b'; }
+                else if (sl === 'in_progress' || sl === 'checked_in') { statusColor = '#8b5cf6'; }
+                else if (sl === 'cancelled') { statusColor = '#ef4444'; }
+                var dateStr = '';
+                try {
+                    var d = new Date(apt.date || apt.created_at);
+                    dateStr = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                } catch(e) { dateStr = apt.date || ''; }
+                var timeStr = apt.time ? apt.time.slice(0,5) : '';
+                html += '<div style="background:white; border:1px solid #e5e7eb; border-left:4px solid ' + statusColor + '; border-radius:10px; padding:16px; margin-bottom:10px;">';
+                html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">';
+                html += '<div style="flex:1; min-width:200px;">';
+                html += '<div style="font-weight:700; font-size:1.05rem; color:#1f2937; margin-bottom:4px;">' + _escHtml(apt.full_name || 'Unknown') + '</div>';
+                html += '<div style="font-size:0.85rem; color:#6b7280;">' + _escHtml(apt.phone || '') + (apt.email ? ' &bull; ' + _escHtml(apt.email) : '') + '</div>';
+                if (data.concern) html += '<div style="font-size:0.85rem; color:#374151; margin-top:4px;"><strong>Concern:</strong> ' + _escHtml(data.concern) + '</div>';
+                if (data.distributorName) html += '<div style="font-size:0.85rem; color:#374151;"><strong>Referred by:</strong> ' + _escHtml(data.distributorName) + ' (' + _escHtml(data.distributorNB || '') + ')</div>';
+                if (data.conditions && data.conditions !== 'None') html += '<div style="font-size:0.85rem; color:#374151;"><strong>Conditions:</strong> ' + _escHtml(data.conditions) + '</div>';
+                if (data.acknowledgedBy) html += '<div style="font-size:0.82rem; color:#059669; margin-top:4px;">Acknowledged by: <strong>' + _escHtml(data.acknowledgedBy) + '</strong> (' + _escHtml(data.acknowledgedInitials || '') + ') on ' + _escHtml(data.acknowledgedDate || '') + '</div>';
+                html += '</div>';
+                html += '<div style="text-align:right; min-width:120px;">';
+                html += '<div style="font-size:0.85rem; color:#6b7280;">' + _escHtml(dateStr) + (timeStr ? ' at ' + _escHtml(timeStr) : '') + '</div>';
+                html += '<span style="display:inline-block; margin-top:4px; padding:3px 10px; background:' + statusColor + '20; color:' + statusColor + '; border-radius:20px; font-size:0.8rem; font-weight:600; text-transform:capitalize;">' + _escHtml(statusLabel) + '</span>';
+                html += '</div>';
+                html += '</div>';
+                if (sl !== 'completed' && sl !== 'cancelled') {
+                    html += '<div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; border-top:1px solid #f3f4f6; padding-top:10px;">';
+                    html += '<button class="btn" onclick="viewCheckupFormDetail(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
+                    if (sl === 'pending' || sl === 'walk-in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'checked_in\')" style="padding:6px 14px; font-size:0.85rem; background:#8b5cf6; color:white; border:none; border-radius:6px; cursor:pointer;">Check In</button>';
+                    if (sl === 'checked_in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'in_progress\')" style="padding:6px 14px; font-size:0.85rem; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer;">Start Checkup</button>';
+                    html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'completed\')" style="padding:6px 14px; font-size:0.85rem; background:#22c55e; color:white; border:none; border-radius:6px; cursor:pointer;">Mark Complete</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; border-top:1px solid #f3f4f6; padding-top:10px;">';
+                    html += '<button class="btn" onclick="viewCheckupFormDetail(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#6b7280; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            });
+            listDiv.innerHTML = html;
+        }
+
+        async function updateCheckupStatus(aptId, newStatus) {
+            try {
+                var res = await fetch('/api/appointments', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: aptId, status: newStatus })
+                });
+                if (!res.ok) throw new Error('Update failed');
+                var idx = _consultantCheckups.findIndex(function(a) { return a.id === aptId; });
+                if (idx !== -1) _consultantCheckups[idx].status = newStatus;
+                showConsultantCheckups(_consultantCheckupsView);
+            } catch (err) {
+                alert('Failed to update status: ' + err.message);
+            }
+        }
+
+        function viewCheckupFormDetail(aptId) {
+            var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
+            if (!apt) return;
+            var data = {};
+            try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+            var formData = {
+                visitType: (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment',
+                fullName: apt.full_name || '', phone: apt.phone || '', email: apt.email || '',
+                gender: data.gender || '', dob: data.dob || '',
+                branch: apt.branch || '',
+                apptDate: apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '',
+                apptTime: apt.time ? apt.time.slice(0,5) : '',
+                clientType: data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
+                distributorName: data.distributorName || '', distributorNB: data.distributorNB || '',
+                concern: data.concern || '', conditions: data.conditions || '',
+                medications: data.medications || '', notes: data.additionalNotes || '',
+                acknowledged: !!data.acknowledgedBy,
+                acknowledgedDate: data.acknowledgedDate || '',
+                initials: data.acknowledgedInitials || _getCheckupInitials(apt.full_name || '')
+            };
+            var html = _buildCheckupPreviewHTML(formData);
+            document.getElementById('checkupPreviewContent').innerHTML = html;
+            document.getElementById('checkupPreviewModal').style.display = 'block';
         }
 
         function viewTodayAppointments() {
