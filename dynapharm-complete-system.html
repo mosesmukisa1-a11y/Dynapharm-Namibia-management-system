@@ -5201,10 +5201,201 @@
             }
         }
 
+        var _allCheckupDistributors = [];
+        var _checkupDistributorsLoaded = false;
+        var _checkupDistributorsLoading = false;
+
+        function _parseDistributorCSV(text) {
+            var lines = text.split('\n').filter(function(l) { return l.trim(); });
+            if (lines.length < 2) return [];
+            var firstLine = lines[0];
+            var delimiter = ',';
+            if (firstLine.indexOf('\t') !== -1) delimiter = '\t';
+            else if (firstLine.indexOf(';') !== -1) delimiter = ';';
+            var headers = lines[0].split(delimiter).map(function(h) { return h.trim().toUpperCase().replace(/"/g, ''); });
+            var drnIdx = -1, nameIdx = -1;
+            for (var hi = 0; hi < headers.length; hi++) {
+                if (headers[hi] === 'DRN' || headers[hi] === 'DNR' || headers[hi] === 'DISTRIBUTORCODE' || headers[hi] === 'CODE') drnIdx = hi;
+                if (headers[hi] === 'NAME' || headers[hi] === 'DISTRIBUTORNAME' || headers[hi] === 'DISTRIBUTOR NAME') nameIdx = hi;
+            }
+            if (drnIdx === -1 || nameIdx === -1) return [];
+            var result = [];
+            for (var i = 1; i < lines.length; i++) {
+                var values = lines[i].split(delimiter).map(function(v) { return v.trim().replace(/"/g, ''); });
+                if (values.length > Math.max(drnIdx, nameIdx)) {
+                    var drn = values[drnIdx] || '';
+                    var nm = values[nameIdx] || '';
+                    if (drn && nm) {
+                        result.push({ code: drn.toUpperCase().trim(), name: nm.trim() });
+                    }
+                }
+            }
+            return result;
+        }
+
+        async function _loadAllCheckupDistributors() {
+            if (_checkupDistributorsLoaded && _allCheckupDistributors.length > 0) return _allCheckupDistributors;
+            if (_checkupDistributorsLoading) {
+                return new Promise(function(resolve) {
+                    var check = setInterval(function() {
+                        if (!_checkupDistributorsLoading) { clearInterval(check); resolve(_allCheckupDistributors); }
+                    }, 100);
+                });
+            }
+            _checkupDistributorsLoading = true;
+            var distributors = [];
+            try {
+                var apiRes = await fetch('/api/distributors');
+                if (apiRes.ok) {
+                    var apiData = await apiRes.json();
+                    if (Array.isArray(apiData) && apiData.length > 0) {
+                        apiData.forEach(function(d) {
+                            var c = (d.distributor_code || d.distributorCode || d.code || '').toUpperCase().trim();
+                            var n = (d.distributor_name || d.distributorName || d.name || '').trim();
+                            if (c && n && d.entity_type !== 'branch') distributors.push({ code: c, name: n });
+                        });
+                    }
+                }
+            } catch(e) {}
+            try {
+                var cached = localStorage.getItem('dyna_distributors_cache');
+                if (cached) {
+                    var parsed = JSON.parse(cached);
+                    if (parsed.data && parsed.data.length > 0) {
+                        var existing = {};
+                        distributors.forEach(function(d) { existing[d.code] = true; });
+                        parsed.data.forEach(function(d) {
+                            var c = (d.distributorCode || d.code || d.distributor_code || '').toUpperCase().trim();
+                            var n = (d.distributorName || d.name || d.distributor_name || '').trim();
+                            if (c && n && !existing[c]) { distributors.push({ code: c, name: n }); existing[c] = true; }
+                        });
+                    }
+                }
+            } catch(e) {}
+            try {
+                var stored = localStorage.getItem('dyna_distributors');
+                if (stored) {
+                    var lsData = JSON.parse(stored);
+                    if (Array.isArray(lsData) && lsData.length > 0) {
+                        var existing2 = {};
+                        distributors.forEach(function(d) { existing2[d.code] = true; });
+                        lsData.forEach(function(d) {
+                            var c = (d.distributorCode || d.code || d.distributor_code || '').toUpperCase().trim();
+                            var n = (d.distributorName || d.name || d.distributor_name || '').trim();
+                            if (c && n && !existing2[c]) { distributors.push({ code: c, name: n }); existing2[c] = true; }
+                        });
+                    }
+                }
+            } catch(e) {}
+            try {
+                var idbDist = await new Promise(function(resolve) {
+                    var req = indexedDB.open('DynapharmDB', 1);
+                    req.onerror = function() { resolve([]); };
+                    req.onupgradeneeded = function(ev) {
+                        var db = ev.target.result;
+                        if (!db.objectStoreNames.contains('distributors')) {
+                            db.createObjectStore('distributors', { keyPath: 'id' });
+                        }
+                    };
+                    req.onsuccess = function() {
+                        var db = req.result;
+                        if (!db.objectStoreNames.contains('distributors')) { resolve([]); return; }
+                        try {
+                            var tx = db.transaction(['distributors'], 'readonly');
+                            var store = tx.objectStore('distributors');
+                            var getAll = store.getAll();
+                            getAll.onsuccess = function() { resolve(getAll.result || []); };
+                            getAll.onerror = function() { resolve([]); };
+                        } catch(e) { resolve([]); }
+                    };
+                });
+                if (idbDist.length > 0) {
+                    var existing3 = {};
+                    distributors.forEach(function(d) { existing3[d.code] = true; });
+                    idbDist.forEach(function(d) {
+                        var c = (d.distributorCode || d.code || d.distributor_code || '').toUpperCase().trim();
+                        var n = (d.distributorName || d.name || d.distributor_name || '').trim();
+                        if (c && n && !existing3[c]) { distributors.push({ code: c, name: n }); existing3[c] = true; }
+                    });
+                }
+            } catch(e) {}
+            if (distributors.length < 100) {
+                try {
+                    var csvFiles = ['sample-distributor-comma.csv', 'sample-distributor.csv'];
+                    for (var fi = 0; fi < csvFiles.length; fi++) {
+                        try {
+                            var csvRes = await fetch(csvFiles[fi]);
+                            if (csvRes.ok) {
+                                var csvText = await csvRes.text();
+                                var csvDist = _parseDistributorCSV(csvText);
+                                if (csvDist.length > 0) {
+                                    var existing4 = {};
+                                    distributors.forEach(function(d) { existing4[d.code] = true; });
+                                    csvDist.forEach(function(d) {
+                                        if (!existing4[d.code]) { distributors.push(d); existing4[d.code] = true; }
+                                    });
+                                    console.log('Loaded ' + csvDist.length + ' distributors from CSV for checkup search');
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                } catch(e) {}
+            }
+            _allCheckupDistributors = distributors;
+            _checkupDistributorsLoaded = distributors.length > 0;
+            _checkupDistributorsLoading = false;
+            console.log('Checkup distributor search: ' + distributors.length + ' distributors loaded');
+            return distributors;
+        }
+
+        function _filterDistributors(query) {
+            var q = query.toLowerCase();
+            var results = [];
+            for (var i = 0; i < _allCheckupDistributors.length && results.length < 20; i++) {
+                var d = _allCheckupDistributors[i];
+                if (d.name.toLowerCase().indexOf(q) !== -1 || d.code.toLowerCase().indexOf(q) !== -1) {
+                    results.push(d);
+                }
+            }
+            return results;
+        }
+
+        function _renderDistributorDropdown(list, dropdownId, onSelect) {
+            var dd = document.getElementById(dropdownId);
+            if (!dd) return;
+            dd.textContent = '';
+            if (list.length === 0) {
+                var emptyDiv = document.createElement('div');
+                emptyDiv.style.cssText = 'padding:12px; color:#999; font-size:0.9rem;';
+                emptyDiv.textContent = 'No distributors found';
+                dd.appendChild(emptyDiv);
+                dd.style.display = 'block';
+                return;
+            }
+            list.forEach(function(d) {
+                var item = document.createElement('div');
+                item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem; transition: background 0.15s;';
+                var strong = document.createElement('strong');
+                strong.textContent = d.name;
+                var span = document.createElement('span');
+                span.style.cssText = 'color:#666; font-size:0.8rem; margin-left:6px;';
+                span.textContent = '(' + d.code + ')';
+                item.appendChild(strong);
+                item.appendChild(span);
+                item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+                item.onmouseleave = function() { this.style.background = 'white'; };
+                item.onclick = function() { onSelect(d); dd.style.display = 'none'; };
+                dd.appendChild(item);
+            });
+            dd.style.display = 'block';
+        }
+
         var chkDistSearchTimer = null;
         function initCheckupDistributorSearch() {
             var input = document.getElementById('chkDistributorName');
             if (!input) return;
+            _loadAllCheckupDistributors();
             input.addEventListener('input', function() {
                 clearTimeout(chkDistSearchTimer);
                 var q = this.value.trim();
@@ -5214,53 +5405,17 @@
                 }
                 document.getElementById('chkDistributorNB').value = '';
                 document.getElementById('chkDistributorStatus').textContent = '';
-                chkDistSearchTimer = setTimeout(function() {
-                    fetch('/api/distributors?search=' + encodeURIComponent(q))
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
-                            var dd = document.getElementById('chkDistributorDropdown');
-                            var list = Array.isArray(data) ? data : (data.distributors || []);
-                            if (list.length === 0) {
-                                dd.textContent = '';
-                                var emptyDiv = document.createElement('div');
-                                emptyDiv.style.cssText = 'padding:12px; color:#999; font-size:0.9rem;';
-                                emptyDiv.textContent = 'No distributors found';
-                                dd.appendChild(emptyDiv);
-                                dd.style.display = 'block';
-                                return;
-                            }
-                            dd.textContent = '';
-                            list.slice(0, 15).forEach(function(d) {
-                                var name = d.distributor_name || d.name || d.full_name || d.fullName || '';
-                                var nb = d.distributor_code || d.nb_number || d.nbNumber || d.drn || '';
-                                var item = document.createElement('div');
-                                item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem; transition: background 0.15s;';
-                                var strong = document.createElement('strong');
-                                strong.textContent = name;
-                                var span = document.createElement('span');
-                                span.style.cssText = 'color:#666; font-size:0.8rem; margin-left:6px;';
-                                span.textContent = '(' + nb + ')';
-                                item.appendChild(strong);
-                                item.appendChild(span);
-                                item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
-                                item.onmouseleave = function() { this.style.background = 'white'; };
-                                item.onclick = function() {
-                                    document.getElementById('chkDistributorName').value = name;
-                                    document.getElementById('chkDistributorNB').value = nb;
-                                    var statusEl = document.getElementById('chkDistributorStatus');
-                                    statusEl.textContent = '';
-                                    statusEl.style.color = '#059669';
-                                    statusEl.textContent = 'Selected: ' + name + ' (' + nb + ')';
-                                    dd.style.display = 'none';
-                                };
-                                dd.appendChild(item);
-                            });
-                            dd.style.display = 'block';
-                        })
-                        .catch(function() {
-                            document.getElementById('chkDistributorDropdown').style.display = 'none';
-                        });
-                }, 300);
+                chkDistSearchTimer = setTimeout(async function() {
+                    if (!_checkupDistributorsLoaded) await _loadAllCheckupDistributors();
+                    var list = _filterDistributors(q);
+                    _renderDistributorDropdown(list, 'chkDistributorDropdown', function(d) {
+                        document.getElementById('chkDistributorName').value = d.name;
+                        document.getElementById('chkDistributorNB').value = d.code;
+                        var statusEl = document.getElementById('chkDistributorStatus');
+                        statusEl.style.color = '#059669';
+                        statusEl.textContent = 'Selected: ' + d.name + ' (' + d.code + ')';
+                    });
+                }, 200);
             });
             document.addEventListener('click', function(e) {
                 if (!e.target.closest('#chkDistributorDropdown') && e.target.id !== 'chkDistributorName') {
@@ -5280,42 +5435,16 @@
                 return;
             }
             document.getElementById('clientReferralNB').value = '';
-            clientRefSearchTimer = setTimeout(function() {
-                fetch('/api/distributors?search=' + encodeURIComponent(q))
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        var dd = document.getElementById('clientReferralDropdown');
-                        var list = Array.isArray(data) ? data : (data.distributors || []);
-                        if (list.length === 0) {
-                            dd.innerHTML = '<div style="padding:12px; color:#999; font-size:0.9rem;">No distributors found</div>';
-                            dd.style.display = 'block';
-                            return;
-                        }
-                        dd.textContent = '';
-                        list.slice(0, 15).forEach(function(d) {
-                            var name = d.distributor_name || d.name || d.full_name || '';
-                            var nb = d.distributor_code || d.nb_number || '';
-                            var item = document.createElement('div');
-                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem;';
-                            item.innerHTML = '<strong>' + name + '</strong> <span style="color:#666; font-size:0.8rem;">(' + nb + ')</span>';
-                            item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
-                            item.onmouseleave = function() { this.style.background = 'white'; };
-                            item.onclick = function() {
-                                document.getElementById('clientReferralName').value = name;
-                                document.getElementById('clientReferralNB').value = nb;
-                                var statusEl = document.getElementById('clientReferralStatus');
-                                statusEl.textContent = 'Selected: ' + name + ' (' + nb + ')';
-                                statusEl.style.color = '#059669';
-                                dd.style.display = 'none';
-                            };
-                            dd.appendChild(item);
-                        });
-                        dd.style.display = 'block';
-                    })
-                    .catch(function() {
-                        document.getElementById('clientReferralDropdown').style.display = 'none';
-                    });
-            }, 300);
+            clientRefSearchTimer = setTimeout(async function() {
+                if (!_checkupDistributorsLoaded) await _loadAllCheckupDistributors();
+                var list = _filterDistributors(q);
+                _renderDistributorDropdown(list, 'clientReferralDropdown', function(d) {
+                    document.getElementById('clientReferralName').value = d.name;
+                    document.getElementById('clientReferralNB').value = d.code;
+                    var statusEl = document.getElementById('clientReferralStatus');
+                    if (statusEl) { statusEl.textContent = 'Selected: ' + d.name + ' (' + d.code + ')'; statusEl.style.color = '#059669'; }
+                });
+            }, 200);
         }
 
         var distRefSearchTimer = null;
@@ -5329,39 +5458,16 @@
                 return;
             }
             document.getElementById('distributorReferralValue').value = '';
-            distRefSearchTimer = setTimeout(function() {
-                fetch('/api/distributors?search=' + encodeURIComponent(q))
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        var dd = document.getElementById('distributorReferralDropdown');
-                        var list = Array.isArray(data) ? data : (data.distributors || []);
-                        if (list.length === 0) {
-                            dd.innerHTML = '<div style="padding:12px; color:#999; font-size:0.9rem;">No distributors found</div>';
-                            dd.style.display = 'block';
-                            return;
-                        }
-                        dd.textContent = '';
-                        list.slice(0, 15).forEach(function(d) {
-                            var name = d.distributor_name || d.name || d.full_name || '';
-                            var nb = d.distributor_code || d.nb_number || '';
-                            var item = document.createElement('div');
-                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem;';
-                            item.innerHTML = '<strong>' + name + '</strong> <span style="color:#666; font-size:0.8rem;">(' + nb + ')</span>';
-                            item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
-                            item.onmouseleave = function() { this.style.background = 'white'; };
-                            item.onclick = function() {
-                                document.getElementById('distributorReferralSearch').value = name + ' (' + nb + ')';
-                                document.getElementById('distributorReferralValue').value = nb;
-                                dd.style.display = 'none';
-                            };
-                            dd.appendChild(item);
-                        });
-                        dd.style.display = 'block';
-                    })
-                    .catch(function() {
-                        document.getElementById('distributorReferralDropdown').style.display = 'none';
-                    });
-            }, 300);
+            distRefSearchTimer = setTimeout(async function() {
+                var currentVal = document.getElementById('distributorReferralSearch').value.trim();
+                if (currentVal !== q) return;
+                if (!_checkupDistributorsLoaded) await _loadAllCheckupDistributors();
+                var list = _filterDistributors(q);
+                _renderDistributorDropdown(list, 'distributorReferralDropdown', function(d) {
+                    document.getElementById('distributorReferralSearch').value = d.name + ' (' + d.code + ')';
+                    document.getElementById('distributorReferralValue').value = d.code;
+                });
+            }, 200);
         }
 
         function enterCheckupMode() {
