@@ -49,4 +49,6 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - Portal has streamlined navbar (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
 - Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
 - Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
+- Distributor Login links to `distributor-portal.html` (NB number + DOB login, 12K+ distributors loaded from CSV)
+- `distributor-guest.html` is a health consultation booking form (separate from distributor login)
 - Individual portals: `gm-portal.html`, `hr-portal.html`, `mis-portal.html`, etc.
