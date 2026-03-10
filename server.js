@@ -2,7 +2,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8001;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+const HOST = process.env.HOST || '0.0.0.0';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -122,9 +123,9 @@ app.use((req, res) => {
   res.status(404).send('Not found');
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log('🚀 Dynapharm API & static server running');
-  console.log(`📡 Listening on http://localhost:${PORT}`);
+  console.log(`📡 Listening on http://${HOST}:${PORT}`);
   if (process.env.DATABASE_URL) {
     console.log(`🗄️  DATABASE_URL detected: ${process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
   } else {
