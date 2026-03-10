@@ -306,7 +306,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Walk-in sales API error:', error);
-    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
 

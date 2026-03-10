@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const branch = searchParams.get('branch');
   const date = searchParams.get('date');
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'POST') {
-      const body = await req.json();
+      const body = req.body;
       
       if (Array.isArray(body)) {
         // Bulk insert
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'PUT') {
-      const body = await req.json();
+      const body = req.body;
       const appointment = await update('appointments', body.id, body, 'id');
       await publishRealtimeEvent('appointments', 'update', appointment);
       return res.json(appointment);
@@ -130,10 +130,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Appointments API error:', error);
-    return res.status(500).json({ 
-      error: error.message || 'Internal server error',
-      code: error.code || 'INTERNAL_ERROR'
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

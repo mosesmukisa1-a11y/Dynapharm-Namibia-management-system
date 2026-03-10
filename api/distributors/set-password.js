@@ -99,19 +99,17 @@ export default async function handler(req, res) {
       userId = existingUser.id;
       await query(
         `UPDATE users
-           SET password = $1,
-               password_hash = $2,
-               role = $3,
-               full_name = COALESCE($4, full_name),
-               email = COALESCE($5, email),
-               phone = COALESCE($6, phone),
-               branch = COALESCE($7, branch),
-               branches = COALESCE($8::jsonb, branches),
+           SET password_hash = $1,
+               role = $2,
+               full_name = COALESCE($3, full_name),
+               email = COALESCE($4, email),
+               phone = COALESCE($5, phone),
+               branch = COALESCE($6, branch),
+               branches = COALESCE($7::jsonb, branches),
                is_active = TRUE,
                updated_at = NOW()
-         WHERE id = $9`,
+         WHERE id = $8`,
         [
-          normalizedPassword,
           passwordHash,
           'distributor',
           fullName,
@@ -126,19 +124,18 @@ export default async function handler(req, res) {
       userId = `USR${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
       await query(
         `INSERT INTO users (
-            id, username, password, password_hash, role,
+            id, username, password_hash, role,
             full_name, email, phone, branch, branches,
             is_active, must_change_password, metadata, created_at, updated_at
           )
           VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9, $10::jsonb,
-            TRUE, FALSE, $11::jsonb, NOW(), NOW()
+            $1, $2, $3, $4,
+            $5, $6, $7, $8, $9::jsonb,
+            TRUE, FALSE, $10::jsonb, NOW(), NOW()
           )`,
         [
           userId,
           username,
-          normalizedPassword,
           passwordHash,
           'distributor',
           fullName,
@@ -168,7 +165,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Distributor password update error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

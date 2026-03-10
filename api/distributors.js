@@ -323,30 +323,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Distributors API error:', error);
-    const errorMessage = error.message || 'Internal server error';
-    const errorCode = error.code || 'INTERNAL_ERROR';
-
     if (error.code === '23505') {
       return res.status(409).json({
         error: 'Distributor code already exists',
-        code: 'DUPLICATE_CODE',
-        details: error.message,
       });
     }
 
     if (error.code === '23503') {
       return res.status(400).json({
         error: 'Invalid branch reference',
-        code: 'FOREIGN_KEY_VIOLATION',
-        details: error.message,
       });
     }
 
-    return res.status(500).json({
-      error: errorMessage,
-      code: errorCode,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

@@ -256,11 +256,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Branches API error:', error);
-    return res.status(500).json({
-      error: error.message || 'Internal server error',
-      code: error.code || 'INTERNAL_ERROR',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

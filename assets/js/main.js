@@ -42,7 +42,7 @@ function normaliseApiBase(base) {
     if (window.location?.origin && window.location.origin !== "null") {
       return `${window.location.origin}${trimmed}`.replace(/\/+$/, "");
     }
-    return `http://localhost:8001${trimmed}`.replace(/\/+$/, "");
+    return trimmed.replace(/\/+$/, "");
   }
   try {
     const url = new URL(trimmed, window.location?.origin || undefined);
@@ -64,8 +64,6 @@ function resolveApiBaseUrl() {
   if (window.location?.origin && window.location.origin !== "null") {
     candidates.push(`${window.location.origin.replace(/\/$/, "")}/api`);
   }
-  candidates.push("https://dynapharm-backend-production.up.railway.app/api");
-  candidates.push("http://localhost:8001/api");
   for (const candidate of candidates) {
     const resolved = normaliseApiBase(candidate);
     if (resolved) return resolved;

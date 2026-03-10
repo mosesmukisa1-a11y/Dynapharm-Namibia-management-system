@@ -1,10 +1,24 @@
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
+import crypto from 'crypto';
 
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'dyna_session';
-const AUTH_TOKEN_TTL = parseInt(process.env.AUTH_TOKEN_TTL || '3600', 10); // seconds
-const AUTH_REFRESH_TTL = parseInt(process.env.AUTH_REFRESH_TTL || '604800', 10); // seconds (7 days)
-const AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || 'dynapharm-insecure-secret';
+const AUTH_TOKEN_TTL = parseInt(process.env.AUTH_TOKEN_TTL || '3600', 10);
+const AUTH_REFRESH_TTL = parseInt(process.env.AUTH_REFRESH_TTL || '604800', 10);
+
+function getAuthSecret() {
+  const secret = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.SESSION_SECRET;
+  if (!secret) {
+    console.error('FATAL: No AUTH_SECRET, JWT_SECRET, or SESSION_SECRET environment variable set. Generating a temporary secret — sessions will not survive restarts.');
+    const tempSecret = crypto.randomBytes(48).toString('hex');
+    process.env.AUTH_SECRET = tempSecret;
+    return tempSecret;
+  }
+  return secret;
+}
+
+const AUTH_SECRET = getAuthSecret();
+
 const ALLOWED_ORIGINS = (process.env.AUTH_ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map(origin => origin.trim())

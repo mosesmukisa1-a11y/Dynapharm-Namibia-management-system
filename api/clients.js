@@ -71,7 +71,7 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const reference = searchParams.get('reference');
   const phone = searchParams.get('phone');
@@ -205,7 +205,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Clients API error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Internal server error',
+      error: 'Internal server error',
       code: error.code || 'INTERNAL_ERROR'
     });
   }

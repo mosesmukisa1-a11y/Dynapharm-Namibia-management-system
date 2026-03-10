@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'POST') {
-      const body = await req.json();
+      const body = req.body;
       
       if (body.action === 'uploadImage') {
         // Upload product image
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'PUT') {
-      const body = await req.json();
+      const body = req.body;
       
       if (body.action === 'updateImage') {
         // Update product image
@@ -161,12 +161,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Products API error:', error);
     // Return a proper error response
-    const errorMessage = error?.message || 'Internal server error';
-    const errorStack = process.env.NODE_ENV === 'development' ? error?.stack : undefined;
-    return res.status(500).json({ 
-      error: errorMessage,
-      ...(errorStack && { stack: errorStack })
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

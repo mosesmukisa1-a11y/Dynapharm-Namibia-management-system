@@ -268,7 +268,7 @@
         // Broadcast attendance updates to real-time gateway
         async function broadcastAttendanceUpdate(action, data) {
             try {
-                const REALTIME_GATEWAY_URL = 'https://web-production-40cac.up.railway.app';
+                const REALTIME_GATEWAY_URL = window.location.origin;
                 await fetch(`${REALTIME_GATEWAY_URL}/publish`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

@@ -911,10 +911,8 @@
     </script>
     
     <!-- Optional: Backend API base override (set this in deployments) -->
-    <!-- Example: <meta name="api-base" content="https://dynapharm-backend-production.up.railway.app/api"> -->
-    <!-- For local development with PostgreSQL backend: -->
     <meta name="api-base" content="/api">
-    <meta name="rt-base" content="https://web-production-f9aa.up.railway.app">
+    <meta name="rt-base" content="">
     <title>Dynapharm International Namibia - v2.0</title>
     <!-- FullCalendar.js -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
@@ -949,7 +947,7 @@
                 }
             } catch(_) {}
             try {
-                const endpoints = ['/api/orders', 'http://localhost:8001/api/orders'];
+                const endpoints = ['/api/orders'];
                 for (let i=0;i<endpoints.length;i++){
                     try {
                         const r = await fetch(endpoints[i]);
@@ -1009,7 +1007,7 @@
                 if (r.ok) return await r.json();
             } catch(_) {}
             try {
-                const r = await fetch('http://localhost:8001/api/orders', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(order)});
+                const r = await fetch('/api/orders', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(order)});
                 if (r.ok) return await r.json();
             } catch(_) {}
             return { success: false };
@@ -20097,10 +20095,10 @@
         let branchPaymentsRecords = [];
         let hasSyncedBranchFinance = false;
         let branchFinanceSyncInProgress = false;
-		let crmPortalInteractions = [];
-		let crmPortalWorkflows = [];
-		let crmPortalWorkflowLog = [];
-		let crmLoyaltyMembers = [];
+                let crmPortalInteractions = [];
+                let crmPortalWorkflows = [];
+                let crmPortalWorkflowLog = [];
+                let crmLoyaltyMembers = [];
         
         // Inventory tracking
         let inventory = {};
@@ -20750,17 +20748,17 @@
             morning: { start: '08:00', end: '12:00', interval: 30 },
             afternoon: { start: '13:00', end: '17:00', interval: 30 }
         };
-		(function restoreTimeSlotsFromStorage() {
-			try {
-				const saved = JSON.parse(localStorage.getItem('dyna_time_slots') || 'null');
-				if (saved && typeof saved === 'object') {
-					timeSlots = {
-						morning: { ...timeSlots.morning, ...(saved.morning || {}) },
-						afternoon: { ...timeSlots.afternoon, ...(saved.afternoon || {}) }
-					};
-				}
-			} catch (_) {}
-		})();
+                (function restoreTimeSlotsFromStorage() {
+                        try {
+                                const saved = JSON.parse(localStorage.getItem('dyna_time_slots') || 'null');
+                                if (saved && typeof saved === 'object') {
+                                        timeSlots = {
+                                                morning: { ...timeSlots.morning, ...(saved.morning || {}) },
+                                                afternoon: { ...timeSlots.afternoon, ...(saved.afternoon || {}) }
+                                        };
+                                }
+                        } catch (_) {}
+                })();
         
         // Resources (consultants, dispensers, rooms)
         let resources = [];
@@ -20788,7 +20786,7 @@
                 if (window.location?.origin && window.location.origin !== 'null') {
                     return `${window.location.origin}${base}`.replace(/\/+$/, '');
                 }
-                return `http://localhost:8001${base}`.replace(/\/+$/, '');
+                return `${base}`.replace(/\/+$/, '');
             }
             try {
                 const url = new URL(base);
@@ -20814,7 +20812,7 @@
             const isStaticDev = isLocalhost && (port === '8000' || port === '4173');
 
             if (isStaticDev) {
-                candidates.push('http://localhost:8001/api');
+                candidates.push('/api');
             }
 
             if (window.location?.origin && window.location.origin !== 'null') {
@@ -20822,10 +20820,10 @@
             }
 
             if (isLocalhost && !isStaticDev) {
-                candidates.push('http://localhost:8001/api');
+                candidates.push('/api');
             }
 
-            candidates.push('https://dynapharm-backend-production.up.railway.app/api');
+            candidates.push('/api');
 
             for (const candidate of candidates) {
                 const resolved = normaliseApiBase(candidate);
@@ -20847,13 +20845,13 @@
             const isStaticDev = isLocalhost && (port === '8000' || port === '4173');
 
             if (isStaticDev) {
-                overrides.push('http://localhost:8001/api');
+                overrides.push('/api');
             }
 
             overrides.push(API_BASE);
 
             if (isLocalhost && !isStaticDev) {
-                overrides.push('http://localhost:8001/api');
+                overrides.push('/api');
             }
 
             for (const candidate of overrides) {
@@ -21909,23 +21907,23 @@
             return combined;
         }
 
-		const CRM_STORAGE_KEYS = {
-			interactions: 'crm_portal_interactions',
-			workflows: 'crm_portal_workflows',
-			workflowLog: 'crm_portal_workflow_log',
-			loyalty: 'crm_portal_loyalty'
-		};
+                const CRM_STORAGE_KEYS = {
+                        interactions: 'crm_portal_interactions',
+                        workflows: 'crm_portal_workflows',
+                        workflowLog: 'crm_portal_workflow_log',
+                        loyalty: 'crm_portal_loyalty'
+                };
 
-		(function bootstrapCRMPortalData() {
-			crmPortalInteractions = safeParseFromStorage(CRM_STORAGE_KEYS.interactions, '[]');
-			if (!Array.isArray(crmPortalInteractions)) crmPortalInteractions = [];
-			crmPortalWorkflows = safeParseFromStorage(CRM_STORAGE_KEYS.workflows, '[]');
-			if (!Array.isArray(crmPortalWorkflows)) crmPortalWorkflows = [];
-			crmPortalWorkflowLog = safeParseFromStorage(CRM_STORAGE_KEYS.workflowLog, '[]');
-			if (!Array.isArray(crmPortalWorkflowLog)) crmPortalWorkflowLog = [];
-			crmLoyaltyMembers = safeParseFromStorage(CRM_STORAGE_KEYS.loyalty, '[]');
-			if (!Array.isArray(crmLoyaltyMembers)) crmLoyaltyMembers = [];
-		})();
+                (function bootstrapCRMPortalData() {
+                        crmPortalInteractions = safeParseFromStorage(CRM_STORAGE_KEYS.interactions, '[]');
+                        if (!Array.isArray(crmPortalInteractions)) crmPortalInteractions = [];
+                        crmPortalWorkflows = safeParseFromStorage(CRM_STORAGE_KEYS.workflows, '[]');
+                        if (!Array.isArray(crmPortalWorkflows)) crmPortalWorkflows = [];
+                        crmPortalWorkflowLog = safeParseFromStorage(CRM_STORAGE_KEYS.workflowLog, '[]');
+                        if (!Array.isArray(crmPortalWorkflowLog)) crmPortalWorkflowLog = [];
+                        crmLoyaltyMembers = safeParseFromStorage(CRM_STORAGE_KEYS.loyalty, '[]');
+                        if (!Array.isArray(crmLoyaltyMembers)) crmLoyaltyMembers = [];
+                })();
 
         // Unified storage adapter (IndexedDB-first with localStorage fallback)
         const DYN_DB_NAME = 'DynapharmDB';
@@ -26113,7 +26111,7 @@
             const rtBase = metaTag?.content?.trim() || '';
             const wsUrl = rtBase 
                 ? rtBase.replace(/^https?:\/\//, 'wss://').replace(/\/$/, '') + '/ws'
-                : 'wss://web-production-40cac.up.railway.app/ws';
+                : 'wss://` + window.location.host + `/ws';
             
             if (frontDeskWebSocket && frontDeskWebSocket.readyState === WebSocket.OPEN) {
                 return; // Already connected
@@ -29318,1360 +29316,1360 @@ if (loginForm) {
             `;
         }
 
-			async function initFullCalendar() {
-			const calendar = document.getElementById('appointmentCalendar');
-			if (!calendar) return;
-				calendar.style.display = 'block';
-				try { await syncConsultantAppointments(); } catch (e) { console.debug('initFullCalendar sync error', e); }
-				renderCalendar(window.currentCalendarDate || new Date());
-			try { calendar.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-		}
+                        async function initFullCalendar() {
+                        const calendar = document.getElementById('appointmentCalendar');
+                        if (!calendar) return;
+                                calendar.style.display = 'block';
+                                try { await syncConsultantAppointments(); } catch (e) { console.debug('initFullCalendar sync error', e); }
+                                renderCalendar(window.currentCalendarDate || new Date());
+                        try { calendar.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+                }
 
-		function renderGMApprovalAlerts(pending = []) {
-			const alertEl = document.getElementById('gmApprovalAlerts');
-			if (!alertEl) return;
+                function renderGMApprovalAlerts(pending = []) {
+                        const alertEl = document.getElementById('gmApprovalAlerts');
+                        if (!alertEl) return;
 
-			if (!Array.isArray(pending) || pending.length === 0) {
-				alertEl.style.display = 'none';
-				alertEl.innerHTML = '';
-				return;
-			}
+                        if (!Array.isArray(pending) || pending.length === 0) {
+                                alertEl.style.display = 'none';
+                                alertEl.innerHTML = '';
+                                return;
+                        }
 
-			const now = Date.now();
-			const hourMs = 60 * 60 * 1000;
-			const warningThreshold = 24;
-			const staleThreshold = 48;
+                        const now = Date.now();
+                        const hourMs = 60 * 60 * 1000;
+                        const warningThreshold = 24;
+                        const staleThreshold = 48;
 
-			const stale = [];
-			const nearing = [];
+                        const stale = [];
+                        const nearing = [];
 
-			pending.forEach(transfer => {
-				const gmMeta = transfer?.metadata?.gmApproval || {};
-				const createdRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || null;
-				if (!createdRaw) return;
-				const createdDate = new Date(createdRaw);
-				if (Number.isNaN(createdDate.getTime())) return;
-				const ageHours = (now - createdDate.getTime()) / hourMs;
-				if (ageHours >= staleThreshold) {
-					stale.push({ transfer, ageHours: Math.floor(ageHours) });
-				} else if (ageHours >= warningThreshold) {
-					nearing.push({ transfer, ageHours: Math.floor(ageHours) });
-				}
-			});
+                        pending.forEach(transfer => {
+                                const gmMeta = transfer?.metadata?.gmApproval || {};
+                                const createdRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || null;
+                                if (!createdRaw) return;
+                                const createdDate = new Date(createdRaw);
+                                if (Number.isNaN(createdDate.getTime())) return;
+                                const ageHours = (now - createdDate.getTime()) / hourMs;
+                                if (ageHours >= staleThreshold) {
+                                        stale.push({ transfer, ageHours: Math.floor(ageHours) });
+                                } else if (ageHours >= warningThreshold) {
+                                        nearing.push({ transfer, ageHours: Math.floor(ageHours) });
+                                }
+                        });
 
-			if (!stale.length && !nearing.length) {
-				alertEl.style.display = 'none';
-				alertEl.innerHTML = '';
-				return;
-			}
+                        if (!stale.length && !nearing.length) {
+                                alertEl.style.display = 'none';
+                                alertEl.innerHTML = '';
+                                return;
+                        }
 
-			const summaryParts = [];
-			if (stale.length) {
-				summaryParts.push(`<strong>${stale.length}</strong> request${stale.length === 1 ? '' : 's'} over 48h pending`);
-			}
-			if (nearing.length) {
-				summaryParts.push(`${nearing.length} approaching 48h`);
-			}
+                        const summaryParts = [];
+                        if (stale.length) {
+                                summaryParts.push(`<strong>${stale.length}</strong> request${stale.length === 1 ? '' : 's'} over 48h pending`);
+                        }
+                        if (nearing.length) {
+                                summaryParts.push(`${nearing.length} approaching 48h`);
+                        }
 
-			const previewEntries = [...stale.slice(0, 2), ...nearing.slice(0, Math.max(0, 3 - stale.length))];
-			const previewList = previewEntries.map(({ transfer, ageHours }) => {
-				const gmMeta = transfer?.metadata?.gmApproval || {};
-				const branch = gmMeta.branch || transfer?.toBranch || 'Branch';
-				const product = gmMeta.product || transfer?.items?.[0]?.productName || 'Item';
-				return `<li style="margin:4px 0; font-size:.78rem; color:#1f2937;">${escapeHtml(branch)} • ${escapeHtml(product)} <span style="color:#b91c1c; font-weight:600;">${ageHours}h</span></li>`;
-			}).join('');
+                        const previewEntries = [...stale.slice(0, 2), ...nearing.slice(0, Math.max(0, 3 - stale.length))];
+                        const previewList = previewEntries.map(({ transfer, ageHours }) => {
+                                const gmMeta = transfer?.metadata?.gmApproval || {};
+                                const branch = gmMeta.branch || transfer?.toBranch || 'Branch';
+                                const product = gmMeta.product || transfer?.items?.[0]?.productName || 'Item';
+                                return `<li style="margin:4px 0; font-size:.78rem; color:#1f2937;">${escapeHtml(branch)} • ${escapeHtml(product)} <span style="color:#b91c1c; font-weight:600;">${ageHours}h</span></li>`;
+                        }).join('');
 
-			alertEl.innerHTML = `
-				<div style="background:#fff7ed; border:1px solid #fb923c; border-radius:8px; padding:12px 14px;">
-					<div style="font-weight:700; color:#b45309; margin-bottom:6px;">⏰ ${summaryParts.join(' • ')}</div>
-					${previewList ? `<ul style="margin:0; padding-left:16px; list-style:disc;">${previewList}</ul>` : ''}
-				</div>
-			`;
-			alertEl.style.display = 'block';
-		}
+                        alertEl.innerHTML = `
+                                <div style="background:#fff7ed; border:1px solid #fb923c; border-radius:8px; padding:12px 14px;">
+                                        <div style="font-weight:700; color:#b45309; margin-bottom:6px;">⏰ ${summaryParts.join(' • ')}</div>
+                                        ${previewList ? `<ul style="margin:0; padding-left:16px; list-style:disc;">${previewList}</ul>` : ''}
+                                </div>
+                        `;
+                        alertEl.style.display = 'block';
+                }
 
-		function formatImportQuantity(value) {
-			const num = Number(value ?? 0);
-			return Number.isFinite(num) ? num.toLocaleString() : '0';
-		}
+                function formatImportQuantity(value) {
+                        const num = Number(value ?? 0);
+                        return Number.isFinite(num) ? num.toLocaleString() : '0';
+                }
 
-		function formatImportExpiry(days) {
-			if (days === null || days === undefined) return 'Unknown expiry';
-			if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} past expiry`;
-			if (days === 0) return 'Expires today';
-			if (days === 1) return '1 day remaining';
-			return `${days} days remaining`;
-		}
+                function formatImportExpiry(days) {
+                        if (days === null || days === undefined) return 'Unknown expiry';
+                        if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} past expiry`;
+                        if (days === 0) return 'Expires today';
+                        if (days === 1) return '1 day remaining';
+                        return `${days} days remaining`;
+                }
 
-		function renderImportSummaryPanel(detail) {
-			const panel = document.getElementById('importSummaryPanel');
-			const content = document.getElementById('importSummaryContent');
-			if (!panel || !content) return;
+                function renderImportSummaryPanel(detail) {
+                        const panel = document.getElementById('importSummaryPanel');
+                        const content = document.getElementById('importSummaryContent');
+                        if (!panel || !content) return;
 
-			if (!detail || !detail.entry) {
-				panel.style.display = 'none';
-				content.innerHTML = '';
-				return;
-			}
+                        if (!detail || !detail.entry) {
+                                panel.style.display = 'none';
+                                content.innerHTML = '';
+                                return;
+                        }
 
-			const entry = detail.entry;
-			const summary = detail.summary || {};
-			const locationSummary = summary.location || {};
-			const networkSummary = summary.network || {};
-			const locationName = escapeHtml(locationSummary.location || entry.location || 'country_stock');
-			const expiringSoon = Array.isArray(locationSummary.topExpiring) ? locationSummary.topExpiring : [];
-			const horizon = locationSummary.horizonDays || 60;
+                        const entry = detail.entry;
+                        const summary = detail.summary || {};
+                        const locationSummary = summary.location || {};
+                        const networkSummary = summary.network || {};
+                        const locationName = escapeHtml(locationSummary.location || entry.location || 'country_stock');
+                        const expiringSoon = Array.isArray(locationSummary.topExpiring) ? locationSummary.topExpiring : [];
+                        const horizon = locationSummary.horizonDays || 60;
 
-			const expiringHtml = expiringSoon.length
-				? `<ul style="margin:0; padding-left:18px;">
-					${expiringSoon.map(item => {
-						const days = item.daysUntil ?? null;
-						const highlight = days !== null && days <= 14 ? '#dc2626' : '#b45309';
-						return `<li style="margin:4px 0; font-size:.85rem; color:#334155;">
-							${escapeHtml(item.product || 'Item')} • Batch ${escapeHtml(item.batchNo || '')}
-							<span style="color:${highlight}; font-weight:600; margin-left:6px;">${formatImportExpiry(days)}</span>
-							<span style="color:#475569; margin-left:6px;">${formatImportQuantity(item.remainingQuantity)} units</span>
-						</li>`;
-					}).join('')}
-				</ul>`
-				: `<p style="margin:0; font-size:.85rem; color:#64748b;">No batches approaching expiry in the next ${horizon} days.</p>`;
+                        const expiringHtml = expiringSoon.length
+                                ? `<ul style="margin:0; padding-left:18px;">
+                                        ${expiringSoon.map(item => {
+                                                const days = item.daysUntil ?? null;
+                                                const highlight = days !== null && days <= 14 ? '#dc2626' : '#b45309';
+                                                return `<li style="margin:4px 0; font-size:.85rem; color:#334155;">
+                                                        ${escapeHtml(item.product || 'Item')} • Batch ${escapeHtml(item.batchNo || '')}
+                                                        <span style="color:${highlight}; font-weight:600; margin-left:6px;">${formatImportExpiry(days)}</span>
+                                                        <span style="color:#475569; margin-left:6px;">${formatImportQuantity(item.remainingQuantity)} units</span>
+                                                </li>`;
+                                        }).join('')}
+                                </ul>`
+                                : `<p style="margin:0; font-size:.85rem; color:#64748b;">No batches approaching expiry in the next ${horizon} days.</p>`;
 
-			content.innerHTML = `
-				<div style="display:flex; flex-wrap:wrap; gap:16px;">
-					<div style="flex:1 1 240px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-weight:700; color:#0f172a;">${escapeHtml(entry.description || 'New batch')}</div>
-						<div style="font-size:.85rem; color:#475569;">Batch ${escapeHtml(entry.batchNo || 'N/A')}</div>
-						<div style="margin-top:10px; font-size:.9rem; color:#1f2937;">
-							<strong>${formatImportQuantity(entry.remainingQuantity ?? entry.quantity)}</strong> units now available in <strong>${locationName}</strong>.
-						</div>
-					</div>
-					<div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Location totals</div>
-						<div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(locationSummary.totalQuantity)}</div>
-						<div style="font-size:.8rem; color:#64748b;">${locationSummary.uniqueProducts || 0} products • ${locationSummary.totalBatches || 0} batches</div>
-					</div>
-					<div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
-						<div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Network snapshot</div>
-						<div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(networkSummary.totalQuantity)}</div>
-						<div style="font-size:.8rem; color:#64748b;">${networkSummary.uniqueProducts || 0} products • ${networkSummary.totalBatches || 0} batches</div>
-					</div>
-				</div>
-				<div style="margin-top:16px;">
-					<h5 style="margin:0 0 8px 0; font-size:.95rem; color:#0f172a;">Expiring within ${horizon} days</h5>
-					${expiringHtml}
-				</div>
-			`;
+                        content.innerHTML = `
+                                <div style="display:flex; flex-wrap:wrap; gap:16px;">
+                                        <div style="flex:1 1 240px; background:#f8fafc; border-radius:8px; padding:14px;">
+                                                <div style="font-weight:700; color:#0f172a;">${escapeHtml(entry.description || 'New batch')}</div>
+                                                <div style="font-size:.85rem; color:#475569;">Batch ${escapeHtml(entry.batchNo || 'N/A')}</div>
+                                                <div style="margin-top:10px; font-size:.9rem; color:#1f2937;">
+                                                        <strong>${formatImportQuantity(entry.remainingQuantity ?? entry.quantity)}</strong> units now available in <strong>${locationName}</strong>.
+                                                </div>
+                                        </div>
+                                        <div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
+                                                <div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Location totals</div>
+                                                <div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(locationSummary.totalQuantity)}</div>
+                                                <div style="font-size:.8rem; color:#64748b;">${locationSummary.uniqueProducts || 0} products • ${locationSummary.totalBatches || 0} batches</div>
+                                        </div>
+                                        <div style="flex:1 1 200px; background:#f8fafc; border-radius:8px; padding:14px;">
+                                                <div style="font-size:.75rem; color:#475569; text-transform:uppercase; font-weight:600;">Network snapshot</div>
+                                                <div style="font-size:1.25rem; font-weight:700; color:#0f172a; margin-top:6px;">${formatImportQuantity(networkSummary.totalQuantity)}</div>
+                                                <div style="font-size:.8rem; color:#64748b;">${networkSummary.uniqueProducts || 0} products • ${networkSummary.totalBatches || 0} batches</div>
+                                        </div>
+                                </div>
+                                <div style="margin-top:16px;">
+                                        <h5 style="margin:0 0 8px 0; font-size:.95rem; color:#0f172a;">Expiring within ${horizon} days</h5>
+                                        ${expiringHtml}
+                                </div>
+                        `;
 
-			panel.style.display = 'block';
-		}
+                        panel.style.display = 'block';
+                }
 
-		window.addEventListener('barcode-stock:imported', (event) => {
-			renderImportSummaryPanel(event.detail);
-		});
+                window.addEventListener('barcode-stock:imported', (event) => {
+                        renderImportSummaryPanel(event.detail);
+                });
 
-		function showAppointmentBookingModal() {
-			if (typeof openClientReg === 'function') {
-				openClientReg('appointment');
-			} else {
-				bookAppointment();
-			}
-		}
+                function showAppointmentBookingModal() {
+                        if (typeof openClientReg === 'function') {
+                                openClientReg('appointment');
+                        } else {
+                                bookAppointment();
+                        }
+                }
 
-		const GM_INVENTORY_TAB_MAP = {
-			overview: 'Overview',
-			expected: 'Expected',
-			losses: 'Losses',
-			manipulations: 'Manipulations',
-			approvals: 'Approvals',
-			allbranches: 'AllBranches'
-		};
+                const GM_INVENTORY_TAB_MAP = {
+                        overview: 'Overview',
+                        expected: 'Expected',
+                        losses: 'Losses',
+                        manipulations: 'Manipulations',
+                        approvals: 'Approvals',
+                        allbranches: 'AllBranches'
+                };
 
-		function getGMBranches() {
-			try {
-				const list = (Array.isArray(branches) && branches.length)
-					? branches
-					: safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON);
-				return (Array.isArray(list) ? list : []).map(entry => {
-					if (typeof entry === 'string') {
-						return { id: entry.toLowerCase(), name: entry };
-					}
-					return {
-						id: (entry.id || entry.branch || entry.name || '').toLowerCase() || `branch-${Math.random().toString(36).slice(2, 7)}`,
-						name: entry.name || entry.branch || entry.id || 'Branch'
-					};
-				});
-			} catch (_) {
-				return [];
-			}
-		}
+                function getGMBranches() {
+                        try {
+                                const list = (Array.isArray(branches) && branches.length)
+                                        ? branches
+                                        : safeParseFromStorage('dyna_branches', DEFAULT_BRANCHES_JSON);
+                                return (Array.isArray(list) ? list : []).map(entry => {
+                                        if (typeof entry === 'string') {
+                                                return { id: entry.toLowerCase(), name: entry };
+                                        }
+                                        return {
+                                                id: (entry.id || entry.branch || entry.name || '').toLowerCase() || `branch-${Math.random().toString(36).slice(2, 7)}`,
+                                                name: entry.name || entry.branch || entry.id || 'Branch'
+                                        };
+                                });
+                        } catch (_) {
+                                return [];
+                        }
+                }
 
-		function populateSelectWithBranches(selectOrId) {
-			const select = typeof selectOrId === 'string' ? document.getElementById(selectOrId) : selectOrId;
-			if (!select) return;
-			const existing = Array.from(select.options).map(opt => opt.value);
-			getGMBranches().forEach(branch => {
-				if (!branch || !branch.id || existing.includes(branch.id)) return;
-				const option = document.createElement('option');
-				option.value = branch.id;
-				option.textContent = branch.name;
-				select.appendChild(option);
-			});
-		}
+                function populateSelectWithBranches(selectOrId) {
+                        const select = typeof selectOrId === 'string' ? document.getElementById(selectOrId) : selectOrId;
+                        if (!select) return;
+                        const existing = Array.from(select.options).map(opt => opt.value);
+                        getGMBranches().forEach(branch => {
+                                if (!branch || !branch.id || existing.includes(branch.id)) return;
+                                const option = document.createElement('option');
+                                option.value = branch.id;
+                                option.textContent = branch.name;
+                                select.appendChild(option);
+                        });
+                }
 
-		function refreshGMInventoryData() {
-			loadStockData();
-			calculateGMMetrics();
-			renderPlanInsights();
-			displayGMInventoryBreakdown();
-			loadGMExpectedStock();
-			loadGMStockLosses();
-			loadGMStockManipulations();
-			loadGMPendingInventoryApprovals();
-			loadGMAllBranchInventory();
-		}
+                function refreshGMInventoryData() {
+                        loadStockData();
+                        calculateGMMetrics();
+                        renderPlanInsights();
+                        displayGMInventoryBreakdown();
+                        loadGMExpectedStock();
+                        loadGMStockLosses();
+                        loadGMStockManipulations();
+                        loadGMPendingInventoryApprovals();
+                        loadGMAllBranchInventory();
+                }
 
-		function switchGMInventoryTab(view) {
-			const key = (view || 'overview').toLowerCase();
-			const suffix = GM_INVENTORY_TAB_MAP[key] || GM_INVENTORY_TAB_MAP.overview;
-			const tabs = document.querySelectorAll('#gmInventoryContent .gm-inv-tab-content');
-			tabs.forEach(tab => {
-				tab.style.display = 'none';
-				tab.classList.remove('active');
-			});
-			const buttons = document.querySelectorAll('#gm .form-section .tabs .tab-button');
-			buttons.forEach(btn => {
-				if (btn.id && btn.id.startsWith('gmInvTab')) {
-					btn.classList.remove('active');
-				}
-			});
-			const target = document.getElementById(`gmInv${suffix}`);
-			const button = document.getElementById(`gmInvTab${suffix}`);
-			if (target) {
-				target.style.display = 'block';
-				target.classList.add('active');
-			}
-			if (button) button.classList.add('active');
-			switch (key) {
-				case 'expected':
-					loadGMExpectedStock();
-					break;
-				case 'losses':
-					loadGMStockLosses();
-					break;
-				case 'manipulations':
-					loadGMStockManipulations();
-					break;
-				case 'approvals':
-					loadGMPendingInventoryApprovals();
-					break;
-				case 'allbranches':
-					loadGMAllBranchInventory();
-					break;
-				default:
-					displayGMInventoryBreakdown();
-			}
-		}
+                function switchGMInventoryTab(view) {
+                        const key = (view || 'overview').toLowerCase();
+                        const suffix = GM_INVENTORY_TAB_MAP[key] || GM_INVENTORY_TAB_MAP.overview;
+                        const tabs = document.querySelectorAll('#gmInventoryContent .gm-inv-tab-content');
+                        tabs.forEach(tab => {
+                                tab.style.display = 'none';
+                                tab.classList.remove('active');
+                        });
+                        const buttons = document.querySelectorAll('#gm .form-section .tabs .tab-button');
+                        buttons.forEach(btn => {
+                                if (btn.id && btn.id.startsWith('gmInvTab')) {
+                                        btn.classList.remove('active');
+                                }
+                        });
+                        const target = document.getElementById(`gmInv${suffix}`);
+                        const button = document.getElementById(`gmInvTab${suffix}`);
+                        if (target) {
+                                target.style.display = 'block';
+                                target.classList.add('active');
+                        }
+                        if (button) button.classList.add('active');
+                        switch (key) {
+                                case 'expected':
+                                        loadGMExpectedStock();
+                                        break;
+                                case 'losses':
+                                        loadGMStockLosses();
+                                        break;
+                                case 'manipulations':
+                                        loadGMStockManipulations();
+                                        break;
+                                case 'approvals':
+                                        loadGMPendingInventoryApprovals();
+                                        break;
+                                case 'allbranches':
+                                        loadGMAllBranchInventory();
+                                        break;
+                                default:
+                                        displayGMInventoryBreakdown();
+                        }
+                }
 
-		function loadGMExpectedStock() {
-			const listEl = document.getElementById('gmExpectedStockList');
-			if (!listEl) return;
-			const branchSelect = document.getElementById('gmExpectedBranchFilter');
-			populateSelectWithBranches(branchSelect);
-			const statusSelect = document.getElementById('gmExpectedStatusFilter');
-			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-			const statusFilter = (statusSelect?.value || 'pending').toLowerCase();
-			let requests = safeParseFromStorage('dyna_stock_requests', '[]');
-			if (!Array.isArray(requests)) requests = [];
-			const filtered = requests.filter(req => {
-				const status = (req.status || '').toLowerCase();
-				const branch = (req.branch || req.branchId || '').toLowerCase();
-				const matchesBranch = branchFilter === 'all' || branch === branchFilter;
-				const matchesStatus = statusFilter === 'all'
-					|| (statusFilter === 'pending' && (status === 'pending' || status === 'pending_gm'))
-					|| status === statusFilter;
-				return matchesBranch && matchesStatus;
-			}).sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0));
-			const pendingCount = requests.filter(req => {
-				const status = (req.status || '').toLowerCase();
-				return status === 'pending' || status === 'pending_gm';
-			}).length;
-			const badge = document.getElementById('gmPendingExpectedStock');
-			if (badge) badge.textContent = `${pendingCount}`;
-			if (!filtered.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No expected stock requests found for the selected filters.</p>';
-				return;
-			}
-			listEl.innerHTML = filtered.slice(0, 20).map(req => {
-				const status = (req.status || 'Pending').toUpperCase();
-				const created = new Date(req.createdAt || req.date || Date.now()).toLocaleString();
-				const itemSummary = formatPurchaseOrderItemSummary(req.items || [], 4);
-				return `
-					<div class="client-card" style="border-left:4px solid #2980b9;">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-							<div>
-								<div style="font-weight:700; color:#2c3e50;">${req.branch || 'Unknown Branch'}</div>
-								<div style="font-size:.8rem; color:#999;">${req.reference || req.id || ''}</div>
-							</div>
-							<div style="text-align:right;">
-								<span style="display:inline-block; padding:4px 8px; border-radius:10px; background:#f0f4ff; color:#1f2937; font-size:.75rem;">${status}</span>
-								<div style="font-size:.75rem; color:#999; margin-top:4px;">${created}</div>
-							</div>
-						</div>
-						${itemSummary ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemSummary}${Array.isArray(req.items) && req.items.length > 4 ? '…' : ''}</div>` : ''}
-						${req.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${req.notes}</p>` : ''}
-					</div>
-				`;
-			}).join('');
-		}
+                function loadGMExpectedStock() {
+                        const listEl = document.getElementById('gmExpectedStockList');
+                        if (!listEl) return;
+                        const branchSelect = document.getElementById('gmExpectedBranchFilter');
+                        populateSelectWithBranches(branchSelect);
+                        const statusSelect = document.getElementById('gmExpectedStatusFilter');
+                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+                        const statusFilter = (statusSelect?.value || 'pending').toLowerCase();
+                        let requests = safeParseFromStorage('dyna_stock_requests', '[]');
+                        if (!Array.isArray(requests)) requests = [];
+                        const filtered = requests.filter(req => {
+                                const status = (req.status || '').toLowerCase();
+                                const branch = (req.branch || req.branchId || '').toLowerCase();
+                                const matchesBranch = branchFilter === 'all' || branch === branchFilter;
+                                const matchesStatus = statusFilter === 'all'
+                                        || (statusFilter === 'pending' && (status === 'pending' || status === 'pending_gm'))
+                                        || status === statusFilter;
+                                return matchesBranch && matchesStatus;
+                        }).sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0));
+                        const pendingCount = requests.filter(req => {
+                                const status = (req.status || '').toLowerCase();
+                                return status === 'pending' || status === 'pending_gm';
+                        }).length;
+                        const badge = document.getElementById('gmPendingExpectedStock');
+                        if (badge) badge.textContent = `${pendingCount}`;
+                        if (!filtered.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No expected stock requests found for the selected filters.</p>';
+                                return;
+                        }
+                        listEl.innerHTML = filtered.slice(0, 20).map(req => {
+                                const status = (req.status || 'Pending').toUpperCase();
+                                const created = new Date(req.createdAt || req.date || Date.now()).toLocaleString();
+                                const itemSummary = formatPurchaseOrderItemSummary(req.items || [], 4);
+                                return `
+                                        <div class="client-card" style="border-left:4px solid #2980b9;">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                                                        <div>
+                                                                <div style="font-weight:700; color:#2c3e50;">${req.branch || 'Unknown Branch'}</div>
+                                                                <div style="font-size:.8rem; color:#999;">${req.reference || req.id || ''}</div>
+                                                        </div>
+                                                        <div style="text-align:right;">
+                                                                <span style="display:inline-block; padding:4px 8px; border-radius:10px; background:#f0f4ff; color:#1f2937; font-size:.75rem;">${status}</span>
+                                                                <div style="font-size:.75rem; color:#999; margin-top:4px;">${created}</div>
+                                                        </div>
+                                                </div>
+                                                ${itemSummary ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemSummary}${Array.isArray(req.items) && req.items.length > 4 ? '…' : ''}</div>` : ''}
+                                                ${req.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${req.notes}</p>` : ''}
+                                        </div>
+                                `;
+                        }).join('');
+                }
 
-		function loadGMStockLosses() {
-			const listEl = document.getElementById('gmStockLossesList');
-			if (!listEl) return;
-			const branchSelect = document.getElementById('gmLossesBranchFilter');
-			populateSelectWithBranches(branchSelect);
-			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-			const from = document.getElementById('gmLossesDateFrom')?.value;
-			const to = document.getElementById('gmLossesDateTo')?.value;
-			const startDate = from ? new Date(from) : null;
-			const endDate = to ? new Date(to + 'T23:59:59') : null;
-			let records = [];
-			const damages = safeParseFromStorage('dyna_stock_damages', '[]');
-			if (Array.isArray(damages)) {
-				damages.forEach(entry => records.push({
-					branch: (entry.branch || entry.location || '').toLowerCase(),
-					product: entry.product || entry.description || 'Item',
-					quantity: Number(entry.quantity || entry.qty || 0),
-					reason: entry.reason || entry.notes || 'Damage',
-					createdAt: entry.createdAt || entry.date || entry.timestamp,
-					source: 'Damage Report'
-				}));
-			}
-			if (Array.isArray(returnsLog) && returnsLog.length) {
-				returnsLog.filter(ret => (ret.disposition || '').toLowerCase() !== 'released').forEach(ret => {
-					records.push({
-						branch: (ret.branch || ret.location || '').toLowerCase(),
-						product: ret.product || ret.description || 'Item',
-						quantity: Number(ret.quantity || 0),
-						reason: ret.disposition || ret.reason || 'Disposition',
-						createdAt: ret.createdAt || ret.timestamp,
-						source: 'Return'
-					});
-				});
-			}
-			records = records.filter(record => {
-				const branch = record.branch || 'all';
-				if (branchFilter !== 'all' && branch !== branchFilter) return false;
-				if (startDate || endDate) {
-					const created = record.createdAt ? new Date(record.createdAt) : null;
-					if (startDate && created && created < startDate) return false;
-					if (endDate && created && created > endDate) return false;
-				}
-				return true;
-			}).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-			const lossQuantity = records.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
-			const metric = document.getElementById('gmStockLosses');
-			if (metric) metric.textContent = `${lossQuantity} units`;
-			if (!records.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock losses recorded for the selected filters.</p>';
-				return;
-			}
-			listEl.innerHTML = records.slice(0, 20).map(record => `
-				<div class="client-card" style="border-left:4px solid #e74c3c;">
-					<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-						<div>
-							<div style="font-weight:700; color:#2c3e50;">${record.product}</div>
-							<div style="font-size:.8rem; color:#999;">${record.source}</div>
-						</div>
-						<div style="text-align:right;">
-							<div style="font-weight:700; color:#c41e3a;">-${Number(record.quantity || 0)}</div>
-							<div style="font-size:.75rem; color:#999;">${record.createdAt ? new Date(record.createdAt).toLocaleString() : ''}</div>
-						</div>
-					</div>
-					${record.reason ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${record.reason}</p>` : ''}
-				</div>
-			`).join('');
-		}
+                function loadGMStockLosses() {
+                        const listEl = document.getElementById('gmStockLossesList');
+                        if (!listEl) return;
+                        const branchSelect = document.getElementById('gmLossesBranchFilter');
+                        populateSelectWithBranches(branchSelect);
+                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+                        const from = document.getElementById('gmLossesDateFrom')?.value;
+                        const to = document.getElementById('gmLossesDateTo')?.value;
+                        const startDate = from ? new Date(from) : null;
+                        const endDate = to ? new Date(to + 'T23:59:59') : null;
+                        let records = [];
+                        const damages = safeParseFromStorage('dyna_stock_damages', '[]');
+                        if (Array.isArray(damages)) {
+                                damages.forEach(entry => records.push({
+                                        branch: (entry.branch || entry.location || '').toLowerCase(),
+                                        product: entry.product || entry.description || 'Item',
+                                        quantity: Number(entry.quantity || entry.qty || 0),
+                                        reason: entry.reason || entry.notes || 'Damage',
+                                        createdAt: entry.createdAt || entry.date || entry.timestamp,
+                                        source: 'Damage Report'
+                                }));
+                        }
+                        if (Array.isArray(returnsLog) && returnsLog.length) {
+                                returnsLog.filter(ret => (ret.disposition || '').toLowerCase() !== 'released').forEach(ret => {
+                                        records.push({
+                                                branch: (ret.branch || ret.location || '').toLowerCase(),
+                                                product: ret.product || ret.description || 'Item',
+                                                quantity: Number(ret.quantity || 0),
+                                                reason: ret.disposition || ret.reason || 'Disposition',
+                                                createdAt: ret.createdAt || ret.timestamp,
+                                                source: 'Return'
+                                        });
+                                });
+                        }
+                        records = records.filter(record => {
+                                const branch = record.branch || 'all';
+                                if (branchFilter !== 'all' && branch !== branchFilter) return false;
+                                if (startDate || endDate) {
+                                        const created = record.createdAt ? new Date(record.createdAt) : null;
+                                        if (startDate && created && created < startDate) return false;
+                                        if (endDate && created && created > endDate) return false;
+                                }
+                                return true;
+                        }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                        const lossQuantity = records.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
+                        const metric = document.getElementById('gmStockLosses');
+                        if (metric) metric.textContent = `${lossQuantity} units`;
+                        if (!records.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock losses recorded for the selected filters.</p>';
+                                return;
+                        }
+                        listEl.innerHTML = records.slice(0, 20).map(record => `
+                                <div class="client-card" style="border-left:4px solid #e74c3c;">
+                                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                <div>
+                                                        <div style="font-weight:700; color:#2c3e50;">${record.product}</div>
+                                                        <div style="font-size:.8rem; color:#999;">${record.source}</div>
+                                                </div>
+                                                <div style="text-align:right;">
+                                                        <div style="font-weight:700; color:#c41e3a;">-${Number(record.quantity || 0)}</div>
+                                                        <div style="font-size:.75rem; color:#999;">${record.createdAt ? new Date(record.createdAt).toLocaleString() : ''}</div>
+                                                </div>
+                                        </div>
+                                        ${record.reason ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${record.reason}</p>` : ''}
+                                </div>
+                        `).join('');
+                }
 
-		function loadGMStockManipulations() {
-			const listEl = document.getElementById('gmStockManipulationsList');
-			if (!listEl) return;
-			const branchSelect = document.getElementById('gmManipBranchFilter');
-			populateSelectWithBranches(branchSelect);
-			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-			const typeFilter = (document.getElementById('gmManipTypeFilter')?.value || 'all').toLowerCase();
-			const search = (document.getElementById('gmManipSearch')?.value || '').toLowerCase();
-			let audit = [];
-			try {
-				audit = JSON.parse(localStorage.getItem('dyna_stock_audit') || '[]');
-			} catch (_) {
-				audit = [];
-			}
-			if (!Array.isArray(audit)) audit = [];
-			const filtered = audit.filter(entry => {
-				const action = (entry.action || '').toLowerCase();
-				const details = entry.details || {};
-				const branch = (details.branch || details.branchId || '').toLowerCase();
-				if (branchFilter !== 'all' && branch !== branchFilter) return false;
-				if (typeFilter !== 'all') {
-					if (typeFilter === 'adjustment' && !action.includes('adjust')) return false;
-					if (typeFilter === 'loss' && !(action.includes('loss') || action.includes('damage'))) return false;
-					if (typeFilter === 'transfer' && !action.includes('transfer')) return false;
-					if (typeFilter === 'receive' && !(action.includes('receive') || action.includes('distribution'))) return false;
-				}
-				if (search && !JSON.stringify(entry).toLowerCase().includes(search)) return false;
-				return true;
-			}).sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
-			if (!filtered.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock manipulation records found.</p>';
-				return;
-			}
-			listEl.innerHTML = filtered.slice(0, 25).map(entry => {
-				const details = entry.details || {};
-				const product = details.product || details.description || 'Item';
-				const quantity = Number(details.quantity || details.qty || 0);
-				const branch = details.branch || details.branchId || 'Unknown';
-				const user = details.user || entry.user || 'System';
-				return `
-					<div class="client-card" style="border-left:4px solid #5c6bc0;">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-							<div>
-								<div style="font-weight:700; color:#2c3e50;">${product}</div>
-								<div style="font-size:.8rem; color:#999;">${branch}</div>
-							</div>
-							<div style="text-align:right;">
-								<div style="font-weight:700; color:#1f2937;">${entry.action || 'Action'}</div>
-								<div style="font-size:.75rem; color:#999;">${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
-							</div>
-						</div>
-						<div style="font-size:.8rem; color:#555; margin-top:6px;">Quantity: ${quantity}</div>
-						<div style="font-size:.75rem; color:#999;">By: ${user}</div>
-					</div>
-				`;
-			}).join('');
-		}
+                function loadGMStockManipulations() {
+                        const listEl = document.getElementById('gmStockManipulationsList');
+                        if (!listEl) return;
+                        const branchSelect = document.getElementById('gmManipBranchFilter');
+                        populateSelectWithBranches(branchSelect);
+                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+                        const typeFilter = (document.getElementById('gmManipTypeFilter')?.value || 'all').toLowerCase();
+                        const search = (document.getElementById('gmManipSearch')?.value || '').toLowerCase();
+                        let audit = [];
+                        try {
+                                audit = JSON.parse(localStorage.getItem('dyna_stock_audit') || '[]');
+                        } catch (_) {
+                                audit = [];
+                        }
+                        if (!Array.isArray(audit)) audit = [];
+                        const filtered = audit.filter(entry => {
+                                const action = (entry.action || '').toLowerCase();
+                                const details = entry.details || {};
+                                const branch = (details.branch || details.branchId || '').toLowerCase();
+                                if (branchFilter !== 'all' && branch !== branchFilter) return false;
+                                if (typeFilter !== 'all') {
+                                        if (typeFilter === 'adjustment' && !action.includes('adjust')) return false;
+                                        if (typeFilter === 'loss' && !(action.includes('loss') || action.includes('damage'))) return false;
+                                        if (typeFilter === 'transfer' && !action.includes('transfer')) return false;
+                                        if (typeFilter === 'receive' && !(action.includes('receive') || action.includes('distribution'))) return false;
+                                }
+                                if (search && !JSON.stringify(entry).toLowerCase().includes(search)) return false;
+                                return true;
+                        }).sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
+                        if (!filtered.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock manipulation records found.</p>';
+                                return;
+                        }
+                        listEl.innerHTML = filtered.slice(0, 25).map(entry => {
+                                const details = entry.details || {};
+                                const product = details.product || details.description || 'Item';
+                                const quantity = Number(details.quantity || details.qty || 0);
+                                const branch = details.branch || details.branchId || 'Unknown';
+                                const user = details.user || entry.user || 'System';
+                                return `
+                                        <div class="client-card" style="border-left:4px solid #5c6bc0;">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                        <div>
+                                                                <div style="font-weight:700; color:#2c3e50;">${product}</div>
+                                                                <div style="font-size:.8rem; color:#999;">${branch}</div>
+                                                        </div>
+                                                        <div style="text-align:right;">
+                                                                <div style="font-weight:700; color:#1f2937;">${entry.action || 'Action'}</div>
+                                                                <div style="font-size:.75rem; color:#999;">${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+                                                        </div>
+                                                </div>
+                                                <div style="font-size:.8rem; color:#555; margin-top:6px;">Quantity: ${quantity}</div>
+                                                <div style="font-size:.75rem; color:#999;">By: ${user}</div>
+                                        </div>
+                                `;
+                        }).join('');
+                }
 
-		async function loadGMPendingInventoryApprovals() {
-			const listEl = document.getElementById('gmPendingInventoryApprovalsList');
-			if (!listEl) return;
+                async function loadGMPendingInventoryApprovals() {
+                        const listEl = document.getElementById('gmPendingInventoryApprovalsList');
+                        if (!listEl) return;
 
-			let pending = [];
-			const stockApiModule = await stockApiReady.catch(() => null);
-			if (stockApiModule && typeof stockApiModule.refreshStockData === 'function') {
-				try {
-					await stockApiModule.refreshStockData();
-					const result = stockApiModule.getStockTransfers({ status: 'pending_gm' });
-					if (result && Array.isArray(result.data)) {
-						pending = result.data.slice();
-					}
-				} catch (error) {
-					console.debug('loadGMPendingInventoryApprovals: backend fetch failed', error);
-				}
-			}
+                        let pending = [];
+                        const stockApiModule = await stockApiReady.catch(() => null);
+                        if (stockApiModule && typeof stockApiModule.refreshStockData === 'function') {
+                                try {
+                                        await stockApiModule.refreshStockData();
+                                        const result = stockApiModule.getStockTransfers({ status: 'pending_gm' });
+                                        if (result && Array.isArray(result.data)) {
+                                                pending = result.data.slice();
+                                        }
+                                } catch (error) {
+                                        console.debug('loadGMPendingInventoryApprovals: backend fetch failed', error);
+                                }
+                        }
 
-			if (!pending.length) {
-				const localFallback = safeParseFromStorage('gm_inventory_approvals', '[]');
-				if (Array.isArray(localFallback) && localFallback.length) {
-					pending = localFallback
-						.filter(entry => (entry.status || 'pending').toLowerCase() === 'pending')
-						.map(entry => ({
-							id: entry.transferId || entry.id,
-							fromWarehouse: entry.warehouse,
-							toBranch: entry.branch,
-							status: 'pending_gm',
-							items: [{
-								productName: entry.product || entry.productName || 'Item',
-								quantity: Number(entry.quantityRequested || entry.quantity || 0)
-							}],
-							dispatchNotes: entry.notes || '',
-							createdAt: entry.createdAt || new Date().toISOString(),
-							metadata: {
-								gmApproval: entry.gmApprovalMeta || {
-									required: true,
-									status: 'pending',
-									requestedBy: entry.requestedBy || 'System',
-									requestedQuantity: Number(entry.quantityRequested || entry.quantity || 0),
-									autoReleaseLimit: entry.autoReleaseLimit ?? null,
-									expectedSupply: entry.expectedSupply ?? null,
-									recentDemand: entry.recentDemand ?? null,
-									openRequests: entry.openRequests ?? null,
-									inTransit: entry.inTransit ?? null,
-									notes: entry.notes || '',
-									dispatchNumber: entry.dispatchNumber || ''
-								}
-							}
-						}));
-				}
-			}
+                        if (!pending.length) {
+                                const localFallback = safeParseFromStorage('gm_inventory_approvals', '[]');
+                                if (Array.isArray(localFallback) && localFallback.length) {
+                                        pending = localFallback
+                                                .filter(entry => (entry.status || 'pending').toLowerCase() === 'pending')
+                                                .map(entry => ({
+                                                        id: entry.transferId || entry.id,
+                                                        fromWarehouse: entry.warehouse,
+                                                        toBranch: entry.branch,
+                                                        status: 'pending_gm',
+                                                        items: [{
+                                                                productName: entry.product || entry.productName || 'Item',
+                                                                quantity: Number(entry.quantityRequested || entry.quantity || 0)
+                                                        }],
+                                                        dispatchNotes: entry.notes || '',
+                                                        createdAt: entry.createdAt || new Date().toISOString(),
+                                                        metadata: {
+                                                                gmApproval: entry.gmApprovalMeta || {
+                                                                        required: true,
+                                                                        status: 'pending',
+                                                                        requestedBy: entry.requestedBy || 'System',
+                                                                        requestedQuantity: Number(entry.quantityRequested || entry.quantity || 0),
+                                                                        autoReleaseLimit: entry.autoReleaseLimit ?? null,
+                                                                        expectedSupply: entry.expectedSupply ?? null,
+                                                                        recentDemand: entry.recentDemand ?? null,
+                                                                        openRequests: entry.openRequests ?? null,
+                                                                        inTransit: entry.inTransit ?? null,
+                                                                        notes: entry.notes || '',
+                                                                        dispatchNumber: entry.dispatchNumber || ''
+                                                                }
+                                                        }
+                                                }));
+                                }
+                        }
 
-			renderGMApprovalAlerts(pending);
+                        renderGMApprovalAlerts(pending);
 
-			if (!pending.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending inventory approvals.</p>';
-				return;
-			}
+                        if (!pending.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending inventory approvals.</p>';
+                                return;
+                        }
 
-			pending.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+                        pending.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
 
-			listEl.innerHTML = pending.slice(0, 20).map(renderGMDispatchApprovalCard).join('');
-		}
+                        listEl.innerHTML = pending.slice(0, 20).map(renderGMDispatchApprovalCard).join('');
+                }
 
-		function renderGMDispatchApprovalCard(transfer) {
-			const gmMeta = transfer?.metadata?.gmApproval || {};
-			const items = Array.isArray(transfer?.items) ? transfer.items : [];
-			const primaryItem = items[0] || {};
-			const productName = primaryItem.productName || primaryItem.description || gmMeta.product || 'Item';
-			const requestedQuantity = Number(primaryItem.quantity || gmMeta.requestedQuantity || 0);
-			const autoReleaseLimit = gmMeta.autoReleaseLimit ?? null;
-			const expectedSupply = gmMeta.expectedSupply ?? null;
-			const branchName = transfer?.toBranch || gmMeta.branch || 'Unknown Branch';
-			const warehouseName = transfer?.fromWarehouse || gmMeta.warehouse || 'Warehouse';
-			const dispatchNumber = gmMeta.dispatchNumber || transfer?.dispatchNotes || transfer?.dispatchReference || '';
-			const createdAtRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || Date.now();
-			const createdAtDate = new Date(createdAtRaw);
-			const createdAt = Number.isNaN(createdAtDate.getTime()) ? 'Pending' : createdAtDate.toLocaleString();
-			const ageMs = Number.isNaN(createdAtDate.getTime()) ? null : Date.now() - createdAtDate.getTime();
-			const ageHours = ageMs !== null ? Math.max(0, ageMs / (60 * 60 * 1000)) : null;
-			const staleThresholdHours = 48;
-			const warningThresholdHours = 24;
-			let ageBadge = '';
-			if (ageHours !== null) {
-				const roundedHours = Math.floor(ageHours);
-				if (roundedHours >= staleThresholdHours) {
-					ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fee2e2; color:#b91c1c; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
-				} else if (roundedHours >= warningThresholdHours) {
-					ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fef3c7; color:#b45309; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
-				}
-			}
-			const notes = gmMeta.notes || transfer?.dispatchNotes || '';
-			const guidance = transfer?.metadata?.guidanceSnapshot || {};
+                function renderGMDispatchApprovalCard(transfer) {
+                        const gmMeta = transfer?.metadata?.gmApproval || {};
+                        const items = Array.isArray(transfer?.items) ? transfer.items : [];
+                        const primaryItem = items[0] || {};
+                        const productName = primaryItem.productName || primaryItem.description || gmMeta.product || 'Item';
+                        const requestedQuantity = Number(primaryItem.quantity || gmMeta.requestedQuantity || 0);
+                        const autoReleaseLimit = gmMeta.autoReleaseLimit ?? null;
+                        const expectedSupply = gmMeta.expectedSupply ?? null;
+                        const branchName = transfer?.toBranch || gmMeta.branch || 'Unknown Branch';
+                        const warehouseName = transfer?.fromWarehouse || gmMeta.warehouse || 'Warehouse';
+                        const dispatchNumber = gmMeta.dispatchNumber || transfer?.dispatchNotes || transfer?.dispatchReference || '';
+                        const createdAtRaw = transfer?.createdAt || gmMeta.requestedAt || transfer?.updatedAt || Date.now();
+                        const createdAtDate = new Date(createdAtRaw);
+                        const createdAt = Number.isNaN(createdAtDate.getTime()) ? 'Pending' : createdAtDate.toLocaleString();
+                        const ageMs = Number.isNaN(createdAtDate.getTime()) ? null : Date.now() - createdAtDate.getTime();
+                        const ageHours = ageMs !== null ? Math.max(0, ageMs / (60 * 60 * 1000)) : null;
+                        const staleThresholdHours = 48;
+                        const warningThresholdHours = 24;
+                        let ageBadge = '';
+                        if (ageHours !== null) {
+                                const roundedHours = Math.floor(ageHours);
+                                if (roundedHours >= staleThresholdHours) {
+                                        ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fee2e2; color:#b91c1c; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
+                                } else if (roundedHours >= warningThresholdHours) {
+                                        ageBadge = `<span style="display:inline-flex; align-items:center; gap:4px; background:#fef3c7; color:#b45309; border-radius:999px; padding:2px 8px; font-size:.7rem; font-weight:600;">⏰ ${roundedHours}h pending</span>`;
+                                }
+                        }
+                        const notes = gmMeta.notes || transfer?.dispatchNotes || '';
+                        const guidance = transfer?.metadata?.guidanceSnapshot || {};
 
-			const limitInfo = autoReleaseLimit != null
-				? `Auto-limit: ${autoReleaseLimit}`
-				: '';
-			const expectedInfo = expectedSupply != null
-				? `Expected supply: ${expectedSupply}`
-				: '';
-			const demandInfo = guidance.recentDemand != null
-				? `Recent demand: ${guidance.recentDemand}`
-				: '';
+                        const limitInfo = autoReleaseLimit != null
+                                ? `Auto-limit: ${autoReleaseLimit}`
+                                : '';
+                        const expectedInfo = expectedSupply != null
+                                ? `Expected supply: ${expectedSupply}`
+                                : '';
+                        const demandInfo = guidance.recentDemand != null
+                                ? `Recent demand: ${guidance.recentDemand}`
+                                : '';
 
-				return `
-				<div class="client-card" style="border-left:4px solid #f59e0b;">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-							<div>
-							<div style="font-weight:700; color:#2c3e50;">${escapeHtml(productName)}</div>
-							<div style="font-size:.8rem; color:#999;">${escapeHtml(warehouseName)} ➜ ${escapeHtml(branchName)}</div>
-							</div>
-							<div style="text-align:right;">
-							${ageBadge ? `<div style="margin-bottom:6px;">${ageBadge}</div>` : ''}
-							<div style="font-weight:700; color:#1f2937;">${requestedQuantity} units</div>
-							<div style="font-size:.75rem; color:#999;">${escapeHtml(createdAt)}</div>
-							</div>
-						</div>
-					<div style="font-size:.8rem; color:#555; margin-top:8px;">
-						${limitInfo ? `<span>${escapeHtml(limitInfo)}</span>` : ''}
-						${expectedInfo ? ` • <span>${escapeHtml(expectedInfo)}</span>` : ''}
-						${demandInfo ? ` • <span>${escapeHtml(demandInfo)}</span>` : ''}
-					</div>
-					${notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${escapeHtml(notes)}</p>` : ''}
-					${dispatchNumber ? `<div style="font-size:.75rem; color:#94a3b8; margin-top:4px;">Dispatch #: ${escapeHtml(dispatchNumber)}</div>` : ''}
-					<div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
-						<button class="btn btn-success" style="flex:1; min-width:120px;" onclick="handleGMDispatchDecision('${escapeHtml(transfer.id)}', true)">✅ Approve</button>
-						<button class="btn btn-danger" style="flex:1; min-width:120px;" onclick="handleGMDispatchDecision('${escapeHtml(transfer.id)}', false)">✖ Reject</button>
-					</div>
-					</div>
-				`;
-		}
+                                return `
+                                <div class="client-card" style="border-left:4px solid #f59e0b;">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                                                        <div>
+                                                        <div style="font-weight:700; color:#2c3e50;">${escapeHtml(productName)}</div>
+                                                        <div style="font-size:.8rem; color:#999;">${escapeHtml(warehouseName)} ➜ ${escapeHtml(branchName)}</div>
+                                                        </div>
+                                                        <div style="text-align:right;">
+                                                        ${ageBadge ? `<div style="margin-bottom:6px;">${ageBadge}</div>` : ''}
+                                                        <div style="font-weight:700; color:#1f2937;">${requestedQuantity} units</div>
+                                                        <div style="font-size:.75rem; color:#999;">${escapeHtml(createdAt)}</div>
+                                                        </div>
+                                                </div>
+                                        <div style="font-size:.8rem; color:#555; margin-top:8px;">
+                                                ${limitInfo ? `<span>${escapeHtml(limitInfo)}</span>` : ''}
+                                                ${expectedInfo ? ` • <span>${escapeHtml(expectedInfo)}</span>` : ''}
+                                                ${demandInfo ? ` • <span>${escapeHtml(demandInfo)}</span>` : ''}
+                                        </div>
+                                        ${notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${escapeHtml(notes)}</p>` : ''}
+                                        ${dispatchNumber ? `<div style="font-size:.75rem; color:#94a3b8; margin-top:4px;">Dispatch #: ${escapeHtml(dispatchNumber)}</div>` : ''}
+                                        <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+                                                <button class="btn btn-success" style="flex:1; min-width:120px;" onclick="handleGMDispatchDecision('${escapeHtml(transfer.id)}', true)">✅ Approve</button>
+                                                <button class="btn btn-danger" style="flex:1; min-width:120px;" onclick="handleGMDispatchDecision('${escapeHtml(transfer.id)}', false)">✖ Reject</button>
+                                        </div>
+                                        </div>
+                                `;
+                }
 
-		async function handleGMDispatchDecision(transferId, approve) {
-			if (!transferId) return;
-			const confirmMessage = approve ? 'Approve this dispatch request?' : 'Reject this dispatch request?';
-			if (!window.confirm(confirmMessage)) return;
-			let notes = '';
-			if (!approve) {
-				notes = window.prompt('Enter rejection notes (optional):', '') || '';
-			}
+                async function handleGMDispatchDecision(transferId, approve) {
+                        if (!transferId) return;
+                        const confirmMessage = approve ? 'Approve this dispatch request?' : 'Reject this dispatch request?';
+                        if (!window.confirm(confirmMessage)) return;
+                        let notes = '';
+                        if (!approve) {
+                                notes = window.prompt('Enter rejection notes (optional):', '') || '';
+                        }
 
-			const stockApiModule = await stockApiReady.catch(() => null);
-			if (!stockApiModule) {
-				alert('Shared stock API unavailable. Please try again.');
-				return;
-			}
+                        const stockApiModule = await stockApiReady.catch(() => null);
+                        if (!stockApiModule) {
+                                alert('Shared stock API unavailable. Please try again.');
+                                return;
+                        }
 
-			let transferRecord = null;
-			try {
-				const response = await stockApiModule.getTransferById(transferId);
-				transferRecord = response?.data || null;
-			} catch (error) {
-				console.error('handleGMDispatchDecision: getTransferById failed', error);
-			}
+                        let transferRecord = null;
+                        try {
+                                const response = await stockApiModule.getTransferById(transferId);
+                                transferRecord = response?.data || null;
+                        } catch (error) {
+                                console.error('handleGMDispatchDecision: getTransferById failed', error);
+                        }
 
-			if (!transferRecord) {
-				alert('Unable to load dispatch request. Please refresh and try again.');
-				return;
-			}
+                        if (!transferRecord) {
+                                alert('Unable to load dispatch request. Please refresh and try again.');
+                                return;
+                        }
 
-			const metadata = { ...(transferRecord.metadata || {}) };
-			const gmMeta = { ...(metadata.gmApproval || {}) };
-			gmMeta.status = approve ? 'approved' : 'rejected';
-			gmMeta.decisionNotes = notes;
-			gmMeta.decidedBy = (window.currentUser && (window.currentUser.fullName || window.currentUser.username)) || 'GM';
-			gmMeta.decidedAt = new Date().toISOString();
-			metadata.gmApproval = gmMeta;
+                        const metadata = { ...(transferRecord.metadata || {}) };
+                        const gmMeta = { ...(metadata.gmApproval || {}) };
+                        gmMeta.status = approve ? 'approved' : 'rejected';
+                        gmMeta.decisionNotes = notes;
+                        gmMeta.decidedBy = (window.currentUser && (window.currentUser.fullName || window.currentUser.username)) || 'GM';
+                        gmMeta.decidedAt = new Date().toISOString();
+                        metadata.gmApproval = gmMeta;
 
-			const nextStatus = approve ? 'pending' : 'rejected';
+                        const nextStatus = approve ? 'pending' : 'rejected';
 
-			try {
-				const response = await stockApiModule.updateTransferStatus(transferId, nextStatus, {
-					metadata,
-					user: window.currentUser,
-					dispatchNotes: transferRecord.dispatchNotes || null,
-				});
-				if (!response?.success) {
-					alert('Unable to update dispatch request. Please try again.');
-					return;
-				}
-			} catch (error) {
-				console.error('handleGMDispatchDecision: updateTransferStatus failed', error);
-				alert('Unable to update dispatch request. Please try again.');
-				return;
-			}
+                        try {
+                                const response = await stockApiModule.updateTransferStatus(transferId, nextStatus, {
+                                        metadata,
+                                        user: window.currentUser,
+                                        dispatchNotes: transferRecord.dispatchNotes || null,
+                                });
+                                if (!response?.success) {
+                                        alert('Unable to update dispatch request. Please try again.');
+                                        return;
+                                }
+                        } catch (error) {
+                                console.error('handleGMDispatchDecision: updateTransferStatus failed', error);
+                                alert('Unable to update dispatch request. Please try again.');
+                                return;
+                        }
 
-			try {
-				const localPending = safeParseFromStorage('gm_inventory_approvals', '[]');
-				if (Array.isArray(localPending)) {
-					const filtered = localPending.filter(entry => entry.transferId !== transferId && entry.id !== transferId);
-					localStorage.setItem('gm_inventory_approvals', JSON.stringify(filtered));
-				}
-			} catch (_) {}
+                        try {
+                                const localPending = safeParseFromStorage('gm_inventory_approvals', '[]');
+                                if (Array.isArray(localPending)) {
+                                        const filtered = localPending.filter(entry => entry.transferId !== transferId && entry.id !== transferId);
+                                        localStorage.setItem('gm_inventory_approvals', JSON.stringify(filtered));
+                                }
+                        } catch (_) {}
 
-			showToast(approve ? '✅ Dispatch approved.' : '🚫 Dispatch rejected.');
+                        showToast(approve ? '✅ Dispatch approved.' : '🚫 Dispatch rejected.');
 
-			try {
-				await stockApiModule.refreshStockData();
-			} catch (_) {}
-			loadGMPendingInventoryApprovals();
-		}
+                        try {
+                                await stockApiModule.refreshStockData();
+                        } catch (_) {}
+                        loadGMPendingInventoryApprovals();
+                }
 
-		function normaliseBranchInventoryData(data) {
-			if (Array.isArray(data)) {
-				return data.reduce((acc, item) => {
-					const branch = (item.branch || item.branchId || 'unknown').toLowerCase();
-					acc[branch] = acc[branch] || [];
-					acc[branch].push(item);
-					return acc;
-				}, {});
-			}
-			if (data && typeof data === 'object') return data;
-			return {};
-		}
+                function normaliseBranchInventoryData(data) {
+                        if (Array.isArray(data)) {
+                                return data.reduce((acc, item) => {
+                                        const branch = (item.branch || item.branchId || 'unknown').toLowerCase();
+                                        acc[branch] = acc[branch] || [];
+                                        acc[branch].push(item);
+                                        return acc;
+                                }, {});
+                        }
+                        if (data && typeof data === 'object') return data;
+                        return {};
+                }
 
-		function loadGMAllBranchInventory() {
-			const listEl = document.getElementById('gmAllBranchInventoryList');
-			if (!listEl) return;
-			const branchSelect = document.getElementById('gmAllBranchesBranchFilter');
-			populateSelectWithBranches(branchSelect);
-			const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-			let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
-			if (!Object.keys(branchStock).length) {
-				const legacy = safeParseFromStorage('branchInventory', '[]');
-				branchStock = normaliseBranchInventoryData(legacy);
-			}
-			const entries = Object.entries(branchStock).filter(([branch]) => branchFilter === 'all' || branch === branchFilter);
-			if (!entries.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No branch inventory data available.</p>';
-				return;
-			}
-			listEl.innerHTML = entries.map(([branch, items]) => {
-				const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
-				const totalQty = safeItems.reduce((sum, item) => sum + Number(item.quantity || item.currentStock || 0), 0);
-				const lowStock = safeItems.filter(item => Number(item.quantity || item.currentStock || 0) <= Number(item.reorderLevel || 5)).length;
-				const branchName = (getGMBranches().find(b => b.id === branch)?.name) || branch;
-				return `
-					<div class="client-card" style="border-left:4px solid #009688;">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-							<div>
-								<div style="font-weight:700; color:#2c3e50;">${branchName}</div>
-								<div style="font-size:.8rem; color:#999;">Total Items: ${safeItems.length}</div>
-							</div>
-							<div style="text-align:right;">
-								<div style="font-weight:700; color:#27ae60;">${totalQty} units</div>
-								<div style="font-size:.75rem; color:#999;">Low stock: ${lowStock}</div>
-							</div>
-						</div>
-						${safeItems.slice(0, 5).map(item => {
-							const name = item.description || item.product || 'Item';
-							const qty = Number(item.quantity || item.currentStock || 0);
-							return `<div style="display:flex; justify-content:space-between; font-size:.8rem; color:#555; margin-top:6px;">
-								<span>${name}</span>
-								<span>${qty}</span>
-							</div>`;
-						}).join('')}
-						${safeItems.length > 5 ? '<div style="font-size:.75rem; color:#999; margin-top:6px;">… more items</div>' : ''}
-					</div>
-				`;
-			}).join('');
-		}
+                function loadGMAllBranchInventory() {
+                        const listEl = document.getElementById('gmAllBranchInventoryList');
+                        if (!listEl) return;
+                        const branchSelect = document.getElementById('gmAllBranchesBranchFilter');
+                        populateSelectWithBranches(branchSelect);
+                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
+                        let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
+                        if (!Object.keys(branchStock).length) {
+                                const legacy = safeParseFromStorage('branchInventory', '[]');
+                                branchStock = normaliseBranchInventoryData(legacy);
+                        }
+                        const entries = Object.entries(branchStock).filter(([branch]) => branchFilter === 'all' || branch === branchFilter);
+                        if (!entries.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No branch inventory data available.</p>';
+                                return;
+                        }
+                        listEl.innerHTML = entries.map(([branch, items]) => {
+                                const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
+                                const totalQty = safeItems.reduce((sum, item) => sum + Number(item.quantity || item.currentStock || 0), 0);
+                                const lowStock = safeItems.filter(item => Number(item.quantity || item.currentStock || 0) <= Number(item.reorderLevel || 5)).length;
+                                const branchName = (getGMBranches().find(b => b.id === branch)?.name) || branch;
+                                return `
+                                        <div class="client-card" style="border-left:4px solid #009688;">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                        <div>
+                                                                <div style="font-weight:700; color:#2c3e50;">${branchName}</div>
+                                                                <div style="font-size:.8rem; color:#999;">Total Items: ${safeItems.length}</div>
+                                                        </div>
+                                                        <div style="text-align:right;">
+                                                                <div style="font-weight:700; color:#27ae60;">${totalQty} units</div>
+                                                                <div style="font-size:.75rem; color:#999;">Low stock: ${lowStock}</div>
+                                                        </div>
+                                                </div>
+                                                ${safeItems.slice(0, 5).map(item => {
+                                                        const name = item.description || item.product || 'Item';
+                                                        const qty = Number(item.quantity || item.currentStock || 0);
+                                                        return `<div style="display:flex; justify-content:space-between; font-size:.8rem; color:#555; margin-top:6px;">
+                                                                <span>${name}</span>
+                                                                <span>${qty}</span>
+                                                        </div>`;
+                                                }).join('')}
+                                                ${safeItems.length > 5 ? '<div style="font-size:.75rem; color:#999; margin-top:6px;">… more items</div>' : ''}
+                                        </div>
+                                `;
+                        }).join('');
+                }
 
-		function exportGMInventoryReport() {
-			let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
-			if (!Object.keys(branchStock).length) {
-				const legacy = safeParseFromStorage('branchInventory', '[]');
-				branchStock = normaliseBranchInventoryData(legacy);
-			}
-			const entries = Object.entries(branchStock);
-			if (!entries.length) {
-				alert('No branch inventory data available to export.');
-				return;
-			}
-			const rows = [['Branch', 'Product', 'Quantity', 'Reorder Level']];
-			entries.forEach(([branch, items]) => {
-				const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
-				safeItems.forEach(item => {
-					rows.push([
-						branch,
-						item.description || item.product || 'Item',
-						Number(item.quantity || item.currentStock || 0),
-						Number(item.reorderLevel || 0)
-					]);
-				});
-			});
-			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-			const blob = new Blob([csv], { type: 'text/csv' });
-			const link = document.createElement('a');
-			link.href = URL.createObjectURL(blob);
-			link.download = 'gm-branch-inventory.csv';
-			link.click();
-			URL.revokeObjectURL(link.href);
-		}
+                function exportGMInventoryReport() {
+                        let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
+                        if (!Object.keys(branchStock).length) {
+                                const legacy = safeParseFromStorage('branchInventory', '[]');
+                                branchStock = normaliseBranchInventoryData(legacy);
+                        }
+                        const entries = Object.entries(branchStock);
+                        if (!entries.length) {
+                                alert('No branch inventory data available to export.');
+                                return;
+                        }
+                        const rows = [['Branch', 'Product', 'Quantity', 'Reorder Level']];
+                        entries.forEach(([branch, items]) => {
+                                const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
+                                safeItems.forEach(item => {
+                                        rows.push([
+                                                branch,
+                                                item.description || item.product || 'Item',
+                                                Number(item.quantity || item.currentStock || 0),
+                                                Number(item.reorderLevel || 0)
+                                        ]);
+                                });
+                        });
+                        const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = 'gm-branch-inventory.csv';
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                }
 
         var countryStock = Array.isArray(window.countryStock) ? window.countryStock : [];
         window.countryStock = countryStock;
 
-		function exportCountryStock() {
-			loadStockData();
-			const data = Array.isArray(countryStock) ? countryStock : [];
-			if (!data.length) {
-				alert('No country stock data available to export.');
-				return;
-			}
-			const rows = [['Carton', 'Description', 'Batch', 'Expiry', 'Quantity']];
-			data.forEach(item => {
-				rows.push([
-					item.carton || item.cartonNo || item.cartons || '',
-					item.description || item.product || 'Item',
-					item.batch || item.batchNo || '',
-					item.expiry || item.expiryDate || '',
-					Number(item.quantity || item.totalCtns || item.count || 0)
-				]);
-			});
-			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-			const blob = new Blob([csv], { type: 'text/csv' });
-			const link = document.createElement('a');
-			link.href = URL.createObjectURL(blob);
-			link.download = 'country-stock.csv';
-			link.click();
-			URL.revokeObjectURL(link.href);
-		}
+                function exportCountryStock() {
+                        loadStockData();
+                        const data = Array.isArray(countryStock) ? countryStock : [];
+                        if (!data.length) {
+                                alert('No country stock data available to export.');
+                                return;
+                        }
+                        const rows = [['Carton', 'Description', 'Batch', 'Expiry', 'Quantity']];
+                        data.forEach(item => {
+                                rows.push([
+                                        item.carton || item.cartonNo || item.cartons || '',
+                                        item.description || item.product || 'Item',
+                                        item.batch || item.batchNo || '',
+                                        item.expiry || item.expiryDate || '',
+                                        Number(item.quantity || item.totalCtns || item.count || 0)
+                                ]);
+                        });
+                        const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = 'country-stock.csv';
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                }
 
-		const CRM_TAB_KEYS = {
-			communication: 'communication',
-			segmentation: 'segmentation',
-			workflows: 'workflows',
-			loyalty: 'loyalty'
-		};
+                const CRM_TAB_KEYS = {
+                        communication: 'communication',
+                        segmentation: 'segmentation',
+                        workflows: 'workflows',
+                        loyalty: 'loyalty'
+                };
 
-		function showCRMTab(tabName) {
-			const key = (tabName || 'communication').toLowerCase();
-			document.querySelectorAll('#crm .crm-subtab').forEach(subtab => {
-				subtab.style.display = 'none';
-				subtab.classList.remove('active');
-			});
-			document.querySelectorAll('#crm .tabs .tab-button').forEach(button => {
-				if (!button) return;
-				const label = (button.textContent || '').toLowerCase();
-				if (label.includes(key)) {
-					button.classList.add('active');
-				} else {
-					button.classList.remove('active');
-				}
-			});
-			const target = document.getElementById(`crm-${CRM_TAB_KEYS[key] || 'communication'}`);
-			if (target) {
-				target.style.display = 'block';
-				target.classList.add('active');
-			}
-			switch (key) {
-				case 'segmentation':
-					refreshSegmentation();
-					break;
-				case 'workflows':
-					refreshWorkflows();
-					break;
-				case 'loyalty':
-					refreshLoyaltyData();
-					break;
-				default:
-					refreshCRMCommunication();
-			}
-		}
+                function showCRMTab(tabName) {
+                        const key = (tabName || 'communication').toLowerCase();
+                        document.querySelectorAll('#crm .crm-subtab').forEach(subtab => {
+                                subtab.style.display = 'none';
+                                subtab.classList.remove('active');
+                        });
+                        document.querySelectorAll('#crm .tabs .tab-button').forEach(button => {
+                                if (!button) return;
+                                const label = (button.textContent || '').toLowerCase();
+                                if (label.includes(key)) {
+                                        button.classList.add('active');
+                                } else {
+                                        button.classList.remove('active');
+                                }
+                        });
+                        const target = document.getElementById(`crm-${CRM_TAB_KEYS[key] || 'communication'}`);
+                        if (target) {
+                                target.style.display = 'block';
+                                target.classList.add('active');
+                        }
+                        switch (key) {
+                                case 'segmentation':
+                                        refreshSegmentation();
+                                        break;
+                                case 'workflows':
+                                        refreshWorkflows();
+                                        break;
+                                case 'loyalty':
+                                        refreshLoyaltyData();
+                                        break;
+                                default:
+                                        refreshCRMCommunication();
+                        }
+                }
 
-		function persistCRMData(key, value) {
-			try {
-				localStorage.setItem(key, JSON.stringify(value));
-			} catch (_) {}
-		}
+                function persistCRMData(key, value) {
+                        try {
+                                localStorage.setItem(key, JSON.stringify(value));
+                        } catch (_) {}
+                }
 
-		function getCRMClientsList() {
-			let list = (Array.isArray(clients) && clients.length) ? clients : safeParseFromStorage('dyna_clients', '[]');
-			if (!Array.isArray(list)) list = [];
-			return list.map(client => {
-				const identifier = (client.referenceNumber || client.id || client.nbNumber || client.fullName || '').toString();
-				return {
-					id: identifier || `client-${Math.random().toString(36).slice(2, 8)}`,
-					referenceNumber: client.referenceNumber || client.id || '',
-					fullName: client.fullName || client.name || 'Client',
-					phone: client.phone || '',
-					email: client.email || '',
-					membershipStatus: client.membershipStatus || 'referred',
-					createdAt: client.createdAt || client.timestamp || client.firstVisit || null,
-					dateOfBirth: client.dateOfBirth || client.dob || null
-				};
-			});
-		}
+                function getCRMClientsList() {
+                        let list = (Array.isArray(clients) && clients.length) ? clients : safeParseFromStorage('dyna_clients', '[]');
+                        if (!Array.isArray(list)) list = [];
+                        return list.map(client => {
+                                const identifier = (client.referenceNumber || client.id || client.nbNumber || client.fullName || '').toString();
+                                return {
+                                        id: identifier || `client-${Math.random().toString(36).slice(2, 8)}`,
+                                        referenceNumber: client.referenceNumber || client.id || '',
+                                        fullName: client.fullName || client.name || 'Client',
+                                        phone: client.phone || '',
+                                        email: client.email || '',
+                                        membershipStatus: client.membershipStatus || 'referred',
+                                        createdAt: client.createdAt || client.timestamp || client.firstVisit || null,
+                                        dateOfBirth: client.dateOfBirth || client.dob || null
+                                };
+                        });
+                }
 
-		function populateCRMClientSelect(force = false) {
-			const select = document.getElementById('crmClientSelect');
-			if (!select) return;
-			if (!force && select.dataset.populated === 'true') return;
-			const currentValue = select.value;
-			select.innerHTML = '<option value="">Select Client...</option>';
-			const clients = getCRMClientsList().sort((a, b) => a.fullName.localeCompare(b.fullName));
-			clients.forEach(client => {
-				const option = document.createElement('option');
-				option.value = client.id;
-				option.textContent = client.fullName;
-				option.dataset.reference = client.referenceNumber || '';
-				select.appendChild(option);
-			});
-			if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
-				select.value = currentValue;
-			}
-			select.dataset.populated = 'true';
-		}
+                function populateCRMClientSelect(force = false) {
+                        const select = document.getElementById('crmClientSelect');
+                        if (!select) return;
+                        if (!force && select.dataset.populated === 'true') return;
+                        const currentValue = select.value;
+                        select.innerHTML = '<option value="">Select Client...</option>';
+                        const clients = getCRMClientsList().sort((a, b) => a.fullName.localeCompare(b.fullName));
+                        clients.forEach(client => {
+                                const option = document.createElement('option');
+                                option.value = client.id;
+                                option.textContent = client.fullName;
+                                option.dataset.reference = client.referenceNumber || '';
+                                select.appendChild(option);
+                        });
+                        if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+                                select.value = currentValue;
+                        }
+                        select.dataset.populated = 'true';
+                }
 
-		function buildCRMCustomerInsights() {
-			const insights = new Map();
-			const clientList = getCRMClientsList();
-			clientList.forEach(client => {
-				insights.set(client.id, {
-					client,
-					totalSpent: 0,
-					purchaseCount: 0,
-					lastPurchase: null,
-					createdAt: client.createdAt
-				});
-			});
-			const reportList = Array.isArray(reports) ? reports : [];
-			reportList.forEach(report => {
-				const reference = report.clientId || report.clientReferenceNumber || report.referenceNumber || (report.clientInfo && report.clientInfo.referenceNumber);
-				if (!reference) return;
-				let key = reference;
-				if (!insights.has(key)) {
-					const matchingClient = clientList.find(c => c.referenceNumber === reference || c.fullName === (report.clientName || report.clientInfo?.fullName));
-					if (matchingClient) key = matchingClient.id;
-				}
-				const bucket = insights.get(key);
-				if (!bucket) return;
-				const total = typeof calculateReportTotal === 'function' ? calculateReportTotal(report) : Number(report.total || 0);
-				bucket.totalSpent += Number(total || 0);
-				bucket.purchaseCount += 1;
-				const purchaseDate = report.date || report.createdAt || report.timestamp;
-				if (purchaseDate) {
-					const date = new Date(purchaseDate);
-					if (!bucket.lastPurchase || date > new Date(bucket.lastPurchase)) {
-						bucket.lastPurchase = date.toISOString();
-					}
-				}
-			});
-			return insights;
-		}
+                function buildCRMCustomerInsights() {
+                        const insights = new Map();
+                        const clientList = getCRMClientsList();
+                        clientList.forEach(client => {
+                                insights.set(client.id, {
+                                        client,
+                                        totalSpent: 0,
+                                        purchaseCount: 0,
+                                        lastPurchase: null,
+                                        createdAt: client.createdAt
+                                });
+                        });
+                        const reportList = Array.isArray(reports) ? reports : [];
+                        reportList.forEach(report => {
+                                const reference = report.clientId || report.clientReferenceNumber || report.referenceNumber || (report.clientInfo && report.clientInfo.referenceNumber);
+                                if (!reference) return;
+                                let key = reference;
+                                if (!insights.has(key)) {
+                                        const matchingClient = clientList.find(c => c.referenceNumber === reference || c.fullName === (report.clientName || report.clientInfo?.fullName));
+                                        if (matchingClient) key = matchingClient.id;
+                                }
+                                const bucket = insights.get(key);
+                                if (!bucket) return;
+                                const total = typeof calculateReportTotal === 'function' ? calculateReportTotal(report) : Number(report.total || 0);
+                                bucket.totalSpent += Number(total || 0);
+                                bucket.purchaseCount += 1;
+                                const purchaseDate = report.date || report.createdAt || report.timestamp;
+                                if (purchaseDate) {
+                                        const date = new Date(purchaseDate);
+                                        if (!bucket.lastPurchase || date > new Date(bucket.lastPurchase)) {
+                                                bucket.lastPurchase = date.toISOString();
+                                        }
+                                }
+                        });
+                        return insights;
+                }
 
-		function loadClientCommunication(clientId) {
-			populateCRMClientSelect();
-			const select = document.getElementById('crmClientSelect');
-			const targetId = clientId || select?.value || '';
-			if (select && targetId && select.value !== targetId) {
-				select.value = targetId;
-			}
-			const overview = document.getElementById('crmClientOverview');
-			const timeline = document.getElementById('crmInteractionTimeline');
-			if (!targetId) {
-				if (overview) overview.style.display = 'none';
-				if (timeline) timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">Select a client to view communication history</p>';
-				return;
-			}
-			const clientList = getCRMClientsList();
-			const client = clientList.find(c => c.id === targetId) || clientList.find(c => c.referenceNumber === targetId);
-			const insights = buildCRMCustomerInsights();
-			const insight = insights.get(targetId) || { totalSpent: 0, purchaseCount: 0, lastPurchase: null, client: client || {} };
-			const interactions = crmPortalInteractions
-				.filter(interaction => interaction.clientId === targetId)
-				.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-			if (overview) {
-				overview.style.display = 'block';
-				const nameEl = document.getElementById('crmClientName');
-				if (nameEl) nameEl.textContent = (client && client.fullName) || 'Client';
-				const totalInteractionsEl = document.getElementById('crmTotalInteractions');
-				if (totalInteractionsEl) totalInteractionsEl.textContent = interactions.length.toString();
-				const lastContactEl = document.getElementById('crmLastContact');
-				if (lastContactEl) lastContactEl.textContent = interactions.length ? new Date(interactions[0].createdAt).toLocaleString() : 'Never';
-				const purchaseCountEl = document.getElementById('crmPurchaseCount');
-				if (purchaseCountEl) purchaseCountEl.textContent = (insight.purchaseCount || 0).toString();
-				const totalSpentEl = document.getElementById('crmTotalSpent');
-				if (totalSpentEl) totalSpentEl.textContent = `N$ ${(insight.totalSpent || 0).toFixed(2)}`;
-			}
-			if (timeline) {
-				if (!interactions.length) {
-					timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No interactions logged yet.</p>';
-				} else {
-					timeline.innerHTML = interactions.map(interaction => `
-						<div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px;">
-							<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-								<div>
-									<strong>${(interaction.channel || 'interaction').toUpperCase()}</strong>
-									<p style="margin:6px 0;color:#555;">${interaction.notes || ''}</p>
-								</div>
-								<div style="text-align:right; font-size:0.8rem; color:#999;">
-									<div>${interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : ''}</div>
-									<div>${interaction.createdBy || 'CRM Portal'}</div>
-								</div>
-							</div>
-						</div>
-					`).join('');
-				}
-			}
-		}
+                function loadClientCommunication(clientId) {
+                        populateCRMClientSelect();
+                        const select = document.getElementById('crmClientSelect');
+                        const targetId = clientId || select?.value || '';
+                        if (select && targetId && select.value !== targetId) {
+                                select.value = targetId;
+                        }
+                        const overview = document.getElementById('crmClientOverview');
+                        const timeline = document.getElementById('crmInteractionTimeline');
+                        if (!targetId) {
+                                if (overview) overview.style.display = 'none';
+                                if (timeline) timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">Select a client to view communication history</p>';
+                                return;
+                        }
+                        const clientList = getCRMClientsList();
+                        const client = clientList.find(c => c.id === targetId) || clientList.find(c => c.referenceNumber === targetId);
+                        const insights = buildCRMCustomerInsights();
+                        const insight = insights.get(targetId) || { totalSpent: 0, purchaseCount: 0, lastPurchase: null, client: client || {} };
+                        const interactions = crmPortalInteractions
+                                .filter(interaction => interaction.clientId === targetId)
+                                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                        if (overview) {
+                                overview.style.display = 'block';
+                                const nameEl = document.getElementById('crmClientName');
+                                if (nameEl) nameEl.textContent = (client && client.fullName) || 'Client';
+                                const totalInteractionsEl = document.getElementById('crmTotalInteractions');
+                                if (totalInteractionsEl) totalInteractionsEl.textContent = interactions.length.toString();
+                                const lastContactEl = document.getElementById('crmLastContact');
+                                if (lastContactEl) lastContactEl.textContent = interactions.length ? new Date(interactions[0].createdAt).toLocaleString() : 'Never';
+                                const purchaseCountEl = document.getElementById('crmPurchaseCount');
+                                if (purchaseCountEl) purchaseCountEl.textContent = (insight.purchaseCount || 0).toString();
+                                const totalSpentEl = document.getElementById('crmTotalSpent');
+                                if (totalSpentEl) totalSpentEl.textContent = `N$ ${(insight.totalSpent || 0).toFixed(2)}`;
+                        }
+                        if (timeline) {
+                                if (!interactions.length) {
+                                        timeline.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No interactions logged yet.</p>';
+                                } else {
+                                        timeline.innerHTML = interactions.map(interaction => `
+                                                <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px;">
+                                                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                                <div>
+                                                                        <strong>${(interaction.channel || 'interaction').toUpperCase()}</strong>
+                                                                        <p style="margin:6px 0;color:#555;">${interaction.notes || ''}</p>
+                                                                </div>
+                                                                <div style="text-align:right; font-size:0.8rem; color:#999;">
+                                                                        <div>${interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : ''}</div>
+                                                                        <div>${interaction.createdBy || 'CRM Portal'}</div>
+                                                                </div>
+                                                        </div>
+                                                </div>
+                                        `).join('');
+                                }
+                        }
+                }
 
-		function refreshCRMCommunication(force = false) {
-			populateCRMClientSelect(force);
-			const select = document.getElementById('crmClientSelect');
-			const targetId = select?.value || '';
-			loadClientCommunication(targetId);
-		}
+                function refreshCRMCommunication(force = false) {
+                        populateCRMClientSelect(force);
+                        const select = document.getElementById('crmClientSelect');
+                        const targetId = select?.value || '';
+                        loadClientCommunication(targetId);
+                }
 
-		function addClientInteraction() {
-			populateCRMClientSelect(true);
-			const select = document.getElementById('crmClientSelect');
-			if (!select || !select.value) {
-				alert('Please select a client before logging an interaction.');
-				return;
-			}
-			const channel = prompt('Interaction channel (call/email/whatsapp/visit)', 'call');
-			if (channel === null) return;
-			const notes = prompt('Interaction summary / notes:');
-			if (!notes) return;
-			const interaction = {
-				id: 'CRM-INT-' + Date.now(),
-				clientId: select.value,
-				clientName: select.options[select.selectedIndex]?.textContent || 'Client',
-				channel: (channel || 'call').toLowerCase(),
-				notes: notes.trim(),
-				createdAt: new Date().toISOString(),
-				createdBy: currentUser?.fullName || 'CRM Portal'
-			};
-			crmPortalInteractions.push(interaction);
-			persistCRMData(CRM_STORAGE_KEYS.interactions, crmPortalInteractions);
-			logCRMWorkflowEvent('interaction_logged', { clientId: interaction.clientId, channel: interaction.channel });
-			loadClientCommunication(interaction.clientId);
-			refreshWorkflows();
-		}
+                function addClientInteraction() {
+                        populateCRMClientSelect(true);
+                        const select = document.getElementById('crmClientSelect');
+                        if (!select || !select.value) {
+                                alert('Please select a client before logging an interaction.');
+                                return;
+                        }
+                        const channel = prompt('Interaction channel (call/email/whatsapp/visit)', 'call');
+                        if (channel === null) return;
+                        const notes = prompt('Interaction summary / notes:');
+                        if (!notes) return;
+                        const interaction = {
+                                id: 'CRM-INT-' + Date.now(),
+                                clientId: select.value,
+                                clientName: select.options[select.selectedIndex]?.textContent || 'Client',
+                                channel: (channel || 'call').toLowerCase(),
+                                notes: notes.trim(),
+                                createdAt: new Date().toISOString(),
+                                createdBy: currentUser?.fullName || 'CRM Portal'
+                        };
+                        crmPortalInteractions.push(interaction);
+                        persistCRMData(CRM_STORAGE_KEYS.interactions, crmPortalInteractions);
+                        logCRMWorkflowEvent('interaction_logged', { clientId: interaction.clientId, channel: interaction.channel });
+                        loadClientCommunication(interaction.clientId);
+                        refreshWorkflows();
+                }
 
-		function exportClientHistory() {
-			const select = document.getElementById('crmClientSelect');
-			const targetId = select?.value || '';
-			const interactions = targetId
-				? crmPortalInteractions.filter(interaction => interaction.clientId === targetId)
-				: crmPortalInteractions;
-			if (!interactions.length) {
-				alert('No client interactions available to export.');
-				return;
-			}
-			const rows = [['Client', 'Channel', 'Notes', 'Created', 'Logged By']];
-			interactions.forEach(interaction => {
-				rows.push([
-					interaction.clientName || 'Client',
-					interaction.channel || 'interaction',
-					interaction.notes || '',
-					interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : '',
-					interaction.createdBy || 'CRM Portal'
-				]);
-			});
-			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-			const blob = new Blob([csv], { type: 'text/csv' });
-			const link = document.createElement('a');
-			link.href = URL.createObjectURL(blob);
-			link.download = targetId ? `client-${targetId}-history.csv` : 'crm-client-history.csv';
-			link.click();
-			URL.revokeObjectURL(link.href);
-		}
+                function exportClientHistory() {
+                        const select = document.getElementById('crmClientSelect');
+                        const targetId = select?.value || '';
+                        const interactions = targetId
+                                ? crmPortalInteractions.filter(interaction => interaction.clientId === targetId)
+                                : crmPortalInteractions;
+                        if (!interactions.length) {
+                                alert('No client interactions available to export.');
+                                return;
+                        }
+                        const rows = [['Client', 'Channel', 'Notes', 'Created', 'Logged By']];
+                        interactions.forEach(interaction => {
+                                rows.push([
+                                        interaction.clientName || 'Client',
+                                        interaction.channel || 'interaction',
+                                        interaction.notes || '',
+                                        interaction.createdAt ? new Date(interaction.createdAt).toLocaleString() : '',
+                                        interaction.createdBy || 'CRM Portal'
+                                ]);
+                        });
+                        const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = targetId ? `client-${targetId}-history.csv` : 'crm-client-history.csv';
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                }
 
-		function renderSegmentList(elementId, members, emptyMessage) {
-			const container = document.getElementById(elementId);
-			if (!container) return;
-			if (!members.length) {
-				container.innerHTML = `<p style="text-align: center; color: #7f8c8d; padding: 20px;">${emptyMessage}</p>`;
-				return;
-			}
-			container.innerHTML = members.slice(0, 30).map(member => {
-				const lastPurchase = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
-				return `
-					<div class="client-card">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-							<div>
-								<strong>${member.client.fullName}</strong>
-								<div style="font-size:0.85rem; color:#666;">Spent N$ ${(member.totalSpent || 0).toFixed(2)}</div>
-							</div>
-							<div style="text-align:right; font-size:0.75rem; color:#999;">Last purchase: ${lastPurchase}</div>
-						</div>
-					</div>
-				`;
-			}).join('');
-		}
+                function renderSegmentList(elementId, members, emptyMessage) {
+                        const container = document.getElementById(elementId);
+                        if (!container) return;
+                        if (!members.length) {
+                                container.innerHTML = `<p style="text-align: center; color: #7f8c8d; padding: 20px;">${emptyMessage}</p>`;
+                                return;
+                        }
+                        container.innerHTML = members.slice(0, 30).map(member => {
+                                const lastPurchase = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
+                                return `
+                                        <div class="client-card">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                        <div>
+                                                                <strong>${member.client.fullName}</strong>
+                                                                <div style="font-size:0.85rem; color:#666;">Spent N$ ${(member.totalSpent || 0).toFixed(2)}</div>
+                                                        </div>
+                                                        <div style="text-align:right; font-size:0.75rem; color:#999;">Last purchase: ${lastPurchase}</div>
+                                                </div>
+                                        </div>
+                                `;
+                        }).join('');
+                }
 
-		function refreshSegmentation() {
-			const insights = Array.from(buildCRMCustomerInsights().values());
-			const vip = insights.filter(item => item.totalSpent >= 10000);
-			const atRisk = insights.filter(item => {
-				if (!item.lastPurchase) return false;
-				const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
-				return days > 90;
-			});
-			const active = insights.filter(item => {
-				if (!item.lastPurchase) return false;
-				const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
-				return days <= 30;
-			});
-			const newClients = insights.filter(item => {
-				if (!item.createdAt) return false;
-				const days = (Date.now() - new Date(item.createdAt).getTime()) / 86400000;
-				return days <= 30;
-			});
-			const setText = (id, value) => {
-				const el = document.getElementById(id);
-				if (el) el.textContent = value.toString();
-			};
-			setText('vipClientCount', vip.length);
-			setText('atRiskClientCount', atRisk.length);
-			setText('activeClientCount', active.length);
-			setText('newClientCount', newClients.length);
-			renderSegmentList('vipClientsList', vip, 'No VIP clients identified yet.');
-			renderSegmentList('atRiskClientsList', atRisk, 'No at-risk clients at the moment.');
-			renderSegmentList('activeClientsList', active, 'No active clients in the last 30 days.');
-			renderSegmentList('purchaseBehaviorAnalysis', insights.slice(0, 20), 'No purchase behavior data yet.');
-		}
+                function refreshSegmentation() {
+                        const insights = Array.from(buildCRMCustomerInsights().values());
+                        const vip = insights.filter(item => item.totalSpent >= 10000);
+                        const atRisk = insights.filter(item => {
+                                if (!item.lastPurchase) return false;
+                                const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
+                                return days > 90;
+                        });
+                        const active = insights.filter(item => {
+                                if (!item.lastPurchase) return false;
+                                const days = (Date.now() - new Date(item.lastPurchase).getTime()) / 86400000;
+                                return days <= 30;
+                        });
+                        const newClients = insights.filter(item => {
+                                if (!item.createdAt) return false;
+                                const days = (Date.now() - new Date(item.createdAt).getTime()) / 86400000;
+                                return days <= 30;
+                        });
+                        const setText = (id, value) => {
+                                const el = document.getElementById(id);
+                                if (el) el.textContent = value.toString();
+                        };
+                        setText('vipClientCount', vip.length);
+                        setText('atRiskClientCount', atRisk.length);
+                        setText('activeClientCount', active.length);
+                        setText('newClientCount', newClients.length);
+                        renderSegmentList('vipClientsList', vip, 'No VIP clients identified yet.');
+                        renderSegmentList('atRiskClientsList', atRisk, 'No at-risk clients at the moment.');
+                        renderSegmentList('activeClientsList', active, 'No active clients in the last 30 days.');
+                        renderSegmentList('purchaseBehaviorAnalysis', insights.slice(0, 20), 'No purchase behavior data yet.');
+                }
 
-		function exportSegmentationReport() {
-			const insights = Array.from(buildCRMCustomerInsights().values());
-			if (!insights.length) {
-				alert('No segmentation data available to export.');
-				return;
-			}
-			const rows = [['Client', 'Total Spent', 'Purchase Count', 'Last Purchase']];
-			insights.forEach(item => {
-				rows.push([
-					item.client.fullName,
-					item.totalSpent.toFixed(2),
-					item.purchaseCount,
-					item.lastPurchase ? new Date(item.lastPurchase).toLocaleDateString() : 'N/A'
-				]);
-			});
-			const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-			const blob = new Blob([csv], { type: 'text/csv' });
-			const link = document.createElement('a');
-			link.href = URL.createObjectURL(blob);
-			link.download = 'crm-segmentation-report.csv';
-			link.click();
-			URL.revokeObjectURL(link.href);
-		}
+                function exportSegmentationReport() {
+                        const insights = Array.from(buildCRMCustomerInsights().values());
+                        if (!insights.length) {
+                                alert('No segmentation data available to export.');
+                                return;
+                        }
+                        const rows = [['Client', 'Total Spent', 'Purchase Count', 'Last Purchase']];
+                        insights.forEach(item => {
+                                rows.push([
+                                        item.client.fullName,
+                                        item.totalSpent.toFixed(2),
+                                        item.purchaseCount,
+                                        item.lastPurchase ? new Date(item.lastPurchase).toLocaleDateString() : 'N/A'
+                                ]);
+                        });
+                        const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = 'crm-segmentation-report.csv';
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                }
 
-		function logCRMWorkflowEvent(type, context = {}) {
-			const entry = {
-				id: 'CRM-WF-LOG-' + Date.now(),
-				type,
-				context,
-				createdAt: new Date().toISOString(),
-				runBy: currentUser?.fullName || 'CRM Portal'
-			};
-			crmPortalWorkflowLog.push(entry);
-			persistCRMData(CRM_STORAGE_KEYS.workflowLog, crmPortalWorkflowLog.slice(-200));
-		}
+                function logCRMWorkflowEvent(type, context = {}) {
+                        const entry = {
+                                id: 'CRM-WF-LOG-' + Date.now(),
+                                type,
+                                context,
+                                createdAt: new Date().toISOString(),
+                                runBy: currentUser?.fullName || 'CRM Portal'
+                        };
+                        crmPortalWorkflowLog.push(entry);
+                        persistCRMData(CRM_STORAGE_KEYS.workflowLog, crmPortalWorkflowLog.slice(-200));
+                }
 
-		function createWorkflow() {
-			const type = prompt('Workflow type (welcome_email/birthday/reorder/followup)', 'welcome_email');
-			if (!type) return;
-			const description = prompt('Workflow description or target audience:', 'Automated workflow');
-			const workflow = {
-				id: 'CRM-WF-' + Date.now(),
-				type: type.toLowerCase(),
-				description: description || '',
-				active: true,
-				createdAt: new Date().toISOString()
-			};
-			crmPortalWorkflows.push(workflow);
-			persistCRMData(CRM_STORAGE_KEYS.workflows, crmPortalWorkflows);
-			logCRMWorkflowEvent('workflow_created', { type: workflow.type });
-			refreshWorkflows();
-			alert('✅ Workflow created. Configure channel-specific settings via the buttons below.');
-		}
+                function createWorkflow() {
+                        const type = prompt('Workflow type (welcome_email/birthday/reorder/followup)', 'welcome_email');
+                        if (!type) return;
+                        const description = prompt('Workflow description or target audience:', 'Automated workflow');
+                        const workflow = {
+                                id: 'CRM-WF-' + Date.now(),
+                                type: type.toLowerCase(),
+                                description: description || '',
+                                active: true,
+                                createdAt: new Date().toISOString()
+                        };
+                        crmPortalWorkflows.push(workflow);
+                        persistCRMData(CRM_STORAGE_KEYS.workflows, crmPortalWorkflows);
+                        logCRMWorkflowEvent('workflow_created', { type: workflow.type });
+                        refreshWorkflows();
+                        alert('✅ Workflow created. Configure channel-specific settings via the buttons below.');
+                }
 
-		function refreshWorkflows() {
-			const interactions = crmPortalInteractions || [];
-			const todayIso = new Date().toISOString().split('T')[0];
-			const emailsToday = interactions.filter(i => i.channel === 'email' && i.createdAt?.startsWith(todayIso)).length;
-			const emailsTotal = interactions.filter(i => i.channel === 'email').length;
-			const clients = getCRMClientsList();
-			const today = new Date();
-			const birthdayCount = clients.filter(client => {
-				if (!client.dateOfBirth) return false;
-				const dob = new Date(client.dateOfBirth);
-				return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
-			}).length;
-			const birthdayGreetingsToday = interactions.filter(i => i.notes && /birthday/i.test(i.notes) && i.createdAt?.startsWith(todayIso)).length;
-			const reorderRemindersToday = interactions.filter(i => i.channel === 'whatsapp' && /reorder/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
-			const reorderWorkflows = crmPortalWorkflows.filter(w => w.type === 'reorder' && w.active).length;
-			const followupsToday = interactions.filter(i => i.channel === 'call' && /follow/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
-			const followupWorkflows = crmPortalWorkflows.filter(w => w.type === 'followup' && w.active).length;
-			const setText = (id, value) => {
-				const el = document.getElementById(id);
-				if (el) el.textContent = value.toString();
-			};
-			setText('welcomeEmailsToday', emailsToday);
-			setText('welcomeEmailsTotal', emailsTotal);
-			setText('birthdaysToday', birthdayCount);
-			setText('birthdayGreetingsToday', birthdayGreetingsToday);
-			setText('reorderRemindersToday', reorderRemindersToday);
-			setText('activeReminders', reorderWorkflows);
-			setText('followupsToday', followupsToday);
-			setText('pendingFollowups', followupWorkflows);
-			const logContainer = document.getElementById('workflowLog');
-			if (logContainer) {
-				if (!crmPortalWorkflowLog.length) {
-					logContainer.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No workflow executions yet</p>';
-				} else {
-					logContainer.innerHTML = crmPortalWorkflowLog.slice(-25).reverse().map(entry => `
-						<div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px; margin-bottom:8px;">
-							<div style="font-weight:600; color:#1f2937;">${entry.type}</div>
-							<div style="font-size:0.8rem; color:#666;">${entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''} • ${entry.runBy || 'CRM Portal'}</div>
-							${entry.context && Object.keys(entry.context).length ? `<pre style="background:#f9fafb; padding:6px; border-radius:4px; font-size:0.75rem; color:#4b5563;">${JSON.stringify(entry.context, null, 2)}</pre>` : ''}
-						</div>
-					`).join('');
-				}
-			}
-		}
+                function refreshWorkflows() {
+                        const interactions = crmPortalInteractions || [];
+                        const todayIso = new Date().toISOString().split('T')[0];
+                        const emailsToday = interactions.filter(i => i.channel === 'email' && i.createdAt?.startsWith(todayIso)).length;
+                        const emailsTotal = interactions.filter(i => i.channel === 'email').length;
+                        const clients = getCRMClientsList();
+                        const today = new Date();
+                        const birthdayCount = clients.filter(client => {
+                                if (!client.dateOfBirth) return false;
+                                const dob = new Date(client.dateOfBirth);
+                                return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+                        }).length;
+                        const birthdayGreetingsToday = interactions.filter(i => i.notes && /birthday/i.test(i.notes) && i.createdAt?.startsWith(todayIso)).length;
+                        const reorderRemindersToday = interactions.filter(i => i.channel === 'whatsapp' && /reorder/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
+                        const reorderWorkflows = crmPortalWorkflows.filter(w => w.type === 'reorder' && w.active).length;
+                        const followupsToday = interactions.filter(i => i.channel === 'call' && /follow/i.test(i.notes || '') && i.createdAt?.startsWith(todayIso)).length;
+                        const followupWorkflows = crmPortalWorkflows.filter(w => w.type === 'followup' && w.active).length;
+                        const setText = (id, value) => {
+                                const el = document.getElementById(id);
+                                if (el) el.textContent = value.toString();
+                        };
+                        setText('welcomeEmailsToday', emailsToday);
+                        setText('welcomeEmailsTotal', emailsTotal);
+                        setText('birthdaysToday', birthdayCount);
+                        setText('birthdayGreetingsToday', birthdayGreetingsToday);
+                        setText('reorderRemindersToday', reorderRemindersToday);
+                        setText('activeReminders', reorderWorkflows);
+                        setText('followupsToday', followupsToday);
+                        setText('pendingFollowups', followupWorkflows);
+                        const logContainer = document.getElementById('workflowLog');
+                        if (logContainer) {
+                                if (!crmPortalWorkflowLog.length) {
+                                        logContainer.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No workflow executions yet</p>';
+                                } else {
+                                        logContainer.innerHTML = crmPortalWorkflowLog.slice(-25).reverse().map(entry => `
+                                                <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px; margin-bottom:8px;">
+                                                        <div style="font-weight:600; color:#1f2937;">${entry.type}</div>
+                                                        <div style="font-size:0.8rem; color:#666;">${entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''} • ${entry.runBy || 'CRM Portal'}</div>
+                                                        ${entry.context && Object.keys(entry.context).length ? `<pre style="background:#f9fafb; padding:6px; border-radius:4px; font-size:0.75rem; color:#4b5563;">${JSON.stringify(entry.context, null, 2)}</pre>` : ''}
+                                                </div>
+                                        `).join('');
+                                }
+                        }
+                }
 
-		function configureWelcomeEmails() {
-			const message = prompt('Enter welcome email message template:', 'Welcome to Dynapharm Namibia!');
-			if (message === null) return;
-			logCRMWorkflowEvent('configure_welcome_email', { message });
-			alert('✅ Welcome email settings saved locally.');
-		}
+                function configureWelcomeEmails() {
+                        const message = prompt('Enter welcome email message template:', 'Welcome to Dynapharm Namibia!');
+                        if (message === null) return;
+                        logCRMWorkflowEvent('configure_welcome_email', { message });
+                        alert('✅ Welcome email settings saved locally.');
+                }
 
-		function configureBirthdayGreetings() {
-			const template = prompt('Enter birthday greeting template:', 'Happy Birthday from Dynapharm Namibia!');
-			if (template === null) return;
-			logCRMWorkflowEvent('configure_birthday_greeting', { template });
-			alert('✅ Birthday greeting configuration saved locally.');
-		}
+                function configureBirthdayGreetings() {
+                        const template = prompt('Enter birthday greeting template:', 'Happy Birthday from Dynapharm Namibia!');
+                        if (template === null) return;
+                        logCRMWorkflowEvent('configure_birthday_greeting', { template });
+                        alert('✅ Birthday greeting configuration saved locally.');
+                }
 
-		function configureReorderReminders() {
-			const cadence = prompt('How many days after purchase should reorder reminders be sent?', '30');
-			if (cadence === null) return;
-			logCRMWorkflowEvent('configure_reorder_reminder', { cadence });
-			alert('✅ Reorder reminder cadence saved locally.');
-		}
+                function configureReorderReminders() {
+                        const cadence = prompt('How many days after purchase should reorder reminders be sent?', '30');
+                        if (cadence === null) return;
+                        logCRMWorkflowEvent('configure_reorder_reminder', { cadence });
+                        alert('✅ Reorder reminder cadence saved locally.');
+                }
 
-		function configureFollowups() {
-			const message = prompt('Enter follow-up prompt template:', 'Checking in after your recent consultation.');
-			if (message === null) return;
-			logCRMWorkflowEvent('configure_followup', { message });
-			alert('✅ Follow-up configuration saved locally.');
-		}
+                function configureFollowups() {
+                        const message = prompt('Enter follow-up prompt template:', 'Checking in after your recent consultation.');
+                        if (message === null) return;
+                        logCRMWorkflowEvent('configure_followup', { message });
+                        alert('✅ Follow-up configuration saved locally.');
+                }
 
-		function determineLoyaltyTier(totalSpent) {
-			const value = Number(totalSpent || 0);
-			if (value >= 25000) return 'Platinum';
-			if (value >= 10000) return 'Gold';
-			if (value >= 2500) return 'Silver';
-			if (value > 0) return 'Bronze';
-			return 'Visitor';
-		}
+                function determineLoyaltyTier(totalSpent) {
+                        const value = Number(totalSpent || 0);
+                        if (value >= 25000) return 'Platinum';
+                        if (value >= 10000) return 'Gold';
+                        if (value >= 2500) return 'Silver';
+                        if (value > 0) return 'Bronze';
+                        return 'Visitor';
+                }
 
-		function ensureLoyaltyMembersSeeded() {
-			if (Array.isArray(crmLoyaltyMembers) && crmLoyaltyMembers.length) return;
-			const insights = Array.from(buildCRMCustomerInsights().values()).filter(item => item.totalSpent > 0);
-			crmLoyaltyMembers = insights
-				.map(item => ({
-					id: item.client.id,
-					clientId: item.client.id,
-					name: item.client.fullName,
-					totalSpent: item.totalSpent,
-					lastPurchase: item.lastPurchase,
-					tier: determineLoyaltyTier(item.totalSpent)
-				}))
-				.sort((a, b) => b.totalSpent - a.totalSpent);
-			persistCRMData(CRM_STORAGE_KEYS.loyalty, crmLoyaltyMembers);
-		}
+                function ensureLoyaltyMembersSeeded() {
+                        if (Array.isArray(crmLoyaltyMembers) && crmLoyaltyMembers.length) return;
+                        const insights = Array.from(buildCRMCustomerInsights().values()).filter(item => item.totalSpent > 0);
+                        crmLoyaltyMembers = insights
+                                .map(item => ({
+                                        id: item.client.id,
+                                        clientId: item.client.id,
+                                        name: item.client.fullName,
+                                        totalSpent: item.totalSpent,
+                                        lastPurchase: item.lastPurchase,
+                                        tier: determineLoyaltyTier(item.totalSpent)
+                                }))
+                                .sort((a, b) => b.totalSpent - a.totalSpent);
+                        persistCRMData(CRM_STORAGE_KEYS.loyalty, crmLoyaltyMembers);
+                }
 
-		function renderLoyaltyMembersList(members) {
-			const listEl = document.getElementById('loyaltyMembersList');
-			if (!listEl) return;
-			if (!members.length) {
-				listEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No loyalty members yet.</p>';
-				return;
-			}
-			listEl.innerHTML = members.slice(0, 100).map(member => {
-				const last = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
-				return `
-					<div class="client-card">
-						<div style="display:flex; justify-content:space-between; align-items:flex-start;">
-							<div>
-								<strong>${member.name}</strong>
-								<div style="font-size:0.8rem; color:#999;">Tier: ${member.tier}</div>
-							</div>
-							<div style="text-align:right;">
-								<div style="font-weight:600; color:#27ae60;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</div>
-								<div style="font-size:0.75rem; color:#999;">Last purchase: ${last}</div>
-							</div>
-						</div>
-					</div>
-				`;
-			}).join('');
-		}
+                function renderLoyaltyMembersList(members) {
+                        const listEl = document.getElementById('loyaltyMembersList');
+                        if (!listEl) return;
+                        if (!members.length) {
+                                listEl.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">No loyalty members yet.</p>';
+                                return;
+                        }
+                        listEl.innerHTML = members.slice(0, 100).map(member => {
+                                const last = member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A';
+                                return `
+                                        <div class="client-card">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                        <div>
+                                                                <strong>${member.name}</strong>
+                                                                <div style="font-size:0.8rem; color:#999;">Tier: ${member.tier}</div>
+                                                        </div>
+                                                        <div style="text-align:right;">
+                                                                <div style="font-weight:600; color:#27ae60;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</div>
+                                                                <div style="font-size:0.75rem; color:#999;">Last purchase: ${last}</div>
+                                                        </div>
+                                                </div>
+                                        </div>
+                                `;
+                        }).join('');
+                }
 
-		function refreshLoyaltyData() {
-			ensureLoyaltyMembersSeeded();
-			const tierCounts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
-			crmLoyaltyMembers.forEach(member => {
-				const tier = determineLoyaltyTier(member.totalSpent);
-				member.tier = tier;
-				if (tierCounts[tier] !== undefined) tierCounts[tier] += 1;
-			});
-			const setText = (id, value) => {
-				const el = document.getElementById(id);
-				if (el) el.textContent = value.toString();
-			};
-			setText('bronzeCount', tierCounts.Bronze);
-			setText('silverCount', tierCounts.Silver);
-			setText('goldCount', tierCounts.Gold);
-			setText('platinumCount', tierCounts.Platinum);
-			renderLoyaltyMembersList(crmLoyaltyMembers);
-		}
+                function refreshLoyaltyData() {
+                        ensureLoyaltyMembersSeeded();
+                        const tierCounts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
+                        crmLoyaltyMembers.forEach(member => {
+                                const tier = determineLoyaltyTier(member.totalSpent);
+                                member.tier = tier;
+                                if (tierCounts[tier] !== undefined) tierCounts[tier] += 1;
+                        });
+                        const setText = (id, value) => {
+                                const el = document.getElementById(id);
+                                if (el) el.textContent = value.toString();
+                        };
+                        setText('bronzeCount', tierCounts.Bronze);
+                        setText('silverCount', tierCounts.Silver);
+                        setText('goldCount', tierCounts.Gold);
+                        setText('platinumCount', tierCounts.Platinum);
+                        renderLoyaltyMembersList(crmLoyaltyMembers);
+                }
 
-		function showLoyaltyConfig() {
-			alert('Configure loyalty program tiers and rewards via the CRM portal configuration. Current thresholds: Bronze 0-2,499, Silver 2,500-9,999, Gold 10,000-24,999, Platinum 25,000+. Update "crm_portal_loyalty" in localStorage to persist custom tiers.');
-		}
+                function showLoyaltyConfig() {
+                        alert('Configure loyalty program tiers and rewards via the CRM portal configuration. Current thresholds: Bronze 0-2,499, Silver 2,500-9,999, Gold 10,000-24,999, Platinum 25,000+. Update "crm_portal_loyalty" in localStorage to persist custom tiers.');
+                }
 
-		function viewLoyaltyReport() {
-			ensureLoyaltyMembersSeeded();
-			const rows = crmLoyaltyMembers.slice(0, 50).map(member => `
-				<tr>
-					<td style="padding:6px; border:1px solid #e5e7eb;">${member.name}</td>
-					<td style="padding:6px; border:1px solid #e5e7eb;">${member.tier}</td>
-					<td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</td>
-					<td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">${member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A'}</td>
-				</tr>
-			`).join('');
-			openPrintWindow('Loyalty Program Report', `
-				<h1 style="margin-bottom:16px;">Loyalty Program Report</h1>
-				<table style="width:100%; border-collapse:collapse; font-size:12px;">
-					<thead>
-						<tr style="background:#f3f4f6;">
-							<th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Member</th>
-							<th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Tier</th>
-							<th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Total Spent</th>
-							<th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Last Purchase</th>
-						</tr>
-					</thead>
-					<tbody>${rows}</tbody>
-				</table>
-			`, { pageSize: 'A4', fontSize: '11pt' });
-		}
+                function viewLoyaltyReport() {
+                        ensureLoyaltyMembersSeeded();
+                        const rows = crmLoyaltyMembers.slice(0, 50).map(member => `
+                                <tr>
+                                        <td style="padding:6px; border:1px solid #e5e7eb;">${member.name}</td>
+                                        <td style="padding:6px; border:1px solid #e5e7eb;">${member.tier}</td>
+                                        <td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">N$ ${Number(member.totalSpent || 0).toFixed(2)}</td>
+                                        <td style="padding:6px; border:1px solid #e5e7eb; text-align:right;">${member.lastPurchase ? new Date(member.lastPurchase).toLocaleDateString() : 'N/A'}</td>
+                                </tr>
+                        `).join('');
+                        openPrintWindow('Loyalty Program Report', `
+                                <h1 style="margin-bottom:16px;">Loyalty Program Report</h1>
+                                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                                        <thead>
+                                                <tr style="background:#f3f4f6;">
+                                                        <th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Member</th>
+                                                        <th style="padding:6px; border:1px solid #e5e7eb; text-align:left;">Tier</th>
+                                                        <th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Total Spent</th>
+                                                        <th style="padding:6px; border:1px solid #e5e7eb; text-align:right;">Last Purchase</th>
+                                                </tr>
+                                        </thead>
+                                        <tbody>${rows}</tbody>
+                                </table>
+                        `, { pageSize: 'A4', fontSize: '11pt' });
+                }
 
-		function filterLoyaltyMembers() {
-			const query = document.getElementById('loyaltySearch')?.value?.toLowerCase() || '';
-			if (!Array.isArray(crmLoyaltyMembers)) return;
-			if (!query) {
-				renderLoyaltyMembersList(crmLoyaltyMembers);
-				return;
-			}
-			const filtered = crmLoyaltyMembers.filter(member => {
-				const name = (member.name || '').toLowerCase();
-				const tier = (member.tier || '').toLowerCase();
-				return name.includes(query) || tier.includes(query);
-			});
-			renderLoyaltyMembersList(filtered);
-		}
+                function filterLoyaltyMembers() {
+                        const query = document.getElementById('loyaltySearch')?.value?.toLowerCase() || '';
+                        if (!Array.isArray(crmLoyaltyMembers)) return;
+                        if (!query) {
+                                renderLoyaltyMembersList(crmLoyaltyMembers);
+                                return;
+                        }
+                        const filtered = crmLoyaltyMembers.filter(member => {
+                                const name = (member.name || '').toLowerCase();
+                                const tier = (member.tier || '').toLowerCase();
+                                return name.includes(query) || tier.includes(query);
+                        });
+                        renderLoyaltyMembersList(filtered);
+                }
 
-		function showTimeSlotManagement() {
-			const currentMorning = timeSlots.morning || {};
-			const currentAfternoon = timeSlots.afternoon || {};
-			const morningStart = prompt('Morning session start (HH:MM)', currentMorning.start || '08:00');
-			if (!morningStart) return;
-			const morningEnd = prompt('Morning session end (HH:MM)', currentMorning.end || '12:00') || currentMorning.end || '12:00';
-			const morningInterval = parseInt(prompt('Morning interval (minutes)', String(currentMorning.interval || 30)), 10) || 30;
-			const afternoonStart = prompt('Afternoon session start (HH:MM)', currentAfternoon.start || '13:00') || currentAfternoon.start || '13:00';
-			const afternoonEnd = prompt('Afternoon session end (HH:MM)', currentAfternoon.end || '17:00') || currentAfternoon.end || '17:00';
-			const afternoonInterval = parseInt(prompt('Afternoon interval (minutes)', String(currentAfternoon.interval || 30)), 10) || 30;
-			timeSlots = {
-				morning: { start: morningStart, end: morningEnd, interval: morningInterval },
-				afternoon: { start: afternoonStart, end: afternoonEnd, interval: afternoonInterval }
-			};
-			try { localStorage.setItem('dyna_time_slots', JSON.stringify(timeSlots)); } catch (_) {}
-			const calendar = document.getElementById('appointmentCalendar');
-			if (calendar && calendar.style.display !== 'none') {
-				renderCalendar(window.currentCalendarDate || new Date());
-			}
-			alert('✅ Time slots updated for consultants.');
-		}
+                function showTimeSlotManagement() {
+                        const currentMorning = timeSlots.morning || {};
+                        const currentAfternoon = timeSlots.afternoon || {};
+                        const morningStart = prompt('Morning session start (HH:MM)', currentMorning.start || '08:00');
+                        if (!morningStart) return;
+                        const morningEnd = prompt('Morning session end (HH:MM)', currentMorning.end || '12:00') || currentMorning.end || '12:00';
+                        const morningInterval = parseInt(prompt('Morning interval (minutes)', String(currentMorning.interval || 30)), 10) || 30;
+                        const afternoonStart = prompt('Afternoon session start (HH:MM)', currentAfternoon.start || '13:00') || currentAfternoon.start || '13:00';
+                        const afternoonEnd = prompt('Afternoon session end (HH:MM)', currentAfternoon.end || '17:00') || currentAfternoon.end || '17:00';
+                        const afternoonInterval = parseInt(prompt('Afternoon interval (minutes)', String(currentAfternoon.interval || 30)), 10) || 30;
+                        timeSlots = {
+                                morning: { start: morningStart, end: morningEnd, interval: morningInterval },
+                                afternoon: { start: afternoonStart, end: afternoonEnd, interval: afternoonInterval }
+                        };
+                        try { localStorage.setItem('dyna_time_slots', JSON.stringify(timeSlots)); } catch (_) {}
+                        const calendar = document.getElementById('appointmentCalendar');
+                        if (calendar && calendar.style.display !== 'none') {
+                                renderCalendar(window.currentCalendarDate || new Date());
+                        }
+                        alert('✅ Time slots updated for consultants.');
+                }
 
-		function showAppointmentAnalytics() {
-			const timeframe = document.getElementById('analyticsTimeframe')?.value || 'month';
-			const stats = calculateConsultantAnalytics(timeframe);
-			const message = [
-				`📊 Appointment Analytics (${timeframe})`,
-				`Total Clients: ${stats.totalClients}`,
-				`Reports Created: ${stats.totalReports}`,
-				`Member Clients: ${stats.memberClients} (${stats.memberPercentage}% of clients)`,
-				`Referred Clients: ${stats.referredClients} (${stats.referredPercentage}% of clients)`,
-				`Follow-ups Due: ${stats.followUpsDue}`,
-				`Completed Follow-ups: ${stats.completedFollowUps}`,
-				`Conversion Rate: ${stats.conversionRate}%`
-			].join('\n');
-			alert(message);
-		}
+                function showAppointmentAnalytics() {
+                        const timeframe = document.getElementById('analyticsTimeframe')?.value || 'month';
+                        const stats = calculateConsultantAnalytics(timeframe);
+                        const message = [
+                                `📊 Appointment Analytics (${timeframe})`,
+                                `Total Clients: ${stats.totalClients}`,
+                                `Reports Created: ${stats.totalReports}`,
+                                `Member Clients: ${stats.memberClients} (${stats.memberPercentage}% of clients)`,
+                                `Referred Clients: ${stats.referredClients} (${stats.referredPercentage}% of clients)`,
+                                `Follow-ups Due: ${stats.followUpsDue}`,
+                                `Completed Follow-ups: ${stats.completedFollowUps}`,
+                                `Conversion Rate: ${stats.conversionRate}%`
+                        ].join('\n');
+                        alert(message);
+                }
 
-		function showClientBookingPage() {
-			const bookingUrl = (location && location.origin && location.origin !== 'null')
-				? `${location.origin}/landing-page-preview.html#booking`
-				: 'landing-page-preview.html#booking';
-			window.open(bookingUrl, '_blank', 'noopener');
-		}
+                function showClientBookingPage() {
+                        const bookingUrl = (location && location.origin && location.origin !== 'null')
+                                ? `${location.origin}/landing-page-preview.html#booking`
+                                : 'landing-page-preview.html#booking';
+                        window.open(bookingUrl, '_blank', 'noopener');
+                }
 
-		function copyBookingLink() {
-			const bookingUrl = (location && location.origin && location.origin !== 'null')
-				? `${location.origin}/landing-page-preview.html#booking`
-				: 'landing-page-preview.html#booking';
-			if (navigator.clipboard && navigator.clipboard.writeText) {
-				navigator.clipboard.writeText(bookingUrl).then(() => {
-					alert('✅ Booking link copied to clipboard.');
-				}).catch(() => {
-					prompt('Copy booking link:', bookingUrl);
-				});
-			} else {
-				prompt('Copy booking link:', bookingUrl);
-			}
-		}
+                function copyBookingLink() {
+                        const bookingUrl = (location && location.origin && location.origin !== 'null')
+                                ? `${location.origin}/landing-page-preview.html#booking`
+                                : 'landing-page-preview.html#booking';
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(bookingUrl).then(() => {
+                                        alert('✅ Booking link copied to clipboard.');
+                                }).catch(() => {
+                                        prompt('Copy booking link:', bookingUrl);
+                                });
+                        } else {
+                                prompt('Copy booking link:', bookingUrl);
+                        }
+                }
 
         async function bookAppointment() {
             const date = prompt('Enter appointment date (YYYY-MM-DD or leave blank for today):');

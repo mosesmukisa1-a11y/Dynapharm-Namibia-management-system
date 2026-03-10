@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const product_id = searchParams.get('product_id');
   const product_name = searchParams.get('product_name');
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'POST') {
-      const body = await req.json();
+      const body = req.body;
       
       if (Array.isArray(body)) {
         // Bulk insert images
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
     }
 
     if (method === 'PUT') {
-      const body = await req.json();
+      const body = req.body;
       if (!body.id) {
         return res.status(400).json({ error: 'id is required for update' });
       }
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Product Images API error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

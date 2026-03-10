@@ -121,7 +121,8 @@ export async function findAll(tableName, conditions = {}, orderBy = 'created_at 
 // Publish realtime events
 export async function publishRealtimeEvent(resource, action, data) {
   try {
-    const REALTIME_GATEWAY_URL = process.env.REALTIME_GATEWAY_URL || 'https://web-production-40cac.up.railway.app';
+    const REALTIME_GATEWAY_URL = process.env.REALTIME_GATEWAY_URL;
+    if (!REALTIME_GATEWAY_URL) return;
     const response = await fetch(`${REALTIME_GATEWAY_URL}/publish`, {
       method: 'POST',
       headers: {

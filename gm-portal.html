@@ -506,7 +506,7 @@
             const rtBase = metaTag?.content?.trim() || '';
             const wsUrl = rtBase 
                 ? rtBase.replace(/^https?:\/\//, 'wss://').replace(/\/$/, '') + '/ws'
-                : 'wss://web-production-40cac.up.railway.app/ws';
+                : `wss://${window.location.host}/ws`;
             
             if (gmWebSocket && gmWebSocket.readyState === WebSocket.OPEN) {
                 return; // Already connected

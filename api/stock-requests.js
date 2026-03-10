@@ -219,7 +219,7 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const branch = searchParams.get('branch');
   const status = searchParams.get('status');
@@ -410,10 +410,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Stock Requests API error:', error);
-    return res.status(500).json({ 
-      error: error.message || 'Internal server error',
-      code: error.code || 'INTERNAL_ERROR'
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

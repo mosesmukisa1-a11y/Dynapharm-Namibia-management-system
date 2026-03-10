@@ -13,6 +13,59 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+  next();
+});
+
+const PUBLIC_API_ROUTES = new Set([
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/distributor-login',
+  '/api/health',
+]);
+
+const PUBLIC_GET_ROUTES = new Set([
+  '/api/products',
+  '/api/branches',
+  '/api/product_images',
+]);
+
+app.use('/api', async (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+
+  const routePath = req.baseUrl + req.path.replace(/\/$/, '');
+  const isPublic = PUBLIC_API_ROUTES.has(routePath) ||
+    (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath));
+
+  try {
+    const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');
+    const token = getTokenFromRequest(req);
+    const decoded = verifyAuthToken(token);
+    if (decoded && decoded.sub) {
+      req.user = decoded;
+    } else if (!isPublic) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+  } catch (err) {
+    if (!isPublic) {
+      console.error('Auth middleware error:', err);
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+  }
+  next();
+});
+
+app.get('/dynapharm-complete-system', (req, res) => res.redirect('/dynapharm-complete-system.html'));
+app.get('/distributor/guest', (req, res) => res.redirect('/distributor-guest.html'));
+app.get('/staff/appointments', (req, res) => res.redirect('/appointments-admin.html'));
+app.get('/shop', (req, res) => res.redirect('/'));
+
 const handlerCache = new Map();
 
 function normalizeApiPath(pathname = '') {
@@ -94,7 +147,6 @@ app.all('/api/*', async (req, res) => {
       res.status(500).json({
         success: false,
         error: 'Internal server error',
-        message: error.message,
       });
     }
   }
@@ -124,12 +176,12 @@ app.use((req, res) => {
 });
 
 const server = app.listen(PORT, HOST, () => {
-  console.log('🚀 Dynapharm API & static server running');
-  console.log(`📡 Listening on http://${HOST}:${PORT}`);
+  console.log('Dynapharm API & static server running');
+  console.log(`Listening on http://${HOST}:${PORT}`);
   if (process.env.DATABASE_URL) {
-    console.log(`🗄️  DATABASE_URL detected: ${process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
+    console.log(`DATABASE_URL detected: ${process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
   } else {
-    console.warn('⚠️  DATABASE_URL not set. Database-backed APIs may fail.');
+    console.warn('DATABASE_URL not set. Database-backed APIs may fail.');
   }
 });
 
@@ -141,10 +193,8 @@ server.on('error', (error) => {
   try {
     const { query } = await import('./api/db.js');
     await query('SELECT 1');
-    console.log('✅ Database connection verified');
+    console.log('Database connection verified');
   } catch (error) {
-    console.warn('⚠️  Database connection check failed:', error.message);
+    console.warn('Database connection check failed:', error.message);
   }
 })();
-
-
