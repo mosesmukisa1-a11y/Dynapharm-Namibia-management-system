@@ -5036,6 +5036,7 @@
                 } else if (hash === '#checkup') {
                     showLandingPage();
                     showLandingTab('checkup');
+                    enterCheckupMode();
                 } else if (hash === '#testimonials') {
                     showLandingPage();
                     showLandingTab('shop');
@@ -5178,6 +5179,127 @@
             }, 150);
         }
         
+        function setCheckupClientType(type) {
+            document.getElementById('chkClientType').value = type;
+            var refBtn = document.getElementById('chkClientTypeReferred');
+            var memBtn = document.getElementById('chkClientTypeMember');
+            var label = document.getElementById('chkReferralLabel');
+            document.getElementById('chkDistributorName').value = '';
+            document.getElementById('chkDistributorNB').value = '';
+            document.getElementById('chkDistributorStatus').textContent = '';
+            document.getElementById('chkDistributorDropdown').style.display = 'none';
+            if (type === 'referred') {
+                refBtn.style.background = '#c41e3a'; refBtn.style.color = 'white';
+                memBtn.style.background = '#f9fafb'; memBtn.style.color = '#374151';
+                label.textContent = 'Search for the distributor who referred you by name or NB number';
+                document.getElementById('chkDistributorName').placeholder = 'Type distributor name or NB number...';
+            } else {
+                memBtn.style.background = '#c41e3a'; memBtn.style.color = 'white';
+                refBtn.style.background = '#f9fafb'; refBtn.style.color = '#374151';
+                label.textContent = 'Search for your distributor name and NB number';
+                document.getElementById('chkDistributorName').placeholder = 'Type your name or NB number...';
+            }
+        }
+
+        var chkDistSearchTimer = null;
+        function initCheckupDistributorSearch() {
+            var input = document.getElementById('chkDistributorName');
+            if (!input) return;
+            input.addEventListener('input', function() {
+                clearTimeout(chkDistSearchTimer);
+                var q = this.value.trim();
+                if (q.length < 2) {
+                    document.getElementById('chkDistributorDropdown').style.display = 'none';
+                    return;
+                }
+                document.getElementById('chkDistributorNB').value = '';
+                document.getElementById('chkDistributorStatus').textContent = '';
+                chkDistSearchTimer = setTimeout(function() {
+                    fetch('/api/distributors?search=' + encodeURIComponent(q))
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            var dd = document.getElementById('chkDistributorDropdown');
+                            var list = Array.isArray(data) ? data : (data.distributors || []);
+                            if (list.length === 0) {
+                                dd.textContent = '';
+                                var emptyDiv = document.createElement('div');
+                                emptyDiv.style.cssText = 'padding:12px; color:#999; font-size:0.9rem;';
+                                emptyDiv.textContent = 'No distributors found';
+                                dd.appendChild(emptyDiv);
+                                dd.style.display = 'block';
+                                return;
+                            }
+                            dd.textContent = '';
+                            list.slice(0, 15).forEach(function(d) {
+                                var name = d.distributor_name || d.name || d.full_name || d.fullName || '';
+                                var nb = d.distributor_code || d.nb_number || d.nbNumber || d.drn || '';
+                                var item = document.createElement('div');
+                                item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem; transition: background 0.15s;';
+                                var strong = document.createElement('strong');
+                                strong.textContent = name;
+                                var span = document.createElement('span');
+                                span.style.cssText = 'color:#666; font-size:0.8rem; margin-left:6px;';
+                                span.textContent = '(' + nb + ')';
+                                item.appendChild(strong);
+                                item.appendChild(span);
+                                item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+                                item.onmouseleave = function() { this.style.background = 'white'; };
+                                item.onclick = function() {
+                                    document.getElementById('chkDistributorName').value = name;
+                                    document.getElementById('chkDistributorNB').value = nb;
+                                    var statusEl = document.getElementById('chkDistributorStatus');
+                                    statusEl.textContent = '';
+                                    statusEl.style.color = '#059669';
+                                    statusEl.textContent = 'Selected: ' + name + ' (' + nb + ')';
+                                    dd.style.display = 'none';
+                                };
+                                dd.appendChild(item);
+                            });
+                            dd.style.display = 'block';
+                        })
+                        .catch(function() {
+                            document.getElementById('chkDistributorDropdown').style.display = 'none';
+                        });
+                }, 300);
+            });
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('#chkDistributorDropdown') && e.target.id !== 'chkDistributorName') {
+                    document.getElementById('chkDistributorDropdown').style.display = 'none';
+                }
+            });
+        }
+
+        function enterCheckupMode() {
+            document.getElementById('landingTabShop').style.display = 'none';
+            document.getElementById('landingTabCheckup').style.display = 'none';
+            var navLinks = document.querySelectorAll('#desktopNavLinks > a, #desktopNavLinks > span#navLoginSection');
+            navLinks.forEach(function(el) {
+                if (el.textContent.trim() === 'Home') return;
+                el.setAttribute('data-chk-hidden', '1');
+                el.style.display = 'none';
+            });
+            var mobileLinks = document.querySelectorAll('#mobileMenu > a, #mobileMenu > #mobileLoginSection');
+            mobileLinks.forEach(function(el) {
+                if (el.textContent.trim() === 'Home') return;
+                el.setAttribute('data-chk-hidden', '1');
+                el.style.display = 'none';
+            });
+            var backBtn = document.getElementById('checkupBackBtn');
+            if (backBtn) backBtn.style.display = 'inline-block';
+        }
+
+        function exitCheckupMode() {
+            document.getElementById('landingTabShop').style.display = '';
+            document.getElementById('landingTabCheckup').style.display = '';
+            document.querySelectorAll('[data-chk-hidden]').forEach(function(el) {
+                el.removeAttribute('data-chk-hidden');
+                el.style.display = '';
+            });
+            var backBtn = document.getElementById('checkupBackBtn');
+            if (backBtn) backBtn.style.display = 'none';
+            showLandingTab('shop');
+        }
+
         function setCheckupVisitType(type) {
             document.getElementById('checkupVisitType').value = type;
             var apptBtn = document.getElementById('checkupToggleAppt');
@@ -5197,6 +5319,7 @@
 
         (function initCheckupForm() {
             document.addEventListener('DOMContentLoaded', function() {
+                initCheckupDistributorSearch();
                 var form = document.getElementById('checkupInlineForm');
                 if (!form) return;
                 form.addEventListener('submit', async function(e) {
@@ -5217,9 +5340,17 @@
                     var notes = document.getElementById('chkNotes').value.trim();
                     var conditionEls = document.querySelectorAll('input[name="chkConditions"]:checked');
                     var conditions = Array.from(conditionEls).map(function(c) { return c.value; });
+                    var clientType = document.getElementById('chkClientType').value;
+                    var distributorName = document.getElementById('chkDistributorName').value.trim();
+                    var distributorNB = document.getElementById('chkDistributorNB').value.trim();
 
                     if (!fullName || !phone || !gender || !dob || !branch || !concern) {
                         errEl.textContent = 'Please fill in all required fields.';
+                        errEl.style.display = 'block';
+                        return;
+                    }
+                    if (!distributorName || !distributorNB) {
+                        errEl.textContent = 'Please select a distributor from the search results.';
                         errEl.style.display = 'block';
                         return;
                     }
@@ -5239,15 +5370,20 @@
                         concern: concern,
                         conditions: conditions.join(', ') || 'None',
                         medications: medications || 'N/A',
-                        additionalNotes: notes
+                        additionalNotes: notes,
+                        clientType: clientType,
+                        distributorName: distributorName,
+                        distributorNB: distributorNB
                     };
+                    var refLabel = clientType === 'member' ? 'Member' : 'Referred by';
                     var payload = {
                         full_name: fullName,
                         phone: phone,
                         email: email || '',
                         branch: branch,
                         type: 'Full Body Check-Up',
-                        notes: 'Visit: ' + visitType + ' | Concern: ' + concern + (conditions.length ? ' | Conditions: ' + conditions.join(', ') : '') + (medications ? ' | Medications: ' + medications : '') + (notes ? ' | Notes: ' + notes : ''),
+                        client_reference: distributorNB,
+                        notes: 'Visit: ' + visitType + ' | ' + refLabel + ': ' + distributorName + ' (' + distributorNB + ') | Concern: ' + concern + (conditions.length ? ' | Conditions: ' + conditions.join(', ') : '') + (medications ? ' | Medications: ' + medications : '') + (notes ? ' | Notes: ' + notes : ''),
                         data: JSON.stringify(healthData),
                         status: visitType === 'walkin' ? 'walk-in' : 'pending'
                     };
@@ -7162,7 +7298,7 @@
             <div id="desktopNavLinks" class="desktop-nav" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                 <a href="/" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Home</a>
                 <a href="#" onclick="showLandingPage(); showLandingTab('shop'); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Shop</a>
-                <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Health Check</a>
+                <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); enterCheckupMode(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Health Check</a>
                 <span id="navLoginSection">
                     <button onclick="showStaffLogin()" class="btn" style="background: #c41e3a; color: white; padding: 8px 18px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">Staff Login</button>
                 </span>
@@ -7177,7 +7313,7 @@
         <div id="mobileMenu" class="mobile-menu" style="display: none; background: white; border-top: 2px solid #f0f0f0; margin-top: 10px; padding: 16px; flex-direction: column; gap: 10px;">
             <a href="/" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Home</a>
             <a href="#" onclick="showLandingPage(); showLandingTab('shop'); toggleMobileMenu(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Shop</a>
-            <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); toggleMobileMenu(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Health Check</a>
+            <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); enterCheckupMode(); toggleMobileMenu(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Health Check</a>
             <div id="mobileLoginSection">
                 <button onclick="showStaffLogin(); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">Staff Login</button>
             </div>
@@ -7392,7 +7528,7 @@
                 <!-- Landing Page Tabs -->
                 <div style="display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 3px solid #c41e3a; flex-wrap: wrap;">
                     <button id="landingTabShop" class="btn" onclick="showLandingTab('shop')" style="background: #c41e3a; color: white; padding: 12px 24px; font-size: 1.1rem; font-weight: 600; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">🛒 Online Shop</button>
-                    <button id="landingTabCheckup" class="btn" onclick="showLandingTab('checkup')" style="background: #f0f0f0; color: #666; padding: 12px 24px; font-size: 1.1rem; font-weight: 600; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">🏥 Full Body Check Up</button>
+                    <button id="landingTabCheckup" class="btn" onclick="showLandingTab('checkup'); enterCheckupMode();" style="background: #f0f0f0; color: #666; padding: 12px 24px; font-size: 1.1rem; font-weight: 600; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">🏥 Full Body Check Up</button>
                 </div>
                 
                 <!-- Online Shop Tab Content -->
@@ -7435,6 +7571,7 @@
                 <!-- Full Body Check Up Tab Content -->
                 <div id="landingTabCheckupContent" style="display: none;">
                     <div style="text-align: center; margin-bottom: 28px;">
+                        <button id="checkupBackBtn" type="button" onclick="exitCheckupMode()" style="display:none; background: none; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 0.9rem; color: #475569; margin-bottom: 12px; transition: background 0.15s;" onmouseenter="this.style.background='#f3f4f6'" onmouseleave="this.style.background='none'">&larr; Back to Home</button>
                         <h2 style="font-size: 1.8rem; margin-bottom: 6px; color: #c41e3a;">Full Body Check Up</h2>
                         <p style="color: #666; font-size: 1rem; max-width: 540px; margin: 0 auto;">Get a comprehensive health assessment from our experienced consultants. Fill out the form below to get started.</p>
                     </div>
@@ -7512,6 +7649,34 @@
                                         <option value="15:00">03:00 PM</option>
                                         <option value="16:00">04:00 PM</option>
                                     </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Referral / Distributor Information -->
+                        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
+                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Referral / Membership</h3>
+                            <div style="margin-bottom: 14px;">
+                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 8px;">Are you a Dynapharm distributor/member? *</label>
+                                <div style="display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #d1d5db;">
+                                    <button type="button" id="chkClientTypeReferred" onclick="setCheckupClientType('referred')" style="flex:1; padding: 10px; border: none; background: #c41e3a; color: white; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;">Referred by a Distributor</button>
+                                    <button type="button" id="chkClientTypeMember" onclick="setCheckupClientType('member')" style="flex:1; padding: 10px; border: none; background: #f9fafb; color: #374151; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;">I am a Member</button>
+                                </div>
+                                <input type="hidden" id="chkClientType" value="referred">
+                            </div>
+                            <div id="chkReferralSection">
+                                <p id="chkReferralLabel" style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Search for the distributor who referred you by name or NB number</p>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                                    <div style="position: relative; grid-column: 1/-1;">
+                                        <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Distributor Name *</label>
+                                        <input type="text" id="chkDistributorName" placeholder="Type distributor name or NB number..." autocomplete="off" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                        <div id="chkDistributorDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 8px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.12); top: 100%; left: 0; margin-top: 2px;"></div>
+                                        <small id="chkDistributorStatus" style="color: #666; font-size: 0.8rem;"></small>
+                                    </div>
+                                    <div>
+                                        <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom1: 4px;">NB Number *</label>
+                                        <input type="text" id="chkDistributorNB" placeholder="e.g. NB001544" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; text-transform: uppercase;" readonly>
+                                    </div>
                                 </div>
                             </div>
                         </div>
