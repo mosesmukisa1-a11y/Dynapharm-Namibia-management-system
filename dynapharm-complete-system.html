@@ -5084,8 +5084,10 @@
                 if (shopContent) shopContent.style.display = 'none';
                 if (checkupContent) {
                     checkupContent.style.display = 'block';
-                    // Populate branch select when checkup tab is shown
                     populateLandingBranchSelect();
+                    if (typeof loadBranches === 'function') loadBranches();
+                    var chkDateEl = document.getElementById('chkApptDate');
+                    if (chkDateEl) chkDateEl.min = new Date().toISOString().split('T')[0];
                 }
             }
         }
@@ -5176,6 +5178,115 @@
             }, 150);
         }
         
+        function setCheckupVisitType(type) {
+            document.getElementById('checkupVisitType').value = type;
+            var apptBtn = document.getElementById('checkupToggleAppt');
+            var walkBtn = document.getElementById('checkupToggleWalkin');
+            var dateWrap = document.getElementById('chkApptDateWrap');
+            var timeWrap = document.getElementById('chkApptTimeWrap');
+            if (type === 'appointment') {
+                apptBtn.style.background = '#c41e3a'; apptBtn.style.color = 'white';
+                walkBtn.style.background = 'white'; walkBtn.style.color = '#c41e3a';
+                dateWrap.style.display = 'block'; timeWrap.style.display = 'block';
+            } else {
+                walkBtn.style.background = '#c41e3a'; walkBtn.style.color = 'white';
+                apptBtn.style.background = 'white'; apptBtn.style.color = '#c41e3a';
+                dateWrap.style.display = 'none'; timeWrap.style.display = 'none';
+            }
+        }
+
+        (function initCheckupForm() {
+            document.addEventListener('DOMContentLoaded', function() {
+                var form = document.getElementById('checkupInlineForm');
+                if (!form) return;
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    var errEl = document.getElementById('checkupFormError');
+                    errEl.style.display = 'none';
+                    var visitType = document.getElementById('checkupVisitType').value;
+                    var fullName = document.getElementById('chkFullName').value.trim();
+                    var phone = document.getElementById('chkPhone').value.trim();
+                    var email = document.getElementById('chkEmail').value.trim();
+                    var gender = document.getElementById('chkGender').value;
+                    var dob = document.getElementById('chkDOB').value;
+                    var branch = document.getElementById('chkBranch').value;
+                    var apptDate = document.getElementById('chkApptDate').value;
+                    var apptTime = document.getElementById('chkApptTime').value;
+                    var concern = document.getElementById('chkConcern').value.trim();
+                    var medications = document.getElementById('chkMedications').value.trim();
+                    var notes = document.getElementById('chkNotes').value.trim();
+                    var conditionEls = document.querySelectorAll('input[name="chkConditions"]:checked');
+                    var conditions = Array.from(conditionEls).map(function(c) { return c.value; });
+
+                    if (!fullName || !phone || !gender || !dob || !branch || !concern) {
+                        errEl.textContent = 'Please fill in all required fields.';
+                        errEl.style.display = 'block';
+                        return;
+                    }
+                    if (visitType === 'appointment' && (!apptDate || !apptTime)) {
+                        errEl.textContent = 'Please select an appointment date and time.';
+                        errEl.style.display = 'block';
+                        return;
+                    }
+
+                    var submitBtn = document.getElementById('checkupSubmitBtn');
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Submitting...';
+
+                    var healthData = {
+                        gender: gender,
+                        dob: dob,
+                        concern: concern,
+                        conditions: conditions.join(', ') || 'None',
+                        medications: medications || 'N/A',
+                        additionalNotes: notes
+                    };
+                    var payload = {
+                        full_name: fullName,
+                        phone: phone,
+                        email: email || '',
+                        branch: branch,
+                        type: 'Full Body Check-Up',
+                        notes: 'Visit: ' + visitType + ' | Concern: ' + concern + (conditions.length ? ' | Conditions: ' + conditions.join(', ') : '') + (medications ? ' | Medications: ' + medications : '') + (notes ? ' | Notes: ' + notes : ''),
+                        data: JSON.stringify(healthData),
+                        status: visitType === 'walkin' ? 'walk-in' : 'pending'
+                    };
+                    if (visitType === 'appointment') {
+                        payload.date = apptDate;
+                        payload.time = apptTime;
+                    } else {
+                        payload.date = new Date().toISOString().split('T')[0];
+                        payload.time = new Date().toTimeString().slice(0,5);
+                    }
+
+                    try {
+                        var res = await fetch('/api/appointments', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        var data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Submission failed');
+                        document.getElementById('checkupSuccessMsg').style.display = 'block';
+                        var refText = 'Your reference number is: ' + (data.id || data.referenceNumber || 'N/A');
+                        if (visitType === 'appointment') {
+                            refText += '. Your appointment has been booked for ' + apptDate + ' at ' + apptTime + '.';
+                        } else {
+                            refText += '. Please proceed to the front desk at your selected branch.';
+                        }
+                        document.getElementById('checkupRefDisplay').textContent = refText;
+                        form.style.display = 'none';
+                    } catch (err) {
+                        errEl.textContent = err.message || 'Something went wrong. Please try again.';
+                        errEl.style.display = 'block';
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Check Up Form';
+                    }
+                });
+            });
+        })();
+
         function showLandingPage() {
             const landingPage = document.getElementById('landingPage');
             const container = document.querySelector('.container');
@@ -7323,34 +7434,121 @@
                 
                 <!-- Full Body Check Up Tab Content -->
                 <div id="landingTabCheckupContent" style="display: none;">
-                    <h2 style="font-size: 2rem; margin-bottom: 10px; color: #c41e3a;">🏥 Full Body Check Up</h2>
-                    <p style="margin-bottom: 30px; color: #666; font-size: 1.1rem;">Book your comprehensive health checkup appointment with our experienced consultants</p>
-                    
-                    <div style="margin: 20px 0; display:flex; gap:15px; flex-wrap:wrap;">
-                        <button class="btn btn-success" onclick="openClientReg('appointment')" style="padding: 15px 30px; font-size: 1.1rem; font-weight: 600;">📅 Book Appointment</button>
-                        <button class="btn" onclick="openClientReg('walkin')" style="padding: 15px 30px; font-size: 1.1rem; font-weight: 600; background: #f0f0f0; color: #333;">🚶 Walk-in</button>
+                    <div style="text-align: center; margin-bottom: 28px;">
+                        <h2 style="font-size: 1.8rem; margin-bottom: 6px; color: #c41e3a;">Full Body Check Up</h2>
+                        <p style="color: #666; font-size: 1rem; max-width: 540px; margin: 0 auto;">Get a comprehensive health assessment from our experienced consultants. Fill out the form below to get started.</p>
                     </div>
-                    
-                    <div class="reference-number" id="landingClientRefNumber" style="display: none;"></div>
-                    
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                        <label style="font-weight:700; margin-right:10px; display: block; margin-bottom: 10px;">Select Branch for Service:</label>
-                        <select id="landingCheckupBranchSelect" style="padding:12px; border:2px solid #ddd; border-radius:8px; width: 100%; max-width: 400px; font-size: 1rem;">
-                            <option value="">Select Branch</option>
-                        </select>
-                        <p style="margin-top: 10px; color:#666; font-size:0.9rem;">This will notify the selected branch Front Desk and Consultant.</p>
+
+                    <div id="checkupSuccessMsg" style="display:none; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 20px;">
+                        <div style="font-size: 2.5rem; margin-bottom: 8px;">&#10003;</div>
+                        <h3 style="color: #065f46; margin: 0 0 8px;">Submitted Successfully!</h3>
+                        <p id="checkupRefDisplay" style="color: #065f46; font-size: 0.95rem;"></p>
                     </div>
-                    
-                    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin-top: 20px;">
-                        <h4 style="margin: 0 0 10px 0; color: #856404;">📋 How to Book:</h4>
-                        <ol style="margin: 0; padding-left: 20px; color: #856404; line-height: 1.8;">
-                            <li>Click "Book Appointment" to open the registration form</li>
-                            <li>Fill in all required client information</li>
-                            <li>Select your preferred branch, date, and time</li>
-                            <li>Submit the form to create your appointment</li>
-                            <li>You will receive a reference number for tracking</li>
-                        </ol>
-                    </div>
+
+                    <form id="checkupInlineForm" style="max-width: 640px; margin: 0 auto;">
+                        <!-- Visit Type Toggle -->
+                        <div style="display: flex; gap: 0; margin-bottom: 24px; border-radius: 10px; overflow: hidden; border: 2px solid #c41e3a;">
+                            <button type="button" id="checkupToggleAppt" onclick="setCheckupVisitType('appointment')" style="flex:1; padding: 14px; border: none; background: #c41e3a; color: white; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.2s;">Book Appointment</button>
+                            <button type="button" id="checkupToggleWalkin" onclick="setCheckupVisitType('walkin')" style="flex:1; padding: 14px; border: none; background: white; color: #c41e3a; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.2s;">Walk-in</button>
+                        </div>
+                        <input type="hidden" name="checkupVisitType" id="checkupVisitType" value="appointment">
+
+                        <!-- Personal Info -->
+                        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
+                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Personal Information</h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                                <div style="grid-column: 1/-1;">
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Full Name *</label>
+                                    <input type="text" id="chkFullName" name="chkFullName" placeholder="e.g. Jane Doe" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Phone *</label>
+                                    <input type="tel" id="chkPhone" name="chkPhone" placeholder="e.g. 081 234 5678" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Email</label>
+                                    <input type="email" id="chkEmail" name="chkEmail" placeholder="e.g. jane@email.com" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Gender *</label>
+                                    <select id="chkGender" name="chkGender" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                        <option value="">Select</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Date of Birth *</label>
+                                    <input type="date" id="chkDOB" name="chkDOB" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Branch & Appointment -->
+                        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
+                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Branch & Scheduling</h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                                <div style="grid-column: 1/-1;">
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Branch *</label>
+                                    <select id="chkBranch" name="chkBranch" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                        <option value="">Select branch</option>
+                                    </select>
+                                </div>
+                                <div id="chkApptDateWrap">
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Preferred Date *</label>
+                                    <input type="date" id="chkApptDate" name="chkApptDate" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div id="chkApptTimeWrap">
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Preferred Time *</label>
+                                    <select id="chkApptTime" name="chkApptTime" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                        <option value="">Select time</option>
+                                        <option value="08:00">08:00 AM</option>
+                                        <option value="09:00">09:00 AM</option>
+                                        <option value="10:00">10:00 AM</option>
+                                        <option value="11:00">11:00 AM</option>
+                                        <option value="12:00">12:00 PM</option>
+                                        <option value="13:00">01:00 PM</option>
+                                        <option value="14:00">02:00 PM</option>
+                                        <option value="15:00">03:00 PM</option>
+                                        <option value="16:00">04:00 PM</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Health Information -->
+                        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
+                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Health Information</h3>
+                            <div style="margin-bottom: 14px;">
+                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Primary health concern *</label>
+                                <textarea id="chkConcern" name="chkConcern" placeholder="Briefly describe the reason for your visit or health concern..." required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; min-height: 80px; resize: vertical;"></textarea>
+                            </div>
+                            <div style="margin-bottom: 14px;">
+                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 8px;">Do you have any of the following? <span style="color:#999; font-weight:400;">(select all that apply)</span></label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="high_blood_pressure"> High Blood Pressure</label>
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="diabetes"> Diabetes</label>
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="asthma"> Asthma</label>
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="heart_disease"> Heart Disease</label>
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="allergies"> Allergies</label>
+                                    <label style="display:flex; align-items:center; gap:5px; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer; font-size:0.9rem; background:#f9fafb;"><input type="checkbox" name="chkConditions" value="none"> None</label>
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 14px;">
+                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Current medications</label>
+                                <input type="text" id="chkMedications" name="chkMedications" placeholder="List any medications you are currently taking, or N/A" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                            </div>
+                            <div>
+                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Additional notes</label>
+                                <textarea id="chkNotes" name="chkNotes" placeholder="Any other information you'd like the consultant to know..." style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; min-height: 60px; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <div id="checkupFormError" style="display:none; color: #c41e3a; background: #fef2f2; padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem;"></div>
+
+                        <button type="submit" id="checkupSubmitBtn" style="width: 100%; padding: 16px; background: #c41e3a; color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background 0.2s;">Submit Check Up Form</button>
+                        <p style="text-align: center; margin-top: 12px; color: #999; font-size: 0.85rem;">Your information will be sent to the branch consultant for review.</p>
+                    </form>
                 </div>
             </div>
         </div>
@@ -25950,7 +26148,7 @@
 
         function loadBranches() {
             console.log('Loading branches:', branches);
-            const selects = [document.getElementById('branchSelect'), document.getElementById('userBranchSelect'), document.getElementById('checkupBranchSelect')];
+            const selects = [document.getElementById('branchSelect'), document.getElementById('userBranchSelect'), document.getElementById('checkupBranchSelect'), document.getElementById('chkBranch')];
             selects.forEach(select => {
                 if(select) {
                     select.innerHTML = '<option value="">Select Branch</option>';
