@@ -1,5 +1,6 @@
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { applyAuthCors } from './_lib/auth.js';
+import { createDistributorNotification } from './notifications.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -116,8 +117,36 @@ export default async function handler(req, res) {
 
     if (method === 'PUT') {
       const body = req.body;
+      const oldAppointment = body.id ? await getOne('SELECT * FROM appointments WHERE id = $1', [body.id]) : null;
       const appointment = await update('appointments', body.id, body, 'id');
       await publishRealtimeEvent('appointments', 'update', appointment);
+
+      const newStatus = (body.status || '').toLowerCase();
+      const wasNotCompleted = oldAppointment && (oldAppointment.status || '').toLowerCase() !== 'completed';
+      const distributorRef = appointment.client_reference || (oldAppointment && oldAppointment.client_reference);
+      if (newStatus === 'completed' && wasNotCompleted && distributorRef) {
+        try {
+          let apptData = {};
+          try { apptData = typeof appointment.data === 'string' ? JSON.parse(appointment.data) : (appointment.data || {}); } catch(e) {}
+          const clientName = appointment.full_name || body.full_name || 'A client';
+          await createDistributorNotification({
+            distributorCode: distributorRef,
+            title: 'Referral Consultation Completed',
+            message: clientName + ' (referred by you) has completed their Full Body Check-Up consultation at the ' + (appointment.branch || 'assigned') + ' branch.',
+            type: 'referral_completed',
+            referenceId: appointment.id,
+            metadata: {
+              clientName: clientName,
+              appointmentId: appointment.id,
+              branch: appointment.branch,
+              completedAt: new Date().toISOString()
+            }
+          });
+        } catch (notifErr) {
+          console.error('Failed to notify distributor:', notifErr);
+        }
+      }
+
       return res.json(appointment);
     }
 

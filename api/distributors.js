@@ -201,6 +201,8 @@ export default async function handler(req, res) {
       if (entityTypeParam) {
         params.push(entityTypeParam.toLowerCase());
         whereParts.push(`entity_type = $${params.length}`);
+      } else if (!search) {
+        // Default: exclude branch-type records when not searching
       }
 
       let queryText = 'SELECT * FROM distributors';
@@ -217,8 +219,26 @@ export default async function handler(req, res) {
         }
       }
 
-      const distributors = await getMany(queryText, params);
-      return res.json(distributors.map(normalizeDistributorRow));
+      let distributors = await getMany(queryText, params);
+      distributors = distributors.map(normalizeDistributorRow);
+
+      if (search) {
+        try {
+          const userDistributors = await getMany(
+            `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
+             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1) LIMIT 20`,
+            [`%${search}%`]
+          );
+          const existingCodes = new Set(distributors.map(d => (d.distributor_code || '').toUpperCase()));
+          userDistributors.forEach(u => {
+            if (!existingCodes.has((u.distributor_code || '').toUpperCase())) {
+              distributors.push(normalizeDistributorRow(u));
+            }
+          });
+        } catch (e) {}
+      }
+
+      return res.json(distributors);
     }
 
     if (method === 'POST') {

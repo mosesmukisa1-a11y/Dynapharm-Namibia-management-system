@@ -42,6 +42,12 @@ const PUBLIC_GET_ROUTES = new Set([
   '/api/products',
   '/api/branches',
   '/api/product_images',
+  '/api/distributors',
+  '/api/notifications',
+]);
+
+const PUBLIC_PUT_ROUTES = new Set([
+  '/api/notifications',
 ]);
 
 app.use('/api', async (req, res, next) => {
@@ -50,7 +56,8 @@ app.use('/api', async (req, res, next) => {
   const routePath = req.baseUrl + req.path.replace(/\/$/, '');
   const isPublic = PUBLIC_API_ROUTES.has(routePath) ||
     (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath)) ||
-    (req.method === 'POST' && PUBLIC_POST_ROUTES.has(routePath));
+    (req.method === 'POST' && PUBLIC_POST_ROUTES.has(routePath)) ||
+    (req.method === 'PUT' && PUBLIC_PUT_ROUTES.has(routePath));
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');

@@ -263,7 +263,7 @@
                 <button class="tab-btn btn" onclick="showTab('clients')" data-tab="clients">👥 Referred Clients</button>
                 <button class="tab-btn btn" onclick="showTab('bonus')" data-tab="bonus">💰 Bonus & Payments</button>
                 <button class="tab-btn btn" onclick="showTab('bvs')" data-tab="bvs">📊 BVs & Sales</button>
-                <button class="tab-btn btn" onclick="showTab('communications')" data-tab="communications">📢 Communications</button>
+                <button class="tab-btn btn" onclick="showTab('communications')" data-tab="communications" style="position:relative;">📢 Communications <span id="notifBadge" style="display:none; position:absolute; top:-6px; right:-6px; background:#c41e3a; color:white; border-radius:50%; width:20px; height:20px; font-size:11px; align-items:center; justify-content:center; font-weight:700;"></span></button>
             </div>
 
             <!-- Tab Content -->
@@ -1003,29 +1003,42 @@
 
         async function loadCommunications() {
             try {
-                // Try API first
                 const base = window.location.origin;
+                const nb = currentDistributor ? (currentDistributor.distributorCode || currentDistributor.code || '') : '';
                 try {
-                    const response = await fetch(`${base}/api/notifications`);
-                    if (response.ok) {
-                        communications = await response.json();
-                        // Filter for distributor-specific or general communications
-                        communications = communications.filter(c => 
-                            !c.targetRole || c.targetRole === 'distributor' || !c.targetRole
-                        ).sort((a, b) => {
-                            const dateA = new Date(a.createdAt || 0);
-                            const dateB = new Date(b.createdAt || 0);
-                            return dateB - dateA;
-                        });
+                    var allComms = [];
+                    if (nb) {
+                        var distRes = await fetch(base + '/api/notifications?recipient_id=' + encodeURIComponent(nb));
+                        if (distRes.ok) {
+                            var distData = await distRes.json();
+                            allComms = allComms.concat(Array.isArray(distData) ? distData : []);
+                        }
+                        var broadcastRes = await fetch(base + '/api/notifications?recipient_id=broadcast');
+                        if (broadcastRes.ok) {
+                            var broadcastData = await broadcastRes.json();
+                            allComms = allComms.concat(Array.isArray(broadcastData) ? broadcastData : []);
+                        }
                     }
+                    communications = allComms.sort(function(a, b) {
+                        return new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0);
+                    });
+                    var unread = communications.filter(function(c) { return c.is_read === false; });
+                    updateNotificationBadge(unread.length);
                 } catch(e) {
-                    // Fallback to localStorage
-                    const stored = localStorage.getItem('dyna_notifications');
+                    var stored = localStorage.getItem('dyna_notifications');
                     if (stored) communications = JSON.parse(stored);
                 }
             } catch(e) {
                 console.error('Error loading communications:', e);
                 communications = [];
+            }
+        }
+
+        function updateNotificationBadge(count) {
+            var badge = document.getElementById('notifBadge');
+            if (badge) {
+                badge.textContent = count;
+                badge.style.display = count > 0 ? 'inline-flex' : 'none';
             }
         }
 
@@ -1184,35 +1197,70 @@
 
         function renderCommunicationsTab(container) {
             if (communications.length === 0) {
-                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No communications available.</p></div>';
+                container.innerHTML = '<div class="card"><p style="text-align: center; color: var(--muted);">No notifications or communications yet.</p></div>';
                 return;
             }
-            
-            let html = '<div class="card"><h2 style="margin-top: 0;">📢 Company Communications</h2>';
-            
-            communications.forEach(comm => {
-                const date = comm.createdAt || comm.date || 'N/A';
-                const dateStr = date !== 'N/A' ? new Date(date).toLocaleDateString('en-GB', { 
-                    year: 'numeric', 
-                    month: 'long', 
+
+            var unreadCount = communications.filter(function(c) { return c.is_read === false; }).length;
+            var html = '<div class="card"><h2 style="margin-top: 0;">📢 Notifications & Communications</h2>';
+            if (unreadCount > 0) {
+                var nb = currentDistributor ? (currentDistributor.distributorCode || currentDistributor.code || '') : '';
+                html += '<div style="margin-bottom:16px;"><button onclick="markAllNotificationsRead()" style="background:#059669; color:white; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; font-size:0.85rem; font-weight:600;">Mark all as read (' + unreadCount + ' unread)</button></div>';
+            }
+
+            communications.forEach(function(comm) {
+                var date = comm.created_at || comm.createdAt || comm.date || '';
+                var dateStr = date ? new Date(date).toLocaleDateString('en-GB', {
+                    year: 'numeric',
+                    month: 'long',
                     day: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit'
-                }) : 'N/A';
-                const typeClass = comm.type === 'warning' ? 'badge-warning' : comm.type === 'error' ? 'badge-danger' : 'badge-info';
-                
-                html += `<div style="border-left: 4px solid var(--brand); padding: 16px; margin-bottom: 16px; background: #f9fafb; border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                        <h3 style="margin: 0; font-size: 18px;">${comm.title || 'Announcement'}</h3>
-                        <span class="badge ${typeClass}">${comm.type || 'info'}</span>
-                    </div>
-                    <p style="margin: 8px 0; color: var(--ink);">${comm.message || ''}</p>
-                    <small style="color: var(--muted);">${dateStr}</small>
-                </div>`;
+                }) : '';
+                var isReferral = (comm.type || '').indexOf('referral') !== -1;
+                var borderColor = isReferral ? '#059669' : 'var(--brand)';
+                var bgColor = comm.is_read === false ? '#fffbeb' : '#f9fafb';
+                var icon = isReferral ? '🔔' : '📢';
+                var typeLabel = isReferral ? 'Referral Update' : (comm.type || 'info');
+
+                html += '<div style="border-left: 4px solid ' + borderColor + '; padding: 16px; margin-bottom: 16px; background: ' + bgColor + '; border-radius: 8px;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+                html += '<h3 style="margin: 0; font-size: 16px;">' + icon + ' ' + escapeHtml(comm.title || 'Notification') + '</h3>';
+                html += '<span class="badge" style="background:' + (isReferral ? '#ecfdf5' : '#eef2ff') + '; color:' + (isReferral ? '#065f46' : '#3730a3') + '; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600;">' + escapeHtml(typeLabel) + '</span>';
+                html += '</div>';
+                html += '<p style="margin: 8px 0; color: var(--ink); font-size:0.95rem;">' + escapeHtml(comm.message || '') + '</p>';
+                if (dateStr) html += '<small style="color: var(--muted);">' + dateStr + '</small>';
+                if (comm.is_read === false) html += ' <span style="color:#c41e3a; font-weight:600; font-size:0.8rem;">NEW</span>';
+                html += '</div>';
             });
-            
+
             html += '</div>';
             container.innerHTML = html;
+            updateNotificationBadge(unreadCount);
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        async function markAllNotificationsRead() {
+            var nb = currentDistributor ? (currentDistributor.distributorCode || currentDistributor.code || '') : '';
+            if (!nb) return;
+            try {
+                await fetch(window.location.origin + '/api/notifications', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ markAllRead: true, recipient_id: nb })
+                });
+                communications.forEach(function(c) { c.is_read = true; });
+                updateNotificationBadge(0);
+                var contentDiv = document.getElementById('tabContent');
+                renderCommunicationsTab(contentDiv);
+            } catch(e) {
+                console.error('Error marking notifications read:', e);
+            }
         }
     </script>
 </body>
