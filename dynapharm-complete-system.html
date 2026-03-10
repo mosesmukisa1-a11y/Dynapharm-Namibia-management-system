@@ -5269,6 +5269,101 @@
             });
         }
 
+        var clientRefSearchTimer = null;
+        function searchDistributorsForClientReferral() {
+            clearTimeout(clientRefSearchTimer);
+            var input = document.getElementById('clientReferralName');
+            if (!input) return;
+            var q = input.value.trim();
+            if (q.length < 2) {
+                document.getElementById('clientReferralDropdown').style.display = 'none';
+                return;
+            }
+            document.getElementById('clientReferralNB').value = '';
+            clientRefSearchTimer = setTimeout(function() {
+                fetch('/api/distributors?search=' + encodeURIComponent(q))
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var dd = document.getElementById('clientReferralDropdown');
+                        var list = Array.isArray(data) ? data : (data.distributors || []);
+                        if (list.length === 0) {
+                            dd.innerHTML = '<div style="padding:12px; color:#999; font-size:0.9rem;">No distributors found</div>';
+                            dd.style.display = 'block';
+                            return;
+                        }
+                        dd.textContent = '';
+                        list.slice(0, 15).forEach(function(d) {
+                            var name = d.distributor_name || d.name || d.full_name || '';
+                            var nb = d.distributor_code || d.nb_number || '';
+                            var item = document.createElement('div');
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem;';
+                            item.innerHTML = '<strong>' + name + '</strong> <span style="color:#666; font-size:0.8rem;">(' + nb + ')</span>';
+                            item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+                            item.onmouseleave = function() { this.style.background = 'white'; };
+                            item.onclick = function() {
+                                document.getElementById('clientReferralName').value = name;
+                                document.getElementById('clientReferralNB').value = nb;
+                                var statusEl = document.getElementById('clientReferralStatus');
+                                statusEl.textContent = 'Selected: ' + name + ' (' + nb + ')';
+                                statusEl.style.color = '#059669';
+                                dd.style.display = 'none';
+                            };
+                            dd.appendChild(item);
+                        });
+                        dd.style.display = 'block';
+                    })
+                    .catch(function() {
+                        document.getElementById('clientReferralDropdown').style.display = 'none';
+                    });
+            }, 300);
+        }
+
+        var distRefSearchTimer = null;
+        function searchDistributorsForReferral() {
+            clearTimeout(distRefSearchTimer);
+            var input = document.getElementById('distributorReferralSearch');
+            if (!input) return;
+            var q = input.value.trim();
+            if (q.length < 2) {
+                document.getElementById('distributorReferralDropdown').style.display = 'none';
+                return;
+            }
+            document.getElementById('distributorReferralValue').value = '';
+            distRefSearchTimer = setTimeout(function() {
+                fetch('/api/distributors?search=' + encodeURIComponent(q))
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var dd = document.getElementById('distributorReferralDropdown');
+                        var list = Array.isArray(data) ? data : (data.distributors || []);
+                        if (list.length === 0) {
+                            dd.innerHTML = '<div style="padding:12px; color:#999; font-size:0.9rem;">No distributors found</div>';
+                            dd.style.display = 'block';
+                            return;
+                        }
+                        dd.textContent = '';
+                        list.slice(0, 15).forEach(function(d) {
+                            var name = d.distributor_name || d.name || d.full_name || '';
+                            var nb = d.distributor_code || d.nb_number || '';
+                            var item = document.createElement('div');
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9rem;';
+                            item.innerHTML = '<strong>' + name + '</strong> <span style="color:#666; font-size:0.8rem;">(' + nb + ')</span>';
+                            item.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+                            item.onmouseleave = function() { this.style.background = 'white'; };
+                            item.onclick = function() {
+                                document.getElementById('distributorReferralSearch').value = name + ' (' + nb + ')';
+                                document.getElementById('distributorReferralValue').value = nb;
+                                dd.style.display = 'none';
+                            };
+                            dd.appendChild(item);
+                        });
+                        dd.style.display = 'block';
+                    })
+                    .catch(function() {
+                        document.getElementById('distributorReferralDropdown').style.display = 'none';
+                    });
+            }, 300);
+        }
+
         function enterCheckupMode() {
             document.getElementById('landingTabShop').style.display = 'none';
             document.getElementById('landingTabCheckup').style.display = 'none';

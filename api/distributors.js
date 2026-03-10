@@ -209,7 +209,11 @@ export default async function handler(req, res) {
       if (whereParts.length > 0) {
         queryText += ` WHERE ${whereParts.join(' AND ')}`;
       }
-      queryText += ' ORDER BY distributor_name';
+      if (search) {
+        queryText += " ORDER BY CASE WHEN entity_type = 'individual' THEN 0 ELSE 1 END, distributor_name";
+      } else {
+        queryText += ' ORDER BY distributor_name';
+      }
 
       if (limit) {
         const parsedLimit = Number.parseInt(limit, 10);

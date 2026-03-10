@@ -18,7 +18,8 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - `/api/products` — CRUD for products (GET is public)
 - `/api/branches` — CRUD for branches (GET is public)
 - `/api/orders` — Order management
-- `/api/distributors` — Distributor management
+- `/api/distributors` — Distributor management (GET is public for search; search also queries `users` table for distributor-role users; results sorted with individual distributors before branch records)
+- `/api/notifications` — Notification system (GET/PUT public with recipient_id required; POST/DELETE require auth). Used for distributor referral notifications.
 - `/api/stock/*` — Stock transfers, batches, requests
 - `/api/branch/*` — Branch operations (sales, payments, expenses, inventory)
 - `/api/mis/*` — Management information system reports
@@ -27,7 +28,7 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
 - Products table seeded with 95 products (Dynapharm price list)
-- Branches table and distributors table both seeded with 15 Namibian branches
+- Branches table and distributors table seeded with 15 Namibian branches + 10 sample individual distributors (NB001544-NB010333) with entity_type='individual'
 - Towns (20) and delivery distances seeded for delivery fee calculations
 - Migration SQL files in `migrations/` and `backend/`
 
