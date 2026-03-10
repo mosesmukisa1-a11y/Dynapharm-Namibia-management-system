@@ -51,31 +51,51 @@ export default async function handler(req, res) {
 
     if (method === 'POST') {
       const body = req.body;
-      
+      const isAuthenticated = !!(req.user && req.user.id);
+
+      function sanitizeStr(val, maxLen) {
+        if (!val || typeof val !== 'string') return null;
+        return val.trim().slice(0, maxLen || 500);
+      }
+
+      function buildAppointmentData(apt, authenticated) {
+        const fullName = sanitizeStr(apt.full_name || apt.fullName, 200);
+        const phone = sanitizeStr(apt.phone, 30);
+        const date = sanitizeStr(apt.date, 20);
+        const time = sanitizeStr(apt.time, 10);
+        if (!fullName || !phone || !date || !time) return null;
+
+        const data = {
+          id: `APT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          client_reference: sanitizeStr(apt.client_reference || apt.clientReference, 50),
+          full_name: fullName,
+          phone: phone,
+          email: sanitizeStr(apt.email, 200),
+          date: date,
+          time: time,
+          branch: sanitizeStr(apt.branch, 100),
+          type: sanitizeStr(apt.type, 100),
+          status: authenticated ? sanitizeStr(apt.status, 30) || 'pending' : 'pending',
+          notes: sanitizeStr(apt.notes, 2000),
+          data: apt.data ? (typeof apt.data === 'string' ? apt.data.slice(0, 5000) : JSON.stringify(apt.data).slice(0, 5000)) : null
+        };
+
+        Object.keys(data).forEach(key => {
+          if (data[key] === undefined) delete data[key];
+        });
+
+        return data;
+      }
+
       if (Array.isArray(body)) {
-        // Bulk insert
+        if (!isAuthenticated) {
+          return res.status(403).json({ error: 'Bulk insert requires authentication' });
+        }
         const results = [];
-        for (const apt of body) {
+        for (const apt of body.slice(0, 100)) {
           try {
-            const appointmentData = {
-              id: apt.id || `APT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              client_reference: apt.client_reference || apt.clientReference || null,
-              full_name: apt.full_name || apt.fullName,
-              phone: apt.phone || null,
-              email: apt.email || null,
-              date: apt.date,
-              time: apt.time,
-              branch: apt.branch || null,
-              type: apt.type || null,
-              status: apt.status || 'pending',
-              notes: apt.notes || null,
-              data: apt.data ? (typeof apt.data === 'string' ? apt.data : JSON.stringify(apt.data)) : null
-            };
-            
-            Object.keys(appointmentData).forEach(key => {
-              if (appointmentData[key] === undefined) delete appointmentData[key];
-            });
-            
+            const appointmentData = buildAppointmentData(apt, true);
+            if (!appointmentData) continue;
             const result = await insert('appointments', appointmentData);
             results.push(result);
           } catch (error) {
@@ -89,25 +109,10 @@ export default async function handler(req, res) {
         
         return res.json({ success: true, count: results.length, appointments: results });
       } else {
-        // Single insert
-        const appointmentData = {
-          id: body.id || `APT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          client_reference: body.client_reference || body.clientReference || null,
-          full_name: body.full_name || body.fullName,
-          phone: body.phone || null,
-          email: body.email || null,
-          date: body.date,
-          time: body.time,
-          branch: body.branch || null,
-          type: body.type || null,
-          status: body.status || 'pending',
-          notes: body.notes || null,
-          data: body.data ? (typeof body.data === 'string' ? body.data : JSON.stringify(body.data)) : null
-        };
-        
-        Object.keys(appointmentData).forEach(key => {
-          if (appointmentData[key] === undefined) delete appointmentData[key];
-        });
+        const appointmentData = buildAppointmentData(body, isAuthenticated);
+        if (!appointmentData) {
+          return res.status(400).json({ error: 'Missing required fields: full_name, phone, date, time' });
+        }
         
         const appointment = await insert('appointments', appointmentData);
         await publishRealtimeEvent('appointments', 'create', appointment);

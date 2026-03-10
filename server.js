@@ -36,6 +36,7 @@ const PUBLIC_API_ROUTES = new Set([
 const PUBLIC_POST_ROUTES = new Set([
   '/api/orders',
   '/api/delivery',
+  '/api/appointments',
 ]);
 
 const PUBLIC_GET_ROUTES = new Set([

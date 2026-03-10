@@ -5476,6 +5476,76 @@
             return d.innerHTML;
         }
 
+        var _chkSigCtx = null, _chkSigDrawing = false, _chkSigHasData = false;
+        function _initCheckupSignature() {
+            var canvas = document.getElementById('chkSignatureCanvas');
+            if (!canvas || _chkSigCtx) return;
+            _chkSigCtx = canvas.getContext('2d');
+            _chkSigCtx.strokeStyle = '#1f2937';
+            _chkSigCtx.lineWidth = 2;
+            _chkSigCtx.lineCap = 'round';
+            _chkSigCtx.lineJoin = 'round';
+
+            function getPos(e) {
+                var rect = canvas.getBoundingClientRect();
+                var scaleX = canvas.width / rect.width;
+                var scaleY = canvas.height / rect.height;
+                var t = e.touches ? e.touches[0] : e;
+                return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+            }
+            function startDraw(e) {
+                e.preventDefault();
+                _chkSigDrawing = true;
+                var p = getPos(e);
+                _chkSigCtx.beginPath();
+                _chkSigCtx.moveTo(p.x, p.y);
+            }
+            function draw(e) {
+                if (!_chkSigDrawing) return;
+                e.preventDefault();
+                var p = getPos(e);
+                _chkSigCtx.lineTo(p.x, p.y);
+                _chkSigCtx.stroke();
+                _chkSigHasData = true;
+                var st = document.getElementById('chkSignatureStatus');
+                if (st) st.textContent = 'Signed';
+                if (st) st.style.color = '#059669';
+            }
+            function stopDraw() { _chkSigDrawing = false; }
+
+            canvas.addEventListener('mousedown', startDraw);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDraw);
+            canvas.addEventListener('mouseleave', stopDraw);
+            canvas.addEventListener('touchstart', startDraw, { passive: false });
+            canvas.addEventListener('touchmove', draw, { passive: false });
+            canvas.addEventListener('touchend', stopDraw);
+        }
+        function clearCheckupSignature() {
+            var canvas = document.getElementById('chkSignatureCanvas');
+            if (canvas && _chkSigCtx) {
+                _chkSigCtx.clearRect(0, 0, canvas.width, canvas.height);
+                _chkSigHasData = false;
+                var st = document.getElementById('chkSignatureStatus');
+                if (st) { st.textContent = 'Cleared'; st.style.color = '#9ca3af'; }
+            }
+        }
+        function getCheckupSignatureDataURL() {
+            if (!_chkSigHasData) return '';
+            var canvas = document.getElementById('chkSignatureCanvas');
+            return canvas ? canvas.toDataURL('image/png') : '';
+        }
+        function _getCheckupInitials(name) {
+            if (!name) return '';
+            var parts = name.trim().split(/\s+/);
+            var initials = '';
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].length > 0) initials += parts[i][0].toUpperCase();
+            }
+            return initials;
+        }
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(_initCheckupSignature, 500); });
+
         function _getCheckupFormData() {
             var visitType = (document.getElementById('checkupVisitType') || {}).value || 'appointment';
             var fullName = (document.getElementById('chkFullName') || {}).value || '';
@@ -5509,7 +5579,9 @@
                 clientType: clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
                 distributorName: distName, distributorNB: distNB,
                 concern: concern, conditions: conditions,
-                medications: medications, notes: notes
+                medications: medications, notes: notes,
+                signatureDataURL: getCheckupSignatureDataURL(),
+                initials: _getCheckupInitials(fullName)
             };
         }
 
@@ -5561,10 +5633,16 @@
             html += '</table>';
 
             html += '<div style="margin-top:30px; padding-top:16px; border-top:2px solid #e5e7eb;">';
-            html += '<div style="display:flex; justify-content:space-between; margin-top:30px;">';
-            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Client Signature</div></div>';
-            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Date</div></div>';
-            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Consultant Signature</div></div>';
+            html += '<div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:20px;">';
+            html += '<div style="flex:1; text-align:center; margin:0 15px;">';
+            if (data.signatureDataURL) {
+                html += '<img src="' + data.signatureDataURL + '" alt="Client Signature" style="max-width:180px; height:60px; object-fit:contain; display:block; margin:0 auto 4px;">';
+            }
+            html += '<div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Client Signature';
+            if (data.initials) html += ' <strong>(' + e(data.initials) + ')</strong>';
+            html += '</div></div>';
+            html += '<div style="flex:1; text-align:center; margin:0 15px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Date</div></div>';
+            html += '<div style="flex:1; text-align:center; margin:0 15px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Consultant Signature</div></div>';
             html += '</div>';
             html += '</div>';
 
@@ -5575,13 +5653,18 @@
 
         function previewCheckupForm() {
             var data = _getCheckupFormData();
+            var errEl = document.getElementById('checkupFormError');
             if (!data.fullName || !data.phone) {
-                var errEl = document.getElementById('checkupFormError');
                 if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before previewing.'; errEl.style.display = 'block'; }
                 return;
             }
-            var errEl2 = document.getElementById('checkupFormError');
-            if (errEl2) errEl2.style.display = 'none';
+            if (!data.signatureDataURL) {
+                if (errEl) { errEl.textContent = 'Please provide your signature before previewing.'; errEl.style.display = 'block'; }
+                var sigCanvas = document.getElementById('chkSignatureCanvas');
+                if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            if (errEl) errEl.style.display = 'none';
             var html = _buildCheckupPreviewHTML(data);
             document.getElementById('checkupPreviewContent').innerHTML = html;
             document.getElementById('checkupPreviewModal').style.display = 'block';
@@ -5596,13 +5679,18 @@
 
         function printCheckupForm() {
             var data = _getCheckupFormData();
+            var errEl = document.getElementById('checkupFormError');
             if (!data.fullName || !data.phone) {
-                var errEl = document.getElementById('checkupFormError');
                 if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before printing.'; errEl.style.display = 'block'; }
                 return;
             }
-            var errEl2 = document.getElementById('checkupFormError');
-            if (errEl2) errEl2.style.display = 'none';
+            if (!data.signatureDataURL) {
+                if (errEl) { errEl.textContent = 'Please provide your signature before printing.'; errEl.style.display = 'block'; }
+                var sigCanvas = document.getElementById('chkSignatureCanvas');
+                if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            if (errEl) errEl.style.display = 'none';
             var html = _buildCheckupPreviewHTML(data);
             var printWin = window.open('', '_blank', 'width=800,height=900');
             if (!printWin) {
@@ -5635,6 +5723,7 @@
             });
             var backBtn = document.getElementById('checkupBackBtn');
             if (backBtn) backBtn.style.display = 'inline-block';
+            setTimeout(_initCheckupSignature, 300);
         }
 
         function exitCheckupMode() {
@@ -5706,6 +5795,13 @@
                     if (visitType === 'appointment' && (!apptDate || !apptTime)) {
                         errEl.textContent = 'Please select an appointment date and time.';
                         errEl.style.display = 'block';
+                        return;
+                    }
+                    if (!_chkSigHasData) {
+                        errEl.textContent = 'Please provide your signature before submitting.';
+                        errEl.style.display = 'block';
+                        var sigCanvas = document.getElementById('chkSignatureCanvas');
+                        if (sigCanvas) sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         return;
                     }
 
@@ -8056,6 +8152,16 @@
                             <div>
                                 <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Additional notes</label>
                                 <textarea id="chkNotes" name="chkNotes" placeholder="Any other information you'd like the consultant to know..." style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; min-height: 60px; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 14px;">
+                            <label style="font-weight: 700; font-size: 0.95rem; display: block; margin-bottom: 8px; color: #1f2937;">Client Signature <span style="color: #c41e3a;">*</span></label>
+                            <p style="font-size: 0.82rem; color: #6b7280; margin: 0 0 10px;">Sign below using your mouse or finger. Your signature will appear on the printed form.</p>
+                            <canvas id="chkSignatureCanvas" width="500" height="150" style="border: 2px solid #d1d5db; border-radius: 8px; background: white; cursor: crosshair; display: block; width: 100%; touch-action: none;"></canvas>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button type="button" onclick="clearCheckupSignature()" style="padding: 6px 16px; background: #ef4444; color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">Clear</button>
+                                <span id="chkSignatureStatus" style="font-size: 0.82rem; color: #9ca3af; align-self: center;"></span>
                             </div>
                         </div>
 
