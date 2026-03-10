@@ -5470,6 +5470,154 @@
             }, 200);
         }
 
+        function _escHtml(str) {
+            var d = document.createElement('div');
+            d.textContent = str || '';
+            return d.innerHTML;
+        }
+
+        function _getCheckupFormData() {
+            var visitType = (document.getElementById('checkupVisitType') || {}).value || 'appointment';
+            var fullName = (document.getElementById('chkFullName') || {}).value || '';
+            var phone = (document.getElementById('chkPhone') || {}).value || '';
+            var email = (document.getElementById('chkEmail') || {}).value || '';
+            var gender = (document.getElementById('chkGender') || {}).value || '';
+            var dob = (document.getElementById('chkDOB') || {}).value || '';
+            var branch = (document.getElementById('chkBranch') || {});
+            var branchText = branch.options ? (branch.options[branch.selectedIndex] || {}).text || '' : '';
+            var branchVal = branch.value || '';
+            var apptDate = (document.getElementById('chkApptDate') || {}).value || '';
+            var apptTime = (document.getElementById('chkApptTime') || {}).value || '';
+            var clientType = (document.getElementById('chkClientType') || {}).value || 'referred';
+            var distName = (document.getElementById('chkDistributorName') || {}).value || '';
+            var distNB = (document.getElementById('chkDistributorNB') || {}).value || '';
+            var concern = (document.getElementById('chkConcern') || {}).value || '';
+            var condEls = document.querySelectorAll('input[name="chkConditions"]:checked');
+            var condArr = [];
+            condEls.forEach(function(el) {
+                var label = el.parentElement ? el.parentElement.textContent.trim() : el.value;
+                condArr.push(label);
+            });
+            var conditions = condArr.join(', ');
+            var medications = (document.getElementById('chkMedications') || {}).value || '';
+            var notes = (document.getElementById('chkNotes') || {}).value || '';
+            return {
+                visitType: visitType === 'walkin' ? 'Walk-in' : 'Book Appointment',
+                fullName: fullName, phone: phone, email: email,
+                gender: gender, dob: dob, branch: branchText || branchVal,
+                apptDate: apptDate, apptTime: apptTime,
+                clientType: clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
+                distributorName: distName, distributorNB: distNB,
+                concern: concern, conditions: conditions,
+                medications: medications, notes: notes
+            };
+        }
+
+        function _buildCheckupPreviewHTML(data) {
+            var logoUrl = window.location.origin + '/assets/dynapharm-logo.png';
+            var now = new Date();
+            var dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+            var timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            var e = _escHtml;
+            var html = '<div id="checkupPrintArea">';
+            html += '<style>@media print { body * { visibility: hidden; } #checkupPrintArea, #checkupPrintArea * { visibility: visible; } #checkupPrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; } .no-print { display: none !important; } }</style>';
+            html += '<div style="text-align:center; margin-bottom:20px; border-bottom:3px solid #c41e3a; padding-bottom:16px;">';
+            html += '<img src="' + logoUrl + '" alt="Dynapharm Namibia" style="width:90px; height:auto; margin-bottom:8px;">';
+            html += '<h2 style="margin:0 0 4px; color:#c41e3a; font-size:1.4rem;">Dynapharm International Namibia</h2>';
+            html += '<h3 style="margin:0 0 4px; color:#1f2937; font-size:1.1rem;">Full Body Check Up Form</h3>';
+            html += '<p style="margin:0; color:#6b7280; font-size:0.85rem;">' + e(dateStr) + ' at ' + e(timeStr) + '</p>';
+            html += '</div>';
+
+            html += '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">';
+            function row(label, value) {
+                if (!value) return '';
+                return '<tr><td style="padding:8px 12px; border:1px solid #e5e7eb; font-weight:600; color:#374151; width:40%; background:#f9fafb;">' + e(label) + '</td><td style="padding:8px 12px; border:1px solid #e5e7eb; color:#1f2937;">' + e(value) + '</td></tr>';
+            }
+
+            html += '<tr><td colspan="2" style="padding:10px 12px; background:#c41e3a; color:white; font-weight:700; font-size:0.95rem;">Visit Information</td></tr>';
+            html += row('Visit Type', data.visitType);
+            if (data.apptDate) html += row('Appointment Date', data.apptDate);
+            if (data.apptTime) html += row('Appointment Time', data.apptTime);
+            html += row('Branch', data.branch);
+
+            html += '<tr><td colspan="2" style="padding:10px 12px; background:#c41e3a; color:white; font-weight:700; font-size:0.95rem;">Personal Information</td></tr>';
+            html += row('Full Name', data.fullName);
+            html += row('Phone', data.phone);
+            if (data.email) html += row('Email', data.email);
+            html += row('Gender', data.gender);
+            if (data.dob) html += row('Date of Birth', data.dob);
+
+            html += '<tr><td colspan="2" style="padding:10px 12px; background:#c41e3a; color:white; font-weight:700; font-size:0.95rem;">Referral / Membership</td></tr>';
+            html += row('Type', data.clientType);
+            if (data.distributorName) html += row('Distributor Name', data.distributorName);
+            if (data.distributorNB) html += row('NB Number', data.distributorNB);
+
+            html += '<tr><td colspan="2" style="padding:10px 12px; background:#c41e3a; color:white; font-weight:700; font-size:0.95rem;">Health Information</td></tr>';
+            html += row('Primary Concern', data.concern);
+            if (data.conditions) html += row('Existing Conditions', data.conditions);
+            if (data.medications) html += row('Current Medications', data.medications);
+            if (data.notes) html += row('Additional Notes', data.notes);
+
+            html += '</table>';
+
+            html += '<div style="margin-top:30px; padding-top:16px; border-top:2px solid #e5e7eb;">';
+            html += '<div style="display:flex; justify-content:space-between; margin-top:30px;">';
+            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Client Signature</div></div>';
+            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Date</div></div>';
+            html += '<div style="flex:1; text-align:center; margin:0 20px;"><div style="border-top:1px solid #000; padding-top:6px; font-size:0.85rem; color:#374151;">Consultant Signature</div></div>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<p style="text-align:center; margin-top:16px; color:#9ca3af; font-size:0.75rem;">Dynapharm International Namibia &mdash; Health | Wealth | Freedom</p>';
+            html += '</div>';
+            return html;
+        }
+
+        function previewCheckupForm() {
+            var data = _getCheckupFormData();
+            if (!data.fullName || !data.phone) {
+                var errEl = document.getElementById('checkupFormError');
+                if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before previewing.'; errEl.style.display = 'block'; }
+                return;
+            }
+            var errEl2 = document.getElementById('checkupFormError');
+            if (errEl2) errEl2.style.display = 'none';
+            var html = _buildCheckupPreviewHTML(data);
+            document.getElementById('checkupPreviewContent').innerHTML = html;
+            document.getElementById('checkupPreviewModal').style.display = 'block';
+        }
+
+        document.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Escape') {
+                var modal = document.getElementById('checkupPreviewModal');
+                if (modal && modal.style.display !== 'none') modal.style.display = 'none';
+            }
+        });
+
+        function printCheckupForm() {
+            var data = _getCheckupFormData();
+            if (!data.fullName || !data.phone) {
+                var errEl = document.getElementById('checkupFormError');
+                if (errEl) { errEl.textContent = 'Please fill in at least your Full Name and Phone before printing.'; errEl.style.display = 'block'; }
+                return;
+            }
+            var errEl2 = document.getElementById('checkupFormError');
+            if (errEl2) errEl2.style.display = 'none';
+            var html = _buildCheckupPreviewHTML(data);
+            var printWin = window.open('', '_blank', 'width=800,height=900');
+            if (!printWin) {
+                alert('Pop-up blocked. Please allow pop-ups for this site to use the print feature.');
+                return;
+            }
+            printWin.document.write('<!DOCTYPE html><html><head><title>Full Body Check Up - Dynapharm Namibia</title>');
+            printWin.document.write('<style>body{font-family:Arial,Helvetica,sans-serif;margin:20px;color:#1f2937;} table{width:100%;border-collapse:collapse;} td{padding:8px 12px;border:1px solid #d1d5db;} @media print{body{margin:10px;}} .no-print{display:none;}</style>');
+            printWin.document.write('</head><body>');
+            printWin.document.write(html);
+            printWin.document.write('</body></html>');
+            printWin.document.close();
+            setTimeout(function() { printWin.print(); }, 400);
+        }
+
         function enterCheckupMode() {
             document.getElementById('landingTabShop').style.display = 'none';
             document.getElementById('landingTabCheckup').style.display = 'none';
@@ -5618,7 +5766,7 @@
                         errEl.style.display = 'block';
                     } finally {
                         submitBtn.disabled = false;
-                        submitBtn.textContent = 'Submit Check Up Form';
+                        submitBtn.textContent = 'Submit';
                     }
                 });
             });
@@ -7493,7 +7641,7 @@
             <div style="display: flex; align-items: center; gap: 15px;">
                 <button id="mobileMenuToggle" onclick="toggleMobileMenu()" class="mobile-menu-btn" style="display: none; background: none; border: none; font-size: 1.8rem; cursor: pointer; color: #c41e3a; padding: 8px; min-width: 44px; min-height: 44px;">☰</button>
                 <a href="/" style="display:flex;align-items:center;gap:10px;text-decoration:none;">
-                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='50' viewBox='0 0 200 50'%3E%3Crect width='200' height='50' rx='8' fill='%23c41e3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial, sans-serif' font-size='16' font-weight='bold'%3EDynapharm%3C/text%3E%3C/svg%3E" alt="Dynapharm Logo" style="height: 36px; width: auto;">
+                    <img src="assets/dynapharm-logo.png" alt="Dynapharm Namibia" style="height: 42px; width: auto;">
                 </a>
             </div>
             <div id="desktopNavLinks" class="desktop-nav" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
@@ -7773,6 +7921,7 @@
                 <div id="landingTabCheckupContent" style="display: none;">
                     <div style="text-align: center; margin-bottom: 28px;">
                         <button id="checkupBackBtn" type="button" onclick="exitCheckupMode()" style="display:none; background: none; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 0.9rem; color: #475569; margin-bottom: 12px; transition: background 0.15s;" onmouseenter="this.style.background='#f3f4f6'" onmouseleave="this.style.background='none'">&larr; Back to Home</button>
+                        <img src="assets/dynapharm-logo.png" alt="Dynapharm Namibia" style="width: 120px; height: auto; margin-bottom: 10px;">
                         <h2 style="font-size: 1.8rem; margin-bottom: 6px; color: #c41e3a;">Full Body Check Up</h2>
                         <p style="color: #666; font-size: 1rem; max-width: 540px; margin: 0 auto;">Get a comprehensive health assessment from our experienced consultants. Fill out the form below to get started.</p>
                     </div>
@@ -7912,13 +8061,31 @@
 
                         <div id="checkupFormError" style="display:none; color: #c41e3a; background: #fef2f2; padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem;"></div>
 
-                        <button type="submit" id="checkupSubmitBtn" style="width: 100%; padding: 16px; background: #c41e3a; color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background 0.2s;">Submit Check Up Form</button>
-                        <p style="text-align: center; margin-top: 12px; color: #999; font-size: 0.85rem;">Your information will be sent to the branch consultant for review.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                            <button type="button" id="checkupPreviewBtn" onclick="previewCheckupForm()" style="padding: 14px; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s;">Preview</button>
+                            <button type="button" id="checkupPrintBtn" onclick="printCheckupForm()" style="padding: 14px; background: #059669; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s;">Print</button>
+                            <button type="submit" id="checkupSubmitBtn" style="padding: 14px; background: #c41e3a; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background 0.2s;">Submit</button>
+                        </div>
+                        <p style="text-align: center; margin-top: 8px; color: #999; font-size: 0.85rem;">Preview or print your form before submitting to the branch consultant.</p>
                     </form>
                 </div>
             </div>
         </div>
     </div>
+
+    <div id="checkupPreviewModal" onclick="if(event.target===this)this.style.display='none'" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10005; overflow-y:auto; padding:20px;">
+        <div style="max-width:700px; margin:20px auto; background:white; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 24px; border-bottom:1px solid #e5e7eb;">
+                <h3 style="margin:0; color:#1f2937; font-size:1.1rem;">Form Preview</h3>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" onclick="printCheckupForm()" style="padding:8px 16px; background:#059669; color:white; border:none; border-radius:8px; font-size:0.9rem; font-weight:600; cursor:pointer;">Print</button>
+                    <button type="button" onclick="document.getElementById('checkupPreviewModal').style.display='none'" style="padding:8px 16px; background:#6b7280; color:white; border:none; border-radius:8px; font-size:0.9rem; cursor:pointer;">Close</button>
+                </div>
+            </div>
+            <div id="checkupPreviewContent" style="padding:24px;"></div>
+        </div>
+    </div>
+
     <style>
         /* Mobile-first responsive enhancements (safe to append) */
         :root { --gap: 10px; }

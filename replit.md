@@ -50,14 +50,16 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - `PORT` — Server port (default 5000)
 
 ## Frontend
-- Landing page: `index.html` — single entry point with hero (Online Shop + Full Body Check Up buttons), navbar (About/Network/Global/Testimonials/Distributor Login/Staff Login)
+- Landing page: `index.html` — single entry point with hero (Online Shop + Full Body Check Up buttons), navbar with Dynapharm logo (About/Network/Global/Testimonials/Distributor Login/Staff Login)
 - Portal application: `dynapharm-complete-system.html` — monolithic SPA (Online Shop, Full Body Check Up tabs, staff portals after login)
-- Portal has streamlined navbar (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
+- Portal has streamlined navbar with Dynapharm logo (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
+- Logo: `assets/dynapharm-logo.png` — displayed in navbar (all pages), checkup form header, distributor portal login/dashboard, preview/print output
 - Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
 - Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
 - Staff login modal has Login / Sign Up tabs; Sign Up collects name, DOB, position, password (pending admin approval)
 - Admin portal has "Staff Registration Approvals" section to approve/reject pending signups
-- Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password)
+- Full Body Check Up form: Preview/Print/Submit buttons. Preview opens modal with formatted table (XSS-safe HTML escaping). Print opens new window with logo, structured sections, signature lines (handles popup-block). Modal closable via Close button, Esc key, or backdrop click.
+- Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password), logo on login card and dashboard header
   - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
   - Sign Up: select distributor from 12K+ dropdown, DOB, email, password (POST `/api/distributors/set-password`, first-time only — rejects if account exists, verifies DOB)
   - Forgot Password: NB number + email + DOB + new password (POST `/api/distributors/forgot-password`, verifies all three fields match)
