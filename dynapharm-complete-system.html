@@ -73,10 +73,9 @@
                 // Allow other errors through
             }, true); // Use capture phase to catch before default handlers
             
-            // Intercept unhandled promise rejections from image loading
             window.addEventListener('unhandledrejection', function(event) {
                 const reason = event.reason?.message || event.reason?.toString() || '';
-                if (reason.includes('404') || reason.includes('wp-content/uploads/products') || reason.includes('dynapharm.net/ph/wp-content')) {
+                if (reason.includes('404') || reason.includes('401') || reason.includes('Unauthorized') || reason.includes('wp-content/uploads/products') || reason.includes('dynapharm.net/ph/wp-content') || reason.includes('Authentication required')) {
                     event.preventDefault();
                 }
             });
@@ -5028,6 +5027,28 @@
         }
         
         // Landing Page Tab Functions
+        (function handleHashNavigation() {
+            function routeByHash() {
+                var hash = window.location.hash;
+                if (hash === '#client' || hash === '#shop') {
+                    showLandingPage();
+                    showLandingTab('shop');
+                } else if (hash === '#checkup') {
+                    showLandingPage();
+                    showLandingTab('checkup');
+                } else if (hash === '#testimonials') {
+                    showLandingPage();
+                    showLandingTab('shop');
+                }
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() { setTimeout(routeByHash, 300); });
+            } else {
+                setTimeout(routeByHash, 300);
+            }
+            window.addEventListener('hashchange', routeByHash);
+        })();
+
         function showLandingTab(tabName) {
             const shopTab = document.getElementById('landingTabShop');
             const checkupTab = document.getElementById('landingTabCheckup');
@@ -6855,19 +6876,20 @@
         }, 60000);
     </script>
     <script>
-        // Minimal global error surface to catch early syntax/runtime issues
         window.addEventListener('error', function(e) {
             try {
-                const bannerId = 'global-error-banner';
+                if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) return;
+                if (e.message && (e.message.includes('401') || e.message.includes('Unauthorized') || e.message.includes('NetworkError'))) return;
+                var bannerId = 'global-error-banner';
                 if (!document.getElementById(bannerId)) {
-                    const el = document.createElement('div');
+                    var el = document.createElement('div');
                     el.id = bannerId;
                     el.style.cssText = 'position:fixed;z-index:99999;left:0;right:0;top:0;background:#b00020;color:#fff;padding:8px 12px;font-weight:600;';
                     el.textContent = 'A script error occurred. Check Console for details.';
                     document.body.appendChild(el);
-                    setTimeout(() => el.remove(), 6000);
+                    setTimeout(function() { el.remove(); }, 6000);
                 }
-            } catch(_) { /* ignore */ }
+            } catch(_) {}
         });
 
         function toggleMISView(view) {
@@ -7012,37 +7034,35 @@
     
     <!-- Unified Login/Welcome Overlay -->
     <!-- Navigation Bar -->
-    <nav id="mainNavbar" style="background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 9999; padding: 15px 0;">
-        <div style="max-width: 1400px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+    <nav id="mainNavbar" style="background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 9999; padding: 10px 0;">
+        <div style="max-width: 1400px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <button id="mobileMenuToggle" onclick="toggleMobileMenu()" class="mobile-menu-btn" style="display: none; background: none; border: none; font-size: 1.8rem; cursor: pointer; color: #c41e3a; padding: 8px; min-width: 44px; min-height: 44px;">☰</button>
-                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='50' viewBox='0 0 200 50'%3E%3Crect width='200' height='50' rx='8' fill='%23c41e3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial, sans-serif' font-size='16' font-weight='bold'%3EDynapharm%3C/text%3E%3C/svg%3E" alt="Dynapharm Logo" style="height: 40px; width: auto;">
+                <a href="/" style="display:flex;align-items:center;gap:10px;text-decoration:none;">
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='50' viewBox='0 0 200 50'%3E%3Crect width='200' height='50' rx='8' fill='%23c41e3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial, sans-serif' font-size='16' font-weight='bold'%3EDynapharm%3C/text%3E%3C/svg%3E" alt="Dynapharm Logo" style="height: 36px; width: auto;">
+                </a>
             </div>
-            <div id="desktopNavLinks" class="desktop-nav" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
-                <a href="#home" onclick="showLandingPage()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Home</a>
-                <a href="#guest-portal" onclick="showGuestPortal()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Guest Portal</a>
-                <a href="#about" onclick="showAboutUs()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">About Us</a>
-                <a href="#media" onclick="showMedia()" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 8px 12px; border-radius: 5px; transition: background 0.3s;">Media</a>
+            <div id="desktopNavLinks" class="desktop-nav" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <a href="/" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Home</a>
+                <a href="#" onclick="showLandingPage(); showLandingTab('shop'); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Shop</a>
+                <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 6px 10px; border-radius: 5px; font-size: 0.92rem;">Health Check</a>
                 <span id="navLoginSection">
-                    <button onclick="showStaffLogin()" class="btn" style="background: #c41e3a; color: white; padding: 10px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer;">Login / Register</button>
+                    <button onclick="showStaffLogin()" class="btn" style="background: #c41e3a; color: white; padding: 8px 18px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">Staff Login</button>
                 </span>
-                <span id="navUserSection" style="display: none; display: flex; align-items: center; gap: 10px;">
+                <span id="navUserSection" style="display: none; align-items: center; gap: 10px;">
                     <span id="navUserDisplay" style="color: #666; font-size: 0.9rem;"></span>
                     <button onclick="logout()" class="btn btn-danger" style="padding: 8px 15px; font-size: 0.9rem;">Logout</button>
                 </span>
             </div>
         </div>
-        
+
         <!-- Mobile Menu -->
-        <div id="mobileMenu" class="mobile-menu" style="display: none; background: white; border-top: 2px solid #f0f0f0; margin-top: 15px; padding: 20px; flex-direction: column; gap: 15px;">
-            <a href="#home" onclick="showLandingPage(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Home</a>
-            <a href="#guest-portal" onclick="showGuestPortal(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Guest Portal</a>
-            <a href="#about" onclick="showAboutUs(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">About Us</a>
-            <a href="#media" onclick="showMedia(); toggleMobileMenu();" style="text-decoration: none; color: #c41e3a; font-weight: 600; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Media</a>
+        <div id="mobileMenu" class="mobile-menu" style="display: none; background: white; border-top: 2px solid #f0f0f0; margin-top: 10px; padding: 16px; flex-direction: column; gap: 10px;">
+            <a href="/" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Home</a>
+            <a href="#" onclick="showLandingPage(); showLandingTab('shop'); toggleMobileMenu(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Shop</a>
+            <a href="#" onclick="showLandingPage(); showLandingTab('checkup'); toggleMobileMenu(); return false;" style="text-decoration: none; color: #475569; font-weight: 500; padding: 12px; border-radius: 5px; display: block; min-height: 44px; line-height: 20px;">Health Check</a>
             <div id="mobileLoginSection">
-                <button onclick="showStaffLogin(); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">👔 Staff Login</button>
-                <a href="distributor-portal.html" target="_blank" class="btn" style="width: 100%; background: #f0f0f0; color: #333; padding: 12px 20px; font-weight: 600; text-decoration: none; border-radius: 8px; display: block; text-align: center; margin-top: 10px; min-height: 44px; line-height: 20px;">📊 Distributor Portal</a>
-                <button onclick="continueAsGuest(); toggleMobileMenu();" class="btn" style="width: 100%; background: #f8f9fa; color: #333; padding: 12px 20px; font-weight: 600; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; margin-top: 10px; min-height: 44px;">🛒 Guest Access</button>
+                <button onclick="showStaffLogin(); toggleMobileMenu();" class="btn" style="width: 100%; background: #c41e3a; color: white; padding: 12px 20px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; min-height: 44px;">Staff Login</button>
             </div>
             <div id="mobileUserSection" style="display: none; flex-direction: column; gap: 10px;">
                 <span id="mobileUserDisplay" style="color: #666; font-size: 0.9rem; padding: 12px;"></span>
@@ -7248,37 +7268,9 @@
     </div>
 
     <!-- Landing Page (Visible to All) -->
-    <div id="landingPage" style="min-height: 100vh; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);">
-        <!-- Welcome Section -->
-        <div style="background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%); color: white; padding: 60px 20px; text-align: center;">
-            <div style="max-width: 1200px; margin: 0 auto;">
-                <h1 style="font-size: 3rem; margin-bottom: 15px; color: white;">Welcome to Dynapharm Namibia</h1>
-                <p style="font-size: 1.5rem; margin-bottom: 10px; opacity: 0.95;">Your Trusted Wellness Partner</p>
-                <p style="font-size: 1rem; opacity: 0.9; margin-bottom: 30px;">Shop Commercial Building, Independence Avenue | Tel: 061-300877</p>
-                
-                <!-- Quick Access Buttons -->
-                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 30px;">
-                    <button onclick="showStaffLogin()" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;" 
-                            onmouseover="this.style.transform='translateY(-2px)'" 
-                            onmouseout="this.style.transform='translateY(0)'">
-                        👔 Staff Login
-                    </button>
-                    <a href="distributor-portal.html" target="_blank" class="btn" style="background: white; color: #c41e3a; padding: 14px 28px; border-radius: 8px; border: none; cursor: pointer; font-size: 1.1rem; font-weight: 600; text-decoration: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s; display: inline-block;"
-                       onmouseover="this.style.transform='translateY(-2px)'" 
-                       onmouseout="this.style.transform='translateY(0)'">
-                        📊 Distributor Portal
-                    </a>
-                    <button onclick="continueAsGuest()" class="btn" style="background: rgba(255,255,255,0.2); color: white; padding: 14px 28px; border-radius: 8px; border: 2px solid white; cursor: pointer; font-size: 1.1rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s;"
-                            onmouseover="this.style.transform='translateY(-2px); background: rgba(255,255,255,0.3)'" 
-                            onmouseout="this.style.transform='translateY(0); background: rgba(255,255,255,0.2)'">
-                        🛒 Guest Access
-                    </button>
-                </div>
-            </div>
-        </div>
-
+    <div id="landingPage" style="min-height: 100vh; background: #f8fafc;">
         <!-- Main Content Section with Tabs -->
-        <div style="max-width: 1400px; margin: 0 auto; padding: 40px 20px;">
+        <div style="max-width: 1400px; margin: 0 auto; padding: 24px 20px;">
             <div style="background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px;">
                 <!-- Landing Page Tabs -->
                 <div style="display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 3px solid #c41e3a; flex-wrap: wrap;">
@@ -42382,7 +42374,7 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
              * Detect warehouse manager and get warehouse config
              */
             function detectWarehouse() {
-                const user = window.currentUser || currentUser;
+                const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
                 if (!user || !user.role) return null;
                 
                 const role = (user.role || '').toLowerCase();

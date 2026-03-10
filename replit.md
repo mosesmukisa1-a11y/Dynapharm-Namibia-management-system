@@ -44,6 +44,8 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - `PORT` — Server port (default 5000)
 
 ## Frontend
-- Main application: `dynapharm-complete-system.html` (monolithic SPA)
+- Landing page: `index.html` — single entry point with hero, company info, Browse Products + Distributor Login
+- Portal application: `dynapharm-complete-system.html` — monolithic SPA (Online Shop, Full Body Check Up, staff portals after login)
+- Portal has streamlined navbar (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome section
+- Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
 - Individual portals: `gm-portal.html`, `hr-portal.html`, `mis-portal.html`, etc.
-- Landing page: `index.html`
