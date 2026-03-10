@@ -19839,6 +19839,9 @@
                 if (modalId === 'mediaGalleryOverlay') {
                     closeMediaOverlay();
                 }
+                if (modalId === 'reportModal') {
+                    window._checkupAppointmentId = null;
+                }
             };
         } else {
             const previousCloseModal = window.closeModal;
@@ -19849,6 +19852,9 @@
                 }
                 if (modalId === 'mediaGalleryOverlay') {
                     closeMediaOverlay();
+                }
+                if (modalId === 'reportModal') {
+                    window._checkupAppointmentId = null;
                 }
             };
         }
@@ -31922,6 +31928,7 @@ if (loginForm) {
                 if (sl !== 'completed' && sl !== 'cancelled') {
                     html += '<div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; border-top:1px solid #f3f4f6; padding-top:10px;">';
                     html += '<button class="btn" onclick="viewCheckupFormDetail(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
+                    html += '<button class="btn" onclick="createReportFromCheckup(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#c41e3a; color:white; border:none; border-radius:6px; cursor:pointer;">Create Report</button>';
                     if (sl === 'pending' || sl === 'walk-in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'checked_in\')" style="padding:6px 14px; font-size:0.85rem; background:#8b5cf6; color:white; border:none; border-radius:6px; cursor:pointer;">Check In</button>';
                     if (sl === 'checked_in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'in_progress\')" style="padding:6px 14px; font-size:0.85rem; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer;">Start Checkup</button>';
                     html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'completed\')" style="padding:6px 14px; font-size:0.85rem; background:#22c55e; color:white; border:none; border-radius:6px; cursor:pointer;">Mark Complete</button>';
@@ -31955,14 +31962,20 @@ if (loginForm) {
 
         function viewCheckupFormDetail(aptId) {
             var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
-            if (!apt) return;
+            if (!apt) { console.error('Appointment not found:', aptId); return; }
             var data = {};
             try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+            var branchName = apt.branch || '';
+            try {
+                var cachedBranches = typeof getCachedBranches === 'function' ? getCachedBranches() : [];
+                var br = cachedBranches.find(function(b) { return b.id === apt.branch; });
+                if (br) branchName = br.name || br.id;
+            } catch(e) {}
             var formData = {
                 visitType: (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment',
                 fullName: apt.full_name || '', phone: apt.phone || '', email: apt.email || '',
                 gender: data.gender || '', dob: data.dob || '',
-                branch: apt.branch || '',
+                branch: branchName,
                 apptDate: apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '',
                 apptTime: apt.time ? apt.time.slice(0,5) : '',
                 clientType: data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
@@ -31974,8 +31987,68 @@ if (loginForm) {
                 initials: data.acknowledgedInitials || _getCheckupInitials(apt.full_name || '')
             };
             var html = _buildCheckupPreviewHTML(formData);
-            document.getElementById('checkupPreviewContent').innerHTML = html;
-            document.getElementById('checkupPreviewModal').style.display = 'block';
+            html += '<div class="no-print" style="margin-top:20px; padding-top:16px; border-top:2px solid #e5e7eb; display:flex; gap:10px; flex-wrap:wrap;">';
+            var s = (apt.status || '').toLowerCase();
+            if (s !== 'completed' && s !== 'cancelled') {
+                html += '<button onclick="document.getElementById(\'checkupPreviewModal\').style.display=\'none\'; createReportFromCheckup(\'' + _escHtml(apt.id) + '\')" style="padding:10px 20px; background:#c41e3a; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:0.9rem;">Create Report & Prescription</button>';
+            }
+            html += '</div>';
+            var contentEl = document.getElementById('checkupPreviewContent');
+            var modalEl = document.getElementById('checkupPreviewModal');
+            if (contentEl) contentEl.innerHTML = html;
+            if (modalEl) {
+                modalEl.style.display = 'block';
+                modalEl.style.zIndex = '99999';
+            }
+        }
+
+        function createReportFromCheckup(aptId) {
+            var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
+            if (!apt) { alert('Appointment not found'); return; }
+            var data = {};
+            try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+
+            var tempRef = 'CHKUP-' + aptId;
+            var branchName = apt.branch || '';
+            try {
+                var cachedBranches = typeof getCachedBranches === 'function' ? getCachedBranches() : [];
+                var br = cachedBranches.find(function(b) { return b.id === apt.branch; });
+                if (br) branchName = br.name || br.id;
+            } catch(e) {}
+
+            var tempClient = {
+                referenceNumber: tempRef,
+                fullName: apt.full_name || 'Unknown',
+                phone: apt.phone || '',
+                email: apt.email || '',
+                gender: data.gender || 'Not specified',
+                age: data.dob ? Math.floor((Date.now() - new Date(data.dob).getTime()) / 31557600000) : 'N/A',
+                height: data.height || '',
+                weight: data.weight || '',
+                branch: apt.branch || '',
+                primaryReason: data.concern || 'Full Body Check-Up',
+                symptoms: data.conditions ? data.conditions.split(',').map(function(s){ return s.trim(); }) : [],
+                waterIntake: data.waterIntake || '',
+                exerciseFreq: data.exerciseFreq || '',
+                sleepHours: data.sleepHours || '',
+                stressLevel: data.stressLevel || '',
+                medicalHistory: data.medications ? [data.medications] : [],
+                nbNumber: data.distributorNB || '',
+                timestamp: apt.created_at || new Date().toISOString(),
+                signature: data.acknowledgedBy || ''
+            };
+
+            if (!Array.isArray(window.clients)) window.clients = [];
+            var existingIdx = clients.findIndex(function(c) { return c.referenceNumber === tempRef; });
+            if (existingIdx !== -1) {
+                clients[existingIdx] = tempClient;
+            } else {
+                clients.push(tempClient);
+            }
+
+            window._checkupAppointmentId = aptId;
+
+            createReport(tempRef);
         }
 
         function viewTodayAppointments() {
@@ -33970,7 +34043,24 @@ if (loginForm) {
                 }
                 
                 console.log('✅ Report saved to backend database successfully');
-                
+
+                if (window._checkupAppointmentId && currentClientId === 'CHKUP-' + window._checkupAppointmentId) {
+                    try {
+                        var aptRes = await fetch('/api/appointments', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: window._checkupAppointmentId, status: 'in_progress' }),
+                            credentials: 'include'
+                        });
+                        if (aptRes.ok) {
+                            var cidx = _consultantCheckups.findIndex(function(a) { return a.id === window._checkupAppointmentId; });
+                            if (cidx !== -1) _consultantCheckups[cidx].status = 'in_progress';
+                            if (typeof showConsultantCheckups === 'function') showConsultantCheckups(_consultantCheckupsView);
+                        }
+                    } catch(e) { console.warn('Could not update checkup status:', e); }
+                    window._checkupAppointmentId = null;
+                }
+
                 // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
                     if (isEditing) {
                     // Update existing report in local array only after successful backend save
