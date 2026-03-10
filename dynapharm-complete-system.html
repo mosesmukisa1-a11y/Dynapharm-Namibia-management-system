@@ -5040,6 +5040,12 @@
                     showLandingPage();
                     showLandingTab('shop');
                 }
+                if (sessionStorage.getItem('dynapharm_open_staff_login') === '1') {
+                    sessionStorage.removeItem('dynapharm_open_staff_login');
+                    setTimeout(function() {
+                        if (typeof showStaffLogin === 'function') showStaffLogin();
+                    }, 400);
+                }
             }
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', function() { setTimeout(routeByHash, 300); });

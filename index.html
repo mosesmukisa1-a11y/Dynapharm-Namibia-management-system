@@ -109,6 +109,17 @@
 
       .nav-cta:hover { background: var(--brand-dark); text-decoration: none !important; }
 
+      .nav-link-accent {
+        color: var(--brand) !important;
+        font-weight: 600 !important;
+        padding: 8px 16px;
+        border: 1.5px solid var(--brand);
+        border-radius: 999px;
+        font-size: 0.88rem;
+        transition: background 0.2s, color 0.2s;
+      }
+      .nav-link-accent:hover { background: var(--brand-light); text-decoration: none !important; }
+
       .nav-toggle {
         display: none;
         background: none;
@@ -406,7 +417,8 @@
           <li><a href="#network">Network</a></li>
           <li><a href="#global">Global</a></li>
           <li><a href="#testimonials">Testimonials</a></li>
-          <li><a href="dynapharm-complete-system.html#client" class="nav-cta">Open Portal</a></li>
+          <li><a href="distributor-guest.html" class="nav-link-accent">Distributor Login</a></li>
+          <li><a href="dynapharm-complete-system.html" class="nav-cta" onclick="showStaffLoginOnPortal(event)">Staff Login</a></li>
         </ul>
       </div>
     </nav>
@@ -422,8 +434,8 @@
           lifestyle products for families, entrepreneurs, and communities.
         </p>
         <div class="hero-actions">
-          <a href="dynapharm-complete-system.html#client" class="btn btn-white">Browse Products</a>
-          <a href="distributor-guest.html" class="btn btn-outline">Distributor Login</a>
+          <a href="dynapharm-complete-system.html#shop" class="btn btn-white">Online Shop</a>
+          <a href="dynapharm-complete-system.html#checkup" class="btn btn-outline">Full Body Check Up</a>
         </div>
       </div>
     </section>
@@ -609,9 +621,9 @@
           <div>
             <h4>Quick Links</h4>
             <ul class="footer-links">
-              <li><a href="dynapharm-complete-system.html#client">Online Shop</a></li>
-              <li><a href="dynapharm-complete-system.html">Full Portal</a></li>
-              <li><a href="distributor-guest.html">Distributor Access</a></li>
+              <li><a href="dynapharm-complete-system.html#shop">Online Shop</a></li>
+              <li><a href="dynapharm-complete-system.html#checkup">Full Body Check Up</a></li>
+              <li><a href="distributor-guest.html">Distributor Login</a></li>
               <li><a href="appointments-admin.html">Appointments</a></li>
             </ul>
           </div>
@@ -629,5 +641,12 @@
         </div>
       </div>
     </footer>
+    <script>
+      function showStaffLoginOnPortal(e) {
+        e.preventDefault();
+        sessionStorage.setItem('dynapharm_open_staff_login', '1');
+        window.location.href = 'dynapharm-complete-system.html';
+      }
+    </script>
   </body>
 </html>
