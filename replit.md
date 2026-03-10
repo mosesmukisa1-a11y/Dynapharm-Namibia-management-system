@@ -49,6 +49,9 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - Portal has streamlined navbar (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
 - Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
 - Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
-- Distributor Login links to `distributor-portal.html` (NB number + DOB login, 12K+ distributors loaded from CSV)
+- Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password)
+  - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
+  - Sign Up: select distributor from 12K+ dropdown, DOB, email, password (POST `/api/distributors/set-password`, first-time only — rejects if account exists, verifies DOB)
+  - Forgot Password: NB number + email + DOB + new password (POST `/api/distributors/forgot-password`, verifies all three fields match)
 - `distributor-guest.html` is a health consultation booking form (separate from distributor login)
 - Individual portals: `gm-portal.html`, `hr-portal.html`, `mis-portal.html`, etc.

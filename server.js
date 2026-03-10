@@ -27,6 +27,8 @@ const PUBLIC_API_ROUTES = new Set([
   '/api/auth/login',
   '/api/auth/logout',
   '/api/distributor-login',
+  '/api/distributors/set-password',
+  '/api/distributors/forgot-password',
   '/api/health',
 ]);
 

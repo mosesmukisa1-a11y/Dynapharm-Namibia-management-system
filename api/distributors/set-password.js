@@ -60,9 +60,15 @@ export default async function handler(req, res) {
     const normalizedPassword = rawPassword.trim();
     const distributorCodeInput = body?.distributorCode;
     const distributorIdInput = body?.id;
+    const emailInput = (body?.email || '').trim();
+    const dobInput = (body?.dob || '').trim();
 
     if (!distributorIdInput && !distributorCodeInput) {
       return res.status(400).json({ error: 'Distributor id or code is required' });
+    }
+
+    if (!emailInput) {
+      return res.status(400).json({ error: 'Email address is required' });
     }
 
     let distributor = null;
@@ -77,50 +83,38 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Distributor not found' });
     }
 
+    if (distributor.birthdate) {
+      const storedDate = new Date(distributor.birthdate).toISOString().split('T')[0];
+      if (storedDate !== dobInput) {
+        return res.status(400).json({ error: 'Date of birth does not match our records' });
+      }
+    } else if (!dobInput) {
+      return res.status(400).json({ error: 'Date of birth is required' });
+    }
+
     const normalizedCode = (distributor.distributor_code || distributorCodeInput || '').toString().trim().toUpperCase();
     if (!normalizedCode) {
       return res.status(400).json({ error: 'Distributor code could not be determined' });
     }
 
     const username = normalizedCode.toLowerCase();
-    const passwordHash = await bcrypt.hash(normalizedPassword, 10);
-    const existingUser = await getOne('SELECT * FROM users WHERE username = $1', [username]);
+    const existingUser = await getOne('SELECT * FROM users WHERE username = $1 AND role = $2', [username, 'distributor']);
 
+    if (existingUser) {
+      return res.status(409).json({ error: 'An account already exists for this NB number. Please use Forgot Password to reset your credentials.' });
+    }
+
+    const passwordHash = await bcrypt.hash(normalizedPassword, 10);
     const fullName = distributor.distributor_name || normalizedCode;
     const branch = distributor.branch || null;
-    const email = distributor.email || null;
+    const email = emailInput || distributor.email || null;
     const phone = distributor.mobile_no || null;
     const branches = branch ? JSON.stringify([branch]) : JSON.stringify([]);
     const metadata = JSON.stringify({ source: 'distributor', linkedDistributor: distributor.id });
 
     let userId;
 
-    if (existingUser) {
-      userId = existingUser.id;
-      await query(
-        `UPDATE users
-           SET password_hash = $1,
-               role = $2,
-               full_name = COALESCE($3, full_name),
-               email = COALESCE($4, email),
-               phone = COALESCE($5, phone),
-               branch = COALESCE($6, branch),
-               branches = COALESCE($7::jsonb, branches),
-               is_active = TRUE,
-               updated_at = NOW()
-         WHERE id = $8`,
-        [
-          passwordHash,
-          'distributor',
-          fullName,
-          email,
-          phone,
-          branch,
-          branches,
-          existingUser.id
-        ]
-      );
-    } else {
+    {
       userId = `USR${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
       await query(
         `INSERT INTO users (
@@ -153,8 +147,8 @@ export default async function handler(req, res) {
     existingMetadata.passwordUpdatedAt = new Date().toISOString();
 
     await query(
-      'UPDATE distributors SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2',
-      [JSON.stringify(existingMetadata), distributor.id]
+      'UPDATE distributors SET email = COALESCE($1, email), birthdate = COALESCE($2::date, birthdate), metadata = $3::jsonb, updated_at = NOW() WHERE id = $4',
+      [email, dobInput || null, JSON.stringify(existingMetadata), distributor.id]
     );
 
     return res.status(200).json({

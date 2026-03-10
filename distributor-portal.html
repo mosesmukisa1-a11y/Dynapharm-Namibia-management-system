@@ -114,41 +114,110 @@
     </style>
 </head>
 <body>
-    <!-- Login Screen -->
+    <!-- Auth Screen -->
     <div id="loginScreen" class="container">
-        <div style="max-width: 400px; margin: 60px auto;">
+        <div style="max-width: 440px; margin: 40px auto;">
             <div style="text-align: center; margin-bottom: 16px;">
                 <a href="./index.html" style="color: #64748b; text-decoration: none; font-size: 0.9rem;">&larr; Back to Home</a>
             </div>
-            <div class="card">
+            <div class="card" style="padding: 32px;">
                 <div style="text-align: center; margin-bottom: 24px;">
-                    <div class="logo-brand" style="justify-content: center; margin-bottom: 16px;">
-                        <span style="font-size: 28px;">Dynapharm Namibia</span>
-                    </div>
-                    <h1 style="margin: 0 0 8px; color: var(--brand);">Distributor Portal</h1>
-                    <p style="color: var(--muted); margin: 0;">Login with your NB number and date of birth</p>
+                    <div style="font-size: 26px; font-weight: 700; color: var(--brand); margin-bottom: 4px;">Dynapharm Namibia</div>
+                    <h1 style="margin: 0 0 8px; color: var(--brand); font-size: 22px;">Distributor Portal</h1>
                 </div>
-                <form id="loginForm">
+
+                <!-- Tab Switcher -->
+                <div style="display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 24px;">
+                    <button type="button" id="tabLogin" onclick="switchAuthTab('login')" style="flex:1; padding: 10px; border: none; background: none; font-weight: 600; font-size: 14px; cursor: pointer; border-bottom: 2px solid var(--brand); margin-bottom: -2px; color: var(--brand);">Login</button>
+                    <button type="button" id="tabSignup" onclick="switchAuthTab('signup')" style="flex:1; padding: 10px; border: none; background: none; font-weight: 600; font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--muted);">Sign Up</button>
+                    <button type="button" id="tabForgot" onclick="switchAuthTab('forgot')" style="flex:1; padding: 10px; border: none; background: none; font-weight: 600; font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--muted);">Forgot Password</button>
+                </div>
+
+                <!-- LOGIN FORM -->
+                <form id="loginForm" style="display: block;">
                     <div style="margin-bottom: 16px;">
-                        <label for="nbNumber">Select Distributor *</label>
-                        <div style="position: relative;">
-                            <input type="text" id="distributorSearch" placeholder="Search by name or NB number..." autocomplete="off" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; margin-bottom: 4px;" oninput="filterDistributorOptions()">
-                            <select id="nbNumber" name="nbNumber" required style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;" onchange="updateSearchFromSelect()">
-                                <option value="">-- Select your distributor account --</option>
-                            </select>
-                        </div>
-                        <small style="color: var(--muted); font-size: 12px; display: block; margin-top: 4px;">Search or select your distributor from the list</small>
+                        <label for="loginNB">NB Number *</label>
+                        <input type="text" id="loginNB" name="loginNB" placeholder="e.g. NB12345" required style="text-transform: uppercase;">
                     </div>
-                    <div style="margin-bottom: 24px;">
-                        <label for="dob">Date of Birth *</label>
-                        <input type="date" id="dob" name="dob" required>
+                    <div style="margin-bottom: 20px;">
+                        <label for="loginPassword">Password *</label>
+                        <input type="password" id="loginPassword" name="loginPassword" placeholder="Enter your password" required>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
-                    <div id="loginError" style="margin-top: 16px; color: var(--danger); display: none;"></div>
-                    <div id="loginInfo" style="margin-top: 16px; padding: 12px; background: #f0f9ff; border-radius: 8px; font-size: 12px; color: #1e40af;">
-                        <strong>ℹ️ Note:</strong> Distributors are loaded from Admin Portal uploads (IndexedDB), localStorage cache, or CSV files.<br>
-                        <span id="distributorCount" style="font-weight: 600; margin-top: 4px; display: inline-block;">Loading distributor count...</span>
-                        <button onclick="refreshDistributorList()" class="btn btn-secondary" style="margin-top: 8px; width: 100%; padding: 8px; font-size: 11px;">🔄 Refresh Distributor List</button>
+                    <div id="loginError" style="margin-top: 12px; color: var(--danger); display: none; font-size: 13px;"></div>
+                    <div style="margin-top: 16px; text-align: center; font-size: 13px;">
+                        <span style="color: var(--muted);">Don't have an account?</span>
+                        <a href="#" onclick="switchAuthTab('signup'); return false;" style="color: var(--brand); font-weight: 600;">Sign Up</a>
+                    </div>
+                </form>
+
+                <!-- SIGN UP FORM -->
+                <form id="signupForm" style="display: none;">
+                    <div style="margin-bottom: 14px;">
+                        <label for="signupSearch">Find your account *</label>
+                        <input type="text" id="signupSearch" placeholder="Search by name or NB number..." autocomplete="off" oninput="filterDistributorOptions()" style="margin-bottom: 4px;">
+                        <select id="nbNumber" name="nbNumber" required onchange="updateSearchFromSelect()">
+                            <option value="">-- Select your distributor account --</option>
+                        </select>
+                        <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">
+                            <span id="distributorCount">Loading distributors...</span>
+                        </small>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="signupDOB">Date of Birth *</label>
+                        <input type="date" id="signupDOB" name="signupDOB" required>
+                        <small style="color: var(--muted); font-size: 11px;">Used to verify your identity</small>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="signupEmail">Email Address *</label>
+                        <input type="email" id="signupEmail" name="signupEmail" placeholder="e.g. jane@example.com" required>
+                        <small style="color: var(--muted); font-size: 11px;">For account recovery and notifications</small>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="signupPassword">Create Password *</label>
+                        <input type="password" id="signupPassword" name="signupPassword" placeholder="At least 8 characters" required minlength="8">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label for="signupConfirm">Confirm Password *</label>
+                        <input type="password" id="signupConfirm" name="signupConfirm" placeholder="Re-enter password" required minlength="8">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create Account</button>
+                    <div id="signupError" style="margin-top: 12px; color: var(--danger); display: none; font-size: 13px;"></div>
+                    <div id="signupSuccess" style="margin-top: 12px; color: var(--ok); display: none; font-size: 13px; background: #ecfdf5; padding: 10px; border-radius: 8px;"></div>
+                    <div style="margin-top: 16px; text-align: center; font-size: 13px;">
+                        <span style="color: var(--muted);">Already have an account?</span>
+                        <a href="#" onclick="switchAuthTab('login'); return false;" style="color: var(--brand); font-weight: 600;">Login</a>
+                    </div>
+                </form>
+
+                <!-- FORGOT PASSWORD FORM -->
+                <form id="forgotForm" style="display: none;">
+                    <p style="color: var(--muted); font-size: 13px; margin-bottom: 16px;">Enter your NB number, registered email, and date of birth to reset your password.</p>
+                    <div style="margin-bottom: 14px;">
+                        <label for="forgotNB">NB Number *</label>
+                        <input type="text" id="forgotNB" name="forgotNB" placeholder="e.g. NB12345" required style="text-transform: uppercase;">
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="forgotEmail">Registered Email *</label>
+                        <input type="email" id="forgotEmail" name="forgotEmail" placeholder="e.g. jane@example.com" required>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="forgotDOB">Date of Birth *</label>
+                        <input type="date" id="forgotDOB" name="forgotDOB" required>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label for="forgotNewPassword">New Password *</label>
+                        <input type="password" id="forgotNewPassword" name="forgotNewPassword" placeholder="At least 8 characters" required minlength="8">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label for="forgotConfirmPassword">Confirm New Password *</label>
+                        <input type="password" id="forgotConfirmPassword" name="forgotConfirmPassword" placeholder="Re-enter new password" required minlength="8">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Reset Password</button>
+                    <div id="forgotError" style="margin-top: 12px; color: var(--danger); display: none; font-size: 13px;"></div>
+                    <div id="forgotSuccess" style="margin-top: 12px; color: var(--ok); display: none; font-size: 13px; background: #ecfdf5; padding: 10px; border-radius: 8px;"></div>
+                    <div style="margin-top: 16px; text-align: center; font-size: 13px;">
+                        <a href="#" onclick="switchAuthTab('login'); return false;" style="color: var(--brand); font-weight: 600;">Back to Login</a>
                     </div>
                 </form>
             </div>
@@ -441,78 +510,170 @@
             return distributors;
         }
 
-        // Login function
+        function switchAuthTab(tab) {
+            var tabs = ['login', 'signup', 'forgot'];
+            tabs.forEach(function(t) {
+                var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+                var form = document.getElementById(t === 'login' ? 'loginForm' : t === 'signup' ? 'signupForm' : 'forgotForm');
+                if (btn) {
+                    btn.style.borderBottomColor = (t === tab) ? 'var(--brand)' : 'transparent';
+                    btn.style.color = (t === tab) ? 'var(--brand)' : 'var(--muted)';
+                }
+                if (form) form.style.display = (t === tab) ? 'block' : 'none';
+            });
+            ['loginError', 'signupError', 'signupSuccess', 'forgotError', 'forgotSuccess'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        }
+
+        function showFormError(id, message) {
+            var el = document.getElementById(id);
+            if (el) { el.textContent = message; el.style.display = message ? 'block' : 'none'; }
+        }
+
+        function showFormSuccess(id, message) {
+            var el = document.getElementById(id);
+            if (el) { el.textContent = message; el.style.display = message ? 'block' : 'none'; }
+        }
+
+        function setButtonLoading(btn, loading, originalText) {
+            btn.disabled = loading;
+            btn.textContent = loading ? 'Please wait...' : originalText;
+        }
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const nbNumberSelect = document.getElementById('nbNumber');
-            const nbNumber = nbNumberSelect ? nbNumberSelect.value.trim().toUpperCase() : '';
-            const dob = document.getElementById('dob').value;
-            
-            if (!nbNumber || !dob) {
-                showLoginError('Please select a distributor and enter your date of birth');
-                return;
-            }
+            var nb = (document.getElementById('loginNB').value || '').trim().toUpperCase();
+            var pw = document.getElementById('loginPassword').value;
+            if (!nb || !pw) { showFormError('loginError', 'Please enter your NB number and password.'); return; }
 
-            // Show loading state
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Logging in...';
-            showLoginError(''); // Clear previous errors
+            var btn = e.target.querySelector('button[type="submit"]');
+            setButtonLoading(btn, true, 'Login');
+            showFormError('loginError', '');
 
             try {
-                const distributors = await loadDistributors();
-                const distributor = distributors.find(d => {
-                    const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
-                    return code === nbNumber;
+                var res = await fetch('/api/distributor-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ distributorCode: nb, password: pw })
                 });
-
-                if (!distributor) {
-                    showLoginError('Distributor not found. Please refresh the distributor list and try again.');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = originalText;
+                var data = await res.json();
+                if (!res.ok) {
+                    showFormError('loginError', data.error || 'Login failed. Check your credentials or sign up first.');
+                    setButtonLoading(btn, false, 'Login');
                     return;
                 }
-
-                // Verify DOB if available in distributor data
-                if (distributor.birthdate || distributor.birth_date) {
-                    const storedDOB = distributor.birthdate || distributor.birth_date;
-                    // Compare dates (ignore time)
-                    const storedDate = new Date(storedDOB).toISOString().split('T')[0];
-                    if (storedDate !== dob) {
-                        showLoginError('Date of birth does not match. Please check and try again.');
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = originalText;
-                        return;
-                    }
-                } else {
-                    // DOB not stored - log warning but allow login (for backward compatibility)
-                    console.warn('DOB not stored for distributor, allowing login without verification');
-                }
-
-                currentDistributor = distributor;
+                currentDistributor = {
+                    distributorCode: nb,
+                    distributorName: data.user?.full_name || data.user?.fullName || nb,
+                    code: nb,
+                    name: data.user?.full_name || data.user?.fullName || nb,
+                    id: data.user?.id
+                };
                 localStorage.setItem('distributor_portal_session', JSON.stringify({
-                    nbNumber: nbNumber,
-                    distributorName: distributor.distributorName || distributor.name,
-                    distributorId: distributor.id,
+                    nbNumber: nb,
+                    distributorName: currentDistributor.distributorName,
+                    distributorId: currentDistributor.id,
                     loginTime: new Date().toISOString()
                 }));
-
-                // Load dashboard data
                 await loadDashboardData();
                 showDashboard();
-            } catch (error) {
-                console.error('Login error:', error);
-                showLoginError('An error occurred during login. Please try again.');
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
+            } catch (err) {
+                console.error('Login error:', err);
+                showFormError('loginError', 'Connection error. Please try again.');
+                setButtonLoading(btn, false, 'Login');
+            }
+        });
+
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var nbSelect = document.getElementById('nbNumber');
+            var nb = nbSelect ? nbSelect.value.trim().toUpperCase() : '';
+            var dob = document.getElementById('signupDOB').value;
+            var email = document.getElementById('signupEmail').value.trim();
+            var pw = document.getElementById('signupPassword').value;
+            var confirm = document.getElementById('signupConfirm').value;
+
+            showFormError('signupError', '');
+            showFormSuccess('signupSuccess', '');
+
+            if (!nb) { showFormError('signupError', 'Please select your distributor account.'); return; }
+            if (!dob) { showFormError('signupError', 'Please enter your date of birth.'); return; }
+            if (!email) { showFormError('signupError', 'Please enter your email address.'); return; }
+            if (!pw || pw.length < 8) { showFormError('signupError', 'Password must be at least 8 characters.'); return; }
+            if (pw !== confirm) { showFormError('signupError', 'Passwords do not match.'); return; }
+
+            var btn = e.target.querySelector('button[type="submit"]');
+            setButtonLoading(btn, true, 'Create Account');
+
+            try {
+                var res = await fetch('/api/distributors/set-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ distributorCode: nb, password: pw, email: email, dob: dob })
+                });
+                var data = await res.json();
+                if (!res.ok) {
+                    showFormError('signupError', data.error || 'Sign up failed. Please try again.');
+                    setButtonLoading(btn, false, 'Create Account');
+                    return;
+                }
+                showFormSuccess('signupSuccess', 'Account created successfully! You can now log in with your NB number and password.');
+                setButtonLoading(btn, false, 'Create Account');
+                e.target.reset();
+                setTimeout(function() { switchAuthTab('login'); }, 3000);
+            } catch (err) {
+                console.error('Signup error:', err);
+                showFormError('signupError', 'Connection error. Please try again.');
+                setButtonLoading(btn, false, 'Create Account');
+            }
+        });
+
+        document.getElementById('forgotForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var nb = (document.getElementById('forgotNB').value || '').trim().toUpperCase();
+            var email = document.getElementById('forgotEmail').value.trim();
+            var dob = document.getElementById('forgotDOB').value;
+            var pw = document.getElementById('forgotNewPassword').value;
+            var confirm = document.getElementById('forgotConfirmPassword').value;
+
+            showFormError('forgotError', '');
+            showFormSuccess('forgotSuccess', '');
+
+            if (!nb || !email || !dob) { showFormError('forgotError', 'Please fill in all fields.'); return; }
+            if (!pw || pw.length < 8) { showFormError('forgotError', 'New password must be at least 8 characters.'); return; }
+            if (pw !== confirm) { showFormError('forgotError', 'Passwords do not match.'); return; }
+
+            var btn = e.target.querySelector('button[type="submit"]');
+            setButtonLoading(btn, true, 'Reset Password');
+
+            try {
+                var res = await fetch('/api/distributors/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ distributorCode: nb, email: email, dob: dob, newPassword: pw })
+                });
+                var data = await res.json();
+                if (!res.ok) {
+                    showFormError('forgotError', data.error || 'Password reset failed.');
+                    setButtonLoading(btn, false, 'Reset Password');
+                    return;
+                }
+                showFormSuccess('forgotSuccess', data.message || 'Password reset successfully! You can now log in.');
+                setButtonLoading(btn, false, 'Reset Password');
+                e.target.reset();
+                setTimeout(function() { switchAuthTab('login'); }, 3000);
+            } catch (err) {
+                console.error('Forgot password error:', err);
+                showFormError('forgotError', 'Connection error. Please try again.');
+                setButtonLoading(btn, false, 'Reset Password');
             }
         });
 
         function showLoginError(message) {
-            const errorDiv = document.getElementById('loginError');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
+            showFormError('loginError', message);
         }
 
         function showDashboard() {
@@ -525,11 +686,11 @@
         function logout() {
             currentDistributor = null;
             localStorage.removeItem('distributor_portal_session');
+            fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(function(){});
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('dashboard').classList.add('hidden');
             document.getElementById('loginForm').reset();
-            // Clear search input
-            const searchInput = document.getElementById('distributorSearch');
+            var searchInput = document.getElementById('signupSearch');
             if (searchInput) searchInput.value = '';
         }
 
@@ -577,7 +738,7 @@
 
         // Filter distributor options based on search input
         function filterDistributorOptions() {
-            const searchInput = document.getElementById('distributorSearch');
+            const searchInput = document.getElementById('signupSearch');
             const select = document.getElementById('nbNumber');
             if (!searchInput || !select) return;
             
@@ -627,7 +788,7 @@
         // Update search field when dropdown selection changes
         function updateSearchFromSelect() {
             const select = document.getElementById('nbNumber');
-            const searchInput = document.getElementById('distributorSearch');
+            const searchInput = document.getElementById('signupSearch');
             if (!select || !searchInput) return;
             
             const selectedOption = select.options[select.selectedIndex];
@@ -664,61 +825,6 @@
         window.addEventListener('DOMContentLoaded', async function() {
             // Load and display distributor count and populate dropdown
             await refreshDistributorList();
-            
-            // Check for URL parameters from landing page login
-            const urlParams = new URLSearchParams(window.location.search);
-            const nbParam = urlParams.get('nb');
-            const dobParam = urlParams.get('dob');
-            
-            if (nbParam && dobParam) {
-                // Auto-fill and attempt login
-                const distributors = await loadDistributors();
-                const distributor = distributors.find(d => {
-                    const code = (d.distributorCode || d.code || '').toString().toUpperCase().trim();
-                    return code === nbParam.toUpperCase();
-                });
-                
-                if (distributor) {
-                    // Verify DOB
-                    if (distributor.birthdate || distributor.birth_date) {
-                        const storedDOB = distributor.birthdate || distributor.birth_date;
-                        const storedDate = new Date(storedDOB).toISOString().split('T')[0];
-                        if (storedDate === dobParam) {
-                            // Auto-login
-                            currentDistributor = distributor;
-                            localStorage.setItem('distributor_portal_session', JSON.stringify({
-                                nbNumber: nbParam.toUpperCase(),
-                                distributorName: distributor.distributorName || distributor.name,
-                                distributorId: distributor.id,
-                                loginTime: new Date().toISOString()
-                            }));
-                            await loadDashboardData();
-                            showDashboard();
-                            // Clean URL
-                            window.history.replaceState({}, document.title, window.location.pathname);
-                            return;
-                        }
-                    }
-                }
-                
-                // If auto-login failed, populate form
-                const select = document.getElementById('nbNumber');
-                const searchInput = document.getElementById('distributorSearch');
-                const dobInput = document.getElementById('dob');
-                
-                if (select) {
-                    select.value = nbParam.toUpperCase();
-                    if (searchInput) {
-                        const selectedOption = select.options[select.selectedIndex];
-                        if (selectedOption) {
-                            searchInput.value = selectedOption.textContent;
-                        }
-                    }
-                }
-                if (dobInput) {
-                    dobInput.value = dobParam;
-                }
-            }
             
             // Check for existing session
             const session = localStorage.getItem('distributor_portal_session');
