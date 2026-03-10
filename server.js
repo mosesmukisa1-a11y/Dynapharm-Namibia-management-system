@@ -30,6 +30,11 @@ const PUBLIC_API_ROUTES = new Set([
   '/api/health',
 ]);
 
+const PUBLIC_POST_ROUTES = new Set([
+  '/api/orders',
+  '/api/delivery',
+]);
+
 const PUBLIC_GET_ROUTES = new Set([
   '/api/products',
   '/api/branches',
@@ -41,7 +46,8 @@ app.use('/api', async (req, res, next) => {
 
   const routePath = req.baseUrl + req.path.replace(/\/$/, '');
   const isPublic = PUBLIC_API_ROUTES.has(routePath) ||
-    (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath));
+    (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath)) ||
+    (req.method === 'POST' && PUBLIC_POST_ROUTES.has(routePath));
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');

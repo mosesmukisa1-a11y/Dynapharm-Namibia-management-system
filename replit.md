@@ -24,10 +24,17 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - `/api/mis/*` — Management information system reports
 - `/api/health` — System health check
 
+## Database
+- **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
+- Products table seeded with 95 products (Dynapharm price list)
+- Branches table and distributors table both seeded with 15 Namibian branches
+- Towns (20) and delivery distances seeded for delivery fee calculations
+- Migration SQL files in `migrations/` and `backend/`
+
 ## Authentication
 - JWT tokens stored in httpOnly cookies
 - Auth middleware in server.js enforces auth on all `/api/*` routes except public ones
-- Public routes: login, logout, health, distributor-login, GET products/branches
+- Public routes: login, logout, health, distributor-login, orders, delivery, GET products/branches
 - Requires `AUTH_SECRET` (or `JWT_SECRET` or `SESSION_SECRET`) environment variable
 
 ## Environment Variables
