@@ -55,11 +55,11 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - Portal has streamlined navbar with Dynapharm logo (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
 - Logo: `assets/dynapharm-logo.png` — displayed in navbar (all pages), checkup form header, distributor portal login/dashboard, preview/print output
 - Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
-- Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
+- Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal (landing page hidden during staff login flow — user goes straight to login modal)
 - Staff login modal has Login / Sign Up tabs; Sign Up collects name, DOB, position, password (pending admin approval)
 - Admin portal has "Staff Registration Approvals" section to approve/reject pending signups
 - Full Body Check Up form: Preview/Print/Submit buttons. Preview opens modal with formatted table (XSS-safe HTML escaping). Print opens new window with logo, structured sections (handles popup-block). Modal closable via Close button, Esc key, or backdrop click. Declaration checkbox replaces signature pad — captures client full name, initials, and date as acknowledgment on preview/print. Appointment POST is public (no auth required). API supports `type` query filter.
-- Consultant Portal: Checkup Forms section shows submitted forms filtered by the consultant's branch. Split into Upcoming (pending/walk-in/in_progress) and Completed tabs. Most recent first. Consultants can View Details (opens preview modal), Check In, Start Checkup, Mark Complete. Acknowledgment details (name, initials, date) shown on each form card.
+- Consultant Portal: Redesigned with branded header and tabbed navigation (Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services). Consultant role restricted to only their own portal (no frontdesk/client tabs). openTab enforces ROLE_PORTAL_ACCESS authorization. Checkup Forms section shows submitted forms filtered by the consultant's branch. Split into Upcoming/Completed pill toggles. Cards show client info with View Details/Check In/Start/Mark Complete actions. Branch ID `townshop` = Windhoek CBD.
 - Staff login hides Shop/Health Check nav links; logout restores them.
 - Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password), logo on login card and dashboard header
   - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
