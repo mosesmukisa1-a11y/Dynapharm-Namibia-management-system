@@ -13893,6 +13893,13 @@
             </div>
             <div id="adminContent" style="display: none;">
                 <div class="form-section">
+                    <h3>Staff Registration Approvals</h3>
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 12px;">Review and approve staff sign-up requests.</p>
+                    <button class="btn btn-primary" onclick="loadPendingRegistrations()">Refresh Pending</button>
+                    <div id="pendingRegistrations" style="margin-top: 12px;"></div>
+                </div>
+
+                <div class="form-section">
                     <h3>User Management</h3>
                     <button class="btn btn-success" onclick="showAddUser()">Add User</button>
                     <button class="btn btn-warning" onclick="showChangePassword()">Change Password</button>
@@ -15247,11 +15254,17 @@
 
     <!-- Login Modal -->
     <div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle" aria-describedby="loginModalDescription" aria-hidden="true">
-        <div class="modal-content" role="document">
+        <div class="modal-content" role="document" style="max-width: 440px;">
             <button type="button" id="loginCloseButton" aria-label="Close login dialog" style="position:absolute;top:12px;right:12px;border:none;background:transparent;font-size:26px;line-height:1;padding:4px;border-radius:50%;cursor:pointer;">&times;</button>
             <h2 id="loginModalTitle">Portal Login</h2>
-            <p id="loginModalDescription" style="margin-bottom: 20px; color: #555;">Sign in to access the selected portal.</p>
-            <form id="loginForm" novalidate>
+            <p id="loginModalDescription" style="margin-bottom: 12px; color: #555;">Sign in to access the selected portal.</p>
+
+            <div id="staffAuthTabs" style="display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 18px;">
+                <button type="button" onclick="switchStaffAuthTab('login')" id="staffTabLogin" style="flex:1; padding: 8px; border: none; background: none; font-weight: 600; font-size: 14px; cursor: pointer; border-bottom: 2px solid #c41e3a; margin-bottom: -2px; color: #c41e3a;">Login</button>
+                <button type="button" onclick="switchStaffAuthTab('signup')" id="staffTabSignup" style="flex:1; padding: 8px; border: none; background: none; font-weight: 600; font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #999;">Sign Up</button>
+            </div>
+
+            <form id="loginForm" novalidate style="display: block;">
                 <div class="form-group">
                     <label for="username">Username</label>
                     <input type="text" id="username" name="username" placeholder="e.g. admin" required autocomplete="username">
@@ -15265,7 +15278,53 @@
                     <button type="button" class="btn" id="loginCancelButton">Cancel</button>
                 </div>
                 <p id="loginError" role="alert" aria-live="polite" style="color:#c41e3a; margin-top: 10px; min-height: 1.5em; font-size: 0.9rem;"></p>
-                <p style="margin-top: 10px; font-size: 0.85rem; color: #666;">Need help? Contact the system administrator to reset your password.</p>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #666;">Don't have an account? <a href="#" onclick="switchStaffAuthTab('signup'); return false;" style="color: #c41e3a; font-weight: 600;">Sign Up</a></p>
+            </form>
+
+            <form id="staffSignupForm" novalidate style="display: none;">
+                <div class="form-group">
+                    <label for="regFullName">Full Name *</label>
+                    <input type="text" id="regFullName" name="regFullName" placeholder="e.g. Jane Doe" required autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="regDOB">Date of Birth *</label>
+                    <input type="date" id="regDOB" name="regDOB" required>
+                </div>
+                <div class="form-group">
+                    <label for="regEmail">Email Address</label>
+                    <input type="email" id="regEmail" name="regEmail" placeholder="e.g. jane@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="regRole">Position / Role *</label>
+                    <select id="regRole" name="regRole" required>
+                        <option value="">-- Select your position --</option>
+                        <option value="frontdesk">Front Desk</option>
+                        <option value="consultant">Consultant</option>
+                        <option value="dispenser">Dispenser / Sales Staff</option>
+                        <option value="branch_manager">Branch Manager</option>
+                        <option value="finance">Finance</option>
+                        <option value="hr_manager">HR Manager</option>
+                        <option value="gm">General Manager</option>
+                        <option value="director">Director</option>
+                        <option value="mis">MIS / Reports</option>
+                        <option value="stock">Stock / Warehouse</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Password * <small style="color:#999;">(min 6 characters)</small></label>
+                    <input type="password" id="regPassword" name="regPassword" placeholder="Create a password" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="regConfirmPassword">Confirm Password *</label>
+                    <input type="password" id="regConfirmPassword" name="regConfirmPassword" placeholder="Re-enter password" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group" style="display:flex; gap: 10px; align-items:center;">
+                    <button type="submit" class="btn btn-success">Create Account</button>
+                    <button type="button" class="btn" onclick="switchStaffAuthTab('login')">Back to Login</button>
+                </div>
+                <p id="signupError" role="alert" aria-live="polite" style="color:#c41e3a; margin-top: 10px; min-height: 1.5em; font-size: 0.9rem;"></p>
+                <div id="signupSuccess" style="display: none; margin-top: 10px; padding: 12px; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; color: #065f46; font-size: 0.9rem;"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #666;">Already have an account? <a href="#" onclick="switchStaffAuthTab('login'); return false;" style="color: #c41e3a; font-weight: 600;">Login</a></p>
             </form>
         </div>
     </div>
@@ -25373,6 +25432,91 @@
             }
         }
         
+        function escHtml(str) {
+            var d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        async function loadPendingRegistrations() {
+            var container = document.getElementById('pendingRegistrations');
+            if (!container) return;
+            container.innerHTML = '<p style="color: #888;">Loading...</p>';
+            try {
+                var res = await fetch('/api/admin/pending-registrations', { credentials: 'include' });
+                if (!res.ok) { container.innerHTML = '<p style="color: #e74c3c;">Failed to load pending registrations.</p>'; return; }
+                var data = await res.json();
+                var users = data.registrations || data || [];
+                if (!users || users.length === 0) {
+                    container.innerHTML = '<p style="color: #27ae60;">No pending registrations.</p>';
+                    return;
+                }
+                var roleLabels = { frontdesk: 'Front Desk', consultant: 'Consultant', dispenser: 'Dispenser', branch_manager: 'Branch Manager', finance: 'Finance', hr_manager: 'HR Manager', gm: 'General Manager', director: 'Director', mis: 'MIS', stock: 'Stock/Warehouse' };
+                var html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><thead><tr style="background:#f1f5f9;">';
+                html += '<th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">Name</th>';
+                html += '<th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">Username</th>';
+                html += '<th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">Position</th>';
+                html += '<th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">DOB</th>';
+                html += '<th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">Date</th>';
+                html += '<th style="padding:8px; text-align:center; border-bottom:2px solid #e2e8f0;">Actions</th>';
+                html += '</tr></thead><tbody>';
+                users.forEach(function(u) {
+                    var meta = {};
+                    try { meta = typeof u.metadata === 'string' ? JSON.parse(u.metadata) : (u.metadata || {}); } catch(_) {}
+                    var dob = escHtml(meta.dob || '-');
+                    var roleLabel = escHtml(roleLabels[u.role] || u.role || '-');
+                    var created = u.created_at ? escHtml(new Date(u.created_at).toLocaleDateString()) : '-';
+                    var safeId = escHtml(u.id);
+                    html += '<tr style="border-bottom:1px solid #e2e8f0;">';
+                    html += '<td style="padding:8px;">' + escHtml(u.full_name || '-') + '</td>';
+                    html += '<td style="padding:8px; font-family:monospace;">' + escHtml(u.username || '-') + '</td>';
+                    html += '<td style="padding:8px;">' + roleLabel + '</td>';
+                    html += '<td style="padding:8px;">' + dob + '</td>';
+                    html += '<td style="padding:8px;">' + created + '</td>';
+                    html += '<td style="padding:8px; text-align:center;">';
+                    html += '<button class="btn btn-success" style="padding:4px 12px; font-size:0.8rem; margin-right:4px;" onclick="approveRegistration(\'' + safeId + '\')">Approve</button>';
+                    html += '<button class="btn btn-danger" style="padding:4px 12px; font-size:0.8rem;" onclick="rejectRegistration(\'' + safeId + '\')">Reject</button>';
+                    html += '</td></tr>';
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = '<p style="color: #e74c3c;">Error loading registrations.</p>';
+            }
+        }
+
+        async function approveRegistration(userId) {
+            if (!confirm('Approve this staff registration?')) return;
+            try {
+                var res = await fetch('/api/admin/approve-registration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ userId: userId })
+                });
+                var data = await res.json();
+                if (!res.ok) { alert(data.error || 'Approval failed.'); return; }
+                alert('Registration approved successfully.');
+                loadPendingRegistrations();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function rejectRegistration(userId) {
+            if (!confirm('Reject and delete this staff registration? This cannot be undone.')) return;
+            try {
+                var res = await fetch('/api/admin/reject-registration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ userId: userId })
+                });
+                var data = await res.json();
+                if (!res.ok) { alert(data.error || 'Rejection failed.'); return; }
+                alert('Registration rejected.');
+                loadPendingRegistrations();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
         async function refreshAllData() {
             const previousHash = lastDataHash;
             await loadData();
@@ -25848,6 +25992,7 @@
             
             if (tabName === 'admin' && currentUser && currentUser.role === 'admin') {
                 setTimeout(() => {
+                    loadPendingRegistrations();
                     loadAdminDistributorDirectory();
                 }, 200);
             }
@@ -28626,6 +28771,83 @@ if (loginModal) {
     loginModal.addEventListener('click', (event) => {
         if (event.target === loginModal) {
             closeLoginModal();
+        }
+    });
+}
+
+function switchStaffAuthTab(tab) {
+    var loginBtn = document.getElementById('staffTabLogin');
+    var signupBtn = document.getElementById('staffTabSignup');
+    var loginFormEl = document.getElementById('loginForm');
+    var signupFormEl = document.getElementById('staffSignupForm');
+    if (tab === 'signup') {
+        if (loginBtn) { loginBtn.style.borderBottomColor = 'transparent'; loginBtn.style.color = '#999'; }
+        if (signupBtn) { signupBtn.style.borderBottomColor = '#c41e3a'; signupBtn.style.color = '#c41e3a'; }
+        if (loginFormEl) loginFormEl.style.display = 'none';
+        if (signupFormEl) signupFormEl.style.display = 'block';
+    } else {
+        if (loginBtn) { loginBtn.style.borderBottomColor = '#c41e3a'; loginBtn.style.color = '#c41e3a'; }
+        if (signupBtn) { signupBtn.style.borderBottomColor = 'transparent'; signupBtn.style.color = '#999'; }
+        if (loginFormEl) loginFormEl.style.display = 'block';
+        if (signupFormEl) signupFormEl.style.display = 'none';
+    }
+    var ids = ['loginError', 'signupError', 'signupSuccess'];
+    ids.forEach(function(id) { var el = document.getElementById(id); if (el) { el.textContent = ''; el.style.display = (id === 'signupSuccess') ? 'none' : ''; } });
+}
+
+var staffSignupForm = document.getElementById('staffSignupForm');
+if (staffSignupForm) {
+    staffSignupForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var fullName = (document.getElementById('regFullName').value || '').trim();
+        var dob = document.getElementById('regDOB').value;
+        var email = (document.getElementById('regEmail').value || '').trim();
+        var role = document.getElementById('regRole').value;
+        var pw = document.getElementById('regPassword').value;
+        var confirmPw = document.getElementById('regConfirmPassword').value;
+        var errEl = document.getElementById('signupError');
+        var successEl = document.getElementById('signupSuccess');
+        if (errEl) { errEl.textContent = ''; }
+        if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
+
+        if (!fullName || !dob || !role || !pw) {
+            if (errEl) errEl.textContent = 'Please fill in all required fields.';
+            return;
+        }
+        if (pw.length < 6) {
+            if (errEl) errEl.textContent = 'Password must be at least 6 characters.';
+            return;
+        }
+        if (pw !== confirmPw) {
+            if (errEl) errEl.textContent = 'Passwords do not match.';
+            return;
+        }
+
+        var btn = e.target.querySelector('button[type="submit"]');
+        var origText = btn ? btn.textContent : 'Create Account';
+        if (btn) { btn.disabled = true; btn.textContent = 'Please wait...'; }
+
+        try {
+            var res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: fullName, dob: dob, email: email, role: role, password: pw })
+            });
+            var data = await res.json();
+            if (!res.ok) {
+                if (errEl) errEl.textContent = data.error || 'Registration failed. Please try again.';
+                if (btn) { btn.disabled = false; btn.textContent = origText; }
+                return;
+            }
+            if (successEl) {
+                successEl.textContent = (data.message || 'Registration submitted!') + (data.username ? ' Your username is: ' + data.username : '');
+                successEl.style.display = 'block';
+            }
+            e.target.reset();
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
+        } catch (err) {
+            if (errEl) errEl.textContent = 'Connection error. Please try again.';
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
         }
     });
 }

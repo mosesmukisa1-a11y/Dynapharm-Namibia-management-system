@@ -26,6 +26,7 @@ app.use((req, res, next) => {
 const PUBLIC_API_ROUTES = new Set([
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/auth/register',
   '/api/distributor-login',
   '/api/distributors/set-password',
   '/api/distributors/forgot-password',
@@ -199,10 +200,24 @@ server.on('error', (error) => {
 
 (async () => {
   try {
-    const { query } = await import('./api/db.js');
+    const { query, getOne } = await import('./api/db.js');
     await query('SELECT 1');
     console.log('Database connection verified');
+
+    const existingAdmin = await getOne("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE LIMIT 1");
+    if (!existingAdmin) {
+      const bcrypt = await import('bcryptjs');
+      const hash = await bcrypt.default.hash('Admin@2024', 10);
+      const adminId = 'USR-ADMIN-' + Date.now();
+      await query(
+        `INSERT INTO users (id, username, password_hash, role, full_name, email, is_active, must_change_password, metadata, created_at, updated_at)
+         VALUES ($1, $2, $3, 'admin', 'Super Admin', 'admin@dynapharm.na', TRUE, FALSE, '{"seeded":true}'::jsonb, NOW(), NOW())
+         ON CONFLICT (username) DO NOTHING`,
+        [adminId, 'admin', hash]
+      );
+      console.log('Super Admin account seeded (username: admin)');
+    }
   } catch (error) {
-    console.warn('Database connection check failed:', error.message);
+    console.warn('Database startup check failed:', error.message);
   }
 })();

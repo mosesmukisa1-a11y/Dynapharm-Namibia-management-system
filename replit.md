@@ -34,8 +34,13 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 ## Authentication
 - JWT tokens stored in httpOnly cookies
 - Auth middleware in server.js enforces auth on all `/api/*` routes except public ones
-- Public routes: login, logout, health, distributor-login, orders, delivery, GET products/branches
+- Public routes: login, logout, register, health, distributor-login, orders, delivery, GET products/branches
 - Requires `AUTH_SECRET` (or `JWT_SECRET` or `SESSION_SECRET`) environment variable
+- Super Admin account auto-seeded on startup (username: admin, password: Admin@2024) if no admin exists
+- Staff Sign Up: POST `/api/auth/register` — creates inactive user (name, DOB, role, password); username auto-generated
+- Admin Approval: GET `/api/admin/pending-registrations`, POST `/api/admin/approve-registration`, POST `/api/admin/reject-registration`
+- Staff roles: frontdesk, consultant, dispenser, branch_manager, finance, hr_manager, gm, director, mis, stock
+- Admin role has access to all portals; each role maps to specific portal(s) via ROLE_PORTAL_ACCESS
 
 ## Environment Variables
 - `DATABASE_URL` — PostgreSQL connection string (required)
@@ -49,6 +54,8 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - Portal has streamlined navbar (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
 - Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
 - Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal
+- Staff login modal has Login / Sign Up tabs; Sign Up collects name, DOB, position, password (pending admin approval)
+- Admin portal has "Staff Registration Approvals" section to approve/reject pending signups
 - Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password)
   - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
   - Sign Up: select distributor from 12K+ dropdown, DOB, email, password (POST `/api/distributors/set-password`, first-time only — rejects if account exists, verifies DOB)

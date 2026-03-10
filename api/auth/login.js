@@ -65,8 +65,12 @@ export default async function handler(req, res) {
       [username]
     );
 
-    if (!user || user.is_active === false) {
+    if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    if (user.is_active === false) {
+      return res.status(403).json({ error: 'Your account is pending admin approval. Please wait for the administrator to activate your account.' });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
