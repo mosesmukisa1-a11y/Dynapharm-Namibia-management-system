@@ -6,426 +6,628 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Dynapharm Namibia — Online Portal & Corporate Overview</title>
+    <title>Dynapharm Namibia — Health, Wealth & Freedom</title>
     <link rel="icon" href="./favicon.ico" />
     <meta name="api-base" content="/api" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#c41e3a" />
     <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
       :root {
+        --brand: #c41e3a;
+        --brand-dark: #9b1830;
+        --brand-light: rgba(196, 30, 58, 0.08);
+        --text: #1f2a37;
+        --text-secondary: #475569;
+        --text-muted: #64748b;
+        --bg: #f8fafc;
+        --white: #ffffff;
+        --radius: 12px;
+        --shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
         color-scheme: only light;
       }
 
-      html,
+      html { scroll-behavior: smooth; }
+
       body {
-        margin: 0;
-        background: #f4f6fb;
-        color: #1f2a37;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.6;
       }
 
-      a {
-        color: #c41e3a;
+      a { color: var(--brand); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      :focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 2px;
       }
 
-      .no-js-message {
-        padding: 40px;
-        text-align: center;
+      .testimonial-card h3 {
+        font-size: 1rem;
+        color: var(--brand);
+        margin-bottom: 8px;
       }
 
-      .pages {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 36px;
-        padding: 36px 16px 80px;
-        box-sizing: border-box;
-      }
-
-      .landscape-page {
-        width: min(100%, 1122px);
-        aspect-ratio: 297 / 210;
-        background: #ffffff;
-        border-radius: 18px;
-        border: 1px solid rgba(196, 30, 58, 0.15);
-        box-shadow: 0 25px 60px rgba(15, 23, 42, 0.12);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .landscape-page iframe {
-        flex: 1;
-        width: 100%;
-        height: 100%;
-        border: 0;
-        display: block;
-      }
-
-      .page-content {
-        box-sizing: border-box;
-        flex: 1;
-        height: 100%;
-        padding: 40px 48px;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 32px;
-      }
-
-      .page-content::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      .page-content::-webkit-scrollbar-thumb {
-        background: rgba(196, 30, 58, 0.4);
-        border-radius: 999px;
-      }
-
-      .corporate-hero {
-        text-align: center;
-      }
-
-      .corporate-hero h1 {
-        margin: 0 0 8px;
-        font-size: clamp(2rem, 4vw, 2.8rem);
-        color: #c41e3a;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-
-      .corporate-hero h2 {
-        margin: 0 0 18px;
-        font-size: clamp(1.6rem, 3vw, 2.3rem);
-        color: #1f2a37;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-      }
-
-      .corporate-hero p {
+      .container {
+        max-width: 1140px;
         margin: 0 auto;
-        max-width: 760px;
-        color: #475569;
-        line-height: 1.8;
-        font-size: 1.02rem;
+        padding: 0 20px;
       }
 
-      .info-grid,
-      .mission-grid,
-      .network-grid,
-      .testimonials-grid,
-      .global-grid {
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: var(--white);
+        border-bottom: 1px solid rgba(0,0,0,0.06);
+        backdrop-filter: blur(12px);
+      }
+
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+
+      .nav-logo {
+        font-weight: 800;
+        font-size: 1.15rem;
+        color: var(--brand);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        list-style: none;
+      }
+
+      .nav-links a {
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        font-weight: 500;
+        transition: color 0.2s;
+      }
+
+      .nav-links a:hover { color: var(--brand); text-decoration: none; }
+
+      .nav-cta {
+        background: var(--brand);
+        color: var(--white) !important;
+        padding: 8px 20px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 0.88rem;
+        transition: background 0.2s;
+      }
+
+      .nav-cta:hover { background: var(--brand-dark); text-decoration: none !important; }
+
+      .nav-toggle {
+        display: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+      }
+
+      .nav-toggle span {
+        display: block;
+        width: 22px;
+        height: 2px;
+        background: var(--text);
+        margin: 5px 0;
+        transition: 0.3s;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+        color: var(--white);
+        padding: 80px 20px;
+        text-align: center;
+      }
+
+      .hero h1 {
+        font-size: clamp(2rem, 5vw, 3.2rem);
+        font-weight: 800;
+        margin-bottom: 8px;
+        letter-spacing: -0.02em;
+      }
+
+      .hero h2 {
+        font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+        font-weight: 400;
+        opacity: 0.9;
+        margin-bottom: 24px;
+      }
+
+      .hero p {
+        max-width: 680px;
+        margin: 0 auto 36px;
+        font-size: 1.05rem;
+        line-height: 1.8;
+        opacity: 0.92;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 28px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        border: none;
+        transition: transform 0.15s, box-shadow 0.15s;
+        text-decoration: none;
+      }
+
+      .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); text-decoration: none; }
+
+      .btn-white { background: var(--white); color: var(--brand); }
+      .btn-outline { background: transparent; color: var(--white); border: 2px solid rgba(255,255,255,0.4); }
+      .btn-outline:hover { border-color: var(--white); }
+      .btn-brand { background: var(--brand); color: var(--white); }
+
+      section { padding: 80px 20px; }
+
+      .section-header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .section-header h2 {
+        font-size: clamp(1.6rem, 3vw, 2.2rem);
+        margin-bottom: 12px;
+        color: var(--text);
+      }
+
+      .section-header p {
+        color: var(--text-muted);
+        max-width: 600px;
+        margin: 0 auto;
+        font-size: 1.02rem;
+        line-height: 1.7;
+      }
+
+      .section-alt { background: var(--white); }
+
+      .grid-3 {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+
+      .grid-4 {
         display: grid;
         gap: 20px;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       }
 
-      .info-card,
-      .mission-card,
-      .network-card,
-      .testimonial-card {
-        background: linear-gradient(180deg, rgba(196, 30, 58, 0.07) 0%, rgba(255, 255, 255, 1) 70%);
-        border: 1px solid rgba(196, 30, 58, 0.2);
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      .card {
+        background: var(--white);
+        border: 1px solid rgba(0,0,0,0.06);
+        border-radius: var(--radius);
+        padding: 28px;
+        box-shadow: var(--shadow);
+        transition: transform 0.2s, box-shadow 0.2s;
       }
 
-      .info-card h3,
-      .mission-card h4,
-      .network-card h4,
-      .testimonial-card h4 {
-        margin: 0 0 12px;
-        color: #c41e3a;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        font-size: 1.03rem;
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
       }
 
-      .info-card p,
-      .mission-card p,
-      .network-card p,
-      .testimonial-card p {
-        margin: 0;
-        color: #475569;
+      .section-alt .card { background: var(--bg); border-color: transparent; }
+
+      .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: var(--brand-light);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        margin-bottom: 16px;
+      }
+
+      .card h3 {
+        font-size: 1.05rem;
+        margin-bottom: 10px;
+        color: var(--text);
+      }
+
+      .card p {
+        color: var(--text-secondary);
+        font-size: 0.94rem;
         line-height: 1.7;
-        font-size: 0.95rem;
       }
 
-      .section-title {
-        margin: 0;
-        font-size: 1.8rem;
-        color: #1f2a37;
-      }
+      .pillars-section { background: var(--white); }
 
-      .section-lead {
-        margin: 4px 0 16px;
-        color: #64748b;
-        line-height: 1.8;
-      }
-
-      .pill-list {
-        margin: 0;
-        padding: 0;
-        list-style: none;
+      .branches-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      .pill-list li {
-        background: rgba(196, 30, 58, 0.1);
-        color: #b91c1c;
-        padding: 6px 12px;
-        border-radius: 999px;
-        font-weight: 600;
-        font-size: 0.9rem;
-      }
-
-      .testimonial-meta {
-        margin-top: 14px;
-        color: #64748b;
-        font-size: 0.9rem;
-      }
-
-      .testimonial-cta {
-        margin-top: 10px;
-        text-align: center;
-        background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
-        color: white;
-        padding: 28px 24px;
-        border-radius: 14px;
-      }
-
-      .testimonial-cta button {
-        background: white;
-        color: #c41e3a;
-        border: none;
-        padding: 12px 26px;
-        border-radius: 999px;
-        font-weight: 600;
-        cursor: pointer;
+        gap: 8px;
         margin-top: 12px;
       }
 
-      .footer-note {
-        text-align: center;
-        color: #94a3b8;
-        font-size: 0.92rem;
-        margin-top: auto;
+      .branch-tag {
+        background: var(--brand-light);
+        color: var(--brand-dark);
+        padding: 5px 14px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 500;
       }
 
-      @media (max-width: 900px) {
-        .page-content {
-          padding: 32px 24px;
+      .countries-section .card p {
+        line-height: 1.9;
+      }
+
+      .testimonial-card {
+        position: relative;
+        padding-top: 36px;
+      }
+
+      .testimonial-card::before {
+        content: "\201C";
+        position: absolute;
+        top: 12px;
+        left: 24px;
+        font-size: 3rem;
+        color: var(--brand);
+        opacity: 0.2;
+        line-height: 1;
+        font-family: Georgia, serif;
+      }
+
+      .testimonial-card blockquote {
+        font-style: italic;
+        color: var(--text-secondary);
+        font-size: 0.94rem;
+        line-height: 1.7;
+        margin-bottom: 14px;
+      }
+
+      .testimonial-author {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      .cta-banner {
+        background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+        color: var(--white);
+        text-align: center;
+        padding: 60px 20px;
+      }
+
+      .cta-banner h2 {
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        margin-bottom: 12px;
+      }
+
+      .cta-banner p {
+        opacity: 0.9;
+        margin-bottom: 24px;
+        font-size: 1rem;
+      }
+
+      .cta-banner a { color: #ffe4e9; }
+
+      footer {
+        background: var(--text);
+        color: rgba(255,255,255,0.7);
+        padding: 48px 20px;
+      }
+
+      .footer-inner {
+        display: grid;
+        gap: 32px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        margin-bottom: 32px;
+      }
+
+      footer h4 {
+        color: var(--white);
+        margin-bottom: 14px;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      footer p, footer a { font-size: 0.9rem; line-height: 1.8; }
+      footer a { color: rgba(255,255,255,0.7); }
+      footer a:hover { color: var(--white); }
+
+      .footer-links { list-style: none; }
+      .footer-links li { margin-bottom: 6px; }
+
+      .footer-bottom {
+        border-top: 1px solid rgba(255,255,255,0.1);
+        padding-top: 24px;
+        text-align: center;
+        font-size: 0.85rem;
+      }
+
+      @media (max-width: 768px) {
+        .nav-links { display: none; }
+        .nav-links.open {
+          display: flex;
+          flex-direction: column;
+          position: absolute;
+          top: 64px;
+          left: 0;
+          right: 0;
+          background: var(--white);
+          padding: 20px;
+          border-bottom: 1px solid rgba(0,0,0,0.06);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+          gap: 16px;
         }
+        .nav-toggle { display: block; }
+        .hero { padding: 56px 20px; }
+        section { padding: 56px 20px; }
       }
     </style>
   </head>
   <body>
     <noscript>
-      <div class="no-js-message">
-        JavaScript is required to load the Dynapharm portal experience.
-        <br />
-        <a href="dynapharm-complete-system.html">Open the full portal directly.</a>
+      <div style="padding:40px;text-align:center;">
+        JavaScript is required to load the Dynapharm portal.
+        <br><a href="dynapharm-complete-system.html">Open the portal directly.</a>
       </div>
     </noscript>
-    <div class="pages">
-      <section class="landscape-page">
-        <iframe
-          id="portalFrame"
-          src="dynapharm-complete-system.html#client"
-          title="Dynapharm International Namibia Portal"
-          allowfullscreen
-        ></iframe>
-      </section>
 
-      <section class="landscape-page">
-        <div class="page-content">
-          <div class="corporate-hero">
-            <h1>Welcome to the world of Dynapharm!</h1>
-            <h2>A world of health, wealth & freedom</h2>
+    <nav>
+      <div class="container nav-inner">
+        <a href="/" class="nav-logo">Dynapharm</a>
+        <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="main-nav" onclick="var n=document.getElementById('main-nav');n.classList.toggle('open');this.setAttribute('aria-expanded',n.classList.contains('open'))">
+          <span></span><span></span><span></span>
+        </button>
+        <ul class="nav-links" id="main-nav" role="list">
+          <li><a href="#about">About</a></li>
+          <li><a href="#network">Network</a></li>
+          <li><a href="#global">Global</a></li>
+          <li><a href="#testimonials">Testimonials</a></li>
+          <li><a href="dynapharm-complete-system.html#client" class="nav-cta">Open Portal</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main>
+    <section class="hero">
+      <div class="container">
+        <h1>Welcome to the World of Dynapharm!</h1>
+        <h2>A World of Health, Wealth & Freedom</h2>
+        <p>
+          Where dreams come true through science, knowledge, and new ideas. Dynapharm was established to help and share
+          opportunities that improve the lives and health of individuals around the globe. We pioneer healthcare and
+          lifestyle products for families, entrepreneurs, and communities.
+        </p>
+        <div class="hero-actions">
+          <a href="dynapharm-complete-system.html#client" class="btn btn-white">Browse Products</a>
+          <a href="distributor-guest.html" class="btn btn-outline">Distributor Login</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="about">
+      <div class="container">
+        <div class="section-header">
+          <h2>What Drives Us</h2>
+          <p>Our core values guide everything we do, from product development to community outreach.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">&#x1F52C;</div>
+            <h3>Our Belief</h3>
+            <p>Change the world through science. Our research and development teams continually craft products that respond to the growing health and lifestyle demands of the global community.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F4A1;</div>
+            <h3>Our Vision</h3>
+            <p>Shape the future through knowledge. We play a vital global role in creating a better life for all by empowering people and technology to flourish together.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F680;</div>
+            <h3>Our Mission</h3>
+            <p>Innovate life through new ideas. We strive to be a world-leading pioneer of healthcare and lifestyle products, opening pathways to holistic wellbeing and sustainable wealth.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-alt pillars-section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Corporate Pillars</h2>
+          <p>Four cornerstones that guide Dynapharm Namibia's growth and service.</p>
+        </div>
+        <div class="grid-4">
+          <div class="card">
+            <h3>Science-driven Innovation</h3>
+            <p>Evidence-based products designed for real people and real results.</p>
+          </div>
+          <div class="card">
+            <h3>Knowledge Empowerment</h3>
+            <p>Training, mentorship, and digital tools that turn distributors into trusted wellness advisors.</p>
+          </div>
+          <div class="card">
+            <h3>Idea Acceleration</h3>
+            <p>From product prototypes to analytics dashboards, fresh ideas fuel better health outcomes.</p>
+          </div>
+          <div class="card">
+            <h3>Community Transformation</h3>
+            <p>Body check-ups, education sessions, and branch outreach uplift families across Namibia.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="network">
+      <div class="container">
+        <div class="section-header">
+          <h2>Namibian Network</h2>
+          <p>Build your future with Dynapharm's magnificent growth. We operate across the country with dedicated teams, clinics, and pick-up points.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">&#x1F4CD;</div>
+            <h3>Branch Footprint</h3>
+            <div class="branches-list">
+              <span class="branch-tag">Windhoek CBD</span>
+              <span class="branch-tag">Tsumeb</span>
+              <span class="branch-tag">Gobabis</span>
+              <span class="branch-tag">Swakopmund</span>
+              <span class="branch-tag">Outapi</span>
+              <span class="branch-tag">Okahao</span>
+              <span class="branch-tag">Oshakati</span>
+              <span class="branch-tag">Otjiwarongo</span>
+              <span class="branch-tag">Eenhana</span>
+              <span class="branch-tag">Ondangwa</span>
+              <span class="branch-tag">Rundu</span>
+              <span class="branch-tag">Walvis Bay</span>
+              <span class="branch-tag">Hochlandpark</span>
+              <span class="branch-tag">Khomasdal</span>
+              <span class="branch-tag">Katima Mulilo</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F3E5;</div>
+            <h3>Service Centres</h3>
+            <p>Body check-ups, product distribution, training workshops, and customer support are handled in-branch and via our digital systems.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F4DE;</div>
+            <h3>Key Contacts</h3>
             <p>
-              Where dreams come true through science, knowledge, and new ideas. Dynapharm was established to help and share
-              opportunities that improve the lives and health of individuals around the globe. We pioneer healthcare and
-              lifestyle products for families, entrepreneurs, and communities.
+              Windhoek HQ — <a href="tel:+26461300877">+264 61 300877</a><br>
+              <a href="mailto:support@dynapharmnamibia.com">support@dynapharmnamibia.com</a><br><br>
+              Media — <a href="mailto:media@dynapharmnamibia.com">media@dynapharmnamibia.com</a><br>
+              Partnerships — <a href="mailto:partners@dynapharmnamibia.com">partners@dynapharmnamibia.com</a>
             </p>
-          </div>
-
-          <div class="info-grid" aria-label="Belief, Vision and Mission">
-            <div class="info-card">
-              <h3>Our Belief</h3>
-              <p>
-                Change the world through science. Our research and development teams continually craft products that respond to
-                the growing health and lifestyle demands of the global community.
-              </p>
-            </div>
-            <div class="info-card">
-              <h3>Our Vision</h3>
-              <p>
-                Shape the future through knowledge. We play a vital global role in creating a better life for all by empowering
-                people and technology to flourish together.
-              </p>
-            </div>
-            <div class="info-card">
-              <h3>Our Mission</h3>
-              <p>
-                Innovate life through new ideas. We strive to be a world-leading pioneer of healthcare and lifestyle products,
-                opening pathways to holistic wellbeing and sustainable wealth.
-              </p>
-            </div>
-          </div>
-
-          <div class="mission-section">
-            <h2 class="section-title">Corporate Pillars</h2>
-            <p class="section-lead">Four cornerstones that guide Dynapharm Namibia’s growth and service.</p>
-            <div class="mission-grid">
-              <div class="mission-card">
-                <h4>Science-driven Innovation</h4>
-                <p>Evidence-based products designed for real people and real results.</p>
-              </div>
-              <div class="mission-card">
-                <h4>Knowledge Empowerment</h4>
-                <p>Training, mentorship, and digital tools that turn distributors into trusted wellness advisors.</p>
-              </div>
-              <div class="mission-card">
-                <h4>Idea Acceleration</h4>
-                <p>From product prototypes to analytics dashboards, fresh ideas fuel better health outcomes.</p>
-              </div>
-              <div class="mission-card">
-                <h4>Community Transformation</h4>
-                <p>Body check-ups, education sessions, and branch outreach uplift families across Namibia.</p>
-              </div>
-            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="landscape-page">
-        <div class="page-content">
-          <div class="network-section">
-            <h2 class="section-title">Namibian Network</h2>
-            <p class="section-lead">
-              Build your future with Dynapharm’s magnificent growth. We operate across the country with dedicated teams,
-              clinics, and pick-up points supporting customers and entrepreneurs.
-            </p>
-            <div class="network-grid">
-              <div class="network-card">
-                <h4>Branch Footprint</h4>
-                <p>
-                  Windhoek CBD • Tsumeb • Gobabis • Swakopmund • Outapi • Okahao • Oshakati • Otjiwarongo • Eenhana • Ondangwa •
-                  Rundu • Walvis Bay • Hochlandpark • Khomasdal • Katima Mulilo
-                </p>
-              </div>
-              <div class="network-card">
-                <h4>Service Centres</h4>
-                <p>
-                  Body check-ups, product distribution, training workshops, and customer support are handled in-branch and via
-                  our digital systems.
-                </p>
-              </div>
-              <div class="network-card">
-                <h4>Key Contacts</h4>
-                <p>
-                  Windhoek HQ — +264 61 300877 · support@dynapharmnamibia.com<br />
-                  Media & Partnerships — media@dynapharmnamibia.com · partners@dynapharmnamibia.com
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div class="network-section">
-            <h2 class="section-title">Global Operations</h2>
-            <p class="section-lead">
-              Dynapharm reaches families and entrepreneurs in more than 30 countries across Africa, Asia, Europe, and the
-              Americas.
-            </p>
-            <div class="global-grid">
-              <div class="network-card">
-                <h4>Africa</h4>
-                <p>
-                  Angola • Botswana • Burkina Faso • Burundi • Cameroon • Comoros Island • Congo • Gabon • Gambia • Ghana • Goma •
-                  Guinea • Ivory Coast • Kenya • Lesotho • Liberia • Madagascar • Malawi • Mali • Mozambique • Namibia • Nigeria •
-                  Rwanda • Senegal • Sierra Leone • South Africa • South Sudan • Swaziland • Tanzania • Uganda • Zambia • Zimbabwe
-                </p>
-              </div>
-              <div class="network-card">
-                <h4>Asia &amp; Middle East</h4>
-                <p>India • Indonesia • Malaysia • Philippines • Singapore</p>
-              </div>
-              <div class="network-card">
-                <h4>Europe &amp; Americas</h4>
-                <p>United Kingdom • United States of America</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="testimonials-section">
-            <h2 class="section-title">Customer Testimonials</h2>
-            <p class="section-lead">Real stories from clients and distributors who live the Dynapharm promise.</p>
-            <div class="testimonials-grid">
-              <div class="testimonial-card">
-                <h4>“A New Lease on Life”</h4>
-                <p>
-                  “Two years ago, I was dying… today I’m healthy and 6 months pregnant! Dynapharm products helped me regain my
-                  strength naturally and safely.”
-                </p>
-                <div class="testimonial-meta">Sarah M. — Windhoek, Namibia</div>
-              </div>
-              <div class="testimonial-card">
-                <h4>“Hope During Recovery”</h4>
-                <p>
-                  “Stage 3 ovarian cancer – Dynapharm gave me a fighting chance. Combining treatments with the natural program
-                  boosted my energy and optimism.”
-                </p>
-                <div class="testimonial-meta">Maria K. — Ondangwa, Namibia</div>
-              </div>
-              <div class="testimonial-card">
-                <h4>“Pain-free Living”</h4>
-                <p>
-                  “My arthritic pain was unbearable. After using the natural relief range for a few weeks, I can now move freely
-                  without constant pain.”
-                </p>
-                <div class="testimonial-meta">John D. — Swakopmund, Namibia</div>
-              </div>
-              <div class="testimonial-card">
-                <h4>“From Exhausted to Energised”</h4>
-                <p>
-                  “As a distributor, I rely on Dynapharm supplements daily. They keep me energised, focused, and ready to serve
-                  clients while building my business.”
-                </p>
-                <div class="testimonial-meta">Lydia P. — Distributor, Rundu Branch</div>
-              </div>
-            </div>
-            <div class="testimonial-cta">
-              <h3>Share Your Dynapharm Story</h3>
-              <p>Send testimonials to <a href="mailto:media@dynapharmnamibia.com" style="color: #ffe4e9;">media@dynapharmnamibia.com</a>.</p>
-              <button type="button" onclick="window.location.href='distributor-guest.html#testimonials';">Submit Testimonial</button>
-            </div>
-          </div>
-
-          <div class="footer-note">© 2025 Dynapharm International Namibia. All rights reserved.</div>
+    <section id="global" class="section-alt countries-section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Global Operations</h2>
+          <p>Dynapharm reaches families and entrepreneurs in more than 30 countries across Africa, Asia, Europe, and the Americas.</p>
         </div>
-      </section>
-    </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">&#x1F30D;</div>
+            <h3>Africa</h3>
+            <p>
+              Angola, Botswana, Burkina Faso, Burundi, Cameroon, Comoros Island, Congo, Gabon, Gambia, Ghana, Goma,
+              Guinea, Ivory Coast, Kenya, Lesotho, Liberia, Madagascar, Malawi, Mali, Mozambique, Namibia, Nigeria,
+              Rwanda, Senegal, Sierra Leone, South Africa, South Sudan, Swaziland, Tanzania, Uganda, Zambia, Zimbabwe
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F30F;</div>
+            <h3>Asia & Middle East</h3>
+            <p>India, Indonesia, Malaysia, Philippines, Singapore</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">&#x1F30E;</div>
+            <h3>Europe & Americas</h3>
+            <p>United Kingdom, United States of America</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <script>
-      (function () {
-        const frame = document.getElementById("portalFrame");
-        if (!frame) return;
-        frame.addEventListener("load", () => {
-          try {
-            const doc = frame.contentDocument || frame.contentWindow.document;
-            const portalContainer = doc && doc.querySelector(".container");
-            if (portalContainer) {
-              portalContainer.style.display = "block";
-            }
-          } catch (err) {
-            console.debug("Unable to reveal embedded portal container", err);
-          }
-        });
-      })();
-    </script>
+    <section id="testimonials">
+      <div class="container">
+        <div class="section-header">
+          <h2>Customer Testimonials</h2>
+          <p>Real stories from clients and distributors who live the Dynapharm promise.</p>
+        </div>
+        <div class="grid-4">
+          <div class="card testimonial-card">
+            <h3>A New Lease on Life</h3>
+            <blockquote>"Two years ago, I was dying... today I'm healthy and 6 months pregnant! Dynapharm products helped me regain my strength naturally and safely."</blockquote>
+            <div class="testimonial-author">Sarah M. — Windhoek, Namibia</div>
+          </div>
+          <div class="card testimonial-card">
+            <h3>Hope During Recovery</h3>
+            <blockquote>"Stage 3 ovarian cancer — Dynapharm gave me a fighting chance. Combining treatments with the natural program boosted my energy and optimism."</blockquote>
+            <div class="testimonial-author">Maria K. — Ondangwa, Namibia</div>
+          </div>
+          <div class="card testimonial-card">
+            <h3>Pain-free Living</h3>
+            <blockquote>"My arthritic pain was unbearable. After using the natural relief range for a few weeks, I can now move freely without constant pain."</blockquote>
+            <div class="testimonial-author">John D. — Swakopmund, Namibia</div>
+          </div>
+          <div class="card testimonial-card">
+            <h3>From Exhausted to Energised</h3>
+            <blockquote>"As a distributor, I rely on Dynapharm supplements daily. They keep me energised, focused, and ready to serve clients while building my business."</blockquote>
+            <div class="testimonial-author">Lydia P. — Distributor, Rundu Branch</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-banner">
+      <div class="container">
+        <h2>Share Your Dynapharm Story</h2>
+        <p>Have a testimonial? Send it to <a href="mailto:media@dynapharmnamibia.com">media@dynapharmnamibia.com</a></p>
+        <a href="distributor-guest.html#testimonials" class="btn btn-white">Submit Testimonial</a>
+      </div>
+    </section>
+
+    </main>
+
+    <footer>
+      <div class="container">
+        <div class="footer-inner">
+          <div>
+            <h4>Dynapharm Namibia</h4>
+            <p>Pioneering healthcare and lifestyle products for families, entrepreneurs, and communities across Namibia and the globe.</p>
+          </div>
+          <div>
+            <h4>Quick Links</h4>
+            <ul class="footer-links">
+              <li><a href="dynapharm-complete-system.html#client">Online Shop</a></li>
+              <li><a href="dynapharm-complete-system.html">Full Portal</a></li>
+              <li><a href="distributor-guest.html">Distributor Access</a></li>
+              <li><a href="appointments-admin.html">Appointments</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Contact</h4>
+            <p>
+              Windhoek HQ<br>
+              <a href="tel:+26461300877">+264 61 300877</a><br>
+              <a href="mailto:support@dynapharmnamibia.com">support@dynapharmnamibia.com</a>
+            </p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          &copy; 2025 Dynapharm International Namibia. All rights reserved.
+        </div>
+      </div>
+    </footer>
   </body>
 </html>
