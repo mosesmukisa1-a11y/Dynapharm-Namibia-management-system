@@ -31840,7 +31840,7 @@ if (loginForm) {
             try {
                 var url = '/api/appointments?type=Full+Body+Check-Up';
                 if (userBranch) url += '&branch=' + encodeURIComponent(userBranch);
-                var res = await fetch(url);
+                var res = await fetch(url, { credentials: 'include' });
                 if (!res.ok) throw new Error('Failed to load');
                 _consultantCheckups = await res.json();
                 if (!Array.isArray(_consultantCheckups)) _consultantCheckups = [];
@@ -31941,7 +31941,8 @@ if (loginForm) {
                 var res = await fetch('/api/appointments', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: aptId, status: newStatus })
+                    body: JSON.stringify({ id: aptId, status: newStatus }),
+                    credentials: 'include'
                 });
                 if (!res.ok) throw new Error('Update failed');
                 var idx = _consultantCheckups.findIndex(function(a) { return a.id === aptId; });

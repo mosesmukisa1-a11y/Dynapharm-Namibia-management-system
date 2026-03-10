@@ -225,6 +225,27 @@ server.on('error', (error) => {
       );
       console.log('Super Admin account seeded (username: admin)');
     }
+
+    const staffUsers = [
+      { id: 'USR1759829667953', username: 'moses', password: 'walker33', fullName: 'MOSES MUKISA', email: 'mosesmukisa1@gmail.com', phone: '0817317160', role: 'consultant', branch: 'townshop' },
+      { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },
+      { id: 'USR1759830625722', username: 'NAEM', password: 'PASSWORD', fullName: 'NAEM HANGULA', email: 'naemhangula4@gmail.com', phone: '0817499757', role: 'dispenser', branch: 'townshop' },
+      { id: 'USR1759928153488', username: 'GEINGOS', password: 'ALBERTO99', fullName: 'HILMA C', email: 'geingoshilma@gmail', phone: '0814137106', role: 'consultant', branch: 'townshop' }
+    ];
+    const bcryptMod = await import('bcryptjs');
+    for (const u of staffUsers) {
+      const exists = await getOne("SELECT id FROM users WHERE LOWER(username) = LOWER($1)", [u.username]);
+      if (!exists) {
+        const pwHash = await bcryptMod.default.hash(u.password, 10);
+        await query(
+          `INSERT INTO users (id, username, password_hash, role, full_name, email, phone, branch, is_active, must_change_password, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, FALSE, '{"seeded":true}'::jsonb, NOW(), NOW())
+           ON CONFLICT (username) DO NOTHING`,
+          [u.id, u.username, pwHash, u.role, u.fullName, u.email, u.phone, u.branch]
+        );
+        console.log('Seeded staff user:', u.username, '(' + u.role + ')');
+      }
+    }
   } catch (error) {
     console.warn('Database startup check failed:', error.message);
   }
