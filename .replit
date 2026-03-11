@@ -38,5 +38,4 @@ externalPort = 80
 [userenv.shared]
 
 [deployment]
-deploymentTarget = "autoscale"
-run = ["node", "server.js"]
+deploymentTarget = "cloudrun"
