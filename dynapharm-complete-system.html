@@ -5890,9 +5890,12 @@
         }
         
         function hideAllPortalTabs() {
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.style.display = 'none';
-            });
+            var portalTabsDiv = document.getElementById('portalTabs');
+            if (portalTabsDiv) {
+                portalTabsDiv.querySelectorAll(':scope > .tab-button').forEach(function(btn) {
+                    btn.style.display = 'none';
+                });
+            }
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.style.display = 'none';
             });
@@ -5901,36 +5904,26 @@
         function showAuthorizedPortals(role) {
             const authorizedPortals = ROLE_PORTAL_ACCESS[role] || ['client'];
             
-            // Show portal tabs container
-            const portalTabs = document.getElementById('portalTabs');
+            var portalTabs = document.getElementById('portalTabs');
             if (portalTabs) portalTabs.style.display = 'flex';
             
-            // Show authorized portal tabs
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                const portalId = btn.getAttribute('onclick');
-                if (portalId) {
-                    const portalName = portalId.match(/openTab\('([^']+)'/);
-                    if (portalName && authorizedPortals.includes(portalName[1])) {
+            var portalTabButtons = portalTabs ? portalTabs.querySelectorAll(':scope > .tab-button') : [];
+            portalTabButtons.forEach(function(btn) {
+                var onclickAttr = btn.getAttribute('onclick') || '';
+                var match = onclickAttr.match(/openTab\('([^']+)'/);
+                if (match) {
+                    if (role === 'admin' || authorizedPortals.includes(match[1])) {
                         btn.style.display = 'inline-block';
-                    } else if (btn.textContent !== 'Logout') {
+                    } else {
                         btn.style.display = 'none';
                     }
                 }
             });
             
-            // Update user display
-            const userDisplay = document.getElementById('currentUserDisplay');
+            var userDisplay = document.getElementById('currentUserDisplay');
             if (userDisplay && currentUser) {
-                userDisplay.textContent = `${currentUser.fullName || currentUser.username} (${role})`;
+                userDisplay.textContent = (currentUser.fullName || currentUser.username) + ' (' + role + ')';
             }
-            
-            // DO NOT automatically open a portal - let handlePortalLoginSuccess open the selected portal
-            // The following code was causing currentPortal to be reset after login
-            // const defaultPortal =
-            //     authorizedPortals.find(portal => portal !== 'client') ||
-            //     authorizedPortals[0] ||
-            //     'client';
-            // openTab(defaultPortal, null);
         }
         
         // Session Management
@@ -6020,13 +6013,14 @@
             currentPortal = null;
             window.currentPortal = null;
             
-            // Clear ALL session-related localStorage items
             try {
-                localStorage.removeItem('dyna_portal_user'); // New session storage key
+                localStorage.removeItem('dyna_portal_user');
                 localStorage.removeItem('currentUser');
                 localStorage.removeItem('currentUserRole');
                 localStorage.removeItem('rememberedSession');
                 localStorage.removeItem('warehouseFilter');
+                localStorage.removeItem('dynapharm_active_portal');
+                localStorage.removeItem('dynapharm_frontdesk_tab');
                 console.log('✅ Session data cleared from localStorage');
             } catch (e) {
                 console.warn('Failed to clear localStorage:', e);
@@ -6934,109 +6928,154 @@
          * Show Distributor/Client sub-tabs (Shop, Checkup, Media, Testimonials)
          */
         function showDistributorTab(tabName) {
-            console.log('📑 Switching to distributor tab:', tabName);
+            console.log('[NAV] Switching distributor tab:', tabName);
             
-            // Hide all distributor tab contents
-            const tabContents = document.querySelectorAll('[id^="distributor-tab-"]');
-            tabContents.forEach(tab => {
+            var clientDiv = document.getElementById('client');
+            if (!clientDiv) return;
+            
+            clientDiv.querySelectorAll('.distributor-subtab').forEach(function(tab) {
                 tab.style.display = 'none';
+                tab.classList.remove('active');
             });
             
-            // Remove active class from all distributor tab buttons
-            const tabButtons = document.querySelectorAll('.client .tab-button');
-            tabButtons.forEach(btn => {
-                btn.classList.remove('active');
-            });
+            var tabsContainer = clientDiv.querySelector('.tabs');
+            if (tabsContainer) {
+                tabsContainer.querySelectorAll('.tab-button').forEach(function(btn) {
+                    btn.classList.remove('active');
+                });
+            }
             
-            // Show selected tab content
-            const selectedTab = document.getElementById(`distributor-tab-${tabName}`);
+            var selectedTab = document.getElementById('distributor-' + tabName + '-tab');
             if (selectedTab) {
                 selectedTab.style.display = 'block';
+                selectedTab.classList.add('active');
             } else {
-                console.warn(`Distributor tab content not found: distributor-tab-${tabName}`);
+                console.warn('[NAV] Distributor tab not found: distributor-' + tabName + '-tab');
             }
             
-            // Set active button
             if (event && event.target) {
                 event.target.classList.add('active');
+            } else if (tabsContainer) {
+                var btn = tabsContainer.querySelector('[onclick*="showDistributorTab(\'' + tabName + '\')"]');
+                if (btn) btn.classList.add('active');
             }
             
-            // Load data for specific tabs
             if (tabName === 'shop') {
-                if (typeof loadShopProducts === 'function') {
-                    loadShopProducts();
-                }
+                if (typeof loadShopProducts === 'function') loadShopProducts();
             } else if (tabName === 'checkup') {
-                if (typeof loadCheckupAppointments === 'function') {
-                    loadCheckupAppointments();
-                }
+                if (typeof loadCheckupAppointments === 'function') loadCheckupAppointments();
             }
         }
         
         /**
          * Show Front Desk order management tabs
          */
+        var frontDeskTabMap = {
+            'pending': 'pendingOrders',
+            'processing': 'processingOrders',
+            'shipped': 'shippedOrders',
+            'delivered': 'deliveredOrders',
+            'all': 'allOrders',
+            'appointments': 'frontdeskAppointments',
+            'clientRegistration': 'frontdeskClientRegistration',
+            'payments': 'frontdeskPayments',
+            'clientLookup': 'frontdeskClientLookup',
+            'delivery': 'frontdeskDelivery',
+            'visitors': 'frontdeskVisitors',
+            'crm': 'frontdeskCRM',
+            'notifications': 'frontdeskNotifications',
+            'staffComm': 'frontdeskStaffCommunication',
+            'staffServices': 'frontdeskStaffServices'
+        };
+
         function showOrderTab(tabName) {
-            console.log('📦 Switching to order tab:', tabName);
+            console.log('[NAV] Switching front desk tab:', tabName);
             
-            // Hide all order tab contents
-            const tabContents = document.querySelectorAll('[id^="order-tab-"]');
-            tabContents.forEach(tab => {
-                tab.style.display = 'none';
+            var frontdeskDiv = document.getElementById('frontdesk');
+            if (!frontdeskDiv) { console.error('[NAV] frontdesk section not found'); return; }
+
+            var allSections = frontdeskDiv.querySelectorAll('.order-tab-content');
+            allSections.forEach(function(sec) {
+                sec.style.display = 'none';
+                sec.classList.remove('active');
             });
             
-            // Remove active class from all order tab buttons
-            const parentDiv = document.querySelector('.frontdesk') || document.querySelector('.order-tabs-container');
-            if (parentDiv) {
-                const tabButtons = parentDiv.querySelectorAll('.tab-button');
-                tabButtons.forEach(btn => {
+            var tabsContainer = frontdeskDiv.querySelector('.tabs');
+            if (tabsContainer) {
+                tabsContainer.querySelectorAll('.tab-button').forEach(function(btn) {
                     btn.classList.remove('active');
                 });
             }
             
-            // Show selected tab content
-            const selectedTab = document.getElementById(`order-tab-${tabName}`);
-            if (selectedTab) {
-                selectedTab.style.display = 'block';
+            var sectionId = frontDeskTabMap[tabName];
+            if (!sectionId) {
+                console.error('[NAV] Unknown front desk tab:', tabName);
+                return;
+            }
+            var section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'block';
+                section.classList.add('active');
             } else {
-                console.warn(`Order tab content not found: order-tab-${tabName}`);
+                console.error('[NAV] Section not found:', sectionId);
+                var placeholder = document.createElement('div');
+                placeholder.className = 'order-tab-content';
+                placeholder.style.display = 'block';
+                placeholder.style.padding = '40px';
+                placeholder.style.textAlign = 'center';
+                placeholder.innerHTML = '<h3>Module available but content pending</h3><p style="color:#666;">The ' + tabName + ' module is being prepared.</p>';
+                frontdeskDiv.appendChild(placeholder);
             }
             
-            // Set active button
             if (event && event.target) {
                 event.target.classList.add('active');
+            } else {
+                var btn = tabsContainer ? tabsContainer.querySelector('[onclick*="showOrderTab(\'' + tabName + '\')"]') : null;
+                if (btn) btn.classList.add('active');
             }
             
-            // Load data for specific tabs
+            try {
+                localStorage.setItem('dynapharm_frontdesk_tab', tabName);
+            } catch(e) {}
+            
             switch(tabName) {
                 case 'pending':
                 case 'processing':
                 case 'shipped':
                 case 'delivered':
                 case 'all':
-                    if (typeof loadOrders === 'function') {
-                        loadOrders(tabName);
-                    }
+                    if (typeof loadOrders === 'function') loadOrders(tabName);
                     break;
                 case 'appointments':
-                    if (typeof loadAppointments === 'function') {
-                        loadAppointments();
-                    }
+                    if (typeof loadAppointments === 'function') loadAppointments();
+                    if (typeof refreshFrontdeskAppointments === 'function') refreshFrontdeskAppointments();
                     break;
                 case 'clientRegistration':
-                    if (typeof initClientRegistration === 'function') {
-                        initClientRegistration();
-                    }
+                    if (typeof initClientRegistration === 'function') initClientRegistration();
                     break;
                 case 'clientLookup':
-                    if (typeof initClientLookup === 'function') {
-                        initClientLookup();
-                    }
+                    if (typeof initClientLookup === 'function') initClientLookup();
+                    break;
+                case 'payments':
+                    if (typeof loadPaymentCollections === 'function') loadPaymentCollections();
+                    break;
+                case 'delivery':
+                    if (typeof loadDeliverySchedule === 'function') loadDeliverySchedule();
                     break;
                 case 'visitors':
-                    if (typeof loadVisitors === 'function') {
-                        loadVisitors();
-                    }
+                    if (typeof loadVisitors === 'function') loadVisitors();
+                    break;
+                case 'crm':
+                    if (typeof loadCRMData === 'function') loadCRMData();
+                    break;
+                case 'notifications':
+                    if (typeof loadNotifications === 'function') loadNotifications();
+                    break;
+                case 'staffComm':
+                    if (typeof loadStaffCommunications === 'function') loadStaffCommunications();
+                    break;
+                case 'staffServices':
+                    if (typeof loadStaffServices === 'function') loadStaffServices();
                     break;
             }
         }
@@ -26785,12 +26824,13 @@
         }
 
         function openTab(tabName, event) {
-            const portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal', 'client', 'frontdesk'];
+            console.log('[NAV] Switching portal:', tabName);
+            var portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal', 'client', 'frontdesk', 'crm'];
             if (portalTabs.includes(tabName) && currentUser) {
                 var userRole = (currentUser.role || '').toLowerCase();
                 var allowed = ROLE_PORTAL_ACCESS[userRole] || ['client'];
                 if (userRole !== 'admin' && !allowed.includes(tabName)) {
-                    console.warn('Access denied to portal:', tabName);
+                    console.warn('[NAV] Access denied to portal:', tabName);
                     return;
                 }
                 currentPortal = tabName;
@@ -26800,15 +26840,26 @@
                 window.currentPortal = tabName;
             }
             
-            // Branch selection is now optional - portals can open without it
-            // Branch selection will be requested only when needed for specific operations inside portals
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
-            document.getElementById(tabName).classList.add('active');
+            try { localStorage.setItem('dynapharm_active_portal', tabName); } catch(e) {}
+            
+            document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+            
+            var portalTabsDiv = document.getElementById('portalTabs');
+            if (portalTabsDiv) {
+                portalTabsDiv.querySelectorAll(':scope > .tab-button').forEach(function(t) { t.classList.remove('active'); });
+            }
+            
+            var targetSection = document.getElementById(tabName);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            } else {
+                console.error('[NAV] Portal section not found:', tabName);
+            }
+            
             if (event && event.target) {
                 event.target.classList.add('active');
             } else {
-                const btn = document.querySelector(`[onclick="openTab('${tabName}', event)"]`) || document.querySelector(`[onclick="openTab('${tabName}')"]`);
+                var btn = portalTabsDiv ? (portalTabsDiv.querySelector('[onclick*="openTab(\'' + tabName + '\'"]') || portalTabsDiv.querySelector('[data-portal-id="' + tabName + '"]')) : null;
                 if (btn) btn.classList.add('active');
             }
             
@@ -26889,27 +26940,20 @@
             
             // Front Desk Portal - ensure internal tabs are visible
             if (tabName === 'frontdesk') {
-                setTimeout(() => {
-                    // Show all internal tabs within the front desk portal
-                    const frontdeskTabsContainer = document.querySelector('#frontdesk .tabs');
+                setTimeout(function() {
+                    var frontdeskTabsContainer = document.querySelector('#frontdesk .tabs');
                     if (frontdeskTabsContainer) {
-                        const internalTabButtons = frontdeskTabsContainer.querySelectorAll('.tab-button');
-                        internalTabButtons.forEach(btn => {
+                        frontdeskTabsContainer.querySelectorAll('.tab-button').forEach(function(btn) {
                             btn.style.display = 'inline-block';
+                            btn.style.pointerEvents = 'auto';
+                            btn.style.cursor = 'pointer';
                         });
                     }
-                    // Ensure the default pending orders tab is shown
-                    const pendingTab = document.getElementById('pendingOrders');
-                    if (pendingTab) {
-                        pendingTab.style.display = 'block';
-                        pendingTab.classList.add('active');
-                    }
-                    // Initialize Front Desk real-time sync
-                    initializeFrontDeskRealtime();
-                    // Initialize membership status change handler for client registration form
-                    if (typeof handleMembershipStatusChange === 'function') {
-                        handleMembershipStatusChange();
-                    }
+                    var savedTab = 'pending';
+                    try { savedTab = localStorage.getItem('dynapharm_frontdesk_tab') || 'pending'; } catch(e) {}
+                    showOrderTab(savedTab);
+                    if (typeof initializeFrontDeskRealtime === 'function') initializeFrontDeskRealtime();
+                    if (typeof handleMembershipStatusChange === 'function') handleMembershipStatusChange();
                 }, 100);
             }
         }
@@ -29387,15 +29431,24 @@ function handlePortalLoginSuccess(user, options = {}) {
         currentPortal = window.currentPortal;
     }
     
-    // Get the portal that was requested for login (after restoration)
-    let portal = currentPortal || window.currentPortal;
+    var portal = currentPortal || window.currentPortal;
     
-    // Determine default portal for this role
-    const roleDefaultPortal = getDefaultPortalForRole(role);
+    if (!portal || portal === 'default') {
+        try {
+            var savedPortal = localStorage.getItem('dynapharm_active_portal');
+            if (savedPortal) {
+                var allowed = ROLE_PORTAL_ACCESS[role] || ['client'];
+                if (role === 'admin' || allowed.includes(savedPortal)) {
+                    portal = savedPortal;
+                }
+            }
+        } catch(e) {}
+    }
     
-    // If no portal specified or value is placeholder, use role's default portal
+    var roleDefaultPortal = getDefaultPortalForRole(role);
+    
     if (!portal || portal === 'default' || portal === 'dispenser') {
-        portal = roleDefaultPortal || 'dispenser';
+        portal = roleDefaultPortal || 'client';
     }
     
     console.log('📍 Opening portal:', portal, 'for role:', role);
@@ -29425,23 +29478,21 @@ function handlePortalLoginSuccess(user, options = {}) {
             // Fallback: manually open the tab
             const portalTab = document.getElementById(portal);
             if (portalTab) {
-                // Hide all tab-content divs
-                document.querySelectorAll('.tab-content').forEach(t => {
+                document.querySelectorAll('.tab-content').forEach(function(t) {
                     t.classList.remove('active');
-                    t.style.display = 'none';
                 });
-                // Show the selected portal tab
                 portalTab.classList.add('active');
-                portalTab.style.display = 'block';
                 
-                // Update tab buttons
-                document.querySelectorAll('.tab-button').forEach(btn => {
-                    btn.classList.remove('active');
-                    const portalId = btn.getAttribute('onclick');
-                    if (portalId && portalId.includes(`'${portal}'`)) {
-                        btn.classList.add('active');
-                    }
-                });
+                var ptDiv = document.getElementById('portalTabs');
+                if (ptDiv) {
+                    ptDiv.querySelectorAll(':scope > .tab-button').forEach(function(btn) {
+                        btn.classList.remove('active');
+                        var onc = btn.getAttribute('onclick') || '';
+                        if (onc.indexOf("'" + portal + "'") !== -1) {
+                            btn.classList.add('active');
+                        }
+                    });
+                }
             }
         }
         

@@ -1,0 +1,206 @@
+FINAL CORRECTION TASK – DYNAPHARM NAMIBIA PORTAL
+Priority: HIGH
+Issue type: Navigation / tab rendering / event binding / module initialization
+
+PROJECT:
+Dynapharm Namibia Comprehensive Health Management System
+
+PROBLEM SUMMARY:
+When logged in as Admin / Super Admin, almost all top portal tabs are static and do not open when clicked.
+Only “Front Desk Portal” opens.
+However, once Front Desk Portal opens, the internal submenu tabs below it are also dead/static and do not respond.
+The existing codebase already contains the portal code, so this is NOT a missing-feature job.
+This is a reorganization / activation / binding / rendering issue.
+You must inspect the current code and reconnect all existing portal tabs and sub-tabs properly.
+
+VISIBLE ISSUES TO FIX:
+1. Top navigation tabs not switching views:
+   - Distributor / Guest
+   - Front Desk Portal
+   - Consultant Portal
+   - Branch Portal
+   - HR Portal
+   - Finance Portal
+   - GM Portal
+   - Director Portal
+   - MIS Portal
+   - Stock Management
+   - Admin Portal
+   - Super Admin
+
+2. Front Desk submenu tabs are dead:
+   - Pending Orders
+   - Processing
+   - Shipped
+   - Delivered
+   - All Orders
+   - Appointments
+   - Client Registration
+   - Payment Collection
+   - Client Lookup
+   - Delivery Scheduling
+   - Visitor Management
+   - CRM
+   - Notifications
+   - Communication / any remaining submenu item
+   These must all open their correct sections dynamically.
+
+ROOT CAUSE TO CHECK:
+Investigate and fix all of the following:
+- Broken or missing click event listeners
+- Tabs rendered before DOM is ready
+- Duplicate IDs in HTML
+- Incorrect query selectors
+- Wrong data-tab / data-target / data-section mapping
+- Hidden sections never being unhidden
+- CSS overlay / z-index blocking clicks
+- A transparent element or container sitting above tabs
+- Event listeners lost after re-render
+- Dynamic HTML being replaced with innerHTML without rebinding events
+- JavaScript errors stopping execution after first tab
+- Role-based rendering hiding content unintentionally for admin
+- Functions موجود in code but never called
+- Portal sections existing in HTML but not registered in navigation controller
+- Sidebar/submenu state not synced with main content area
+- Static hardcoded layout instead of centralized tab-switch engine
+
+MANDATORY FIX APPROACH:
+Do NOT patch randomly.
+Do a clean navigation refactor so all tabs and sub-tabs use one consistent system.
+
+IMPLEMENT THIS STRUCTURE:
+
+1. Create a centralized navigation registry object:
+   Example:
+   const portalMap = {
+     distributor: 'distributorPortalSection',
+     frontdesk: 'frontDeskPortalSection',
+     consultant: 'consultantPortalSection',
+     branch: 'branchPortalSection',
+     hr: 'hrPortalSection',
+     finance: 'financePortalSection',
+     gm: 'gmPortalSection',
+     director: 'directorPortalSection',
+     mis: 'misPortalSection',
+     stock: 'stockManagementSection',
+     admin: 'adminPortalSection',
+     superadmin: 'superAdminSection'
+   };
+
+2. Every top tab button must use:
+   data-portal="frontdesk"
+   data-portal="hr"
+   etc.
+
+3. Add a single reusable function:
+   switchPortal(portalKey)
+
+This function must:
+- Hide all main portal sections
+- Remove active class from all main tabs
+- Show only the selected portal section
+- Add active class to selected tab
+- Save current active portal in localStorage/sessionStorage
+- Trigger initialization for that portal if needed
+
+4. Do same for Front Desk submenu:
+   const frontDeskTabMap = {
+     pending: 'pendingOrdersSection',
+     processing: 'processingOrdersSection',
+     shipped: 'shippedOrdersSection',
+     delivered: 'deliveredOrdersSection',
+     allorders: 'allOrdersSection',
+     appointments: 'appointmentsSection',
+     registration: 'clientRegistrationSection',
+     payments: 'paymentCollectionSection',
+     lookup: 'clientLookupSection',
+     delivery: 'deliverySchedulingSection',
+     visitors: 'visitorManagementSection',
+     crm: 'crmSection',
+     notifications: 'notificationsSection',
+     communication: 'communicationSection'
+   };
+
+5. Add reusable function:
+   switchFrontDeskTab(tabKey)
+
+This function must:
+- Hide all front desk sub-sections
+- Remove active class from all submenu tabs
+- Show selected sub-section
+- Add active class to selected submenu tab
+- Persist state for refresh
+- Re-bind data tables / filters / listeners if needed
+
+6. On page load:
+- Restore last active top portal from localStorage
+- Restore last active submenu for Front Desk
+- If no saved state exists, load the first permitted portal for the role
+
+7. Add defensive logging:
+   console.log('[NAV] Switching portal:', portalKey);
+   console.log('[NAV] Switching front desk tab:', tabKey);
+   console.error(...) for missing target section or selector
+
+8. Add safety checks:
+- If section ID not found, show visible toast/error
+- App must not silently fail
+
+9. Check CSS pointer issues:
+- Ensure tabs have pointer-events:auto
+- Ensure no overlay blocks clicks
+- Fix z-index if needed
+- Cursor should show pointer on clickable tabs
+
+10. Check browser console for JS errors and fix all errors completely.
+No unresolved console errors allowed.
+
+ADMIN / ROLE REQUIREMENTS:
+- Admin and Super Admin must be able to access all authorized portal tabs.
+- Role filtering must not make tabs visible but non-functional.
+- If a tab is visible, it must work.
+- If access is denied, hide the tab entirely or show a proper access denied message.
+
+UI/UX REQUIREMENTS:
+- Clicking a tab should visibly highlight the active tab
+- Switching tabs must feel immediate
+- No full page reload required
+- Internal submenu must also highlight active item
+- Keep current Dynapharm branding/theme intact
+- Do not break existing working Front Desk content; just activate the dead tabs and organize it properly
+
+DEBUG REQUIREMENTS:
+After fix, test each of these manually while logged in as Admin:
+TOP LEVEL:
+- Open each portal one by one and confirm the correct section loads
+
+FRONT DESK:
+- Open Front Desk Portal
+- Click each submenu tab one by one
+- Confirm each renders unique content area
+- Confirm no dead clicks
+- Confirm active state changes
+- Confirm refresh preserves current tab
+
+DELIVERABLE REQUIRED:
+1. Fix the code
+2. Provide a summary of files changed
+3. Provide root cause found
+4. Confirm each top tab tested
+5. Confirm each Front Desk sub-tab tested
+6. If some sections exist in code but have no content, still make the tab routing work and display a “Module available but content pending” placeholder instead of dead clicks
+
+IMPORTANT:
+The current project already has the code. You must inspect, reconnect, and reorganize it.
+Do not claim “feature missing” before checking the codebase thoroughly.
+This is primarily a navigation wiring and rendering issue.
+
+EXPECTED RESULT:
+All admin-visible top tabs become clickable and load their sections.
+All Front Desk submenu tabs become clickable and load their sections.
+No dead tabs.
+No static navigation.
+No JavaScript breakages.
+State persists after refresh.
+
+Proceed now and fully correct it.
