@@ -1,0 +1,28 @@
+FORMAL REQUEST FOR ACCOUNT-WIDE CREDIT REVIEW AND ADJUSTMENT
+
+I would like to formally request a review of the credits that have been charged to my account across my projects on the platform.
+
+Over the recent development sessions, I have been working on multiple systems including:
+
+• Dynapharm Namibia Management System
+• Afrocat Volleyball Club systems and related tools
+• Dynapharm Sales Tracker and related automation tools
+
+During these sessions, several updates were reported as completed, however a number of the requested implementations were either incomplete, not applied correctly, or resulted in additional issues that required further corrective attempts.
+
+In some instances, previously functioning features became non-functional after updates and had to be repaired again. For example, the Staff Login workflow in the Dynapharm system became completely unusable after an update and required several attempts to restore. Additionally, the role-based portal access system still requires further correction as most portals remain inactive despite being visible to the Super Admin.
+
+Because these situations required repeated correction cycles resulting from unsuccessful or incomplete implementations, I believe that some of the credits consumed during these attempts may not accurately reflect productive work delivered.
+
+For this reason, I kindly request:
+
+1. A **full review of the credits consumed across my projects**, including the Dynapharm Namibia Management System, Afrocat systems, and the Sales Tracker.
+2. An **adjustment or refund of credits** that may have been consumed during unsuccessful implementation attempts or repeated correction cycles.
+3. Clarification on how credit consumption is calculated when features require multiple corrective iterations before functioning properly.
+
+My intention is simply to ensure that billing reflects **successful and functional implementations**, rather than repeated attempts required to resolve issues that remained incomplete.
+
+I appreciate your assistance in reviewing this matter and I look forward to your response.
+
+Kind regards,
+Moses Mukisa
