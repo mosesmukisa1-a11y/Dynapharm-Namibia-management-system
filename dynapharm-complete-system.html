@@ -26860,7 +26860,10 @@
             
             try { localStorage.setItem('dynapharm_active_portal', tabName); } catch(e) {}
             
-            document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(function(t) {
+                t.classList.remove('active');
+                t.style.display = '';
+            });
             
             var portalTabsDiv = document.getElementById('portalTabs');
             if (portalTabsDiv) {
@@ -26870,6 +26873,7 @@
             var targetSection = document.getElementById(tabName);
             if (targetSection) {
                 targetSection.classList.add('active');
+                targetSection.style.display = 'block';
             } else {
                 console.error('[NAV] Portal section not found:', tabName);
             }
@@ -26911,10 +26915,22 @@
                 initializeMISPortal();
             }
             
-            if (tabName === 'admin' && currentUser && currentUser.role === 'admin') {
+            if (tabName === 'admin' && currentUser) {
                 setTimeout(() => {
-                    loadPendingRegistrations();
-                    loadAdminDistributorDirectory();
+                    if (typeof loadPendingRegistrations === 'function') loadPendingRegistrations();
+                    if (typeof loadAdminDistributorDirectory === 'function') loadAdminDistributorDirectory();
+                }, 200);
+            }
+
+            if (tabName === 'gm' && currentUser) {
+                setTimeout(() => {
+                    if (typeof refreshGMData === 'function') refreshGMData();
+                }, 200);
+            }
+
+            if (tabName === 'director' && currentUser) {
+                setTimeout(() => {
+                    if (typeof refreshDirectorData === 'function') refreshDirectorData();
                 }, 200);
             }
             
