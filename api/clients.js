@@ -189,7 +189,23 @@ export default async function handler(req, res) {
       if (!body?.id) {
         return res.status(400).json({ success: false, error: 'Client id is required' });
       }
-      const client = await update('clients', body.id, body, 'id');
+      const clientPayload = {
+        ...(body.referenceNumber !== undefined && { reference_number: body.referenceNumber }),
+        ...(body.reference_number !== undefined && { reference_number: body.reference_number }),
+        ...(body.fullName !== undefined && { full_name: body.fullName }),
+        ...(body.full_name !== undefined && { full_name: body.full_name }),
+        ...(body.phone !== undefined && { phone: body.phone }),
+        ...(body.email !== undefined && { email: body.email }),
+        ...(body.gender !== undefined && { gender: body.gender }),
+        ...(body.dateOfBirth !== undefined && { date_of_birth: body.dateOfBirth }),
+        ...(body.date_of_birth !== undefined && { date_of_birth: body.date_of_birth }),
+        ...(body.address !== undefined && { address: body.address }),
+        ...(body.city !== undefined && { city: body.city }),
+        ...(body.branch !== undefined && { branch: body.branch }),
+        ...(body.data !== undefined && { data: typeof body.data === 'string' ? body.data : JSON.stringify(body.data) }),
+        updated_at: new Date().toISOString(),
+      };
+      const client = await update('clients', body.id, clientPayload, 'id');
       const normalized = normalizeClient(client);
       await publishRealtimeEvent('clients', 'update', normalized);
       return res.json({ success: true, client: normalized });

@@ -130,13 +130,38 @@ export default async function handler(req, res) {
       const body = req.body;
       
       if (body.action === 'updateImage') {
-        // Update product image
-        const image = await update('product_images', body.id, body, 'id');
+        const imagePayload = {
+          ...(body.product_id !== undefined && { product_id: body.product_id }),
+          ...(body.product_name !== undefined && { product_name: body.product_name }),
+          ...(body.image_data !== undefined && { image_data: body.image_data }),
+          ...(body.image_url !== undefined && { image_url: body.image_url }),
+          ...(body.image_type !== undefined && { image_type: body.image_type }),
+          ...(body.width !== undefined && { width: body.width }),
+          ...(body.height !== undefined && { height: body.height }),
+          ...(body.file_size !== undefined && { file_size: body.file_size }),
+          ...(body.is_primary !== undefined && { is_primary: body.is_primary }),
+          ...(body.display_order !== undefined && { display_order: body.display_order }),
+          updated_at: new Date().toISOString(),
+        };
+        const image = await update('product_images', body.id, imagePayload, 'id');
         await publishRealtimeEvent('product_images', 'update', image);
         return res.json({ success: true, image });
       } else {
-        // Update product
-        const product = await update('products', body.id, body, 'id');
+        const productPayload = {
+          ...(body.sku !== undefined && { sku: body.sku }),
+          ...(body.name !== undefined && { name: body.name }),
+          ...(body.description !== undefined && { description: body.description }),
+          ...(body.category !== undefined && { category: body.category }),
+          ...(body.unit !== undefined && { unit: body.unit }),
+          ...(body.dp !== undefined && { dp: body.dp }),
+          ...(body.cp !== undefined && { cp: body.cp }),
+          ...(body.bv !== undefined && { bv: body.bv }),
+          ...(body.tax_rate !== undefined && { tax_rate: body.tax_rate }),
+          ...(body.is_active !== undefined && { is_active: body.is_active }),
+          ...(body.branch !== undefined && { branch: body.branch }),
+          updated_at: new Date().toISOString(),
+        };
+        const product = await update('products', body.id, productPayload, 'id');
         await publishRealtimeEvent('products', 'update', product);
         return res.json(product);
       }

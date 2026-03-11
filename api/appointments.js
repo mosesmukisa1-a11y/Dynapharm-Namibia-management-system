@@ -152,7 +152,23 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Invalid status value' });
       }
 
-      const appointment = await update('appointments', body.id, body, 'id');
+      const appointmentPayload = {
+        ...(body.client_reference !== undefined && { client_reference: body.client_reference }),
+        ...(body.clientReference !== undefined && { client_reference: body.clientReference }),
+        ...(body.full_name !== undefined && { full_name: body.full_name }),
+        ...(body.fullName !== undefined && { full_name: body.fullName }),
+        ...(body.phone !== undefined && { phone: body.phone }),
+        ...(body.email !== undefined && { email: body.email }),
+        ...(body.date !== undefined && { date: body.date }),
+        ...(body.time !== undefined && { time: body.time }),
+        ...(body.branch !== undefined && { branch: body.branch }),
+        ...(body.type !== undefined && { type: body.type }),
+        ...(body.status !== undefined && { status: body.status }),
+        ...(body.notes !== undefined && { notes: body.notes }),
+        ...(body.data !== undefined && { data: typeof body.data === 'string' ? body.data : JSON.stringify(body.data) }),
+        updated_at: new Date().toISOString(),
+      };
+      const appointment = await update('appointments', body.id, appointmentPayload, 'id');
       await publishRealtimeEvent('appointments', 'update', appointment);
 
       const newStatus = (body.status || '').toLowerCase();

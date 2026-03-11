@@ -127,7 +127,20 @@ export default async function handler(req, res) {
       if (!body.id) {
         return res.status(400).json({ error: 'id is required for update' });
       }
-      const image = await update('product_images', body.id, body, 'id');
+      const imagePayload = {
+        ...(body.product_id !== undefined && { product_id: body.product_id }),
+        ...(body.product_name !== undefined && { product_name: body.product_name }),
+        ...(body.image_data !== undefined && { image_data: body.image_data }),
+        ...(body.image_url !== undefined && { image_url: body.image_url }),
+        ...(body.image_type !== undefined && { image_type: body.image_type }),
+        ...(body.width !== undefined && { width: body.width }),
+        ...(body.height !== undefined && { height: body.height }),
+        ...(body.file_size !== undefined && { file_size: body.file_size }),
+        ...(body.is_primary !== undefined && { is_primary: body.is_primary }),
+        ...(body.display_order !== undefined && { display_order: body.display_order }),
+        updated_at: new Date().toISOString(),
+      };
+      const image = await update('product_images', body.id, imagePayload, 'id');
       if (image) {
         await publishRealtimeEvent('product_images', 'update', image);
         return res.json(image);
