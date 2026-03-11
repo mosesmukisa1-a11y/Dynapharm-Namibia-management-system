@@ -31973,64 +31973,93 @@ if (loginForm) {
         }
 
         window.viewCheckupFormDetail = function viewCheckupFormDetail(aptId) {
-            console.log('viewCheckupFormDetail called with:', aptId);
-            var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
-            if (!apt) { console.error('Appointment not found:', aptId); return; }
-            var data = {};
-            try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
-            var branchName = apt.branch || '';
             try {
-                var cachedBranches = typeof getCachedBranches === 'function' ? getCachedBranches() : [];
-                var br = cachedBranches.find(function(b) { return b.id === apt.branch; });
-                if (br) branchName = br.name || br.id;
-            } catch(e) {}
-            var formData = {
-                visitType: (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment',
-                fullName: apt.full_name || '', phone: apt.phone || '', email: apt.email || '',
-                gender: data.gender || '', dob: data.dob || '',
-                branch: branchName,
-                apptDate: apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '',
-                apptTime: apt.time ? apt.time.slice(0,5) : '',
-                clientType: data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
-                distributorName: data.distributorName || '', distributorNB: data.distributorNB || '',
-                concern: data.concern || '', conditions: data.conditions || '',
-                medications: data.medications || '', notes: data.additionalNotes || '',
-                acknowledged: !!data.acknowledgedBy,
-                acknowledgedDate: data.acknowledgedDate || '',
-                initials: data.acknowledgedInitials || _getCheckupInitials(apt.full_name || '')
-            };
-            var html = _buildCheckupPreviewHTML(formData);
-            html += '<div class="no-print" style="margin-top:20px; padding-top:16px; border-top:2px solid #e5e7eb; display:flex; gap:10px; flex-wrap:wrap;">';
-            var s = (apt.status || '').toLowerCase();
-            if (s !== 'completed' && s !== 'cancelled') {
-                html += '<button id="checkupCreateReportBtn" data-apt-id="' + _escHtml(apt.id) + '" style="padding:10px 20px; background:#c41e3a; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:0.9rem;">Create Report & Prescription</button>';
-            }
-            html += '</div>';
-            var contentEl = document.getElementById('checkupPreviewContent');
-            var modalEl = document.getElementById('checkupPreviewModal');
-            if (contentEl) contentEl.innerHTML = html;
-            if (modalEl) {
-                modalEl.style.display = 'block';
-                modalEl.style.zIndex = '99999';
-            }
-            var createBtn = document.getElementById('checkupCreateReportBtn');
-            if (createBtn) {
-                createBtn.addEventListener('click', function() {
-                    var id = this.getAttribute('data-apt-id');
-                    if (modalEl) modalEl.style.display = 'none';
-                    createReportFromCheckup(id);
-                });
+                var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
+                if (!apt) { alert('Appointment not found: ' + aptId); return; }
+                var data = {};
+                try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+                var branchName = apt.branch || '';
+                try {
+                    var cachedBranches = typeof getCachedBranches === 'function' ? getCachedBranches() : [];
+                    var br = cachedBranches.find(function(b) { return b.id === apt.branch; });
+                    if (br) branchName = br.name || br.id;
+                } catch(e) {}
+                var formData = {
+                    visitType: (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment',
+                    fullName: apt.full_name || '', phone: apt.phone || '', email: apt.email || '',
+                    gender: data.gender || '', dob: data.dob || '',
+                    branch: branchName,
+                    apptDate: apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '',
+                    apptTime: apt.time ? apt.time.slice(0,5) : '',
+                    clientType: data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor',
+                    distributorName: data.distributorName || '', distributorNB: data.distributorNB || '',
+                    concern: data.concern || '', conditions: data.conditions || '',
+                    medications: data.medications || '', notes: data.additionalNotes || '',
+                    acknowledged: !!data.acknowledgedBy,
+                    acknowledgedDate: data.acknowledgedDate || '',
+                    initials: data.acknowledgedInitials || _getCheckupInitials(apt.full_name || '')
+                };
+
+                var existing = document.getElementById('checkupDetailOverlay');
+                if (existing) existing.remove();
+
+                var overlay = document.createElement('div');
+                overlay.id = 'checkupDetailOverlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);z-index:999999;overflow-y:auto;padding:20px;box-sizing:border-box;';
+                overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+                var card = document.createElement('div');
+                card.style.cssText = 'max-width:700px;margin:20px auto;background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
+
+                var header = document.createElement('div');
+                header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid #e5e7eb;';
+                header.innerHTML = '<h3 style="margin:0;color:#1f2937;font-size:1.1rem;">Checkup Form Details</h3>';
+                var closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Close';
+                closeBtn.style.cssText = 'padding:8px 16px;background:#6b7280;color:white;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer;';
+                closeBtn.addEventListener('click', function() { overlay.remove(); });
+                header.appendChild(closeBtn);
+                card.appendChild(header);
+
+                var content = document.createElement('div');
+                content.style.cssText = 'padding:24px;';
+                var previewHtml = '';
+                try { previewHtml = _buildCheckupPreviewHTML(formData); } catch(e) { previewHtml = '<p>Error building preview: ' + e.message + '</p>'; }
+                content.innerHTML = previewHtml;
+                card.appendChild(content);
+
+                var s = (apt.status || '').toLowerCase();
+                if (s !== 'completed' && s !== 'cancelled') {
+                    var actions = document.createElement('div');
+                    actions.style.cssText = 'padding:16px 24px;border-top:2px solid #e5e7eb;display:flex;gap:10px;flex-wrap:wrap;';
+                    var reportBtn = document.createElement('button');
+                    reportBtn.textContent = 'Create Report & Prescription';
+                    reportBtn.style.cssText = 'padding:10px 20px;background:#c41e3a;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem;';
+                    reportBtn.addEventListener('click', function() {
+                        overlay.remove();
+                        createReportFromCheckup(aptId);
+                    });
+                    actions.appendChild(reportBtn);
+                    card.appendChild(actions);
+                }
+
+                overlay.appendChild(card);
+                document.body.appendChild(overlay);
+                console.log('viewCheckupFormDetail: overlay appended to body');
+            } catch(err) {
+                console.error('viewCheckupFormDetail ERROR:', err);
+                alert('Error opening form detail: ' + err.message);
             }
         }
 
         window.createReportFromCheckup = function createReportFromCheckup(aptId) {
-            console.log('createReportFromCheckup called with:', aptId);
-            var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
-            if (!apt) { alert('Appointment not found'); return; }
-            var data = {};
-            try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+            try {
+                var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
+                if (!apt) { alert('Appointment not found'); return; }
+                var data = {};
+                try { data = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
 
-            var tempRef = 'CHKUP-' + aptId;
+                var tempRef = 'CHKUP-' + aptId;
             var branchName = apt.branch || '';
             try {
                 var cachedBranches = typeof getCachedBranches === 'function' ? getCachedBranches() : [];
@@ -32070,9 +32099,16 @@ if (loginForm) {
 
             window._checkupAppointmentId = aptId;
 
-            createReport(tempRef);
-            var rModal = document.getElementById('reportModal');
-            if (rModal) rModal.style.zIndex = '99999';
+                var rModal = document.getElementById('reportModal');
+                if (rModal && rModal.parentElement !== document.body) {
+                    document.body.appendChild(rModal);
+                }
+                createReport(tempRef);
+                if (rModal) rModal.style.zIndex = '999999';
+            } catch(err) {
+                console.error('createReportFromCheckup ERROR:', err);
+                alert('Error creating report: ' + err.message);
+            }
         }
 
         function viewTodayAppointments() {
