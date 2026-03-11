@@ -6072,12 +6072,13 @@
             // Show landing page
             showLandingPage();
             
-            // Clear any portal-specific auth states
-            document.querySelectorAll('[id$="Auth"]').forEach(el => {
-                el.style.display = 'block';
-            });
-            document.querySelectorAll('[id$="Content"]').forEach(el => {
-                el.style.display = 'none';
+            // Reset only the known portal-level Auth/Content wrappers on logout
+            var _LOGOUT_PORTAL_PAIRS = ['consultant', 'dispenser', 'stock', 'gm', 'director', 'admin', 'mis'];
+            _LOGOUT_PORTAL_PAIRS.forEach(function(p) {
+                var a = document.getElementById(p + 'Auth');
+                var c = document.getElementById(p + 'Content');
+                if (a) a.style.display = '';  // restore to CSS default (block/visible)
+                if (c) c.style.display = 'none';
             });
             
             console.log('✅ Logout complete - returning to landing page');
@@ -26870,7 +26871,29 @@
             } else {
                 console.error('[NAV] Portal section not found:', tabName);
             }
-            
+
+            // If user is authenticated, bypass Auth walls and show Content
+            // handlePortalLoginSuccess hides ALL *Auth and *Content divs on login,
+            // then only shows the initial portal. openTab must re-show them when switching.
+            if (currentUser) {
+                var authEl = document.getElementById(tabName + 'Auth');
+                var contentEl = document.getElementById(tabName + 'Content');
+                if (authEl) authEl.style.display = 'none';
+                if (contentEl) {
+                    contentEl.style.display = 'block';
+                    var profileEl = document.getElementById(tabName + 'Profile');
+                    if (profileEl && currentUser) {
+                        var _branchList = (typeof branches !== 'undefined' && Array.isArray(branches)) ? branches : [];
+                        var _br = _branchList.find(function(b) { return b.id === currentUser.branch; });
+                        profileEl.innerHTML = '<h4>Welcome, ' + (currentUser.fullName || currentUser.username) + '</h4>'
+                            + '<p>Role: ' + currentUser.role + ' | Branch: ' + (_br ? _br.name : (currentUser.branch || 'All Branches')) + '</p>'
+                            + '<button class="btn btn-warning" onclick="showChangePassword()">Change Password</button>'
+                            + ' <button class="btn btn-danger" onclick="logout()">Logout</button>';
+                    }
+                }
+                console.log('[NAV] Auth bypassed for portal:', tabName, '| authEl:', !!authEl, '| contentEl:', !!contentEl);
+            }
+
             if (event && event.target) {
                 event.target.classList.add('active');
             } else {
@@ -29468,20 +29491,14 @@ function handlePortalLoginSuccess(user, options = {}) {
     
     console.log('📍 Opening portal:', portal, 'for role:', role);
     
-    // Hide ALL portal-content divs first
-    const allPortalContents = document.querySelectorAll('[id$="Content"]');
-    allPortalContents.forEach(el => {
-        if (el.id.endsWith('Content')) {
-            el.style.display = 'none';
-        }
-    });
-    
-    // Hide ALL portal-auth divs first
-    const allPortalAuths = document.querySelectorAll('[id$="Auth"]');
-    allPortalAuths.forEach(el => {
-        if (el.id.endsWith('Auth')) {
-            el.style.display = 'none';
-        }
+    // Hide only the known portal-level Auth/Content wrappers (not sub-elements inside portals)
+    // openTab() will correctly show/hide these when navigating to a portal
+    var _PORTAL_PAIRS = ['consultant', 'dispenser', 'stock', 'gm', 'director', 'admin', 'mis'];
+    _PORTAL_PAIRS.forEach(function(p) {
+        var a = document.getElementById(p + 'Auth');
+        var c = document.getElementById(p + 'Content');
+        if (a) a.style.display = 'none';
+        if (c) c.style.display = 'none';
     });
     
     // Show ONLY the portal that matches currentPortal

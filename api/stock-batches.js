@@ -216,7 +216,6 @@ export default async function handler(req, res) {
         return res.status(201).json({ success: true, count: results.length, batches: results });
       }
 
-      const batch = await upsertBatch(body);
       const input = normalizeInboundPayload(body);
       const batch = await upsertBatch(input);
       return res.status(201).json({ success: true, batch });
