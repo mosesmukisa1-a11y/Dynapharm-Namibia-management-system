@@ -3985,21 +3985,29 @@
         }
         
         // Wait for functions to be fully loaded before trying to restore session
+        // Guard: only allow ONE session restore to run to prevent double-restore race condition
+        window._sessionRestoreDone = false;
+        function _runRestoreOnce() {
+            if (window._sessionRestoreDone) return;
+            window._sessionRestoreDone = true;
+            restoreSession();
+        }
+
         if (window.functionsLoaded) {
             // Functions already loaded (unlikely but possible)
-            setTimeout(restoreSession, 500);
+            setTimeout(_runRestoreOnce, 500);
         } else {
-            // Wait for the functionsReady event
+            // Wait for the functionsReady event (primary path)
             window.addEventListener('functionsReady', () => {
                 console.log('📡 functionsReady event received, restoring session...');
-                setTimeout(restoreSession, 500);
+                setTimeout(_runRestoreOnce, 500);
             });
             
-            // Fallback: if event doesn't fire, try after a delay anyway
+            // Fallback: if event doesn't fire within 3s, try anyway
             setTimeout(() => {
-                if (!window.functionsLoaded) {
+                if (!window._sessionRestoreDone) {
                     console.warn('⚠️ functionsReady event not fired, attempting restore anyway...');
-                    restoreSession();
+                    _runRestoreOnce();
                 }
             }, 3000);
         }
@@ -7726,6 +7734,46 @@
                 }
             } catch(_) {}
         });
+
+        function toggleGMView(view) {
+            var mainSection = document.getElementById('gmMainSection');
+            var staffSection = document.getElementById('gmStaffSection');
+            var mainBtn = document.getElementById('gmMainTabBtn');
+            var staffBtn = document.getElementById('gmStaffTabBtn');
+            if (!mainSection || !staffSection) return;
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                if (mainBtn) { mainBtn.classList.remove('btn-primary'); }
+                if (staffBtn) { staffBtn.classList.add('btn-primary'); }
+                if (typeof refreshStaffServices === 'function') refreshStaffServices('gm');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                if (mainBtn) { mainBtn.classList.add('btn-primary'); }
+                if (staffBtn) { staffBtn.classList.remove('btn-primary'); }
+            }
+        }
+
+        function toggleDirectorView(view) {
+            var mainSection = document.getElementById('directorMainSection');
+            var staffSection = document.getElementById('directorStaffSection');
+            var mainBtn = document.getElementById('directorMainTabBtn');
+            var staffBtn = document.getElementById('directorStaffTabBtn');
+            if (!mainSection || !staffSection) return;
+            if (view === 'staff') {
+                mainSection.style.display = 'none';
+                staffSection.style.display = 'block';
+                if (mainBtn) { mainBtn.classList.remove('btn-primary'); }
+                if (staffBtn) { staffBtn.classList.add('btn-primary'); }
+                if (typeof refreshStaffServices === 'function') refreshStaffServices('director');
+            } else {
+                mainSection.style.display = 'block';
+                staffSection.style.display = 'none';
+                if (mainBtn) { mainBtn.classList.add('btn-primary'); }
+                if (staffBtn) { staffBtn.classList.remove('btn-primary'); }
+            }
+        }
 
         function toggleMISView(view) {
             const mainSection = document.getElementById('misMainSection');
@@ -20142,6 +20190,7 @@
         }
 
         function showHRSubTab(tabId) {
+            try { localStorage.setItem('dynapharm_hr_active_tab', tabId); } catch(e) {}
             const contents = document.querySelectorAll('#hr-portal .hr-tab-content');
             contents.forEach((section) => {
                 if (section.id === tabId) {
@@ -26999,9 +27048,10 @@
             if (targetSection) {
                 targetSection.classList.add('active');
                 targetSection.style.display = 'block';
-                // Scroll the container to the top so portal content is always in view
+                // Scroll to top — both the container (for overflow:auto) and the page body
                 var _scrollContainer = document.querySelector('.container');
                 if (_scrollContainer) _scrollContainer.scrollTop = 0;
+                window.scrollTo(0, 0);
             } else {
                 console.error('[NAV] Portal section not found:', tabName);
             }
@@ -27086,17 +27136,19 @@
             
             // HR Portal - ensure data is loaded when tab is opened
             if (tabName === 'hr-portal') {
-                // Reload employees when HR portal is opened to ensure fresh data
-                if (typeof initHRPortal === 'function') {
-                    initHRPortal();
-                }
-                // Also ensure employee list is loaded if employee-management tab is visible
-                setTimeout(() => {
-                    const empTab = document.querySelector('[onclick*="employee-management"]');
-                    if (empTab && empTab.classList.contains('active')) {
-                        if (typeof loadEmployees === 'function') {
-                            loadEmployees();
-                        }
+                // Always show the correct HR sub-tab regardless of initialized state
+                setTimeout(function() {
+                    if (typeof showHRSubTab === 'function') {
+                        var activeHRTab = 'employee-management';
+                        try { activeHRTab = localStorage.getItem('dynapharm_hr_active_tab') || 'employee-management'; } catch(e) {}
+                        showHRSubTab(activeHRTab);
+                    }
+                    // Initialize event listeners (only first time due to guard)
+                    if (typeof initHRPortal === 'function') {
+                        initHRPortal();
+                    }
+                    if (typeof loadEmployees === 'function') {
+                        loadEmployees().catch(function() {});
                     }
                 }, 100);
             }
@@ -27139,6 +27191,45 @@
                     if (typeof initializeFrontDeskRealtime === 'function') initializeFrontDeskRealtime();
                     if (typeof handleMembershipStatusChange === 'function') handleMembershipStatusChange();
                 }, 100);
+            }
+
+            // 600ms failsafe: re-enforce portal visibility and log diagnostics
+            if (targetSection) {
+                (function(_tname) {
+                    setTimeout(function() {
+                        var tgt = document.getElementById(_tname);
+                        if (!tgt) return;
+                        var cs = window.getComputedStyle(tgt);
+                        console.log('[DIAG]', _tname, '| style:', tgt.style.display, '| computed:', cs.display, '| offsetH:', tgt.offsetHeight, '| scrollH:', tgt.scrollHeight);
+                        // Check parent chain for hidden ancestors and fix them
+                        var par = tgt.parentElement;
+                        while (par && par !== document.body) {
+                            var ps = window.getComputedStyle(par);
+                            if (ps.display === 'none') {
+                                console.error('[DIAG] HIDDEN ANCESTOR:', (par.id || par.className || par.tagName), '| style:', par.style.display, '| computed:', ps.display);
+                                par.style.display = 'block';
+                            }
+                            par = par.parentElement;
+                        }
+                        // Re-enforce portal section visibility
+                        if (cs.display === 'none') {
+                            tgt.style.display = 'block';
+                            console.warn('[DIAG] FAILSAFE: forced', _tname, 'to display:block');
+                        }
+                        // Re-enforce *Content visibility, hide *Auth
+                        var ce = document.getElementById(_tname + 'Content');
+                        var ae = document.getElementById(_tname + 'Auth');
+                        if (ce) {
+                            var ccs = window.getComputedStyle(ce);
+                            console.log('[DIAG]', _tname + 'Content', '| style:', ce.style.display, '| computed:', ccs.display, '| offsetH:', ce.offsetHeight);
+                            if (ccs.display === 'none') {
+                                ce.style.display = 'block';
+                                console.warn('[DIAG] FAILSAFE: forced', _tname + 'Content', 'to display:block');
+                            }
+                        }
+                        if (ae) ae.style.display = 'none';
+                    }, 600);
+                })(tabName);
             }
         }
 
