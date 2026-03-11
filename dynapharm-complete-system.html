@@ -29462,7 +29462,7 @@ function handlePortalLoginSuccess(user, options = {}) {
     
     var roleDefaultPortal = getDefaultPortalForRole(role);
     
-    if (!portal || portal === 'default' || portal === 'dispenser') {
+    if (!portal || portal === 'default' || portal === 'dispenser' || portal === '__staff_login__') {
         portal = roleDefaultPortal || 'client';
     }
     
@@ -32602,9 +32602,31 @@ if (loginForm) {
                 return;
             }
             
-            const client = clients.find(c => c.referenceNumber === report.clientId);
+            var client = clients.find(c => c.referenceNumber === report.clientId);
+            if (!client && report.clientInfo && report.clientInfo.fullName) {
+                client = {
+                    referenceNumber: report.clientId,
+                    fullName: report.clientInfo.fullName,
+                    age: report.clientInfo.age || 'N/A',
+                    gender: report.clientInfo.gender || 'N/A',
+                    phone: report.clientInfo.phone || '',
+                    height: report.clientInfo.height || '',
+                    weight: report.clientInfo.weight || '',
+                    branch: report.clientInfo.branch || '',
+                    symptoms: report.clientInfo.symptoms || [],
+                    primaryReason: report.clientInfo.primaryReason || ''
+                };
+                if (!Array.isArray(window.clients)) window.clients = [];
+                window.clients.push(client);
+                clients = window.clients;
+                console.log('[CONSULTATION] Recovered client from report.clientInfo:', report.clientId);
+            }
             if (!client) {
-                alert('Client data not found');
+                currentClientId = report.clientId;
+                client = recoverClientFromModal();
+            }
+            if (!client) {
+                alert('Please select or load a client first.');
                 return;
             }
             
@@ -34142,7 +34164,12 @@ if (loginForm) {
                 return;
             }
             
-            const client = clients.find(c => c.referenceNumber === currentClientId);
+            var client = clients.find(c => c.referenceNumber === currentClientId);
+            if (!client) client = recoverClientFromModal();
+            if (!client) {
+                alert(currentClientId ? 'Please select or load a client first.' : 'No client selected. Please open a consultation first.');
+                return;
+            }
             
             // Get selected symptoms and recommendations
             const selectedSymptoms = [];
@@ -34395,10 +34422,45 @@ if (loginForm) {
             `;
         }
 
+        function recoverClientFromModal() {
+            if (!currentClientId) return null;
+            var patientEl = document.getElementById('patientInfo');
+            if (!patientEl || !patientEl.textContent.trim()) return null;
+            var text = patientEl.textContent || '';
+            var nameMatch = text.match(/Name:\s*([^\n]+?)(?:\s*Age:|$)/i);
+            if (!nameMatch || !nameMatch[1].trim()) return null;
+            var ageMatch = text.match(/Age:\s*([^\n]+?)(?:\s*Gender:|$)/i);
+            var genderMatch = text.match(/Gender:\s*([^\n]+?)(?:\s*Phone:|$)/i);
+            var phoneMatch = text.match(/Phone:\s*([^\n]+?)(?:\s*Date:|$)/i);
+            var heightMatch = text.match(/Height:\s*(\d+)/i);
+            var weightMatch = text.match(/Weight:\s*(\d+)/i);
+            var recovered = {
+                referenceNumber: currentClientId,
+                fullName: nameMatch[1].trim(),
+                age: ageMatch ? ageMatch[1].trim() : 'N/A',
+                gender: genderMatch ? genderMatch[1].trim() : 'N/A',
+                phone: phoneMatch ? phoneMatch[1].trim() : '',
+                height: heightMatch ? heightMatch[1] : '',
+                weight: weightMatch ? weightMatch[1] : '',
+                branch: '',
+                symptoms: [],
+                primaryReason: '',
+                waterIntake: '', exerciseFreq: '', sleepHours: '', stressLevel: '', medicalHistory: []
+            };
+            if (!Array.isArray(window.clients)) window.clients = [];
+            var existing = window.clients.findIndex(c => c.referenceNumber === currentClientId);
+            if (existing >= 0) window.clients[existing] = recovered;
+            else window.clients.push(recovered);
+            clients = window.clients;
+            console.log('[CONSULTATION] Recovered client from modal DOM:', currentClientId, recovered.fullName);
+            return recovered;
+        }
+
         function printReport() {
-            const client = clients.find(c => c.referenceNumber === currentClientId);
+            var client = clients.find(c => c.referenceNumber === currentClientId);
+            if (!client) client = recoverClientFromModal();
             if (!client) {
-                alert('Client data not found');
+                alert(currentClientId ? 'Please select or load a client first.' : 'No client selected. Please open a consultation first.');
                 return;
             }
             
@@ -41510,10 +41572,23 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
 
         function printThermalReceipt(reportId) {
             const report = reports.find(r => r.id === reportId);
-            const client = clients.find(c => c.referenceNumber === report.clientId);
-            
-            if (!report || !client) {
-                alert('Report or client data not found');
+            if (!report) {
+                alert('Report not found. Please save the report first.');
+                return;
+            }
+            var client = clients.find(c => c.referenceNumber === report.clientId);
+            if (!client) {
+                currentClientId = report.clientId;
+                client = recoverClientFromModal();
+            }
+            if (!client && report.clientInfo) {
+                client = { referenceNumber: report.clientId, fullName: report.clientInfo.fullName || 'Client', phone: report.clientInfo.phone || '', branch: report.clientInfo.branch || '' };
+                if (!Array.isArray(window.clients)) window.clients = [];
+                window.clients.push(client);
+                clients = window.clients;
+            }
+            if (!client) {
+                alert('Please select or load a client first.');
                 return;
             }
             

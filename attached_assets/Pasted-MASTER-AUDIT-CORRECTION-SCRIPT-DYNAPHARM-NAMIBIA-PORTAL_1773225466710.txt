@@ -1,0 +1,465 @@
+MASTER AUDIT + CORRECTION SCRIPT
+DYNAPHARM NAMIBIA PORTAL
+Priority: URGENT
+Purpose: Full implementation audit, correction, and proof of completion
+
+GENERAL INSTRUCTION:
+Do NOT respond with partial cosmetic changes.
+Do NOT claim completion without verifying each item functionally.
+Do NOT rebuild blindly before checking the existing codebase.
+
+This system already contains much of the required code, data, products, distributor records, staff roles, and portal structure.
+Your task is to:
+1. audit what was already requested
+2. verify what was actually implemented
+3. correct what is still broken
+4. provide proof of completion
+
+====================================================
+1. FULL AUDIT OBJECTIVE
+====================================================
+
+You must inspect the current codebase and verify whether the following requested fixes were actually implemented and are fully functional:
+
+A. Admin / Super Admin top portal tabs
+B. Front Desk submenu tabs
+C. Distributor signup linked to existing distributor table
+D. Staff signup and role-based portal redirection
+E. Consultant / Consultation Portal action buttons
+F. Online Shop rendering existing products, prices, and images
+
+This is both:
+- an IMPLEMENTATION CHECK
+- and a CORRECTION TASK for anything still not working
+
+====================================================
+2. ISSUE GROUP A – ADMIN / SUPER ADMIN PORTAL TABS
+====================================================
+
+REQUIRED CHECK:
+While logged in as Admin / Super Admin, verify whether each visible top tab is clickable and opens the correct section:
+
+- Distributor / Guest
+- Front Desk Portal
+- Consultant Portal
+- Branch Portal
+- HR Portal
+- Finance Portal
+- GM Portal
+- Director Portal
+- MIS Portal
+- Stock Management
+- Admin Portal
+- Super Admin
+
+EXPECTED RESULT:
+- every visible tab must be clickable
+- active state must change
+- correct content section must load
+- no dead/static tabs
+- refresh should preserve state where applicable
+
+IF NOT WORKING:
+Fix using a centralized portal navigation controller.
+
+MANDATORY TECHNICAL CHECKS:
+- broken click listeners
+- duplicate IDs
+- incorrect selectors
+- wrong data-target mapping
+- hidden sections not being shown
+- overlay/z-index/pointer-events issues
+- event listeners lost after render
+- DOMContentLoaded/init sequence problems
+- JS errors stopping execution
+- role filtering showing tabs that do not work
+
+RECOMMENDED FIX STRUCTURE:
+const portalMap = {
+  distributor: 'distributorPortalSection',
+  frontdesk: 'frontDeskPortalSection',
+  consultant: 'consultantPortalSection',
+  branch: 'branchPortalSection',
+  hr: 'hrPortalSection',
+  finance: 'financePortalSection',
+  gm: 'gmPortalSection',
+  director: 'directorPortalSection',
+  mis: 'misPortalSection',
+  stock: 'stockManagementSection',
+  admin: 'adminPortalSection',
+  superadmin: 'superAdminSection'
+};
+
+Use:
+switchPortal(portalKey)
+
+This function must:
+- hide all portal sections
+- remove active state from all main tabs
+- show selected section
+- activate selected tab
+- persist selected portal in localStorage/sessionStorage
+- safely initialize related module if needed
+
+====================================================
+3. ISSUE GROUP B – FRONT DESK SUBMENU TABS
+====================================================
+
+REQUIRED CHECK:
+Open Front Desk Portal and verify whether each submenu tab works:
+
+- Pending Orders
+- Processing
+- Shipped
+- Delivered
+- All Orders
+- Appointments
+- Client Registration
+- Payment Collection
+- Client Lookup
+- Delivery Scheduling
+- Visitor Management
+- CRM
+- Notifications
+- Communication / any remaining submenu item
+
+EXPECTED RESULT:
+- every submenu tab clickable
+- correct internal content section opens
+- active state visible
+- no dead tabs
+- refresh restores last active submenu if expected
+
+IF NOT WORKING:
+Fix using centralized submenu navigation.
+
+RECOMMENDED FIX STRUCTURE:
+const frontDeskTabMap = {
+  pending: 'pendingOrdersSection',
+  processing: 'processingOrdersSection',
+  shipped: 'shippedOrdersSection',
+  delivered: 'deliveredOrdersSection',
+  allorders: 'allOrdersSection',
+  appointments: 'appointmentsSection',
+  registration: 'clientRegistrationSection',
+  payments: 'paymentCollectionSection',
+  lookup: 'clientLookupSection',
+  delivery: 'deliverySchedulingSection',
+  visitors: 'visitorManagementSection',
+  crm: 'crmSection',
+  notifications: 'notificationsSection',
+  communication: 'communicationSection'
+};
+
+Use:
+switchFrontDeskTab(tabKey)
+
+This function must:
+- hide all front desk sub-sections
+- deactivate all submenu tabs
+- show selected section
+- activate selected submenu tab
+- persist state
+- re-bind widgets/data tables/filters if needed
+
+====================================================
+4. ISSUE GROUP C – DISTRIBUTOR LOGIN / SIGNUP
+====================================================
+
+REQUIRED CHECK:
+Distributor signup must pull from the existing distributor table.
+The system already has 1000+ distributor records.
+
+VERIFY:
+- are distributor records loading?
+- can user search distributor names?
+- can user search distributor number / code / membership number?
+- can user search phone number if available?
+- can user select an existing distributor during signup?
+- does signup link account to existing distributor profile?
+
+CURRENT COMPLAINT:
+Uploaded distributors are not available during signup, making signup hard/impossible.
+
+EXPECTED RESULT:
+- distributor signup search connected to distributor master table
+- results displayed dynamically
+- selected distributor linked correctly
+- duplicate account creation prevented where needed
+- proper error message shown if no record found
+
+MANDATORY ROOT CAUSE CHECKS:
+- wrong source table
+- wrong field names
+- broken API route
+- failed async load
+- search component not bound to data
+- pagination limiting results
+- role filter accidentally hiding results
+- lookup mapped to wrong company/branch scope
+
+MANDATORY FIX:
+Implement searchable distributor lookup/autocomplete tied to live distributor records.
+
+If not found, show:
+“Distributor record not found. Please contact admin.”
+
+====================================================
+5. ISSUE GROUP D – STAFF LOGIN / STAFF SIGNUP
+====================================================
+
+REQUIRED CHECK:
+Staff login must include a signup/registration path.
+Currently staff signup is missing or broken, making it impossible for staff users to register and be routed to their portals.
+
+VERIFY:
+- is there a working staff signup flow?
+- does it link to existing staff records or approval workflow?
+- are roles assigned/mapped correctly?
+- after login, is user directed to correct portal based on role?
+- if user has multiple roles, does system allow selection?
+- does selected role persist after refresh?
+
+EXPECTED RESULT:
+- staff signup exists and works
+- role mapping works
+- users routed to correct portal
+- multi-role selection works and persists
+- admin can approve/assign/change roles as designed
+
+MANDATORY ROOT CAUSE CHECKS:
+- signup UI missing
+- signup endpoint absent
+- staff records not queried
+- role mapping not saved
+- redirect function incomplete
+- selected role lost on refresh
+- approval logic disconnected
+
+MANDATORY FIX:
+Implement or reconnect staff signup flow and role-based redirection.
+
+====================================================
+6. ISSUE GROUP E – CONSULTATION / CONSULTANT PORTAL
+====================================================
+
+REQUIRED CHECK:
+While logged in as Consultant, verify whether consultation action buttons work.
+
+BUTTONS TO VERIFY:
+- Save Report
+- Finalize & E-Sign
+- Print
+- Export PDF
+- any other consultation actions
+
+CURRENT COMPLAINT:
+Buttons say “client data not found” even when consultant is working in the consultation form.
+
+EXPECTED RESULT:
+- selected/loaded client must remain bound to consultation record
+- Save Report must save report
+- Finalize & E-Sign must finalize and attach consultant signature/details
+- Print must print current consultation report
+- Export PDF must generate/export PDF from current consultation record
+- if no client is selected, show true validation message:
+  “Please select/load a client first.”
+  and not false “client data not found”
+
+MANDATORY ROOT CAUSE CHECKS:
+- selected client lost after render
+- wrong client ID field used
+- state not passed into button handlers
+- handlers reference old variable names
+- consultation record not created before action
+- async load timing issue
+- consultant session not linked to selected record
+
+MANDATORY FIX:
+Trace the entire consultation flow:
+- client search
+- client selection
+- consultation load
+- report state
+- button actions
+
+Preserve:
+- consultant signature block
+- consultant name/contact
+- follow-up date
+- next appointment recommendation
+- optional uploaded PDF
+
+====================================================
+7. ISSUE GROUP F – ONLINE SHOP
+====================================================
+
+REQUIRED CHECK:
+Online Shop currently shows nothing, yet the codebase already has products, prices, and images.
+
+VERIFY:
+- are products loaded from source?
+- are products rendered?
+- do product cards show images, names, and prices?
+- do categories or filters work?
+- are products being hidden by default filter state?
+- are image paths broken?
+
+EXPECTED RESULT:
+- products display
+- prices display
+- images display
+- filters/categories do not hide everything by default
+- add-to-cart/order action works if already implemented
+
+MANDATORY ROOT CAUSE CHECKS:
+- products array not loaded
+- wrong source table or JSON source
+- render function never called
+- image path mismatch
+- broken async fetch
+- malformed field mapping
+- branch filter too restrictive
+- public/private role condition blocking display
+
+MANDATORY FIX:
+Reconnect the product fetch and render flow.
+If image missing, use fallback image instead of blank card.
+
+====================================================
+8. GLOBAL DEBUG / CODE QUALITY CHECK
+====================================================
+
+You must inspect all of the following globally:
+
+- duplicate HTML IDs
+- broken selectors
+- missing event listeners
+- functions defined but never called
+- sections in HTML that are never activated
+- APIs/endpoints written but not connected
+- content hidden by CSS overlays
+- pointer-events disabled
+- z-index covering tabs/buttons
+- JavaScript console errors
+- dynamic rendering replacing listeners
+- initialization sequence problems
+- role-based UI visibility mismatches
+
+ADD DEBUG LOGGING SUCH AS:
+console.log('[NAV] portal:', portalKey);
+console.log('[FRONTDESK] tab:', tabKey);
+console.log('[DISTRIBUTOR SIGNUP] results:', results.length);
+console.log('[STAFF SIGNUP] assigned role:', assignedRole);
+console.log('[CONSULTATION] selected client:', clientId);
+console.log('[SHOP] products loaded:', products.length);
+
+No silent failures allowed.
+
+====================================================
+9. UI / UX RULES
+====================================================
+
+- If a tab is visible, it must work
+- If user lacks permission, hide the tab or show proper access denied
+- No dead buttons
+- No dead tabs
+- No blank areas without explanation
+- If module exists but content is incomplete, show:
+  “Module available but content pending”
+- Preserve Dynapharm theme and branding
+- Prefer repair/reconnection over unnecessary rewrite
+
+====================================================
+10. TESTING REQUIREMENTS – MUST BE DONE MANUALLY
+====================================================
+
+A. ADMIN TEST
+- login as Admin / Super Admin
+- click every top portal tab
+- confirm correct section opens
+
+B. FRONT DESK TEST
+- open Front Desk Portal
+- click every submenu item
+- confirm correct content area opens
+- confirm active state changes
+- confirm refresh restores state if designed
+
+C. DISTRIBUTOR SIGNUP TEST
+- search multiple existing distributor records
+- confirm 1000+ table records are accessible/searchable
+- confirm signup links to selected distributor
+
+D. STAFF SIGNUP TEST
+- create/register a staff account
+- confirm role mapping
+- login and confirm redirect to correct portal
+- test multi-role persistence
+
+E. CONSULTATION TEST
+- select/load client
+- Save Report
+- Finalize & E-Sign
+- Print
+- Export PDF
+- confirm no false “client data not found”
+
+F. ONLINE SHOP TEST
+- confirm products visible
+- confirm prices visible
+- confirm pictures visible
+- confirm filters/categories do not hide everything
+
+====================================================
+11. REQUIRED DELIVERY BACK TO ME
+====================================================
+
+After checking and correcting, provide a structured report with these exact headings:
+
+1. AUDIT RESULT
+For each issue group, state:
+- Implemented correctly
+- Partially implemented
+- Not implemented
+
+2. ROOT CAUSE FOUND
+For each broken issue, explain the actual technical cause.
+
+3. FILES CHANGED
+List all files modified.
+
+4. FUNCTIONS ADDED OR UPDATED
+List exact function names.
+
+5. TEST PROOF
+For each issue group, confirm what was tested and result.
+
+6. REMAINING PLACEHOLDERS
+Anything still pending must be listed clearly.
+
+====================================================
+12. IMPORTANT WARNING
+====================================================
+
+Do not mark this task complete unless:
+- every visible tab works
+- every required signup flow works
+- consultation buttons work
+- online shop displays products
+- no blocking JS errors remain
+- testing has been done and reported
+
+The project already contains most of the code/data.
+This task is to verify, reconnect, reorganize, and fully activate the existing system.
+
+EXPECTED FINAL RESULT:
+- Admin tabs all clickable
+- Front Desk sub-tabs all clickable
+- Distributor signup connected to existing distributor records
+- Staff signup available and role-based routing working
+- Consultation buttons functioning
+- Online Shop showing products, prices, images
+- No dead UI elements
+- No silent failures
+- Clear audit report proving what was fixed and what was not
