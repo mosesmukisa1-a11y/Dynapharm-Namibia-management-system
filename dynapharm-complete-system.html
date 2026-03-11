@@ -5059,9 +5059,19 @@
                     sessionStorage.removeItem('dynapharm_open_staff_login');
                     var landingPage = document.getElementById('landingPage');
                     if (landingPage) landingPage.style.display = 'none';
-                    setTimeout(function() {
-                        if (typeof showStaffLogin === 'function') showStaffLogin();
-                    }, 400);
+                    function openStaffLoginWhenReady() {
+                        if (document.getElementById('loginModal') && typeof showStaffLogin === 'function') {
+                            showStaffLogin();
+                        } else {
+                            setTimeout(openStaffLoginWhenReady, 300);
+                        }
+                    }
+                    if (window.functionsLoaded) {
+                        openStaffLoginWhenReady();
+                    } else {
+                        window.addEventListener('functionsReady', openStaffLoginWhenReady);
+                        setTimeout(openStaffLoginWhenReady, 3000);
+                    }
                 }
             }
             if (document.readyState === 'loading') {
@@ -6343,24 +6353,7 @@
             window.currentPortal = '__staff_login__';
             
             var loginModal = document.getElementById('loginModal');
-            if (loginModal) {
-                loginModal.style.display = 'flex';
-                loginModal.style.zIndex = '10001';
-                loginModal.style.position = 'fixed';
-                loginModal.style.top = '0';
-                loginModal.style.left = '0';
-                loginModal.style.width = '100%';
-                loginModal.style.height = '100%';
-                loginModal.style.background = 'rgba(0,0,0,0.5)';
-                loginModal.style.alignItems = 'center';
-                loginModal.style.justifyContent = 'center';
-                loginModal.setAttribute('aria-hidden', 'false');
-                if (typeof switchStaffAuthTab === 'function') switchStaffAuthTab('login');
-                setTimeout(function() {
-                    var usernameInput = document.getElementById('username');
-                    if (usernameInput) usernameInput.focus();
-                }, 100);
-            } else {
+            if (!loginModal) {
                 var staffModal = document.getElementById('staffLoginModal');
                 if (staffModal) {
                     staffModal.style.display = 'block';
@@ -6368,8 +6361,28 @@
                         var uInput = document.getElementById('unifiedUsername');
                         if (uInput) uInput.focus();
                     }, 100);
+                    return;
                 }
+                console.log('[NAV] loginModal not ready, retrying...');
+                setTimeout(showStaffLogin, 500);
+                return;
             }
+            loginModal.style.display = 'flex';
+            loginModal.style.zIndex = '10001';
+            loginModal.style.position = 'fixed';
+            loginModal.style.top = '0';
+            loginModal.style.left = '0';
+            loginModal.style.width = '100%';
+            loginModal.style.height = '100%';
+            loginModal.style.background = 'rgba(0,0,0,0.5)';
+            loginModal.style.alignItems = 'center';
+            loginModal.style.justifyContent = 'center';
+            loginModal.setAttribute('aria-hidden', 'false');
+            if (typeof switchStaffAuthTab === 'function') switchStaffAuthTab('login');
+            setTimeout(function() {
+                var usernameInput = document.getElementById('username');
+                if (usernameInput) usernameInput.focus();
+            }, 100);
         }
         
         function hideStaffLogin() {
