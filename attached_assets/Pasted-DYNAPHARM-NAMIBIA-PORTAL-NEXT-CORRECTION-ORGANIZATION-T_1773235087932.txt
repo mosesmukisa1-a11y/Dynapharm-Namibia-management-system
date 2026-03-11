@@ -1,0 +1,344 @@
+DYNAPHARM NAMIBIA PORTAL – NEXT CORRECTION & ORGANIZATION TASK
+Priority: HIGH
+Instruction type: Code review + workflow correction + UI cleanup + performance improvement
+
+GENERAL INSTRUCTION:
+Please inspect the existing code carefully before rebuilding anything.
+This system already contains much of the logic, tables, products, distributor data, stock workflows, and portal structure.
+Your task is to:
+1. correct the broken workflows
+2. organize modules under the correct portals
+3. remove repetitions/duplicates
+4. make all buttons functional
+5. improve loading performance
+6. ensure the business logic matches actual Dynapharm operations
+
+====================================================
+1. FULL BODY CHECK-UP CLIENT FORM – MEMBER SELECTION LOGIC
+====================================================
+
+ISSUE:
+When filling the Full Body Check-Up client form, if the client selects:
+“I’m a member”
+the system must not leave this as plain text only.
+
+REQUIRED LOGIC:
+If client selects “I’m a member”:
+- the form must require the user to choose the member from the Distributor List
+- the user must select:
+  • Distributor Name
+  • NB Number / Membership Number
+- this should come from the existing distributor table/list already in the system
+- use searchable dropdown / lookup / autocomplete
+
+IMPORTANT BUSINESS RULE:
+This must be emphasized because:
+- members pay different prices
+- referrals may also pay different prices
+- pricing logic depends on whether the person is a member, referral, or non-member
+
+REQUIRED FIX:
+- add mandatory distributor lookup when “I’m a member” is selected
+- do not allow form submission until valid distributor name + NB number are selected
+- auto-fill linked member details where appropriate
+- ensure member/referral pricing can use this data correctly
+
+VALIDATION:
+If “I’m a member” is selected and no distributor is chosen, show:
+“Please select the member name and NB number from the distributor list.”
+
+====================================================
+2. CONSULTANT PORTAL – PRESCRIPTION BUTTONS NOT WORKING
+====================================================
+
+ISSUE:
+While the consultant is creating a prescription, the following buttons are not functioning:
+- Apply Recommendation
+- Add
+
+REQUIRED FIX:
+Please inspect the prescription creation flow and make these buttons fully functional.
+
+EXPECTED BEHAVIOR:
+A. Apply Recommendation
+- should pull the selected recommendation into the prescription
+- should populate the correct product/item fields
+- should use the selected client and consultation context
+- should update totals/lines if applicable
+
+B. Add
+- should add the selected product/recommendation item into the prescription list
+- should append rows/items correctly
+- should not fail silently
+- should allow multiple items where intended
+
+ROOT CAUSE TO CHECK:
+- missing event listeners
+- wrong selectors
+- disabled button state never cleared
+- selected client state missing
+- recommendation array not loaded
+- add/apply function exists but is never called
+- duplicate IDs
+- JS errors stopping button logic
+- state reset after render
+
+MANDATORY RESULT:
+The consultant must be able to:
+- select a recommendation
+- apply it
+- add prescription items
+- generate a valid prescription for branch dispensing
+
+====================================================
+3. ONLINE SALE / ONLINE SHOP – CART, SPEED, IMAGES
+====================================================
+
+ISSUES:
+- when product is clicked, it says “cart not available”
+- system loads too slowly
+- products do not have pictures showing
+
+REQUIRED FIXES:
+
+A. CART / ONLINE SALE
+When a product is clicked:
+- cart must initialize correctly
+- item must be added to cart
+- “cart not available” must be removed unless there is a real unavailable state
+- if cart service/store is missing on page init, initialize it automatically
+
+Check:
+- cart state/store creation
+- localStorage/session cart bootstrap
+- missing cart object
+- broken add-to-cart handler
+- role/public access issues
+- render order problems
+
+B. PRODUCT IMAGES
+- load and display product images correctly
+- if image path is broken, fix mapping
+- if image missing, use fallback placeholder image
+- every product card should show image, name, price, and action button
+
+C. PERFORMANCE / SLOW LOADING
+Please reduce load time significantly.
+
+Check and improve:
+- repeated data fetching
+- rendering too many components unnecessarily
+- duplicate initializations
+- large blocking scripts
+- images not lazy-loaded
+- repeated loops
+- unnecessary full-page rerenders
+- dead modules loading on startup
+- duplicated datasets
+- console errors/retries slowing app down
+
+REQUIRED RESULT:
+- products load faster
+- pictures display
+- cart works
+- online sale workflow is usable
+
+====================================================
+4. BRANCH PORTAL WALK-IN SALE IS MISPLACED
+====================================================
+
+ISSUE:
+The Branch Portal walk-in sale is misplaced inside Stock Management.
+
+CORRECT BUSINESS LOGIC:
+Branch walk-in sale belongs in BRANCH PORTAL, not in STOCK MANAGEMENT.
+
+STOCK MANAGEMENT PURPOSE:
+Stock Management is for:
+- procuring stock
+- receiving/importing stock
+- warehousing stock in the two warehouses
+- quality/putaway/distribution processes
+- supplying/distributing stock to branches
+- transfers and inventory oversight
+
+BRANCH PORTAL PURPOSE:
+Branch Portal is for:
+- walk-in sales
+- prescription dispensing from consultant portal
+- branch payments
+- branch customer service
+- branch-level stock usage
+- branch online order fulfillment where relevant
+
+REQUIRED FIX:
+- remove walk-in sale workflow from Stock Management
+- place walk-in sale fully under Branch Portal
+- ensure Stock Management only handles procurement, warehouse, inventory, distribution, and branch supply functions
+- ensure stock flows from:
+  procurement/import → warehouse(s) → branch distribution → branch sales/prescriptions
+
+====================================================
+5. STOCK MANAGEMENT – CHECK AND ALIGN TO REAL WORKFLOW
+====================================================
+
+Please inspect the existing Stock Management code and align it to the correct operational structure.
+
+REQUIRED STOCK MANAGEMENT SCOPE:
+- Country stock intake / procurement
+- Import / receive country stock
+- Manual intake where needed
+- Warehouse allocation into the two warehouses
+- Warehouse stock balances
+- Branch distribution / supply
+- Transfers between stock points where intended
+- Inventory oversight / reporting
+- approvals and distribution history
+- invoices/orders where relevant to stock flow
+- no branch walk-in sales inside this portal
+
+Please ensure the Stock Management portal is equipped for:
+- procurement
+- warehouse operations
+- supply chain distribution to branches
+- inventory control
+- transfer tracking
+- stock reporting
+
+====================================================
+6. REMOVE REPETITIONS / DUPLICATES
+====================================================
+
+ISSUE:
+There are repetitions/duplicate workflows/modules/buttons/sections.
+
+REQUIRED FIX:
+Please inspect the code and remove or merge all unnecessary repetitions, including:
+- duplicate tabs
+- duplicate buttons
+- duplicate sections
+- duplicate rendering blocks
+- duplicate initialization calls
+- duplicate fetches
+- duplicate workflows appearing in wrong portals
+
+RULE:
+If two items do the same thing, either:
+- merge them cleanly, or
+- separate them clearly with distinct purpose
+
+Do not leave confusing repetition in the UI.
+
+====================================================
+7. MAKE ALL BUTTONS FUNCTIONAL
+====================================================
+
+GLOBAL REQUIREMENT:
+Please check all affected modules and make sure all buttons work properly.
+
+This includes at minimum:
+- consultant prescription buttons
+- online shop/cart buttons
+- member-selection related form actions
+- branch portal workflow buttons
+- stock management action buttons where visible
+
+RULE:
+If a button is visible, it must:
+- perform an action
+- open a valid module
+- or show a clear message if action is unavailable
+
+No dead buttons.
+No silent failures.
+
+====================================================
+8. TECHNICAL CLEANUP CHECKLIST
+====================================================
+
+Please check and fix all of the following across the affected modules:
+
+- broken click handlers
+- duplicate IDs
+- wrong selectors
+- incorrect module mapping
+- event listeners lost after render
+- wrong portal assignment
+- JS errors in console
+- missing state initialization
+- broken cart initialization
+- wrong distributor lookup binding
+- missing recommendation binding
+- duplicated page init calls
+- unnecessary heavy loading on startup
+- broken image paths
+- wrong pricing triggers for members/referrals
+
+====================================================
+9. TESTING REQUIREMENTS
+====================================================
+
+Please test and confirm all of the following:
+
+A. Full Body Check-Up Form
+- choose “I’m a member”
+- distributor lookup appears
+- user can search distributor list
+- member name and NB number can be selected
+- form blocks save if member not selected
+- member pricing logic can use chosen distributor
+
+B. Consultant Portal Prescription
+- select recommendation
+- Apply Recommendation works
+- Add button works
+- prescription items are added properly
+
+C. Online Sale / Online Shop
+- products load faster
+- pictures show
+- clicking product adds to cart
+- no “cart not available” message unless truly valid
+
+D. Branch Portal
+- walk-in sale exists only in Branch Portal
+- branch prescription dispensing still works
+
+E. Stock Management
+- no misplaced branch walk-in sale workflow
+- portal focuses on procurement, warehouses, branch distribution, and inventory control
+
+F. UI Cleanup
+- repetitions removed
+- no dead buttons remain
+
+====================================================
+10. REQUIRED DELIVERY BACK TO ME
+====================================================
+
+After correcting, please provide:
+
+1. Root cause found for each issue
+2. Files changed
+3. Functions added/updated
+4. Confirmation that all affected buttons now work
+5. Confirmation that member selection from distributor list is enforced
+6. Confirmation that cart now works
+7. Confirmation that walk-in sale has been moved/kept only under Branch Portal
+8. Confirmation that duplicate/repeated modules were removed or merged
+9. Performance improvements made to reduce loading time
+
+IMPORTANT:
+Please check the existing code carefully and align it to the correct business process.
+Do not just make cosmetic changes.
+This task is about proper workflow correction, portal organization, and full functionality.
+
+EXPECTED RESULT:
+- member selection enforced from distributor list on full body check-up form
+- consultant prescription buttons work
+- online shop cart works
+- products load faster and show pictures
+- branch walk-in sale is only in Branch Portal
+- stock management is focused on procurement, warehouses, and distribution
+- repetitions removed
+- all visible buttons work properly

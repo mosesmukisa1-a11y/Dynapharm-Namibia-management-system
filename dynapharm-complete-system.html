@@ -5760,7 +5760,9 @@
                         return;
                     }
                     if (!distributorName || !distributorNB) {
-                        errEl.textContent = 'Please select a distributor from the search results.';
+                        errEl.textContent = clientType === 'member'
+                            ? 'Please select your member name and NB number from the distributor list.'
+                            : 'Please select the distributor who referred you from the search results.';
                         errEl.style.display = 'block';
                         return;
                     }
@@ -29579,7 +29581,7 @@ function handlePortalLoginSuccess(user, options = {}) {
     } else if (portal === 'dispenser') {
         displayPrescriptions();
         displayPriceList();
-        showDispenserTab('stock');
+        showDispenserTab('walkIn');
     } else if (portal === 'mis') {
         loadMISBranches();
         displayMISReports();
@@ -29644,8 +29646,58 @@ if (typeof window !== 'undefined') {
 }
 
 // =============================================================================
-// SHOP: Inline product loading for portal page (main.js not loaded here)
+// SHOP: Inline cart + product loading for portal page (main.js not loaded here)
 // =============================================================================
+if (typeof window.addToShopCart !== 'function') {
+    window._shopCart = window._shopCart || [];
+    window._updateShopCartDisplay = function() {
+        var cart = window._shopCart;
+        var total = cart.reduce(function(sum, i) { return sum + i.price * i.qty; }, 0);
+        function renderCart(itemsEl, totalEl, sectionEl) {
+            if (!itemsEl) return;
+            if (cart.length === 0) { if (sectionEl) sectionEl.style.display = 'none'; return; }
+            if (sectionEl) sectionEl.style.display = 'block';
+            itemsEl.innerHTML = cart.map(function(item) {
+                var safeKey = item.key.replace(/'/g, "\\'");
+                return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">' +
+                    '<div><strong>' + item.name + '</strong><br><span style="color:#666;font-size:0.9rem;">N$ ' + item.price.toFixed(2) + ' &times; ' + item.qty + '</span></div>' +
+                    '<div style="display:flex;align-items:center;gap:8px;">' +
+                    '<span style="font-weight:700;color:#c41e3a;">N$ ' + (item.price * item.qty).toFixed(2) + '</span>' +
+                    '<button onclick="window._removeShopCartItem(\'' + safeKey + '\')" style="background:#e74c3c;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.75rem;">\u2715</button>' +
+                    '</div></div>';
+            }).join('');
+            if (totalEl) totalEl.textContent = 'N$ ' + total.toFixed(2);
+        }
+        renderCart(document.getElementById('shopCartItems'), document.getElementById('shopCartTotal'), document.getElementById('shopCartSection'));
+        renderCart(document.getElementById('landingShopCartItems'), document.getElementById('landingShopCartTotal'), document.getElementById('landingShopCartSection'));
+    };
+    window._removeShopCartItem = function(key) {
+        window._shopCart = window._shopCart.filter(function(i) { return i.key !== key; });
+        window._updateShopCartDisplay();
+    };
+    window.clearShopCart = function() {
+        window._shopCart = [];
+        window._updateShopCartDisplay();
+    };
+    window.addToShopCart = function(productName, cp, dp, bv, key, btnEl) {
+        var price = parseFloat(cp) || parseFloat(dp) || 0;
+        var itemKey = key || productName;
+        var existing = window._shopCart.find(function(i) { return i.key === itemKey; });
+        if (existing) {
+            existing.qty += 1;
+        } else {
+            window._shopCart.push({ name: productName, price: price, cp: parseFloat(cp)||0, dp: parseFloat(dp)||0, bv: parseFloat(bv)||0, qty: 1, key: itemKey });
+        }
+        window._updateShopCartDisplay();
+        if (btnEl) {
+            var orig = btnEl.textContent;
+            btnEl.textContent = '\u2713 Added';
+            btnEl.style.background = '#27ae60';
+            setTimeout(function() { btnEl.textContent = orig; btnEl.style.background = '#c41e3a'; }, 1200);
+        }
+    };
+}
+
 if (typeof window.loadShopProducts !== 'function') {
     window.loadShopProducts = async function loadShopProducts() {
         var grids = [
@@ -29680,7 +29732,11 @@ if (typeof window.loadShopProducts !== 'function') {
                 var imgHtml = imgSrc
                     ? '<img src="' + safeImgSrc + '" alt="' + name + '" style="width:100%;height:180px;object-fit:contain;background:#f9f9f9;" onerror="this.style.display=\'none\'">'
                     : '<div style="width:100%;height:180px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:3rem;">📦</div>';
-                var safeId = escHtml((p.id || '').toString()).replace(/'/g, "\\'");
+                var safeKey = escHtml((p.id || '').toString()).replace(/'/g, "\\'");
+                var safeName = (p.name || p.description || 'Product').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                var pCp = parseFloat(p.cp || p.dp || 0);
+                var pDp = parseFloat(p.dp || p.cp || 0);
+                var pBv = parseFloat(p.bv || 0);
                 html += '<div class="product-card" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:transform 0.2s;">' +
                     imgHtml +
                     '<div style="padding:15px;">' +
@@ -29689,7 +29745,7 @@ if (typeof window.loadShopProducts !== 'function') {
                         '<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">' +
                             '<div><span style="font-weight:700;color:#c41e3a;font-size:1.1rem;">N$ ' + parseFloat(price).toFixed(2) + '</span>' +
                             (dp !== price ? '<br><span style="font-size:0.8rem;color:#666;">DP: N$ ' + parseFloat(dp).toFixed(2) + '</span>' : '') + '</div>' +
-                            '<button onclick="if(typeof addToShopCart===\'function\'){addToShopCart(\'' + safeId + '\')}else{alert(\'Cart not available\')}" class="btn" style="background:#c41e3a;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:0.85rem;">Add to Cart</button>' +
+                            '<button onclick="addToShopCart(\'' + safeName + '\',' + pCp + ',' + pDp + ',' + pBv + ',\'' + safeKey + '\',this)" class="btn" style="background:#c41e3a;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:0.85rem;">Add to Cart</button>' +
                         '</div>' +
                     '</div></div>';
             });
@@ -33916,7 +33972,7 @@ if (loginForm) {
                                 </div>
                             </div>
                             <button class="btn btn-success" style="padding: 5px 15px; font-size: 0.85rem; margin-left: 10px;" 
-                                    onclick="event.stopPropagation(); selectRecommendedMedicine('${medicine.replace(/'/g, "\\'")}')">
+                                    onclick="event.stopPropagation(); selectRecommendedMedicine('${medicine.replace(/'/g, "\\'")}', this)">
                                 Add
                             </button>
                         </div>
@@ -33931,7 +33987,7 @@ if (loginForm) {
             window.currentRecommendations = recommendations;
         }
 
-        function selectRecommendedMedicine(medicineName) {
+        function selectRecommendedMedicine(medicineName, btnEl) {
             // Find the checkbox for this medicine in the medicine grid
             const checkboxes = document.querySelectorAll('#medicineGrid input[type="checkbox"]');
             checkboxes.forEach(cb => {
@@ -33941,15 +33997,17 @@ if (loginForm) {
             });
             updatePrescriptionDisplay();
             
-            // Show feedback
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.textContent = '✓ Added';
-            btn.style.background = '#2ecc71';
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.style.background = '';
-            }, 1500);
+            // Show feedback on the button that was clicked
+            var btn = btnEl || (typeof event !== 'undefined' && event && event.target) || null;
+            if (btn && btn.tagName === 'BUTTON') {
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Added';
+                btn.style.background = '#2ecc71';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 1500);
+            }
         }
 
         function applyRecommendations() {
