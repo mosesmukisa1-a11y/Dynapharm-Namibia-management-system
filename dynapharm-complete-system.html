@@ -26999,6 +26999,9 @@
             if (targetSection) {
                 targetSection.classList.add('active');
                 targetSection.style.display = 'block';
+                // Scroll the container to the top so portal content is always in view
+                var _scrollContainer = document.querySelector('.container');
+                if (_scrollContainer) _scrollContainer.scrollTop = 0;
             } else {
                 console.error('[NAV] Portal section not found:', tabName);
             }
