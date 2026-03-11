@@ -1,0 +1,406 @@
+FINAL CORRECTION TASK – DYNAPHARM NAMIBIA PORTAL
+Priority: HIGH
+Status: Existing codebase already contains most logic/data. This is mainly a wiring, mapping, rendering, loading, and signup-flow correction task.
+
+PROJECT:
+Dynapharm Namibia Comprehensive Health Management System
+
+GENERAL INSTRUCTION:
+Do NOT rebuild blindly.
+First inspect the existing codebase thoroughly and recover what is already there.
+The current project already has:
+- portal sections
+- distributor records
+- staff roles
+- consultation features
+- products / prices / pictures for online shop
+Therefore this job is primarily:
+- reconnecting broken UI actions
+- restoring missing signup flows
+- fixing data loading
+- correcting mappings between tables and forms
+- re-binding click handlers
+- re-enabling content rendering
+- ensuring proper role-based redirection
+
+====================================================
+A. ADMIN PORTAL / NAVIGATION ISSUE
+====================================================
+
+PROBLEM:
+When logged in as Admin / Super Admin, almost all top portal tabs are static and do not open when clicked.
+Only “Front Desk Portal” opens.
+When Front Desk Portal opens, its internal submenu tabs below are also dead/static and do not respond.
+
+TOP NAV ITEMS TO FIX:
+- Distributor / Guest
+- Front Desk Portal
+- Consultant Portal
+- Branch Portal
+- HR Portal
+- Finance Portal
+- GM Portal
+- Director Portal
+- MIS Portal
+- Stock Management
+- Admin Portal
+- Super Admin
+
+FRONT DESK SUBMENU TABS TO FIX:
+- Pending Orders
+- Processing
+- Shipped
+- Delivered
+- All Orders
+- Appointments
+- Client Registration
+- Payment Collection
+- Client Lookup
+- Delivery Scheduling
+- Visitor Management
+- CRM
+- Notifications
+- Communication / any remaining submenu tab
+
+EXPECTED FIX:
+1. All visible top tabs must be clickable
+2. All Front Desk submenu tabs must be clickable
+3. Active tab highlighting must work
+4. Correct section must render when clicked
+5. State must persist after refresh
+6. No dead clicks
+
+MANDATORY TECHNICAL APPROACH:
+- Build or repair one centralized tab navigation controller
+- Use consistent data attributes:
+  data-portal="frontdesk"
+  data-portal="consultant"
+  etc.
+- Use centralized mapping objects for top-level and sub-level tabs
+- Hide all unrelated sections before showing selected section
+- Remove/add active classes correctly
+- Save selected tab in localStorage or sessionStorage
+- Re-bind listeners after dynamic render if needed
+- Check and fix duplicate IDs
+- Check for overlay/z-index/pointer-events issues
+- Check console for JS errors and resolve all
+
+RECOMMENDED FUNCTIONS:
+- switchPortal(portalKey)
+- switchFrontDeskTab(tabKey)
+
+====================================================
+B. DISTRIBUTOR LOGIN / SIGNUP ISSUE
+====================================================
+
+PROBLEM:
+At Distributor Login / Signup, uploaded distributors are not available for selection/search during signup.
+This makes distributor registration very hard or impossible.
+The system already has more than 1000 distributor names in the distributor table.
+
+EXPECTED BEHAVIOR:
+1. Distributor signup must load distributor records from the distributor table
+2. User must be able to search by:
+   - distributor name
+   - distributor number / membership number / code
+   - phone number if available
+3. Search results must show matching distributors dynamically
+4. User must select the correct distributor from existing records
+5. After selection, the signup form should auto-fill relevant data where appropriate
+6. System must prevent duplicate account creation for same distributor where required
+7. Signup should link the new login account to the existing distributor profile
+8. If distributor is not found, the system should show:
+   “Distributor record not found. Please contact admin.”
+   instead of failing silently
+
+ROOT CAUSE TO CHECK:
+- distributor table not queried
+- wrong column names used in query
+- empty array due to async failure
+- frontend search component not bound to loaded data
+- API endpoint returning wrong format
+- role-based filter accidentally hiding results
+- signup form pointing to wrong source table
+- query using wrong branch/company scope
+- pagination limiting available results
+- search not triggered until impossible condition
+
+MANDATORY FIX:
+- connect signup search directly to distributor master table
+- load all available distributor records or server-side searchable results
+- implement robust autocomplete / searchable dropdown
+- support large dataset efficiently
+- confirm at least 1000+ distributor records are accessible during signup
+
+====================================================
+C. STAFF LOGIN / STAFF SIGNUP ISSUE
+====================================================
+
+PROBLEM:
+Staff login section does not include signup.
+This makes it impossible for staff users to register and be directed to their portals according to their roles.
+
+EXPECTED BEHAVIOR:
+1. Add Staff Signup flow
+2. Staff user must be able to register using approved staff information
+3. Registration must either:
+   - link to existing staff record, or
+   - await admin approval if record verification is required
+4. After login, staff must be redirected automatically based on role(s)
+
+ROLES TO SUPPORT:
+Examples:
+- Front Desk
+- Consultant
+- Branch
+- HR
+- Finance
+- GM
+- Director
+- MIS
+- Stock Management
+- Admin
+- Super Admin
+- any existing role in codebase
+
+EXPECTED ROLE LOGIC:
+- If user has one role, redirect directly to that portal
+- If user has multiple roles, present role selector
+- Role selection must persist after refresh
+- Admin must be able to assign/change roles
+- Signup must not create users without role mapping or approval flow
+
+ROOT CAUSE TO CHECK:
+- missing signup UI
+- signup backend endpoint absent but login exists
+- user account created without role linkage
+- role mapping table not used
+- portal redirection function incomplete
+- refresh clears selected role
+- approval system not connected
+- staff table not queried during signup
+
+MANDATORY FIX:
+- implement staff signup page/modal
+- link signup to existing staff records or approval workflow
+- persist selected role
+- redirect users correctly to permitted portal(s)
+- do not leave staff locked out due to missing signup
+
+====================================================
+D. CONSULTATION PORTAL ISSUE
+====================================================
+
+PROBLEM:
+While logged in as Consultant, the consultation buttons do not function.
+They keep saying “client data not found.”
+
+BUTTONS AFFECTED:
+Includes consultation action buttons such as:
+- Save Report
+- Finalize & E-Sign
+- Print
+- Export PDF
+and any related consultation action button
+
+EXPECTED BEHAVIOR:
+These buttons must work when consultant has already loaded or selected a client/patient record.
+
+POSSIBLE ROOT CAUSE:
+- client object not passed into consultation component
+- selected client state lost after render
+- wrong client ID field used
+- frontend expects one field name while DB/API returns another
+- consultation form not saving current client before actions
+- null/undefined state during button action
+- action handlers reference old variable names
+- consultation buttons fire before data binding completes
+- consultant session not linked to selected consultation record
+
+MANDATORY FIX:
+1. Trace full consultation workflow:
+   - client search / selection
+   - client data load
+   - report form state
+   - save/finalize/export/print actions
+2. Ensure selected client is stored consistently
+3. Ensure all buttons use current consultation record or selected client ID
+4. If no client is selected, show proper validation message:
+   “Please select/load a client first.”
+   instead of false “client data not found”
+5. If client exists, buttons must perform their actions successfully
+
+SPECIFIC BUTTON FIXES:
+- Save Report must save consultation data
+- Finalize & E-Sign must finalize report and attach consultant details/signature
+- Print must open printable consultation layout
+- Export PDF must generate and export proper PDF from loaded consultation record
+
+CONSULTANT DETAILS TO PRESERVE:
+- Consultant name/signature block
+- follow-up date
+- next appointment recommendation
+- uploaded optional PDF if applicable
+
+====================================================
+E. ONLINE SHOP ISSUE
+====================================================
+
+PROBLEM:
+The online shop shows nothing.
+The code already has products, prices, and pictures.
+
+EXPECTED BEHAVIOR:
+1. Products must load and display
+2. Product cards must show:
+   - product image
+   - product name
+   - price
+   - branch/availability if applicable
+   - add to cart / order action if already implemented
+3. If categories exist, they must filter correctly
+4. If stock status exists, show it properly
+5. Empty shop should only happen if database is truly empty, which it is not
+
+ROOT CAUSE TO CHECK:
+- products array not loaded
+- wrong source table queried
+- image path broken
+- product rendering function not called
+- filters hide all products by default
+- branch filter too restrictive
+- role/user state blocking public display
+- async fetch failing silently
+- malformed JSON or field mapping mismatch
+- price field renamed but old frontend still used
+
+MANDATORY FIX:
+- inspect current product source
+- reconnect product fetch/render flow
+- ensure products, prices, and pictures actually display
+- add fallback image if image path missing
+- add visible error logging if fetch fails
+- confirm online shop works for intended users
+
+====================================================
+F. REFACTOR / DEBUG REQUIREMENTS
+====================================================
+
+DO ALL OF THE FOLLOWING:
+1. Search codebase for existing but unused functions
+2. Search for sections existing in HTML but never activated
+3. Search for buttons with missing event listeners
+4. Search for APIs/endpoints already written but not connected
+5. Search for tables already populated but not loaded into UI
+6. Search for console errors and eliminate them
+7. Search for duplicate IDs and wrong selectors
+8. Ensure no feature appears visible but non-functional
+
+ADD DEBUG LOGGING:
+- log portal switch actions
+- log submenu switch actions
+- log distributor search result counts
+- log staff signup role assignment
+- log consultation selected client ID
+- log online shop product count loaded
+
+EXAMPLES:
+console.log('[NAV] portal:', portalKey);
+console.log('[FRONTDESK] tab:', tabKey);
+console.log('[DISTRIBUTOR SIGNUP] results:', results.length);
+console.log('[STAFF SIGNUP] assigned role:', assignedRole);
+console.log('[CONSULTATION] selected client:', clientId);
+console.log('[SHOP] products loaded:', products.length);
+
+====================================================
+G. UX / FUNCTIONAL RULES
+====================================================
+
+1. If a tab is visible, it must work
+2. If user has no access, hide the tab or show proper access denied
+3. Do not leave dead buttons in UI
+4. If section exists but content is incomplete, show:
+   “Module available but content pending”
+   instead of blank/dead area
+5. Preserve Dynapharm branding/theme
+6. Do not break existing working code while fixing inactive modules
+7. Prefer repair and reorganization over full rewrite
+
+====================================================
+H. TESTING CHECKLIST – MUST BE COMPLETED
+====================================================
+
+TEST AS ADMIN:
+- Click every top portal tab
+- Confirm correct section opens
+- Confirm no dead tabs
+
+TEST FRONT DESK:
+- Click every submenu tab
+- Confirm unique content area opens
+- Confirm active tab changes
+- Confirm refresh restores last tab
+
+TEST DISTRIBUTOR SIGNUP:
+- Search existing distributors from distributor table
+- Confirm 1000+ records are accessible
+- Confirm selection works
+- Confirm account links to distributor profile
+
+TEST STAFF SIGNUP:
+- Register a staff user
+- Confirm approval/role mapping works
+- Login and confirm redirect to correct portal
+- Test multi-role selection and persistence
+
+TEST CONSULTATION PORTAL:
+- Load/select a client
+- Save report
+- Finalize & E-Sign
+- Print
+- Export PDF
+- Confirm no false “client data not found” error
+
+TEST ONLINE SHOP:
+- Confirm products display
+- Confirm prices display
+- Confirm pictures display
+- Confirm categories/filters do not hide everything by default
+
+====================================================
+I. DELIVERABLE REQUIRED FROM REPLIT
+====================================================
+
+After correction, provide:
+
+1. Root cause summary for each issue:
+   - admin tabs
+   - front desk submenu
+   - distributor signup
+   - staff signup
+   - consultation portal
+   - online shop
+
+2. Files changed
+
+3. Functions added/updated
+
+4. Confirmation of manual test results for each module
+
+5. Any remaining placeholders clearly identified
+
+IMPORTANT:
+Do not say “feature missing” before checking the codebase thoroughly.
+The system already contains the data and much of the code.
+This task is to inspect, reconnect, reorganize, and fully activate the existing system.
+
+EXPECTED FINAL RESULT:
+- Admin tabs all clickable
+- Front Desk sub-tabs all clickable
+- Distributor signup connected to existing distributor records
+- Staff signup available and role-based redirection working
+- Consultation buttons functioning correctly
+- Online shop showing existing products, prices, and images
+- No dead UI elements
+- No silent failures
+- No blocking JavaScript errors

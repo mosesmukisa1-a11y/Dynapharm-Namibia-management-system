@@ -6338,23 +6338,37 @@
         }
         
         function showStaffLogin() {
-            console.log('👔 showStaffLogin called');
-            // Set currentPortal before opening login modal
-            currentPortal = 'dispenser';
-            window.currentPortal = 'dispenser';
+            console.log('[NAV] showStaffLogin called');
+            currentPortal = '__staff_login__';
+            window.currentPortal = '__staff_login__';
             
-            // Open the staff login modal (NOT the old loginModal)
-            const modal = document.getElementById('staffLoginModal');
-            if (modal) {
-                modal.style.display = 'block';
-                console.log('✅ Staff modal opened');
-                // Focus on username field
-                setTimeout(() => {
-                    const usernameInput = document.getElementById('unifiedUsername');
+            var loginModal = document.getElementById('loginModal');
+            if (loginModal) {
+                loginModal.style.display = 'flex';
+                loginModal.style.zIndex = '10001';
+                loginModal.style.position = 'fixed';
+                loginModal.style.top = '0';
+                loginModal.style.left = '0';
+                loginModal.style.width = '100%';
+                loginModal.style.height = '100%';
+                loginModal.style.background = 'rgba(0,0,0,0.5)';
+                loginModal.style.alignItems = 'center';
+                loginModal.style.justifyContent = 'center';
+                loginModal.setAttribute('aria-hidden', 'false');
+                if (typeof switchStaffAuthTab === 'function') switchStaffAuthTab('login');
+                setTimeout(function() {
+                    var usernameInput = document.getElementById('username');
                     if (usernameInput) usernameInput.focus();
                 }, 100);
             } else {
-                console.error('❌ staffLoginModal not found!');
+                var staffModal = document.getElementById('staffLoginModal');
+                if (staffModal) {
+                    staffModal.style.display = 'block';
+                    setTimeout(function() {
+                        var uInput = document.getElementById('unifiedUsername');
+                        if (uInput) uInput.focus();
+                    }, 100);
+                }
             }
         }
         
@@ -6538,11 +6552,12 @@
         }
         
         function hideStaffLoginModal() {
-            const modal = document.getElementById('staffLoginModal');
+            var modal = document.getElementById('staffLoginModal');
             if (modal) modal.style.display = 'none';
-            // Clear fields
-            const usernameField = document.getElementById('unifiedUsername');
-            const passwordField = document.getElementById('unifiedPassword');
+            var loginMod = document.getElementById('loginModal');
+            if (loginMod) { loginMod.style.display = 'none'; loginMod.setAttribute('aria-hidden', 'true'); }
+            var usernameField = document.getElementById('unifiedUsername');
+            var passwordField = document.getElementById('unifiedPassword');
             if (usernameField) usernameField.value = '';
             if (passwordField) passwordField.value = '';
         }
@@ -29612,13 +29627,75 @@ if (typeof window !== 'undefined') {
 }
 
 // =============================================================================
+// SHOP: Inline product loading for portal page (main.js not loaded here)
+// =============================================================================
+if (typeof window.loadShopProducts !== 'function') {
+    window.loadShopProducts = async function loadShopProducts() {
+        var grids = [
+            document.getElementById('shopProductsGrid'),
+            document.getElementById('landingShopProductsGrid')
+        ].filter(Boolean);
+        if (grids.length === 0) return;
+        console.log('[SHOP] Loading products...');
+        grids.forEach(function(g) { g.innerHTML = '<p style="text-align:center;color:#999;">Loading products...</p>'; });
+        try {
+            var resp = await fetch('/api/products');
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            var products = await resp.json();
+            if (!Array.isArray(products) || products.length === 0) {
+                grids.forEach(function(g) { g.innerHTML = '<p style="text-align:center;color:#999;">No products available.</p>'; });
+                return;
+            }
+            console.log('[SHOP] products loaded:', products.length);
+            function escHtml(str) {
+                var d = document.createElement('div');
+                d.textContent = str;
+                return d.innerHTML;
+            }
+            var html = '';
+            products.forEach(function(p) {
+                var name = escHtml(p.name || p.description || 'Product');
+                var price = p.cp || p.dp || '0.00';
+                var dp = p.dp || price;
+                var category = escHtml(p.category || '');
+                var imgSrc = (p.images && p.images.length > 0) ? (p.images[0].image_data || p.images[0].image_url || '') : '';
+                var safeImgSrc = escHtml(imgSrc);
+                var imgHtml = imgSrc
+                    ? '<img src="' + safeImgSrc + '" alt="' + name + '" style="width:100%;height:180px;object-fit:contain;background:#f9f9f9;" onerror="this.style.display=\'none\'">'
+                    : '<div style="width:100%;height:180px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:3rem;">📦</div>';
+                var safeId = escHtml((p.id || '').toString()).replace(/'/g, "\\'");
+                html += '<div class="product-card" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:transform 0.2s;">' +
+                    imgHtml +
+                    '<div style="padding:15px;">' +
+                        '<h4 style="margin:0 0 8px;font-size:0.95rem;color:#333;">' + name + '</h4>' +
+                        (category ? '<span style="font-size:0.75rem;background:#f0f0f0;padding:2px 8px;border-radius:10px;color:#666;">' + category + '</span>' : '') +
+                        '<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">' +
+                            '<div><span style="font-weight:700;color:#c41e3a;font-size:1.1rem;">N$ ' + parseFloat(price).toFixed(2) + '</span>' +
+                            (dp !== price ? '<br><span style="font-size:0.8rem;color:#666;">DP: N$ ' + parseFloat(dp).toFixed(2) + '</span>' : '') + '</div>' +
+                            '<button onclick="if(typeof addToShopCart===\'function\'){addToShopCart(\'' + safeId + '\')}else{alert(\'Cart not available\')}" class="btn" style="background:#c41e3a;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:0.85rem;">Add to Cart</button>' +
+                        '</div>' +
+                    '</div></div>';
+            });
+            grids.forEach(function(g) { g.innerHTML = html; });
+        } catch(err) {
+            console.error('[SHOP] Load error:', err);
+            grids.forEach(function(g) { g.innerHTML = '<p style="text-align:center;color:#c41e3a;">Failed to load products. Please refresh.</p>'; });
+        }
+    };
+}
+
+// =============================================================================
 // CRITICAL: Mark core login functions as loaded (EARLY FLAG)
 // =============================================================================
-// Set this flag as soon as handlePortalLoginSuccess and openTab are defined
-// Don't wait for the entire 40K line file to finish parsing
 console.log('✅ Core login functions loaded! (handlePortalLoginSuccess, openTab)');
 window.functionsLoaded = true;
 window.dispatchEvent(new Event('functionsReady'));
+
+setTimeout(function() {
+    if (typeof window.loadShopProducts === 'function') {
+        window.loadShopProducts();
+    }
+}, 500);
 
 // Update loading overlay
 setTimeout(() => {
@@ -29762,7 +29839,11 @@ if (loginForm) {
             if (!user) {
                 throw new Error('Unexpected response from server.');
             }
-            if (!isPortalAllowedForRole(user.role, currentPortal)) {
+            if (currentPortal === '__staff_login__') {
+                currentPortal = getDefaultPortalForRole(user.role);
+                window.currentPortal = currentPortal;
+                console.log('[NAV] Staff login auto-detected portal:', currentPortal, 'for role:', user.role);
+            } else if (!isPortalAllowedForRole(user.role, currentPortal)) {
                 await logoutRequest();
                 if (loginError) loginError.textContent = `The ${getPortalLabel(currentPortal)} portal is not available for the ${user.role} role.`;
                 if (passwordField) {

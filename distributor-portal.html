@@ -373,18 +373,30 @@
                             email: d.email || '',
                             birthdate: d.birthdate || d.birth_date || null
                         }));
-                        console.log(`✅ Loaded ${distributors.length} distributors from database API`);
+                        console.log('[DISTRIBUTOR SIGNUP] results from API:', distributors.length);
                         
-                        // Cache in localStorage for offline access
                         try {
                             localStorage.setItem('dyna_distributors_cache', JSON.stringify({
                                 data: distributors,
                                 timestamp: Date.now()
                             }));
-                        } catch(e) {
-                            console.debug('Could not cache distributors:', e);
-                        }
+                        } catch(e) {}
                         
+                        if (distributors.length >= 100) {
+                            return distributors;
+                        }
+                        var csvDists = await loadDistributorsFromCSV();
+                        if (csvDists.length > 0) {
+                            var existingCodes = new Set(distributors.map(function(d) { return (d.code || d.distributorCode || '').toUpperCase(); }));
+                            csvDists.forEach(function(cd) {
+                                var code = (cd.code || cd.distributorCode || '').toUpperCase();
+                                if (code && !existingCodes.has(code)) {
+                                    distributors.push(cd);
+                                    existingCodes.add(code);
+                                }
+                            });
+                            console.log('[DISTRIBUTOR SIGNUP] merged total:', distributors.length);
+                        }
                         return distributors;
                     }
                 } else {
