@@ -6354,35 +6354,22 @@
             
             var loginModal = document.getElementById('loginModal');
             if (!loginModal) {
-                var staffModal = document.getElementById('staffLoginModal');
-                if (staffModal) {
-                    staffModal.style.display = 'block';
-                    setTimeout(function() {
-                        var uInput = document.getElementById('unifiedUsername');
-                        if (uInput) uInput.focus();
-                    }, 100);
-                    return;
-                }
-                console.log('[NAV] loginModal not ready, retrying...');
-                setTimeout(showStaffLogin, 500);
+                console.log('[NAV] loginModal not in DOM yet, retrying...');
+                setTimeout(showStaffLogin, 400);
                 return;
             }
-            loginModal.style.display = 'flex';
-            loginModal.style.zIndex = '10001';
-            loginModal.style.position = 'fixed';
-            loginModal.style.top = '0';
-            loginModal.style.left = '0';
-            loginModal.style.width = '100%';
-            loginModal.style.height = '100%';
-            loginModal.style.background = 'rgba(0,0,0,0.5)';
-            loginModal.style.alignItems = 'center';
-            loginModal.style.justifyContent = 'center';
+            // Move to document.body so it is NOT inside the hidden .container div
+            if (loginModal.parentNode !== document.body) {
+                document.body.appendChild(loginModal);
+                console.log('[NAV] loginModal moved to document.body');
+            }
+            loginModal.style.cssText = 'display:flex !important; position:fixed; z-index:99999; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;';
             loginModal.setAttribute('aria-hidden', 'false');
             if (typeof switchStaffAuthTab === 'function') switchStaffAuthTab('login');
             setTimeout(function() {
                 var usernameInput = document.getElementById('username');
                 if (usernameInput) usernameInput.focus();
-            }, 100);
+            }, 150);
         }
         
         function hideStaffLogin() {
