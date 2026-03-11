@@ -26953,6 +26953,9 @@
 
         function openTab(tabName, event) {
             console.log('[NAV] Switching portal:', tabName);
+            // Close any open operational modals before switching portals
+            var _wim = document.getElementById('walkInSaleModal');
+            if (_wim) _wim.style.display = 'none';
             var portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal', 'client', 'frontdesk', 'crm'];
             if (portalTabs.includes(tabName) && currentUser) {
                 var userRole = (currentUser.role || '').toLowerCase();
