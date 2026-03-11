@@ -1,0 +1,35 @@
+
+I need to be very clear that **the requested changes were still not properly applied**, and I am dissatisfied with the current result. The requirements I gave were not cosmetic; they were core workflow corrections, including member/referral pricing logic, prescription actions, cart behavior, load speed, product images, and moving walk-in sale out of Stock Management into Branch Portal. Those requirements were already set out clearly in the correction brief.  
+
+The **Full Body Check-Up client form is still not organized correctly**. At the **top of the form**, there must first be a clear status choice:
+
+* Member
+* Referred
+
+
+This must come first because pricing depends on it. If the client selects **Member**, the form must immediately require selection from the **existing distributor registrations**, and the user must be able to search by **name** and **NB number**. Once selected, the client’s personal details must **auto-populate from the distributor registration** instead of being entered manually again. This is a key business rule and it still has not been applied correctly. The brief already required mandatory distributor lookup and correct member/referral pricing handling. 
+
+I also need to repeat that **Walk-in Sale is still wrongly placed**. It is **still not properly present in the Branch Portal** and it **still remains in Stock Management**, which is incorrect. Stock Management should only handle procurement, receiving/imports, warehousing in the two warehouses, transfers, branch supply, and inventory control. Branch Portal should handle walk-in sale, prescription dispensing, branch payments, and branch customer operations. This was already stated clearly and it still has not been implemented.  
+
+So at this point, my dissatisfaction is that **basically all of these requested business workflow corrections remain unapplied or only partially applied**:
+
+* Member / Referred  logic at the top of the form
+* Auto-population of personal details from distributor registrations for members
+* Correct pricing dependency on status
+* Removal of Walk-in Sale from Stock Management
+* Placement of Walk-in Sale under Branch Portal
+* Removal of repetitions and dead or misplaced workflows
+* Making all visible buttons properly functional with no silent failures. 
+
+Please now correct this properly at code level and test it before saying it is done:
+
+1. Put **Member / Referred ** selection at the very top of the Full Body Check-Up form
+2. If **Member** is selected, force lookup from distributor registrations
+3. Auto-populate personal details from the selected distributor record
+4. Make sure the pricing logic uses that status correctly
+5. Remove **Walk-in Sale** from Stock Management
+6. Place **Walk-in Sale** correctly under Branch Portal
+7. Ensure the Branch Portal walk-in sale workflow actually functions after the move
+8. Remove duplicate or misplaced workflows and make all relevant buttons work in the stock management 
+
+Please do not mark this complete until these exact points are actually working in the system.

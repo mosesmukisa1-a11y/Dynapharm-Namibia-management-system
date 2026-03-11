@@ -5209,22 +5209,96 @@
             document.getElementById('chkClientType').value = type;
             var refBtn = document.getElementById('chkClientTypeReferred');
             var memBtn = document.getElementById('chkClientTypeMember');
-            var label = document.getElementById('chkReferralLabel');
-            document.getElementById('chkDistributorName').value = '';
-            document.getElementById('chkDistributorNB').value = '';
-            document.getElementById('chkDistributorStatus').textContent = '';
-            document.getElementById('chkDistributorDropdown').style.display = 'none';
-            if (type === 'referred') {
-                refBtn.style.background = '#c41e3a'; refBtn.style.color = 'white';
-                memBtn.style.background = '#f9fafb'; memBtn.style.color = '#374151';
-                label.textContent = 'Search for the distributor who referred you by name or NB number';
-                document.getElementById('chkDistributorName').placeholder = 'Type distributor name or NB number...';
+            var section = document.getElementById('chkReferralSection');
+            var step2Label = document.getElementById('chkStep2Label');
+            var step2Title = document.getElementById('chkStep2Title');
+            var refLabel = document.getElementById('chkReferralLabel');
+            var searchLabel = document.getElementById('chkDistributorSearchLabel');
+            var infoBox = document.getElementById('chkClientTypeInfo');
+            var nameInput = document.getElementById('chkDistributorName');
+            var nbInput = document.getElementById('chkDistributorNB');
+            var statusEl = document.getElementById('chkDistributorStatus');
+            var badge = document.getElementById('chkPersonalAutoFillBadge');
+
+            // Clear search fields
+            if (nameInput) nameInput.value = '';
+            if (nbInput) nbInput.value = '';
+            if (statusEl) { statusEl.textContent = ''; statusEl.style.color = '#666'; }
+            var dd = document.getElementById('chkDistributorDropdown');
+            if (dd) dd.style.display = 'none';
+
+            // Clear any previous auto-fill on personal info
+            _clearCheckupAutoFill();
+
+            if (type === 'member') {
+                // Highlight Member button
+                memBtn.style.background = 'white'; memBtn.style.color = '#c41e3a';
+                refBtn.style.background = 'rgba(255,255,255,0.15)'; refBtn.style.color = 'white';
+
+                // Switch Step 2 section to member/green style
+                section.style.background = '#f0fdf4';
+                section.style.borderColor = '#16a34a';
+                if (step2Label) { step2Label.textContent = 'Step 2 — Member Lookup'; step2Label.style.color = '#15803d'; }
+                if (step2Title) { step2Title.textContent = 'Find Your Member Record'; step2Title.style.color = '#14532d'; }
+                if (refLabel) { refLabel.textContent = 'Search by your name or NB number. Your personal details will be filled in automatically.'; refLabel.style.color = '#166534'; }
+                if (searchLabel) { searchLabel.textContent = 'Your Name or NB Number *'; searchLabel.style.color = '#15803d'; }
+                if (nameInput) { nameInput.style.borderColor = '#16a34a'; nameInput.placeholder = 'Type your name or NB number to search...'; }
+                if (nbInput) { nbInput.style.borderColor = '#bbf7d0'; nbInput.style.background = '#dcfce7'; nbInput.style.color = '#14532d'; }
+                if (infoBox) infoBox.innerHTML = '<strong>Member rate</strong> applies — search for your member record above and your details will be populated automatically.';
+                if (badge) badge.style.display = 'none';
             } else {
-                memBtn.style.background = '#c41e3a'; memBtn.style.color = 'white';
-                refBtn.style.background = '#f9fafb'; refBtn.style.color = '#374151';
-                label.textContent = 'Search for your distributor name and NB number';
-                document.getElementById('chkDistributorName').placeholder = 'Type your name or NB number...';
+                // Highlight Referred button
+                refBtn.style.background = 'white'; refBtn.style.color = '#c41e3a';
+                memBtn.style.background = 'rgba(255,255,255,0.15)'; memBtn.style.color = 'white';
+
+                // Switch Step 2 section back to referred/blue style
+                section.style.background = '#eff6ff';
+                section.style.borderColor = '#3b82f6';
+                if (step2Label) { step2Label.textContent = 'Step 2 — Referral'; step2Label.style.color = '#1d4ed8'; }
+                if (step2Title) { step2Title.textContent = 'Who Referred You?'; step2Title.style.color = '#1e3a8a'; }
+                if (refLabel) { refLabel.textContent = 'Search for the Dynapharm member or distributor who referred you by name or NB number.'; refLabel.style.color = '#1e40af'; }
+                if (searchLabel) { searchLabel.textContent = 'Referring Distributor Name or NB Number *'; searchLabel.style.color = '#1d4ed8'; }
+                if (nameInput) { nameInput.style.borderColor = '#3b82f6'; nameInput.placeholder = 'Type distributor name or NB number...'; }
+                if (nbInput) { nbInput.style.borderColor = '#bfdbfe'; nbInput.style.background = '#dbeafe'; nbInput.style.color = '#1e3a8a'; }
+                if (infoBox) infoBox.innerHTML = '<strong>Referred rate</strong> applies — please enter your personal details below and name the distributor who referred you.';
+                if (badge) badge.style.display = 'none';
             }
+        }
+
+        function _clearCheckupAutoFill() {
+            var fields = ['chkFullName', 'chkPhone', 'chkEmail', 'chkGender', 'chkDOB'];
+            fields.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.readOnly = false;
+                    el.disabled = false;
+                    el.style.background = '';
+                    el.style.borderColor = '';
+                }
+            });
+            var badge = document.getElementById('chkPersonalAutoFillBadge');
+            if (badge) badge.style.display = 'none';
+        }
+
+        function _applyCheckupMemberAutoFill(d) {
+            var nameEl = document.getElementById('chkFullName');
+            var phoneEl = document.getElementById('chkPhone');
+            var emailEl = document.getElementById('chkEmail');
+            var genderEl = document.getElementById('chkGender');
+            var dobEl = document.getElementById('chkDOB');
+            var badge = document.getElementById('chkPersonalAutoFillBadge');
+
+            if (nameEl && d.name) { nameEl.value = d.name; nameEl.readOnly = true; nameEl.style.background = '#f0fdf4'; nameEl.style.borderColor = '#86efac'; }
+            if (phoneEl && d.phone) { phoneEl.value = d.phone; phoneEl.readOnly = true; phoneEl.style.background = '#f0fdf4'; phoneEl.style.borderColor = '#86efac'; }
+            if (emailEl && d.email) { emailEl.value = d.email; emailEl.readOnly = true; emailEl.style.background = '#f0fdf4'; emailEl.style.borderColor = '#86efac'; }
+            if (genderEl && d.gender) {
+                var gVal = (d.gender || '').toLowerCase();
+                if (gVal === 'male' || gVal === 'female') { genderEl.value = gVal; genderEl.disabled = true; genderEl.style.background = '#f0fdf4'; genderEl.style.borderColor = '#86efac'; }
+            }
+            if (dobEl && d.dob) { dobEl.value = d.dob; dobEl.readOnly = true; dobEl.style.background = '#f0fdf4'; dobEl.style.borderColor = '#86efac'; }
+
+            // Show auto-fill badge
+            if (badge) badge.style.display = 'inline-block';
         }
 
         var _allCheckupDistributors = [];
@@ -5278,7 +5352,10 @@
                         apiData.forEach(function(d) {
                             var c = (d.distributor_code || d.distributorCode || d.code || '').toUpperCase().trim();
                             var n = (d.distributor_name || d.distributorName || d.name || '').trim();
-                            if (c && n && d.entity_type !== 'branch') distributors.push({ code: c, name: n });
+                            if (c && n && d.entity_type !== 'branch') distributors.push({ code: c, name: n,
+                                phone: d.mobile_no || d.mobileNo || d.phone || '',
+                                email: d.email || '', gender: d.gender || '', dob: d.dob || d.date_of_birth || ''
+                            });
                         });
                     }
                 }
@@ -5293,7 +5370,13 @@
                         parsed.data.forEach(function(d) {
                             var c = (d.distributorCode || d.code || d.distributor_code || '').toUpperCase().trim();
                             var n = (d.distributorName || d.name || d.distributor_name || '').trim();
-                            if (c && n && !existing[c]) { distributors.push({ code: c, name: n }); existing[c] = true; }
+                            if (c && n && !existing[c]) {
+                                distributors.push({ code: c, name: n,
+                                    phone: d.mobileNo || d.mobile_no || d.phone || '',
+                                    email: d.email || '', gender: d.gender || '', dob: d.dob || d.date_of_birth || ''
+                                });
+                                existing[c] = true;
+                            }
                         });
                     }
                 }
@@ -5308,7 +5391,13 @@
                         lsData.forEach(function(d) {
                             var c = (d.distributorCode || d.code || d.distributor_code || '').toUpperCase().trim();
                             var n = (d.distributorName || d.name || d.distributor_name || '').trim();
-                            if (c && n && !existing2[c]) { distributors.push({ code: c, name: n }); existing2[c] = true; }
+                            if (c && n && !existing2[c]) {
+                                distributors.push({ code: c, name: n,
+                                    phone: d.mobileNo || d.mobile_no || d.phone || '',
+                                    email: d.email || '', gender: d.gender || '', dob: d.dob || d.date_of_birth || ''
+                                });
+                                existing2[c] = true;
+                            }
                         });
                     }
                 }
@@ -5438,8 +5527,15 @@
                         document.getElementById('chkDistributorName').value = d.name;
                         document.getElementById('chkDistributorNB').value = d.code;
                         var statusEl = document.getElementById('chkDistributorStatus');
-                        statusEl.style.color = '#059669';
-                        statusEl.textContent = 'Selected: ' + d.name + ' (' + d.code + ')';
+                        var clientType = (document.getElementById('chkClientType') || {}).value || 'referred';
+                        if (clientType === 'member') {
+                            statusEl.style.color = '#15803d';
+                            statusEl.textContent = '\u2705 Member record found: ' + d.name + ' (' + d.code + ') \u2014 details filled in below';
+                            _applyCheckupMemberAutoFill(d);
+                        } else {
+                            statusEl.style.color = '#1d4ed8';
+                            statusEl.textContent = 'Referral confirmed: ' + d.name + ' (' + d.code + ')';
+                        }
                     });
                 }, 200);
             });
@@ -5696,6 +5792,17 @@
             });
             var backBtn = document.getElementById('checkupBackBtn');
             if (backBtn) backBtn.style.display = 'inline-block';
+
+            // Reset form to clean state each time it is opened
+            var form = document.getElementById('checkupInlineForm');
+            if (form) { form.style.display = ''; form.reset(); }
+            var successMsg = document.getElementById('checkupSuccessMsg');
+            if (successMsg) successMsg.style.display = 'none';
+            var errEl = document.getElementById('checkupFormError');
+            if (errEl) errEl.style.display = 'none';
+            if (typeof _clearCheckupAutoFill === 'function') _clearCheckupAutoFill();
+            if (typeof setCheckupClientType === 'function') setCheckupClientType('referred');
+            if (typeof setCheckupVisitType === 'function') setCheckupVisitType('appointment');
         }
 
         function exitCheckupMode() {
@@ -8054,43 +8161,40 @@
                     </div>
 
                     <form id="checkupInlineForm" style="max-width: 640px; margin: 0 auto;">
+
+                        <!-- STEP 1: Client Status — MUST be selected first as it determines pricing and workflow -->
+                        <div style="background: linear-gradient(135deg, #c41e3a 0%, #7f0000 100%); border-radius: 14px; padding: 22px 24px; margin-bottom: 22px; box-shadow: 0 4px 18px rgba(196,30,58,0.28);">
+                            <p style="margin: 0 0 4px; font-size: 0.8rem; color: rgba(255,255,255,0.75); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Step 1 — Required First</p>
+                            <h3 style="margin: 0 0 14px; font-size: 1.15rem; color: white; font-weight: 700;">Are you a Member or Referred?</h3>
+                            <p style="margin: 0 0 14px; font-size: 0.88rem; color: rgba(255,255,255,0.85); line-height: 1.5;">Select your status. This determines your pricing rate and how your details are entered on this form.</p>
+                            <div style="display: flex; gap: 0; border-radius: 10px; overflow: hidden; border: 2px solid rgba(255,255,255,0.55);">
+                                <button type="button" id="chkClientTypeReferred" onclick="setCheckupClientType('referred')" style="flex:1; padding: 14px 10px; border: none; background: white; color: #c41e3a; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; line-height: 1.3;">Referred<br><span style="font-size:0.8rem; font-weight:400; opacity:0.8;">Walk-in / sent by a member</span></button>
+                                <button type="button" id="chkClientTypeMember" onclick="setCheckupClientType('member')" style="flex:1; padding: 14px 10px; border: none; background: rgba(255,255,255,0.15); color: white; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; line-height: 1.3; border-left: 1px solid rgba(255,255,255,0.35);">Member / Distributor<br><span style="font-size:0.8rem; font-weight:400; opacity:0.85;">I am a Dynapharm member</span></button>
+                            </div>
+                            <input type="hidden" id="chkClientType" value="referred">
+                            <div id="chkClientTypeInfo" style="margin-top: 12px; background: rgba(255,255,255,0.18); border-radius: 8px; padding: 9px 13px; font-size: 0.85rem; color: white; line-height: 1.45;"><strong>Referred rate</strong> applies — please enter your personal details below and name the distributor who referred you.</div>
+                        </div>
+
+                        <!-- STEP 2: Distributor Lookup — adapts based on whether Member or Referred is selected -->
+                        <div id="chkReferralSection" style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 12px; padding: 22px 24px; margin-bottom: 22px; transition: background 0.2s, border-color 0.2s;">
+                            <p id="chkStep2Label" style="margin: 0 0 4px; font-size: 0.8rem; color: #1d4ed8; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Step 2 — Referral</p>
+                            <h3 id="chkStep2Title" style="margin: 0 0 8px; color: #1e3a8a; font-size: 1.05rem; font-weight: 700;">Who Referred You?</h3>
+                            <p id="chkReferralLabel" style="margin: 0 0 14px; font-size: 0.88rem; color: #1e40af; line-height: 1.5;">Search for the Dynapharm member or distributor who referred you by name or NB number.</p>
+                            <div style="position: relative;">
+                                <label id="chkDistributorSearchLabel" style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 5px; color: #1d4ed8;">Referring Distributor Name or NB Number *</label>
+                                <input type="text" id="chkDistributorName" placeholder="Type distributor name or NB number..." autocomplete="off" style="width:100%; padding: 12px; border: 2px solid #3b82f6; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                                <div id="chkDistributorDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #d1d5db; border-radius: 8px; max-height: 220px; overflow-y: auto; width: 100%; box-shadow: 0 6px 18px rgba(0,0,0,0.13); top: 100%; left: 0; margin-top: 3px;"></div>
+                            </div>
+                            <input type="text" id="chkDistributorNB" placeholder="NB Number (auto-filled on selection)" readonly style="width:100%; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.95rem; margin-top: 10px; background: #dbeafe; text-transform: uppercase; box-sizing: border-box; color: #1e3a8a; font-weight: 600;">
+                            <small id="chkDistributorStatus" style="font-size: 0.85rem; margin-top: 6px; display: block; min-height: 18px;"></small>
+                        </div>
+
                         <!-- Visit Type Toggle -->
-                        <div style="display: flex; gap: 0; margin-bottom: 24px; border-radius: 10px; overflow: hidden; border: 2px solid #c41e3a;">
+                        <div style="display: flex; gap: 0; margin-bottom: 22px; border-radius: 10px; overflow: hidden; border: 2px solid #c41e3a;">
                             <button type="button" id="checkupToggleAppt" onclick="setCheckupVisitType('appointment')" style="flex:1; padding: 14px; border: none; background: #c41e3a; color: white; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.2s;">Book Appointment</button>
                             <button type="button" id="checkupToggleWalkin" onclick="setCheckupVisitType('walkin')" style="flex:1; padding: 14px; border: none; background: white; color: #c41e3a; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.2s;">Walk-in</button>
                         </div>
                         <input type="hidden" name="checkupVisitType" id="checkupVisitType" value="appointment">
-
-                        <!-- Personal Info -->
-                        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
-                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Personal Information</h3>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                                <div style="grid-column: 1/-1;">
-                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Full Name *</label>
-                                    <input type="text" id="chkFullName" name="chkFullName" placeholder="e.g. Jane Doe" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                </div>
-                                <div>
-                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Phone *</label>
-                                    <input type="tel" id="chkPhone" name="chkPhone" placeholder="e.g. 081 234 5678" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                </div>
-                                <div>
-                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Email</label>
-                                    <input type="email" id="chkEmail" name="chkEmail" placeholder="e.g. jane@email.com" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                </div>
-                                <div>
-                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Gender *</label>
-                                    <select id="chkGender" name="chkGender" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                        <option value="">Select</option>
-                                        <option value="male">Male</option>
-                                        <option value="female">Female</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Date of Birth *</label>
-                                    <input type="date" id="chkDOB" name="chkDOB" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                </div>
-                            </div>
-                        </div>
 
                         <!-- Branch & Appointment -->
                         <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
@@ -8124,30 +8228,36 @@
                             </div>
                         </div>
 
-                        <!-- Referral / Distributor Information -->
+                        <!-- Personal Info -->
                         <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 18px;">
-                            <h3 style="margin: 0 0 16px; color: #1f2937; font-size: 1.1rem;">Referral / Membership</h3>
-                            <div style="margin-bottom: 14px;">
-                                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 8px;">Are you a Dynapharm distributor/member? *</label>
-                                <div style="display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #d1d5db;">
-                                    <button type="button" id="chkClientTypeReferred" onclick="setCheckupClientType('referred')" style="flex:1; padding: 10px; border: none; background: #c41e3a; color: white; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;">Referred by a Distributor</button>
-                                    <button type="button" id="chkClientTypeMember" onclick="setCheckupClientType('member')" style="flex:1; padding: 10px; border: none; background: #f9fafb; color: #374151; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;">I am a Member</button>
-                                </div>
-                                <input type="hidden" id="chkClientType" value="referred">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                                <h3 style="margin: 0; color: #1f2937; font-size: 1.1rem;">Personal Information</h3>
+                                <span id="chkPersonalAutoFillBadge" style="display:none; background: #dcfce7; color: #15803d; font-size: 0.78rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; border: 1px solid #86efac;">&#10003; Auto-filled from member record</span>
                             </div>
-                            <div id="chkReferralSection">
-                                <p id="chkReferralLabel" style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Search for the distributor who referred you by name or NB number</p>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                                    <div style="position: relative; grid-column: 1/-1;">
-                                        <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Distributor Name *</label>
-                                        <input type="text" id="chkDistributorName" placeholder="Type distributor name or NB number..." autocomplete="off" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                                        <div id="chkDistributorDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 8px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.12); top: 100%; left: 0; margin-top: 2px;"></div>
-                                        <small id="chkDistributorStatus" style="color: #666; font-size: 0.8rem;"></small>
-                                    </div>
-                                    <div>
-                                        <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom1: 4px;">NB Number *</label>
-                                        <input type="text" id="chkDistributorNB" placeholder="e.g. NB001544" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; text-transform: uppercase;" readonly>
-                                    </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                                <div style="grid-column: 1/-1;">
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Full Name *</label>
+                                    <input type="text" id="chkFullName" name="chkFullName" placeholder="e.g. Jane Doe" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Phone *</label>
+                                    <input type="tel" id="chkPhone" name="chkPhone" placeholder="e.g. 081 234 5678" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Email</label>
+                                    <input type="email" id="chkEmail" name="chkEmail" placeholder="e.g. jane@email.com" style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Gender *</label>
+                                    <select id="chkGender" name="chkGender" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
+                                        <option value="">Select</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 4px;">Date of Birth *</label>
+                                    <input type="date" id="chkDOB" name="chkDOB" required style="width:100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
                                 </div>
                             </div>
                         </div>
@@ -10574,10 +10684,10 @@
                 <!-- Main Tabs -->
                 <div style="display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 3px solid #c41e3a; flex-wrap: wrap;">
                     <button class="dispenserTab" id="walkInTab" onclick="showDispenserTab('walkIn')" style="flex: 1; padding: 15px; background: linear-gradient(135deg, #3498db, #2980b9); color: white; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: bold;">
-                        🛒 Sales
+                        🛒 Walk-in Sales
                     </button>
-                    <button class="dispenserTab" id="saleTab" onclick="showDispenserTab('sale')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
-                        ➕ New Sale
+                    <button class="dispenserTab" id="saleTab" onclick="showWalkInSaleModal('customer')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                        ➕ New Walk-in Sale
                     </button>
                     <button class="dispenserTab" id="prescriptionTab" onclick="showDispenserTab('prescription')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
                         💊 Prescriptions
