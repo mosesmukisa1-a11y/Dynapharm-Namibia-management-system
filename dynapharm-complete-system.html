@@ -10575,7 +10575,7 @@
                         🛒 Sales
                     </button>
                     <button class="dispenserTab" id="saleTab" onclick="showDispenserTab('sale')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
-                        🛒 Sale
+                        ➕ New Sale
                     </button>
                     <button class="dispenserTab" id="prescriptionTab" onclick="showDispenserTab('prescription')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
                         💊 Prescriptions
@@ -35256,6 +35256,13 @@ if (loginForm) {
                 });
             }
             
+            // Auto-scope to current user's branch for dispenser/branch staff if no filter is set
+            if (branchFilterSelect && !branchFilterSelect.value &&
+                window.currentUser && window.currentUser.branch &&
+                (window.currentUser.role === 'dispenser' || window.currentUser.role === 'branch')) {
+                branchFilterSelect.value = window.currentUser.branch;
+            }
+
             // Get branch filter value
             const branchFilter = branchFilterSelect?.value || '';
             
@@ -36784,7 +36791,7 @@ async function reverseLastPrescriptionPayment(reportId){
                 case 'sale':
                     activeSection = 'dispenserWalkInSection';
                     activeTab = 'saleTab';
-                    gradient = 'linear-gradient(135deg, #3498db, #2980b9)';
+                    gradient = 'linear-gradient(135deg, #27ae60, #1e8449)';
                     if (typeof ensureWalkInDataHydrated === 'function') {
                         ensureWalkInDataHydrated().catch(err => console.warn('sale tab hydration issue', err));
                     }
@@ -36797,12 +36804,19 @@ async function reverseLastPrescriptionPayment(reportId){
                             refreshWalkInSalesList();
                         }
                     }
+                    // Open new walk-in sale modal immediately
+                    setTimeout(() => {
+                        if (typeof showWalkInSaleModal === 'function') {
+                            showWalkInSaleModal('customer');
+                        }
+                    }, 150);
                     break;
                 case 'prescription':
                     activeSection = 'dispenserPrescriptionSection';
                     activeTab = 'prescriptionTab';
                     gradient = 'linear-gradient(135deg, #27ae60, #229954)';
                     // Ensure data is loaded before displaying prescriptions
+                    // displayPrescriptions() auto-scopes to user's branch for dispenser role
                     (async () => {
                         await loadData();
                         await displayPrescriptions();
@@ -38737,6 +38751,37 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
             }
         }
         
+        async function syncBranchFinanceData({ notify = false } = {}) {
+            if (branchFinanceSyncInProgress) return;
+            branchFinanceSyncInProgress = true;
+            const branchId = (typeof getBranchId === 'function' ? getBranchId() : null) ||
+                             (window.currentUser && window.currentUser.branch) || null;
+            const params = branchId && branchId !== 'unknown'
+                ? `?branch=${encodeURIComponent(branchId)}&limit=250`
+                : '?limit=250';
+            try {
+                const [depositsRes, paymentsRes, expensesRes] = await Promise.allSettled([
+                    apiRequest(`/branch/deposits${params}`, 'GET'),
+                    apiRequest(`/branch/payments${params}`, 'GET'),
+                    apiRequest(`/branch/expenses${params}`, 'GET'),
+                ]);
+                branchDeposits = Array.isArray(depositsRes.value) ? depositsRes.value
+                    : (depositsRes.value?.deposits || depositsRes.value?.data || []);
+                branchPaymentsRecords = Array.isArray(paymentsRes.value) ? paymentsRes.value
+                    : (paymentsRes.value?.payments || paymentsRes.value?.data || []);
+                branchExpensesRecords = Array.isArray(expensesRes.value) ? expensesRes.value
+                    : (expensesRes.value?.expenses || expensesRes.value?.data || []);
+                hasSyncedBranchFinance = true;
+                if (notify) {
+                    console.log(`[Branch Finance] synced — deposits:${branchDeposits.length} payments:${branchPaymentsRecords.length} expenses:${branchExpensesRecords.length}`);
+                }
+            } catch (err) {
+                console.warn('syncBranchFinanceData error:', err);
+            } finally {
+                branchFinanceSyncInProgress = false;
+            }
+        }
+
         function displayBankingHistory() {
             const container = document.getElementById('bankingOperations');
             if (!container) return;

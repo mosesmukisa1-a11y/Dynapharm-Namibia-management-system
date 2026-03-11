@@ -1,0 +1,321 @@
+BRANCH PORTAL – FULL WORKFLOW ORGANIZATION AND ACTIVATION TASK
+Priority: HIGH
+Portal to fix first: BRANCH PORTAL
+
+GENERAL INSTRUCTION:
+Please check the existing codebase thoroughly before rebuilding anything.
+The system already contains much of the structure and logic, so this task is mainly to:
+- inspect existing Branch Portal code
+- organize the workflow properly
+- activate all tabs
+- connect each tab to its correct data source and actions
+- make the whole Branch Portal functional end-to-end
+
+MAIN BUSINESS LOGIC TO APPLY:
+At branch level, there are two types of sales:
+1. WALK-IN SALES
+2. PRESCRIPTIONS coming from the Consultant Portal for that specific branch
+
+This means the Branch Portal must be organized around these two sales channels and all related branch operations.
+
+====================================================
+1. BRANCH PORTAL – REQUIRED STRUCTURE
+====================================================
+
+Please inspect the current Branch Portal code and ensure all tabs/modules on the Branch Portal are functional.
+
+From the current interface, the Branch Portal includes these tabs/modules:
+- Sales
+- Sale
+- Prescriptions
+- Stock
+- Banking
+- Payments
+- Online Orders
+- Bonus
+- Communication
+- Staff
+- Distributor Registration
+- Field Program
+
+All of these visible tabs must work.
+If a tab is visible, it must open its section and perform its intended workflow.
+
+====================================================
+2. REQUIRED WORKFLOW LOGIC BY TAB
+====================================================
+
+A. SALES / SALE
+Please inspect whether “Sales” and “Sale” are meant to be separate modules or duplicates.
+Then organize them properly.
+
+Expected branch sales logic:
+- Walk-in sale entry
+- Product selection
+- quantity
+- branch pricing
+- totals
+- receipt generation
+- customer/distributor selection if needed
+- payment method
+- stock deduction
+- save transaction
+- transaction history
+
+If “Sales” and “Sale” are duplicates, merge or clearly separate them without confusion.
+
+B. PRESCRIPTIONS
+This is very important.
+
+Branch Portal must receive and process:
+- prescriptions/recommendations/orders coming from the Consultant Portal
+- specifically for that branch
+
+Expected workflow:
+- list prescriptions assigned to that branch
+- show client details
+- show prescribed products/items
+- show consultant details if available
+- allow branch to dispense/fill prescription
+- deduct stock
+- convert fulfilled prescription into branch sale record
+- update status:
+  - pending
+  - processing
+  - dispensed/completed
+- keep audit/history
+
+Please check existing consultant-to-branch linkage and activate it properly.
+
+C. STOCK
+Expected workflow:
+- view available stock for the current branch
+- inward/outward movements
+- stock balance
+- low stock alerts
+- stock usage from walk-in sales
+- stock usage from prescriptions
+- stock adjustments if role permits
+
+D. BANKING
+Expected workflow:
+- banking entries
+- deposits
+- daily banking summary
+- branch cash vs bank reconciliation
+- reference numbers
+- status/history
+
+E. PAYMENTS
+Expected workflow:
+- capture payments
+- cash / EFT / transfer / other methods already in code
+- tie payments to sales or prescriptions
+- outstanding balances if supported
+- payment history
+
+F. ONLINE ORDERS
+Expected workflow:
+- show online orders routed to that branch
+- order details
+- processing status
+- fulfillment / dispatch / collection workflow
+- stock deduction where relevant
+
+G. BONUS
+Expected workflow:
+- branch-level bonus view if already supported
+- sales-linked bonus calculations
+- distributor/staff bonus display if existing in code
+
+H. COMMUNICATION
+Expected workflow:
+- branch messages / notifications
+- communication with admin / front desk / consultants if already designed
+- announcements / reminders / internal notes if already in code
+
+I. STAFF
+Expected workflow:
+- view branch staff
+- role visibility
+- attendance or assignments if already present
+- branch-specific staff management if role allows
+
+J. DISTRIBUTOR REGISTRATION
+Expected workflow:
+- register distributors at branch level
+- link to existing distributor workflows
+- save correctly to master distributor records
+- branch association if required
+
+K. FIELD PROGRAM
+Expected workflow:
+- field activity/program entries
+- branch outreach records
+- reporting if already present in code
+
+====================================================
+3. IMPORTANT ORGANIZATION REQUIREMENT
+====================================================
+
+Please organize the Branch Portal around real branch operations.
+
+Recommended structure:
+- Dashboard / summary at top
+- Walk-in Sales workflow
+- Prescription workflow from Consultant Portal
+- Stock and payment operations
+- Banking and reconciliation
+- Orders / staff / communication / registrations
+
+The portal should not just open tabs visually.
+Each tab must have working content and actions.
+
+====================================================
+4. TECHNICAL CHECKS TO DO
+====================================================
+
+Please inspect and fix all of the following in the Branch Portal:
+
+- missing click handlers on branch tabs
+- wrong section IDs
+- duplicated tab names like “Sales” and “Sale”
+- tabs that switch visually but do not load content
+- hidden sections that never unhide
+- broken data mappings
+- consultant prescriptions not linked to branch
+- stock deduction not triggered
+- payment saving not connected
+- online orders not loading
+- JS errors stopping tab execution
+- state loss after switching tabs
+- branch scope not applied correctly
+- admin/super admin testing bypassing actual branch data logic
+
+====================================================
+5. REQUIRED NAVIGATION / TAB ACTIVATION
+====================================================
+
+Please implement or repair a centralized Branch Portal tab controller.
+
+Suggested approach:
+- each branch tab should use a consistent data attribute
+  example:
+  data-branch-tab="sales"
+  data-branch-tab="prescriptions"
+  data-branch-tab="stock"
+  etc.
+
+Create a single function such as:
+switchBranchTab(tabKey)
+
+This function must:
+- hide all branch portal sub-sections
+- remove active state from all branch tabs
+- show selected branch section
+- activate selected tab
+- persist current branch tab on refresh
+- initialize data for selected tab if needed
+
+====================================================
+6. PRESCRIPTION INTEGRATION – MUST WORK
+====================================================
+
+This is the key business rule:
+
+Branch Portal must recognize two sales sources:
+1. walk-in sales
+2. prescriptions from Consultant Portal per branch
+
+Please confirm the code does all of the following:
+- consultant can create prescription/recommendation
+- prescription is assigned to the intended branch
+- branch portal can view it
+- branch can process it
+- branch can dispense it
+- products deduct from branch stock
+- transaction is recorded properly
+- status updates correctly
+
+If the code partially exists, reconnect and complete it.
+Do not leave it as a dead tab or display-only section.
+
+====================================================
+7. UX / FUNCTIONAL RULES
+====================================================
+
+- If a Branch Portal tab is visible, it must work
+- No dead tabs
+- No blank panels
+- No cosmetic-only switching
+- If a module is partially built, show a useful placeholder with clear status instead of empty space
+- Preserve Dynapharm branding/theme
+- Keep role permissions intact
+
+====================================================
+8. TESTING REQUIREMENTS
+====================================================
+
+Please test the Branch Portal thoroughly and confirm each of these:
+
+A. Tab Activation
+- Sales opens
+- Sale opens
+- Prescriptions opens
+- Stock opens
+- Banking opens
+- Payments opens
+- Online Orders opens
+- Bonus opens
+- Communication opens
+- Staff opens
+- Distributor Registration opens
+- Field Program opens
+
+B. Walk-In Sales
+- create a sale
+- save it
+- confirm totals
+- confirm stock deduction
+
+C. Prescriptions
+- load prescription from Consultant Portal
+- process it in Branch Portal
+- dispense it
+- confirm stock deduction
+- confirm status update
+
+D. Stock
+- stock loads correctly for the branch
+
+E. Payments / Banking
+- payment and banking workflows save correctly
+
+F. Online Orders
+- branch online orders display if existing in code
+
+====================================================
+9. REQUIRED DELIVERY BACK TO ME
+====================================================
+
+After completing the Branch Portal work, please provide:
+
+1. Root cause found for non-working Branch Portal tabs
+2. Files changed
+3. Functions added or updated
+4. Confirmation of which tabs are now working
+5. Confirmation that prescription-to-branch workflow is working
+6. Note any remaining placeholders clearly
+
+IMPORTANT:
+Please check the existing code first and organize what is already there.
+Do not rebuild blindly.
+This is about activating and organizing the Branch Portal so all its workflows function properly.
+
+EXPECTED RESULT:
+- all Branch Portal tabs open correctly
+- walk-in sales workflow works
+- prescription workflow from Consultant Portal works per branch
+- stock, payments, banking, and related branch operations function properly
+- no dead tabs
+- no silent failures
