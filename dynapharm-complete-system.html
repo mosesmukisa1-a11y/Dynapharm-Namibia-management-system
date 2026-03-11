@@ -31838,7 +31838,7 @@ if (loginForm) {
         var _consultantCheckups = [];
         var _consultantCheckupsView = 'upcoming';
 
-        async function loadConsultantCheckups() {
+        window.loadConsultantCheckups = async function loadConsultantCheckups() {
             if (!currentUser) return;
             var userBranch = currentUser.branch || '';
             var listDiv = document.getElementById('consultantCheckupsList');
@@ -31847,16 +31847,18 @@ if (loginForm) {
                 var url = '/api/appointments?type=Full+Body+Check-Up';
                 if (userBranch) url += '&branch=' + encodeURIComponent(userBranch);
                 var res = await fetch(url, { credentials: 'include' });
-                if (!res.ok) throw new Error('Failed to load');
+                if (!res.ok) throw new Error('Failed to load: ' + res.status);
                 _consultantCheckups = await res.json();
                 if (!Array.isArray(_consultantCheckups)) _consultantCheckups = [];
+                console.log('Checkup forms loaded:', _consultantCheckups.length);
                 showConsultantCheckups(_consultantCheckupsView);
             } catch (err) {
+                console.error('loadConsultantCheckups error:', err);
                 if (listDiv) listDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#c41e3a;">Failed to load checkup forms. Please try again.</div>';
             }
         }
 
-        function showConsultantCheckups(view) {
+        window.showConsultantCheckups = function showConsultantCheckups(view) {
             _consultantCheckupsView = view || 'upcoming';
             var upBtn = document.getElementById('consultantUpcomingBtn');
             var compBtn = document.getElementById('consultantCompletedBtn');
@@ -31927,23 +31929,33 @@ if (loginForm) {
                 html += '</div>';
                 if (sl !== 'completed' && sl !== 'cancelled') {
                     html += '<div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; border-top:1px solid #f3f4f6; padding-top:10px;">';
-                    html += '<button class="btn" onclick="viewCheckupFormDetail(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
-                    html += '<button class="btn" onclick="createReportFromCheckup(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#c41e3a; color:white; border:none; border-radius:6px; cursor:pointer;">Create Report</button>';
-                    if (sl === 'pending' || sl === 'walk-in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'checked_in\')" style="padding:6px 14px; font-size:0.85rem; background:#8b5cf6; color:white; border:none; border-radius:6px; cursor:pointer;">Check In</button>';
-                    if (sl === 'checked_in') html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'in_progress\')" style="padding:6px 14px; font-size:0.85rem; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer;">Start Checkup</button>';
-                    html += '<button class="btn" onclick="updateCheckupStatus(\'' + _escHtml(apt.id) + '\',\'completed\')" style="padding:6px 14px; font-size:0.85rem; background:#22c55e; color:white; border:none; border-radius:6px; cursor:pointer;">Mark Complete</button>';
+                    html += '<button data-action="view-detail" data-apt-id="' + _escHtml(apt.id) + '" style="padding:6px 14px; font-size:0.85rem; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
+                    html += '<button data-action="create-report" data-apt-id="' + _escHtml(apt.id) + '" style="padding:6px 14px; font-size:0.85rem; background:#c41e3a; color:white; border:none; border-radius:6px; cursor:pointer;">Create Report</button>';
+                    if (sl === 'pending' || sl === 'walk-in') html += '<button data-action="update-status" data-apt-id="' + _escHtml(apt.id) + '" data-new-status="checked_in" style="padding:6px 14px; font-size:0.85rem; background:#8b5cf6; color:white; border:none; border-radius:6px; cursor:pointer;">Check In</button>';
+                    if (sl === 'checked_in') html += '<button data-action="update-status" data-apt-id="' + _escHtml(apt.id) + '" data-new-status="in_progress" style="padding:6px 14px; font-size:0.85rem; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer;">Start Checkup</button>';
+                    html += '<button data-action="update-status" data-apt-id="' + _escHtml(apt.id) + '" data-new-status="completed" style="padding:6px 14px; font-size:0.85rem; background:#22c55e; color:white; border:none; border-radius:6px; cursor:pointer;">Mark Complete</button>';
                     html += '</div>';
                 } else {
                     html += '<div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; border-top:1px solid #f3f4f6; padding-top:10px;">';
-                    html += '<button class="btn" onclick="viewCheckupFormDetail(\'' + _escHtml(apt.id) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#6b7280; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
+                    html += '<button data-action="view-detail" data-apt-id="' + _escHtml(apt.id) + '" style="padding:6px 14px; font-size:0.85rem; background:#6b7280; color:white; border:none; border-radius:6px; cursor:pointer;">View Details</button>';
                     html += '</div>';
                 }
                 html += '</div>';
             });
             listDiv.innerHTML = html;
+            listDiv.onclick = function(e) {
+                var btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                var action = btn.getAttribute('data-action');
+                var aptId = btn.getAttribute('data-apt-id');
+                console.log('Checkup button clicked:', action, aptId);
+                if (action === 'view-detail') viewCheckupFormDetail(aptId);
+                else if (action === 'create-report') createReportFromCheckup(aptId);
+                else if (action === 'update-status') updateCheckupStatus(aptId, btn.getAttribute('data-new-status'));
+            };
         }
 
-        async function updateCheckupStatus(aptId, newStatus) {
+        window.updateCheckupStatus = async function updateCheckupStatus(aptId, newStatus) {
             try {
                 var res = await fetch('/api/appointments', {
                     method: 'PUT',
@@ -31960,7 +31972,8 @@ if (loginForm) {
             }
         }
 
-        function viewCheckupFormDetail(aptId) {
+        window.viewCheckupFormDetail = function viewCheckupFormDetail(aptId) {
+            console.log('viewCheckupFormDetail called with:', aptId);
             var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
             if (!apt) { console.error('Appointment not found:', aptId); return; }
             var data = {};
@@ -31990,7 +32003,7 @@ if (loginForm) {
             html += '<div class="no-print" style="margin-top:20px; padding-top:16px; border-top:2px solid #e5e7eb; display:flex; gap:10px; flex-wrap:wrap;">';
             var s = (apt.status || '').toLowerCase();
             if (s !== 'completed' && s !== 'cancelled') {
-                html += '<button onclick="document.getElementById(\'checkupPreviewModal\').style.display=\'none\'; createReportFromCheckup(\'' + _escHtml(apt.id) + '\')" style="padding:10px 20px; background:#c41e3a; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:0.9rem;">Create Report & Prescription</button>';
+                html += '<button id="checkupCreateReportBtn" data-apt-id="' + _escHtml(apt.id) + '" style="padding:10px 20px; background:#c41e3a; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:0.9rem;">Create Report & Prescription</button>';
             }
             html += '</div>';
             var contentEl = document.getElementById('checkupPreviewContent');
@@ -32000,9 +32013,18 @@ if (loginForm) {
                 modalEl.style.display = 'block';
                 modalEl.style.zIndex = '99999';
             }
+            var createBtn = document.getElementById('checkupCreateReportBtn');
+            if (createBtn) {
+                createBtn.addEventListener('click', function() {
+                    var id = this.getAttribute('data-apt-id');
+                    if (modalEl) modalEl.style.display = 'none';
+                    createReportFromCheckup(id);
+                });
+            }
         }
 
-        function createReportFromCheckup(aptId) {
+        window.createReportFromCheckup = function createReportFromCheckup(aptId) {
+            console.log('createReportFromCheckup called with:', aptId);
             var apt = _consultantCheckups.find(function(a) { return a.id === aptId; });
             if (!apt) { alert('Appointment not found'); return; }
             var data = {};
@@ -32049,6 +32071,8 @@ if (loginForm) {
             window._checkupAppointmentId = aptId;
 
             createReport(tempRef);
+            var rModal = document.getElementById('reportModal');
+            if (rModal) rModal.style.zIndex = '99999';
         }
 
         function viewTodayAppointments() {
