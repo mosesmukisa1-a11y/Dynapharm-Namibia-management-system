@@ -5043,6 +5043,8 @@
         // Landing Page Tab Functions
         (function handleHashNavigation() {
             function routeByHash() {
+                // Never redirect to landing page if a user is already authenticated
+                if (window.currentUser && window.currentUser.role) return;
                 var hash = window.location.hash;
                 if (hash === '#client' || hash === '#shop') {
                     showLandingPage();
@@ -5953,6 +5955,9 @@
         })();
 
         function showLandingPage() {
+            // Never show landing page if a user is authenticated — they belong in their portal
+            if (window.currentUser && window.currentUser.role) return;
+
             const landingPage = document.getElementById('landingPage');
             const container = document.querySelector('.container');
             const portalTabs = document.getElementById('portalTabs');
@@ -26956,6 +26961,13 @@
             // Close any open operational modals before switching portals
             var _wim = document.getElementById('walkInSaleModal');
             if (_wim) _wim.style.display = 'none';
+            // Ensure the portal container and tabs bar are always visible when navigating
+            var _container = document.querySelector('.container');
+            if (_container) _container.style.display = 'block';
+            var _portalTabsEl = document.getElementById('portalTabs');
+            if (_portalTabsEl) _portalTabsEl.style.display = 'flex';
+            var _landingPage = document.getElementById('landingPage');
+            if (_landingPage) _landingPage.style.display = 'none';
             var portalTabs = ['consultant', 'dispenser', 'admin', 'mis', 'stock', 'gm', 'director', 'finance', 'hr-portal', 'client', 'frontdesk', 'crm'];
             if (portalTabs.includes(tabName) && currentUser) {
                 var userRole = (currentUser.role || '').toLowerCase();
