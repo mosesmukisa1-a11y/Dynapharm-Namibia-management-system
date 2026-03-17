@@ -16195,251 +16195,190 @@
         </div>
     </div>
 
-    <!-- Walk-in Sale Modal -->
-    <div class="modal" id="walkInSaleModal">
-        <div class="modal-content" style="max-width: 900px;">
-            <span class="close" onclick="closeModal('walkInSaleModal')">&times;</span>
-            <h2 id="walkInSaleTitle">🛒 Walk-in Sale</h2>
-            
-            <form id="walkInSaleForm">
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
-                    <div class="form-group" style="position: relative;">
-                        <label>Customer Name *</label>
-                        <input type="text" id="walkInCustomerName" placeholder="Full Name" required>
-                        <input type="hidden" id="walkInCustomerCode">
-                        <div id="customerNameDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div>
-                        <div id="distributorCustomerHelper" style="display: none; margin-top: 10px;">
-                            <div style="padding: 12px; background: #f1f5f9; border: 1px solid #cbd5f5; border-radius: 6px; font-size: 0.85rem; color: #475569;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px;">
-                                    <strong style="color: #1d4ed8;">Distributor quick pick</strong>
-                                    <span id="distributorHelperStatus" style="font-size: 0.78rem; color: #64748b;">Loading directory...</span>
+    <!-- Walk-in Sale Modal (NEW) -->
+    <div class="modal" id="walkInSaleModal" style="display:none;">
+        <div class="modal-content" style="max-width:960px; padding:0; border-radius:12px; overflow:hidden;">
+
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#1e3a5f,#2980b9);padding:18px 24px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <h2 style="margin:0;color:#fff;font-size:1.3rem;">🛒 New Walk-in Sale</h2>
+                    <div style="color:rgba(255,255,255,0.75);font-size:0.82rem;margin-top:3px;">Branch/Dispenser Point of Sale</div>
+                </div>
+                <span onclick="closeModal('walkInSaleModal')" style="color:#fff;font-size:26px;cursor:pointer;line-height:1;opacity:0.8;">&times;</span>
+            </div>
+
+            <div style="padding:20px;background:#f8fafc;max-height:80vh;overflow-y:auto;">
+
+                <!-- STEP 1: Customer Type -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.78rem;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Step 1 — Customer Type</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <button type="button" id="wiTypeRegistered" onclick="wiSetCustomerType('registered')"
+                            style="padding:14px;border:2px solid #3498db;border-radius:10px;background:#ebf5fb;cursor:pointer;font-size:0.95rem;font-weight:600;color:#1a5276;transition:all .15s;">
+                            🪪 Registered Client<br><span style="font-size:0.78rem;font-weight:400;color:#555;">Has an NB number — pays DP price, earns BVs</span>
+                        </button>
+                        <button type="button" id="wiTypeNew" onclick="wiSetCustomerType('new')"
+                            style="padding:14px;border:2px solid #ddd;border-radius:10px;background:#fff;cursor:pointer;font-size:0.95rem;font-weight:600;color:#444;transition:all .15s;">
+                            👤 New Customer<br><span style="font-size:0.78rem;font-weight:400;color:#555;">No NB number — needs a referral distributor</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 2: Customer Details -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.78rem;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Step 2 — Customer Details</div>
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+
+                        <!-- Registered client panel -->
+                        <div id="wiRegisteredPanel">
+                            <label style="font-size:0.85rem;color:#374151;font-weight:600;">Search by Name or NB Number</label>
+                            <div style="position:relative;margin-top:6px;">
+                                <input type="text" id="wiRegSearch" placeholder="Type name or NB number…"
+                                    oninput="wiSearchRegistered(this.value)"
+                                    style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;box-sizing:border-box;">
+                                <div id="wiRegDropdown" style="display:none;position:absolute;z-index:2000;width:100%;background:#fff;border:1px solid #ddd;border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);top:calc(100% + 4px);left:0;"></div>
+                            </div>
+                            <div id="wiRegSelected" style="display:none;margin-top:10px;padding:10px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;font-size:0.88rem;">
+                                <strong id="wiRegSelectedName"></strong><br>
+                                <span style="color:#555;">NB: <span id="wiRegSelectedNB" style="font-weight:600;color:#27ae60;"></span> &nbsp;|&nbsp; Phone: <span id="wiRegSelectedPhone"></span></span>
+                                <button type="button" onclick="wiClearRegistered()" style="float:right;border:none;background:none;color:#e74c3c;cursor:pointer;font-size:1.1rem;line-height:1;">×</button>
+                            </div>
+                        </div>
+
+                        <!-- New customer panel -->
+                        <div id="wiNewPanel" style="display:none;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                                <div>
+                                    <label style="font-size:0.85rem;color:#374151;font-weight:600;">Customer Name *</label>
+                                    <input type="text" id="wiNewName" placeholder="Full name" style="width:100%;margin-top:4px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;box-sizing:border-box;">
                                 </div>
-                                <div id="distributorQuickList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Phone Number (Optional)</label>
-                        <input type="tel" id="walkInPhone" placeholder="0812345678">
-                    </div>
-                    <div class="form-group">
-                        <label>Email Address (Optional)</label>
-                        <input type="email" id="walkInEmail" placeholder="email@example.com">
-                    </div>
-                    <div class="form-group">
-                        <label>Customer Type *</label>
-                        <select id="walkInCustomerType" onchange="onCustomerTypeChange()" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 5px;" required>
-                            <option value="customer">Customer</option>
-                            <option value="distributor">Distributor</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <!-- Distributor Referral Field for Customers -->
-                <div id="customerReferralField" style="display: block; margin-bottom: 20px; padding: 15px; background: #fff3cd; border: 2px solid #f39c12; border-radius: 5px;">
-                    <h4 style="margin-bottom: 10px; color: #856404;">⚠️ Required: Referred Distributor</h4>
-                    <div id="walkInDistributorInsights" style="margin-bottom: 12px; padding: 10px 12px; background: #fff; border-radius: 6px; border: 1px dashed rgba(133,100,4,0.35); color: #5f370e; font-size: 0.85rem;">
-                        Loading distributor directory...
-                    </div>
-                    
-                    <!-- Checkbox for "I have no referral" -->
-                    <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ddd;">
-                        <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.95rem;">
-                            <input type="checkbox" id="noReferralCheckbox" onchange="handleNoReferralCheckbox()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
-                            <span style="color: #856404;">I have no referral (will use Dynapharm Namibia)</span>
-                        </label>
-                    </div>
-                                                      
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 15px;">                                                                         
-                        <div class="form-group" style="position: relative;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label style="color: #856404;">Search by Name or NB Number *</label>
-                                <button type="button" id="changeReferralBtn" onclick="clearSelectedReferral()" style="display: none; padding: 5px 12px; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer;">Change Referral</button>
-                            </div>
-                            <input type="text" id="distributorReferralSearch" placeholder="Type name or NB number (e.g. OTTILIE or NB001544)"                   
-                                   onkeyup="searchDistributorsForReferral()" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 5px;" required>                                                                          
-                            <input type="hidden" id="distributorReferralValue" required>                                                                        
-                            <div id="distributorReferralDropdown" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; margin-top: 5px;"></div> 
-                        </div>
-                        <div id="selectedDistributorInfo" style="display: none; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ddd;"> 
-                            <div style="font-size: 0.9rem;">
-                                <strong>Selected:</strong> <span id="selectedDistributorName"></span><br>                                                       
-                                <strong>NB Number:</strong> <span id="selectedDistributorCode"></span> |                                                        
-                                <strong>Mobile:</strong> <span id="selectedDistributorMobile"></span>                                                           
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="border: 2px solid #3498db; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                    <h4 style="margin-bottom: 15px;">📦 Select Products</h4>
-                    <div id="walkInPriceListInsights" style="margin: 0 0 12px 0; padding: 10px 12px; background: #e8f4fd; border-radius: 6px; border: 1px solid rgba(52,152,219,0.35); color: #1d4ed8; font-size: 0.85rem;">
-                        Preparing product catalogue...
-                    </div>
-                    <div id="walkInProductsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;">
-                        <p style="text-align: center; color: #7f8c8d;">Loading products...</p>
-                    </div>
-                </div>
-                
-                <div style="border: 2px solid #27ae60; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                    <h4 style="margin-bottom: 15px;">🛒 Shopping Cart</h4>
-                    <div id="walkInCartList" style="min-height: 100px; max-height: 300px; overflow-y: auto;">
-                        <p style="text-align: center; color: #7f8c8d; padding: 20px;">Cart is empty</p>
-                    </div>
-                    <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #666;">
-                        💡 <strong>Tip:</strong> Click quantity to edit, or click ❌ to remove items
-                    </div>
-                    <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #27ae60;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong style="font-size: 1.2rem;">Total Amount:</strong>
-                                <span id="walkInTotalAmount" style="font-size: 1.5rem; color: #27ae60; font-weight: bold;">N$ 0.00</span>
-                            </div>
-                            <div style="display: none;">
-                                <strong>Tax:</strong>
-                                <span id="walkInTaxAmount">N$ 0.00</span>
+                                <div>
+                                    <label style="font-size:0.85rem;color:#374151;font-weight:600;">Phone (optional)</label>
+                                    <input type="tel" id="wiNewPhone" placeholder="0812345678" style="width:100%;margin-top:4px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;box-sizing:border-box;">
+                                </div>
                             </div>
                             <div>
-                                <strong>Discount:</strong>
-                                <span id="walkInDiscountAmount">N$ 0.00</span>
-                            </div>
-                            <div>
-                                <strong style="font-size: 1.1rem;">Grand Total:</strong>
-                                <span id="walkInGrandTotal" style="font-size: 1.3rem; color: #c41e3a; font-weight: bold;">N$ 0.00</span>
+                                <label style="font-size:0.85rem;color:#374151;font-weight:600;">Referring Distributor * <span style="color:#e74c3c;">(required)</span></label>
+                                <div style="font-size:0.78rem;color:#64748b;margin:3px 0 6px;">The distributor who referred this customer earns the BVs and commission</div>
+                                <div style="position:relative;">
+                                    <input type="text" id="wiRefSearch" placeholder="Search distributor by name or NB…"
+                                        oninput="wiSearchReferral(this.value)"
+                                        style="width:100%;padding:10px 12px;border:1px solid #f39c12;border-radius:8px;font-size:0.9rem;box-sizing:border-box;">
+                                    <div id="wiRefDropdown" style="display:none;position:absolute;z-index:2000;width:100%;background:#fff;border:1px solid #ddd;border-radius:8px;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);top:calc(100% + 4px);left:0;"></div>
+                                </div>
+                                <div id="wiRefSelected" style="display:none;margin-top:8px;padding:10px;background:#fff3cd;border:1px solid #f39c12;border-radius:8px;font-size:0.88rem;">
+                                    <strong id="wiRefSelectedName"></strong><br>
+                                    <span style="color:#555;">NB: <span id="wiRefSelectedNB" style="font-weight:600;color:#e67e22;"></span></span>
+                                    <button type="button" onclick="wiClearReferral()" style="float:right;border:none;background:none;color:#e74c3c;cursor:pointer;font-size:1.1rem;line-height:1;">×</button>
+                                </div>
+                                <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:0.85rem;cursor:pointer;color:#666;">
+                                    <input type="checkbox" id="wiNoReferral" onchange="wiToggleNoReferral(this.checked)" style="width:16px;height:16px;">
+                                    Customer has no referral (walk-in only)
+                                </label>
                             </div>
                         </div>
-                        <div id="walkInDualPricingNotice" style="margin-top: 10px; font-size: 0.82rem; color: #475569;">
-                            Dual pricing summary will appear here.
+
+                    </div>
+                </div>
+
+                <!-- STEP 3: Products -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.78rem;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Step 3 — Select Products</div>
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+                        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+                            <input type="text" id="wiProductSearch" placeholder="Search products…" oninput="wiFilterProducts(this.value)"
+                                style="flex:1;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.88rem;">
+                            <span id="wiPriceMode" style="font-size:0.78rem;padding:5px 10px;background:#e8f5e9;border-radius:20px;color:#27ae60;font-weight:600;white-space:nowrap;">DP Prices</span>
+                        </div>
+                        <div id="wiProductGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:260px;overflow-y:auto;padding:2px;">
+                            <p style="color:#94a3b8;grid-column:1/-1;text-align:center;padding:20px;">Loading products…</p>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Payment Method Selection -->
-                <div style="border: 2px solid #f39c12; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                    <h4 style="margin-bottom: 15px;">💳 Payment Method *</h4>
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                        <button type="button" id="paymentMethodCash" class="payment-method-btn active" onclick="selectWalkInPaymentMethod('cash')" style="padding: 15px; border: 2px solid #27ae60; border-radius: 8px; background: #e8f5e9; cursor: pointer; font-weight: bold;">
-                            💵 Cash
-                        </button>
-                        <button type="button" id="paymentMethodCard" class="payment-method-btn" onclick="selectWalkInPaymentMethod('card')" style="padding: 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">
-                            💳 Card
-                        </button>
-                        <button type="button" id="paymentMethodMobile" class="payment-method-btn" onclick="selectWalkInPaymentMethod('mobile')" style="padding: 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">
-                            📱 Mobile Money
-                        </button>
-                        <button type="button" id="paymentMethodBank" class="payment-method-btn" onclick="selectWalkInPaymentMethod('bank')" style="padding: 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">
-                            🏦 Bank Transfer
-                        </button>
+
+                <!-- STEP 4: Cart -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.78rem;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Step 4 — Cart</div>
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                        <div id="wiCartBody" style="min-height:60px;max-height:220px;overflow-y:auto;padding:10px 12px;">
+                            <p style="color:#94a3b8;text-align:center;padding:16px 0;">Cart is empty — add products above</p>
+                        </div>
+                        <div style="background:#1e3a5f;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;">
+                            <div style="color:#fff;font-size:0.85rem;">Total BV: <strong id="wiCartBV" style="color:#f39c12;">0.00</strong></div>
+                            <div style="color:#fff;font-size:1.1rem;font-weight:700;">Total: <span id="wiCartTotal" style="color:#2ecc71;">N$ 0.00</span></div>
+                        </div>
                     </div>
-                    <input type="hidden" id="walkInPaymentMethod" value="cash">
-                <div id="walkInTenderManager" style="margin-top: 15px; padding: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <strong style="color: #92400e;">Mixed Payments (optional)</strong>
-                        <span style="font-size: 0.8rem; color: #b45309;">Allocate tenders to balance totals</span>
+                </div>
+
+                <!-- STEP 5: Payment -->
+                <div style="margin-bottom:20px;">
+                    <div style="font-size:0.78rem;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Step 5 — Payment Method</div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                        <button type="button" id="wiPay_cash" onclick="wiSetPayment('cash')"
+                            style="padding:12px 6px;border:2px solid #27ae60;border-radius:8px;background:#e8f5e9;font-weight:600;cursor:pointer;font-size:0.85rem;">💵 Cash</button>
+                        <button type="button" id="wiPay_card" onclick="wiSetPayment('card')"
+                            style="padding:12px 6px;border:2px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.85rem;">💳 Card</button>
+                        <button type="button" id="wiPay_mobile" onclick="wiSetPayment('mobile')"
+                            style="padding:12px 6px;border:2px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.85rem;">📱 Mobile</button>
+                        <button type="button" id="wiPay_bank" onclick="wiSetPayment('bank')"
+                            style="padding:12px 6px;border:2px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.85rem;">🏦 Bank</button>
                     </div>
-                    <div id="walkInTenderRows"></div>
-                    <div id="walkInTenderSummary" style="margin-top: 10px; font-size: 0.85rem; color: #475569;">No payments recorded yet.</div>
+                    <input type="hidden" id="wiPaymentMethod" value="cash">
                 </div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn" onclick="closeModal('walkInSaleModal')">Cancel</button>
-                    <button type="button" class="btn btn-success" onclick="showWalkInSaleConfirmation()" id="reviewWalkInSaleBtn">📋 Review & Confirm Sale</button>
-                </div>
-            </form>
+
+            </div><!-- end scrollable body -->
+
+            <!-- Footer Actions -->
+            <div style="padding:14px 20px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" onclick="closeModal('walkInSaleModal')" style="padding:10px 22px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#64748b;font-size:0.9rem;">Cancel</button>
+                <button type="button" onclick="wiReviewSale()"
+                    style="padding:10px 28px;border:none;border-radius:8px;background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem;">
+                    📋 Review &amp; Confirm
+                </button>
+            </div>
+
         </div>
     </div>
 
-            <div id="staff-self-service" class="hr-tab-content" style="display: none;">
-                <div class="form-section">
-                    <h3>👤 Staff Self-Service</h3>
-                    <p style="color:#64748b; margin-bottom:18px;">HR team members can still submit their own leave and cash requests here.</p>
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-                        <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:12px; padding:20px;">
-                            <h4 style="color:#2e7d32; margin-bottom:12px;">📅 Leave Management</h4>
-                            <p style="color:#2e7d32; margin-bottom:12px; font-size:0.9rem;">Send a personal leave request for approval.</p>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                <button class="btn btn-success" onclick="openStaffLeaveRequest('hr')">Request Leave</button>
-                                <button class="btn btn-info" onclick="viewMyLeaveRequests('hr')">My Requests</button>
-                            </div>
-                            <div id="staffLeaveStatus-hr" style="margin-top:15px;"></div>
-                        </div>
-                        <div style="background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;">
-                            <h4 style="color:#1565c0; margin-bottom:12px;">💵 Cash Support</h4>
-                            <p style="color:#1565c0; margin-bottom:12px; font-size:0.9rem;">Request HR petty cash or reimbursements.</p>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                <button class="btn btn-success" onclick="openStaffCashRequest('hr')">Request Cash</button>
-                                <button class="btn btn-info" onclick="viewMyCashRequests('hr')">My Requests</button>
-                            </div>
-                            <div id="staffCashStatus-hr" style="margin-top:15px;"></div>
-                        </div>
+    <!-- Walk-in Sale Confirmation Modal (NEW) -->
+    <div class="modal" id="walkInSaleConfirmationModal" style="display:none;">
+        <div class="modal-content" style="max-width:640px; border-radius:12px; overflow:hidden; padding:0;">
+            <div style="background:linear-gradient(135deg,#27ae60,#1e8449);padding:16px 22px;display:flex;justify-content:space-between;align-items:center;">
+                <h2 style="margin:0;color:#fff;font-size:1.15rem;">✅ Confirm Sale</h2>
+                <span onclick="closeModal('walkInSaleConfirmationModal')" style="color:#fff;font-size:24px;cursor:pointer;opacity:.8;">&times;</span>
+            </div>
+            <div style="padding:20px;max-height:70vh;overflow-y:auto;background:#f8fafc;">
+                <!-- Customer summary -->
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;">
+                    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Customer</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.88rem;">
+                        <div><span style="color:#94a3b8;">Name:</span> <strong id="wiCfmName"></strong></div>
+                        <div><span style="color:#94a3b8;">Type:</span> <span id="wiCfmType"></span></div>
+                        <div><span style="color:#94a3b8;">NB#:</span> <span id="wiCfmNB"></span></div>
+                        <div><span style="color:#94a3b8;">Phone:</span> <span id="wiCfmPhone"></span></div>
+                        <div id="wiCfmRefRow" style="display:none;grid-column:1/-1;"><span style="color:#94a3b8;">Referral:</span> <span id="wiCfmRef" style="color:#e67e22;font-weight:600;"></span></div>
                     </div>
+                </div>
+                <!-- Products -->
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;">
+                    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Products</div>
+                    <div id="wiCfmProducts" style="max-height:200px;overflow-y:auto;font-size:0.88rem;"></div>
+                    <div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center;">
+                        <div style="font-size:0.85rem;color:#64748b;">BV earned: <strong id="wiCfmBV" style="color:#e67e22;"></strong></div>
+                        <div style="font-size:1.15rem;font-weight:700;">Total: <span id="wiCfmTotal" style="color:#27ae60;"></span></div>
+                    </div>
+                </div>
+                <!-- Payment -->
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+                    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Payment</div>
+                    <div id="wiCfmPayment" style="font-size:1rem;font-weight:600;color:#1e3a5f;"></div>
                 </div>
             </div>
-
-    <!-- Walk-in Sale Confirmation Modal -->
-    <div class="modal" id="walkInSaleConfirmationModal">
-        <div class="modal-content" style="max-width: 700px;">
-            <span class="close" onclick="closeModal('walkInSaleConfirmationModal')">&times;</span>
-            <h2>📋 Confirm Sale Details</h2>
-            
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0; color: #2c3e50;">Customer Information</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <div>
-                        <strong>Name:</strong>
-                        <div id="confirmCustomerName" style="color: #666;"></div>
-                    </div>
-                    <div>
-                        <strong>Type:</strong>
-                        <div id="confirmCustomerType" style="color: #666;"></div>
-                    </div>
-                    <div>
-                        <strong>Phone:</strong>
-                        <div id="confirmPhone" style="color: #666;"></div>
-                    </div>
-                    <div>
-                        <strong>Email:</strong>
-                        <div id="confirmEmail" style="color: #666;"></div>
-                    </div>
-                </div>
-                <div id="confirmReferralInfo" style="display: none; padding: 10px; background: white; border-radius: 5px; margin-top: 10px;">
-                    <strong>Referred By:</strong>
-                    <div id="confirmReferral" style="color: #666;"></div>
-                </div>
-            </div>
-
-            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0; color: #856404;">Order Summary</h3>
-                <div id="confirmProductsList" style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;"></div>
-                <div style="border-top: 2px solid #f39c12; padding-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <strong>Subtotal:</strong>
-                        <span id="confirmSubtotal" style="font-weight: bold;"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <strong>Total BV:</strong>
-                        <span id="confirmTotalBV" style="color: #c41e3a; font-weight: bold;"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 1.2rem; padding-top: 10px; border-top: 2px solid #f39c12;">
-                        <strong>Grand Total:</strong>
-                        <span id="confirmGrandTotal" style="color: #c41e3a; font-weight: bold; font-size: 1.3rem;"></span>
-                    </div>
-                </div>
-            </div>
-
-            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0; color: #27ae60;">Payment Information</h3>
-                <div>
-                    <strong>Payment Method:</strong>
-                    <div id="confirmPaymentMethod" style="color: #666; font-size: 1.1rem; margin-top: 5px;"></div>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                <button type="button" class="btn" onclick="closeModal('walkInSaleConfirmationModal')">← Back to Edit</button>
-                <button type="button" class="btn btn-success" onclick="confirmWalkInSale()" style="padding: 12px 30px; font-size: 1.1rem;">
-                    ✅ Confirm & Process Payment
+            <div style="padding:14px 20px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" onclick="closeModal('walkInSaleConfirmationModal')" style="padding:10px 20px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#64748b;">← Edit</button>
+                <button type="button" onclick="wiConfirmSale()" style="padding:10px 28px;border:none;border-radius:8px;background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem;">
+                    ✅ Complete Sale
                 </button>
             </div>
         </div>
@@ -36768,540 +36707,514 @@ async function reverseLastPrescriptionPayment(reportId){
         // WALK-IN CART + SALES HELPERS
         // =============================================================================
         const WALKIN_SALES_HISTORY_KEY = 'dyna_walkin_sales';
-        const WALKIN_PAYMENT_LABELS = {
-            cash: 'Cash',
-            card: 'Card Payment',
-            mobile: 'Mobile Money',
-            bank: 'Bank Transfer'
-        };
-        
-        function formatWalkInCurrency(value) {
-            if (typeof window.formatCurrencyNAD === 'function') {
-                return window.formatCurrencyNAD(value);
-            }
-            const amount = Number(value) || 0;
-            return `N$ ${amount.toFixed(2)}`;
+        // ============================================================
+        // WALK-IN SALE MODULE (rewritten)
+        // ============================================================
+        // State
+        let _wiType = 'registered';   // 'registered' | 'new'
+        let _wiRegClient = null;       // { name, code (NB), phone }
+        let _wiRefClient = null;       // referring distributor { name, code }
+        let _wiPayment = 'cash';
+        let _wiNoReferral = false;
+
+        const _WI_PAY_LABELS = { cash:'Cash', card:'Card Payment', mobile:'Mobile Money', bank:'Bank Transfer' };
+
+        function _wiFmt(v) {
+            const n = Number(v) || 0;
+            return 'N$ ' + n.toFixed(2);
         }
-        
-        function getWalkInCartItems() {
-            if (window.walkInCartStore && typeof window.walkInCartStore.get === 'function') {
-                try {
-                    return [...(window.walkInCartStore.get() || [])];
-                } catch (_) {}
-            }
-            if (Array.isArray(window.walkInCart)) {
-                return [...window.walkInCart];
-            }
-            return [];
-        }
-        
-        function renderWalkInCart() {
-            const cartItems = getWalkInCartItems();
-            const listEl = document.getElementById('walkInCartList');
-            const totalAmountEl = document.getElementById('walkInTotalAmount');
-            const discountEl = document.getElementById('walkInDiscountAmount');
-            const grandTotalEl = document.getElementById('walkInGrandTotal');
-            const dualPricingEl = document.getElementById('walkInDualPricingNotice');
-            if (!listEl) return;
-            
-            if (!cartItems.length) {
-                listEl.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">Cart is empty. Add products from the price list.</p>';
-            } else {
-                listEl.innerHTML = cartItems.map((item, idx) => {
-                    const qty = Number(item.quantity || item.qty || 1);
-                    const price = Number(item.price || item.unitPrice || item.amount || 0);
-                    const lineTotal = Number(item.total || item.amount || (qty * price));
-                    const name = item.productName || item.name || `Product ${idx + 1}`;
-                    return `
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding:8px 0;">
-                            <div>
-                                <strong style="color:#2c3e50;">${name}</strong>
-                                <div style="font-size:0.85rem; color:#7f8c8d;">Qty: ${qty} &middot; ${formatWalkInCurrency(price)}</div>
-                            </div>
-                            <div style="font-weight:bold; color:#27ae60;">${formatWalkInCurrency(lineTotal)}</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            
-            const totals = cartItems.reduce((acc, item) => {
-                const qty = Number(item.quantity || item.qty || 1);
-                const price = Number(item.price || item.unitPrice || item.amount || 0);
-                const lineTotal = Number(item.total || item.amount || (qty * price));
-                const bv = Number(item.bv || item.totalBV || 0);
-                acc.subtotal += lineTotal;
-                acc.totalBV += bv;
-                return acc;
-            }, { subtotal: 0, totalBV: 0 });
-            
-            if (totalAmountEl) totalAmountEl.textContent = formatWalkInCurrency(totals.subtotal);
-            if (discountEl) discountEl.textContent = formatWalkInCurrency(0);
-            if (grandTotalEl) grandTotalEl.textContent = formatWalkInCurrency(totals.subtotal);
-            if (dualPricingEl) {
-                dualPricingEl.textContent = totals.totalBV > 0
-                    ? `BV earned on this order: ${totals.totalBV.toFixed(2)}`
-                    : 'Dual pricing summary will appear here.';
-            }
-        }
-        
-        function selectWalkInPaymentMethod(method = 'cash') {
-            const normalized = method || 'cash';
-            ['cash', 'card', 'mobile', 'bank'].forEach(m => {
-                const btn = document.getElementById(`paymentMethod${m.charAt(0).toUpperCase() + m.slice(1)}`);
-                if (!btn) return;
-                if (m === normalized) {
-                    btn.classList.add('active');
-                    btn.style.border = '2px solid #27ae60';
-                    btn.style.background = '#e8f5e9';
-                } else {
-                    btn.classList.remove('active');
-                    btn.style.border = '2px solid #ddd';
-                    btn.style.background = '#fff';
-                }
-            });
-            const input = document.getElementById('walkInPaymentMethod');
-            if (input) input.value = normalized;
-            const summary = document.getElementById('walkInTenderSummary');
-            if (summary) {
-                summary.textContent = `Primary payment method: ${WALKIN_PAYMENT_LABELS[normalized] || normalized}`;
-            }
-        }
-        
-        function getStoredWalkInSales() {
-            try {
-                const raw = localStorage.getItem(WALKIN_SALES_HISTORY_KEY);
-                if (!raw) return [];
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (_) {
-                return [];
-            }
-        }
-        
-        function saveStoredWalkInSales(list) {
-            try {
-                localStorage.setItem(WALKIN_SALES_HISTORY_KEY, JSON.stringify(list));
-            } catch (_) {}
-        }
-        
-        function renderWalkInSalesList() {
-            const listEl = document.getElementById('walkInSalesList');
-            const countEl = document.getElementById('walkInCount');
-            if (!listEl) return;
-            const sales = getStoredWalkInSales();
-            if (!sales.length) {
-                listEl.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">No walk-in sales recorded yet.</p>';
-            } else {
-                listEl.innerHTML = sales.slice(0, 5).map(sale => {
-                    const amount = formatWalkInCurrency(sale.total || sale.subtotal || 0);
-                    const when = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : 'Just now';
-                    const statusBadge = sale.synced
-                        ? '<span style="color:#22c55e; font-size:0.8rem; font-weight:600;">✅ Synced</span>'
-                        : '<span style="color:#f97316; font-size:0.8rem; font-weight:600;">⏳ Pending sync</span>';
-                    const errorNote = !sale.synced && sale.syncError
-                        ? `<div style="font-size:0.75rem; color:#b91c1c; margin-top:4px;">${sale.syncError}</div>`
-                        : '';
-                    return `
-                        <div style="border-bottom:1px solid #eee; padding:10px 0;">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <strong style="color:#2c3e50;">${sale.customerName || 'Walk-in customer'}</strong>
-                                <span style="color:#27ae60; font-weight:bold;">${amount}</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; color:#7f8c8d;">
-                                <span>${sale.customerType || 'customer'} &middot; ${when}</span>
-                                ${statusBadge}
-                            </div>
-                            ${errorNote}
-                        </div>
-                    `;
-                }).join('');
-            }
-            if (countEl) countEl.textContent = sales.length;
-        }
-        
-        window.refreshWalkInSalesList = renderWalkInSalesList;
-        
-        function saleRecordBranchHint() {
-            if (typeof getBranchId === 'function') {
-                const derived = getBranchId();
-                if (derived) return derived;
-            }
-            return (
-                window.currentBranch ||
-                (window.currentUser && (window.currentUser.branch || window.currentUser.branchId)) ||
-                document.getElementById('branchSelect')?.value ||
-                document.getElementById('userBranchSelect')?.value ||
-                null
-            );
-        }
-        
-        function showWalkInSaleConfirmation() {
-            const customerNameInput = document.getElementById('walkInCustomerName');
-            if (!customerNameInput || !customerNameInput.value.trim()) {
-                alert('Please enter the customer name before continuing.');
-                if (customerNameInput) customerNameInput.focus();
-                return;
-            }
-            const customerType = (document.getElementById('walkInCustomerType')?.value) || 'customer';
-            const phone = document.getElementById('walkInPhone')?.value || '';
-            const email = document.getElementById('walkInEmail')?.value || '';
-            const referralName = document.getElementById('distributorReferralSearch')?.value || document.getElementById('clientReferralName')?.value || '';
-            const referralCode = document.getElementById('distributorReferralValue')?.value || document.getElementById('clientReferralNB')?.value || '';
-            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
-            const cartItems = getWalkInCartItems();
-            const productsList = document.getElementById('confirmProductsList');
-            const subtotalEl = document.getElementById('confirmSubtotal');
-            const totalBVEl = document.getElementById('confirmTotalBV');
-            const grandTotalEl = document.getElementById('confirmGrandTotal');
-            const referralInfo = document.getElementById('confirmReferralInfo');
-            const referralDisplay = document.getElementById('confirmReferral');
-            
-            const totals = cartItems.reduce((acc, item) => {
-                const qty = Number(item.quantity || item.qty || 1);
-                const price = Number(item.price || item.unitPrice || item.amount || 0);
-                const lineTotal = Number(item.total || item.amount || (qty * price));
-                const bv = Number(item.bv || item.totalBV || 0);
-                acc.subtotal += lineTotal;
-                acc.totalBV += bv;
-                return acc;
-            }, { subtotal: 0, totalBV: 0 });
-            
-            if (productsList) {
-                if (!cartItems.length) {
-                    productsList.innerHTML = '<p style="color:#7f8c8d;">Cart is empty. You can still proceed if this is a service-only sale.</p>';
-                } else {
-                    productsList.innerHTML = cartItems.map((item, idx) => {
-                        const qty = Number(item.quantity || item.qty || 1);
-                        const price = Number(item.price || item.unitPrice || item.amount || 0);
-                        const lineTotal = Number(item.total || item.amount || (qty * price));
-                        const name = item.productName || item.name || `Product ${idx + 1}`;
-                        return `
-                            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #f5c16c; padding:6px 0;">
-                                <div>
-                                    <strong style="color:#5f370e;">${name}</strong>
-                                    <div style="font-size:0.85rem; color:#7f8c8d;">Qty: ${qty}</div>
-                                </div>
-                                <div style="font-weight:bold; color:#c41e3a;">${formatWalkInCurrency(lineTotal)}</div>
-                            </div>
-                        `;
-                    }).join('');
-                }
-            }
-            
-            if (subtotalEl) subtotalEl.textContent = formatWalkInCurrency(totals.subtotal);
-            if (totalBVEl) totalBVEl.textContent = totals.totalBV.toFixed(2);
-            if (grandTotalEl) grandTotalEl.textContent = formatWalkInCurrency(totals.subtotal);
-            if (document.getElementById('confirmCustomerName')) document.getElementById('confirmCustomerName').textContent = customerNameInput.value.trim();
-            if (document.getElementById('confirmCustomerType')) document.getElementById('confirmCustomerType').textContent = customerType;
-            if (document.getElementById('confirmPhone')) document.getElementById('confirmPhone').textContent = phone || '—';
-            if (document.getElementById('confirmEmail')) document.getElementById('confirmEmail').textContent = email || '—';
-            if (document.getElementById('confirmPaymentMethod')) document.getElementById('confirmPaymentMethod').textContent = WALKIN_PAYMENT_LABELS[paymentMethod] || paymentMethod;
-            
-            if (customerType === 'customer' && (referralName || referralCode)) {
-                if (referralInfo) referralInfo.style.display = 'block';
-                if (referralDisplay) referralDisplay.textContent = referralName
-                    ? `${referralName}${referralCode ? ` (${referralCode})` : ''}`
-                    : referralCode;
-            } else if (referralInfo) {
-                referralInfo.style.display = 'none';
-            }
-            
-            const confirmationModal = document.getElementById('walkInSaleConfirmationModal');
-            if (confirmationModal) confirmationModal.style.display = 'block';
-        }
-        
-        function confirmWalkInSale() {
-            const customerName = document.getElementById('walkInCustomerName')?.value?.trim() || 'Walk-in customer';
-            const customerType = document.getElementById('walkInCustomerType')?.value || 'customer';
-            const phone = document.getElementById('walkInPhone')?.value || '';
-            const email = document.getElementById('walkInEmail')?.value || '';
-            const referralName = document.getElementById('distributorReferralSearch')?.value || document.getElementById('clientReferralName')?.value || '';
-            const referralCode = document.getElementById('distributorReferralValue')?.value || document.getElementById('clientReferralNB')?.value || '';
-            const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
-            const cartItems = getWalkInCartItems();
-            
-            const totals = cartItems.reduce((acc, item) => {
-                const qty = Number(item.quantity || item.qty || 1);
-                const price = Number(item.price || item.unitPrice || item.amount || 0);
-                const lineTotal = Number(item.total || item.amount || (qty * price));
-                const bv = Number(item.bv || item.totalBV || 0);
-                acc.subtotal += lineTotal;
-                acc.totalBV += bv;
-                return acc;
-            }, { subtotal: 0, totalBV: 0 });
-            
-            const branchId = saleRecordBranchHint();
-            const distributorReferral =
-                referralName || referralCode
-                    ? {
-                          name: referralName || null,
-                          code: referralCode || null,
-                      }
-                    : null;
-            
-            const saleRecord = {
-                id: `WS-${Date.now()}`,
-                customerName,
-                customerType,
-                phone,
-                email,
-                paymentMethod,
-                subtotal: totals.subtotal,
-                total: totals.subtotal,
-                totalBV: totals.totalBV,
-                items: cartItems,
-                createdAt: new Date().toISOString(),
-                branch: branchId,
-                branchId,
-                distributorReferral,
-                soldBy: (window.currentUser && (window.currentUser.username || window.currentUser.fullName)) || null,
-                synced: false,
-                syncAttempts: 0,
-                syncError: null,
-            };
-            
-            const history = getStoredWalkInSales();
-            history.unshift(saleRecord);
-            saveStoredWalkInSales(history.slice(0, 50));
-            
+
+        // --- Open modal ---
+        function showWalkInSaleModal() {
+            const modal = document.getElementById('walkInSaleModal');
+            if (!modal) { alert('Walk-in sale modal not found. Please refresh.'); return; }
+
+            // Reset state
+            _wiType = 'registered';
+            _wiRegClient = null;
+            _wiRefClient = null;
+            _wiPayment = 'cash';
+            _wiNoReferral = false;
+
+            // Reset UI
+            const form_resets = ['wiRegSearch','wiNewName','wiNewPhone','wiRefSearch','wiProductSearch'];
+            form_resets.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const hide_ids = ['wiRegSelected','wiRegDropdown','wiRefSelected','wiRefDropdown'];
+            hide_ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+            const noRef = document.getElementById('wiNoReferral');
+            if (noRef) noRef.checked = false;
+
+            // Clear cart
             if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
                 window.walkInCartStore.clear();
-            } else {
-                window.walkInCart = [];
-            }
-            
-            renderWalkInCart();
-            renderWalkInSalesList();
-            closeModal('walkInSaleConfirmationModal');
-            closeModal('walkInSaleModal');
-            alert('✅ Walk-in sale recorded locally. Data will sync once the backend is available.');
-        }
-        window.selectWalkInPaymentMethod = selectWalkInPaymentMethod;
-        window.renderWalkInCart = renderWalkInCart;
-        window.renderWalkInSalesList = renderWalkInSalesList;
-        window.showWalkInSaleConfirmation = showWalkInSaleConfirmation;
-        window.confirmWalkInSale = confirmWalkInSale;
-        
-        let walkInSyncInProgress = false;
-        async function syncWalkInSalesToBackend({ force = false } = {}) {
-            if (walkInSyncInProgress && !force) return 0;
-            const sales = getStoredWalkInSales();
-            const pending = sales.filter(sale => !sale.synced);
-            if (!pending.length) {
-                return 0;
-            }
-            
-            walkInSyncInProgress = true;
-            let syncedCount = 0;
-            
-            for (const sale of pending) {
-                const branchId =
-                    sale.branchId ||
-                    sale.branch ||
-                    saleRecordBranchHint() ||
-                    null;
-                
-                if (!branchId) {
-                    sale.syncError = 'Missing branch';
-                    sale.syncAttempts = (sale.syncAttempts || 0) + 1;
-                    continue;
-                }
-                
-                const payload = {
-                    id: sale.id,
-                    branch: branchId,
-                    branchId,
-                    saleNumber: sale.id,
-                    customerName: sale.customerName,
-                    customerType: sale.customerType || 'customer',
-                    phone: sale.phone || '',
-                    email: sale.email || '',
-                    paymentMethod: sale.paymentMethod || 'cash',
-                    subtotal: sale.subtotal || sale.total || 0,
-                    total: sale.total || sale.subtotal || 0,
-                    totalBV: sale.totalBV || 0,
-                    discount: sale.discount || 0,
-                    tax: sale.tax || 0,
-                    products: Array.isArray(sale.items) ? sale.items : [],
-                    timestamp: sale.createdAt,
-                    soldBy: sale.soldBy || (window.currentUser && (window.currentUser.username || window.currentUser.fullName)) || null,
-                    distributorReferral: sale.distributorReferral || null,
-                    metadata: {
-                        source: 'walkin-offline',
-                        syncAttempts: sale.syncAttempts || 0,
-                    },
-                };
-                
-                try {
-                    const response = await fetch('/api/branch/walkin-sales', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ sale: payload }),
-                    });
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    const data = await response.json().catch(() => null);
-                    sale.synced = true;
-                    sale.syncedAt = new Date().toISOString();
-                    sale.serverId = data?.sale?.id || sale.serverId || payload.id;
-                    sale.syncError = null;
-                    syncedCount += 1;
-                } catch (error) {
-                    sale.synced = false;
-                    sale.syncError = error.message || 'Sync failed';
-                    sale.syncAttempts = (sale.syncAttempts || 0) + 1;
-                    console.warn('Walk-in sale sync failed:', sale.id, error);
-                }
-            }
-            
-            saveStoredWalkInSales(sales);
-            renderWalkInSalesList();
-            walkInSyncInProgress = false;
-            return syncedCount;
-        }
-        window.syncWalkInSalesToBackend = syncWalkInSalesToBackend;
-        
-        // =============================================================================
-        // =============================================================================
-        // DISPENSER PORTAL - Walk-in Sales Functions
-        // =============================================================================
-        
-        function showWalkInSaleModal(saleType = 'customer') {
-            console.log('🛒 Opening walk-in sale modal:', saleType);
-            
-            // Open the existing walk-in sale modal
-            const modal = document.getElementById('walkInSaleModal');
-            if (modal) {
-                modal.style.display = 'block';
-                
-                // Reset form fields first
-                const form = document.getElementById('walkInSaleForm');
-                if (form) {
-                    form.reset();
-                }
-                
-                // Set customer type based on saleType parameter
-                const customerTypeSelect = document.getElementById('walkInCustomerType');
-                if (customerTypeSelect) {
-                    customerTypeSelect.value = saleType || 'customer';
-                    // Trigger change event to show/hide referral fields
-                    if (typeof onCustomerTypeChange === 'function') {
-                        onCustomerTypeChange();
-                    }
-                }
-                
-                if (typeof onCustomerTypeChange === 'function') {
-                    onCustomerTypeChange();
-                }
-                
-                const referralSearch = document.getElementById('distributorReferralSearch');
-                const referralValue = document.getElementById('distributorReferralValue');
-                const selectedInfo = document.getElementById('selectedDistributorInfo');
-                const noReferralCheckbox = document.getElementById('noReferralCheckbox');
-                if (referralSearch) referralSearch.value = '';
-                if (referralValue) referralValue.value = '';
-                if (selectedInfo) selectedInfo.style.display = 'none';
-                if (noReferralCheckbox) noReferralCheckbox.checked = false;
-                
-                // Clear cart
-                if (typeof window.walkInCartStore !== 'undefined' && typeof window.walkInCartStore.clear === 'function') {
-                    window.walkInCartStore.clear();
-                }
-                
-                // Initialize/refresh product list
-                if (typeof loadWalkInProducts === 'function') {
-                    loadWalkInProducts();
-                } else if (typeof refreshWalkInProductsList === 'function') {
-                    refreshWalkInProductsList();
-                }
-                
-                // Initialize/refresh distributor insights
-                if (typeof updateWalkInDistributorInsights === 'function') {
-                    updateWalkInDistributorInsights();
-                }
-                
-                selectWalkInPaymentMethod('cash');
-                renderWalkInCart();
-                renderWalkInSalesList();
-                
-                console.log('✅ Walk-in sale modal opened successfully');
-            } else {
-                console.error('❌ Walk-in sale modal not found (id: walkInSaleModal)');
-                alert('Walk-in sale form is not available. Please refresh the page and try again.');
-            }
-        }
-        
-        // Close modal helper function (if not already defined)
-        if (typeof closeModal !== 'function') {
-            window.closeModal = function(modalId) {
-                const modal = document.getElementById(modalId);
-                if (modal) {
-                    modal.style.display = 'none';
-                }
-            };
-        }
-        
-        // Make function globally accessible
-        window.showWalkInSaleModal = showWalkInSaleModal;
+            } else { window.walkInCart = []; }
 
-        // Load products into the walk-in sale modal from PRICE_LIST + branch inventory
-        function loadWalkInProducts(searchTerm) {
-            const container = document.getElementById('walkInProductsList');
-            if (!container) return;
-            const products = (Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0) ? window.PRICE_LIST : [];
-            console.log('[WalkIn] loadWalkInProducts called, products:', products.length, '| PRICE_LIST on window:', Array.isArray(window.PRICE_LIST) ? window.PRICE_LIST.length : 'none');
-            if (products.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">No products available. Please ensure stock has been loaded.</p>';
+            wiSetCustomerType('registered');
+            wiRenderProducts('');
+            wiRenderCart();
+            wiSetPayment('cash');
+
+            modal.style.display = 'block';
+            console.log('[WI] Walk-in sale modal opened');
+        }
+
+        // --- Customer type toggle ---
+        function wiSetCustomerType(type) {
+            _wiType = type;
+            const regBtn = document.getElementById('wiTypeRegistered');
+            const newBtn = document.getElementById('wiTypeNew');
+            const regPanel = document.getElementById('wiRegisteredPanel');
+            const newPanel = document.getElementById('wiNewPanel');
+            const priceMode = document.getElementById('wiPriceMode');
+
+            if (type === 'registered') {
+                if (regBtn) { regBtn.style.border='2px solid #3498db'; regBtn.style.background='#ebf5fb'; regBtn.style.color='#1a5276'; }
+                if (newBtn) { newBtn.style.border='2px solid #ddd'; newBtn.style.background='#fff'; newBtn.style.color='#444'; }
+                if (regPanel) regPanel.style.display = 'block';
+                if (newPanel) newPanel.style.display = 'none';
+                if (priceMode) { priceMode.textContent = 'DP Prices'; priceMode.style.background='#e8f5e9'; priceMode.style.color='#27ae60'; }
+            } else {
+                if (newBtn) { newBtn.style.border='2px solid #f39c12'; newBtn.style.background='#fef9e7'; newBtn.style.color='#784212'; }
+                if (regBtn) { regBtn.style.border='2px solid #ddd'; regBtn.style.background='#fff'; regBtn.style.color='#444'; }
+                if (newPanel) newPanel.style.display = 'block';
+                if (regPanel) regPanel.style.display = 'none';
+                if (priceMode) { priceMode.textContent = 'CP Prices'; priceMode.style.background='#fef3c7'; priceMode.style.color='#92400e'; }
+            }
+            // Re-render products with correct price tier
+            const searchEl = document.getElementById('wiProductSearch');
+            wiRenderProducts(searchEl ? searchEl.value : '');
+        }
+
+        // --- Search registered clients ---
+        function wiSearchRegistered(term) {
+            const dd = document.getElementById('wiRegDropdown');
+            if (!dd) return;
+            const q = (term || '').trim().toLowerCase();
+            if (q.length < 1) { dd.style.display = 'none'; return; }
+
+            const list = Array.isArray(window._allCheckupDistributors) ? window._allCheckupDistributors : [];
+            const matches = list.filter(d =>
+                (d.name||'').toLowerCase().includes(q) ||
+                (d.code||'').toLowerCase().includes(q) ||
+                (d.nb||'').toLowerCase().includes(q)
+            ).slice(0, 12);
+
+            if (!matches.length) { dd.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:0.85rem;">No results</div>'; dd.style.display = 'block'; return; }
+
+            dd.innerHTML = matches.map(d => `
+                <div onclick="wiSelectRegistered('${(d.code||d.nb||'').replace(/'/g,"\'")}','${(d.name||'').replace(/'/g,"\'")}','${(d.phone||'').replace(/'/g,"\'")}',this)"
+                    style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:0.88rem;"
+                    onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">
+                    <strong style="color:#1e293b;">${d.name||'Unknown'}</strong>
+                    <span style="color:#64748b;margin-left:8px;font-size:0.8rem;">NB: ${d.code||d.nb||'—'}</span>
+                    ${d.phone ? '<span style="color:#94a3b8;float:right;font-size:0.8rem;">'+d.phone+'</span>' : ''}
+                </div>`).join('');
+            dd.style.display = 'block';
+        }
+
+        function wiSelectRegistered(code, name, phone) {
+            _wiRegClient = { code, name, phone };
+            const dd = document.getElementById('wiRegDropdown');
+            const srch = document.getElementById('wiRegSearch');
+            const sel = document.getElementById('wiRegSelected');
+            if (dd) dd.style.display = 'none';
+            if (srch) srch.value = name;
+            if (sel) {
+                const n = document.getElementById('wiRegSelectedName');
+                const nb = document.getElementById('wiRegSelectedNB');
+                const ph = document.getElementById('wiRegSelectedPhone');
+                if (n) n.textContent = name;
+                if (nb) nb.textContent = code || '—';
+                if (ph) ph.textContent = phone || '—';
+                sel.style.display = 'block';
+            }
+        }
+
+        function wiClearRegistered() {
+            _wiRegClient = null;
+            const srch = document.getElementById('wiRegSearch');
+            const sel = document.getElementById('wiRegSelected');
+            if (srch) srch.value = '';
+            if (sel) sel.style.display = 'none';
+        }
+
+        // --- Search referral distributors ---
+        function wiSearchReferral(term) {
+            const dd = document.getElementById('wiRefDropdown');
+            if (!dd) return;
+            const q = (term || '').trim().toLowerCase();
+            if (q.length < 1) { dd.style.display = 'none'; return; }
+
+            const list = Array.isArray(window._allCheckupDistributors) ? window._allCheckupDistributors : [];
+            const matches = list.filter(d =>
+                (d.name||'').toLowerCase().includes(q) ||
+                (d.code||'').toLowerCase().includes(q)
+            ).slice(0, 12);
+
+            if (!matches.length) { dd.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:0.85rem;">No results</div>'; dd.style.display = 'block'; return; }
+
+            dd.innerHTML = matches.map(d => `
+                <div onclick="wiSelectReferral('${(d.code||'').replace(/'/g,"\'")}','${(d.name||'').replace(/'/g,"\'")}',this)"
+                    style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:0.88rem;"
+                    onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">
+                    <strong style="color:#1e293b;">${d.name||'Unknown'}</strong>
+                    <span style="color:#64748b;margin-left:8px;font-size:0.8rem;">NB: ${d.code||'—'}</span>
+                </div>`).join('');
+            dd.style.display = 'block';
+        }
+
+        function wiSelectReferral(code, name) {
+            _wiRefClient = { code, name };
+            const dd = document.getElementById('wiRefDropdown');
+            const srch = document.getElementById('wiRefSearch');
+            const sel = document.getElementById('wiRefSelected');
+            if (dd) dd.style.display = 'none';
+            if (srch) srch.value = name;
+            if (sel) {
+                const n = document.getElementById('wiRefSelectedName');
+                const nb = document.getElementById('wiRefSelectedNB');
+                if (n) n.textContent = name;
+                if (nb) nb.textContent = code || '—';
+                sel.style.display = 'block';
+            }
+        }
+
+        function wiClearReferral() {
+            _wiRefClient = null;
+            const srch = document.getElementById('wiRefSearch');
+            const sel = document.getElementById('wiRefSelected');
+            if (srch) srch.value = '';
+            if (sel) sel.style.display = 'none';
+            const noRef = document.getElementById('wiNoReferral');
+            if (noRef) noRef.checked = false;
+            _wiNoReferral = false;
+        }
+
+        function wiToggleNoReferral(checked) {
+            _wiNoReferral = checked;
+            const refArea = document.getElementById('wiRefSearch');
+            const sel = document.getElementById('wiRefSelected');
+            if (checked) {
+                _wiRefClient = null;
+                if (refArea) { refArea.value = ''; refArea.disabled = true; refArea.style.opacity='0.5'; }
+                if (sel) sel.style.display = 'none';
+            } else {
+                if (refArea) { refArea.disabled = false; refArea.style.opacity='1'; }
+            }
+        }
+
+        // --- Products ---
+        function wiFilterProducts(term) {
+            wiRenderProducts(term);
+        }
+
+        function wiRenderProducts(term) {
+            const grid = document.getElementById('wiProductGrid');
+            if (!grid) return;
+
+            const products = Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0
+                ? window.PRICE_LIST
+                : [];
+
+            if (!products.length) {
+                grid.innerHTML = '<p style="color:#94a3b8;grid-column:1/-1;text-align:center;padding:20px;">No products loaded yet</p>';
                 return;
             }
-            const term = (searchTerm || '').toLowerCase();
-            const filtered = term ? products.filter(p => (p.description||'').toLowerCase().includes(term)) : products;
-            if (filtered.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:15px;">No products match your search.</p>';
+
+            const q = (term || '').toLowerCase();
+            const filtered = q ? products.filter(p => (p.description||'').toLowerCase().includes(q)) : products;
+
+            if (!filtered.length) {
+                grid.innerHTML = '<p style="color:#94a3b8;grid-column:1/-1;text-align:center;padding:16px;">No products match "' + term + '"</p>';
                 return;
             }
-            container.innerHTML = [
-                '<div style="margin-bottom:8px;"><input type="text" placeholder="Filter products…" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;" oninput="loadWalkInProducts(this.value)"></div>',
-                '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px;">',
-                ...filtered.slice(0, 80).map(p => {
-                    const name = p.description || 'Unknown';
-                    const price = p.dp || p.cp || 0;
-                    const safeId = name.replace(/[^a-z0-9]/gi, '_');
-                    return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;cursor:pointer;" onclick="addToWalkInCart('${name.replace(/'/g,"\\'")}',${price})">
-                        <div style="font-size:0.85rem;font-weight:600;color:#1e293b;margin-bottom:4px;">${name}</div>
-                        <div style="font-size:0.8rem;color:#27ae60;font-weight:bold;">N$ ${Number(price).toFixed(2)}</div>
-                        <button type="button" style="margin-top:6px;width:100%;padding:4px;background:#3498db;color:white;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">+ Add to Cart</button>
-                    </div>`;
-                }),
-                '</div>'
-            ].join('');
-        }
-        window.loadWalkInProducts = loadWalkInProducts;
 
-        // Add product to the walk-in cart
-        function addToWalkInCart(productName, price) {
+            grid.innerHTML = filtered.slice(0, 80).map((p, idx) => {
+                const name = p.description || 'Product';
+                const price = _wiType === 'registered' ? (p.dp || 0) : (p.cp || p.dp || 0);
+                const bv = p.bv || 0;
+                const safeName = name.replace(/'/g, "\'").replace(/"/g, '&quot;');
+                return `<div onclick="wiAddToCart('${safeName}',${price},${bv})"
+                    style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;cursor:pointer;transition:box-shadow .15s;"
+                    onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+                    <div style="font-size:0.82rem;font-weight:600;color:#1e293b;margin-bottom:4px;line-height:1.3;">${name}</div>
+                    <div style="font-size:0.85rem;color:#27ae60;font-weight:700;">${_wiFmt(price)}</div>
+                    ${bv > 0 ? '<div style="font-size:0.72rem;color:#f39c12;">BV: '+bv+'</div>' : ''}
+                    <div style="margin-top:6px;text-align:center;padding:4px;background:#3498db;color:#fff;border-radius:5px;font-size:0.75rem;font-weight:600;">+ Add</div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- Cart ---
+        function wiAddToCart(name, price, bv) {
             if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
                 window.walkInCartStore.update(cart => {
-                    const existing = cart.find(i => i.name === productName);
-                    if (existing) {
-                        existing.quantity = (existing.quantity || 1) + 1;
-                        existing.total = existing.quantity * existing.price;
-                    } else {
-                        cart.push({ name: productName, price: price, quantity: 1, total: price });
-                    }
+                    const ex = cart.find(i => i.name === name);
+                    if (ex) { ex.quantity = (ex.quantity||1) + 1; ex.total = ex.quantity * ex.price; }
+                    else { cart.push({ name, price: Number(price), bv: Number(bv||0), quantity: 1, total: Number(price) }); }
                 });
             } else {
                 if (!Array.isArray(window.walkInCart)) window.walkInCart = [];
-                const existing = window.walkInCart.find(i => i.name === productName);
-                if (existing) { existing.quantity = (existing.quantity || 1) + 1; existing.total = existing.quantity * existing.price; }
-                else { window.walkInCart.push({ name: productName, price: price, quantity: 1, total: price }); }
+                const ex = window.walkInCart.find(i => i.name === name);
+                if (ex) { ex.quantity = (ex.quantity||1) + 1; ex.total = ex.quantity * ex.price; }
+                else { window.walkInCart.push({ name, price: Number(price), bv: Number(bv||0), quantity: 1, total: Number(price) }); }
             }
-            console.log('[WalkIn] addToWalkInCart:', productName, price, '| cart size:', window.walkInCartStore ? window.walkInCartStore.get().length : (window.walkInCart||[]).length);
-            if (typeof renderWalkInCart === 'function') renderWalkInCart();
+            wiRenderCart();
         }
+
+        function wiUpdateQty(idx, delta) {
+            const getCart = () => window.walkInCartStore && typeof window.walkInCartStore.get === 'function'
+                ? window.walkInCartStore.get() : (window.walkInCart || []);
+            const cart = getCart();
+            if (!cart[idx]) return;
+            const newQty = (cart[idx].quantity||1) + delta;
+            if (newQty <= 0) { wiRemoveFromCart(idx); return; }
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(c => { if (c[idx]) { c[idx].quantity = newQty; c[idx].total = newQty * c[idx].price; } });
+            } else if (window.walkInCart) {
+                window.walkInCart[idx].quantity = newQty;
+                window.walkInCart[idx].total = newQty * window.walkInCart[idx].price;
+            }
+            wiRenderCart();
+        }
+
+        function wiRemoveFromCart(idx) {
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(c => { c.splice(idx, 1); });
+            } else if (window.walkInCart) {
+                window.walkInCart.splice(idx, 1);
+            }
+            wiRenderCart();
+        }
+
+        function wiGetCart() {
+            if (window.walkInCartStore && typeof window.walkInCartStore.get === 'function') {
+                try { return [...(window.walkInCartStore.get()||[])]; } catch(_) {}
+            }
+            return Array.isArray(window.walkInCart) ? [...window.walkInCart] : [];
+        }
+
+        function wiRenderCart() {
+            const body = document.getElementById('wiCartBody');
+            const totalEl = document.getElementById('wiCartTotal');
+            const bvEl = document.getElementById('wiCartBV');
+            const cart = wiGetCart();
+
+            if (!body) return;
+            if (!cart.length) {
+                body.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:18px 0;">Cart is empty — add products above</p>';
+                if (totalEl) totalEl.textContent = 'N$ 0.00';
+                if (bvEl) bvEl.textContent = '0.00';
+                return;
+            }
+
+            let total = 0, totalBV = 0;
+            body.innerHTML = cart.map((item, i) => {
+                const qty = item.quantity || 1;
+                const price = item.price || 0;
+                const lineTotal = qty * price;
+                const bv = (item.bv || 0) * qty;
+                total += lineTotal;
+                totalBV += bv;
+                return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                    <div style="flex:1;font-size:0.85rem;font-weight:600;color:#1e293b;">${item.name}</div>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <button type="button" onclick="wiUpdateQty(${i},-1)" style="width:26px;height:26px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:1rem;line-height:1;">−</button>
+                        <span style="min-width:24px;text-align:center;font-weight:600;">${qty}</span>
+                        <button type="button" onclick="wiUpdateQty(${i},1)" style="width:26px;height:26px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;font-size:1rem;line-height:1;">+</button>
+                    </div>
+                    <div style="min-width:80px;text-align:right;font-weight:700;color:#27ae60;font-size:0.88rem;">${_wiFmt(lineTotal)}</div>
+                    <button type="button" onclick="wiRemoveFromCart(${i})" style="border:none;background:none;color:#e74c3c;cursor:pointer;font-size:1.1rem;padding:0 4px;line-height:1;">×</button>
+                </div>`;
+            }).join('');
+
+            if (totalEl) totalEl.textContent = _wiFmt(total);
+            if (bvEl) bvEl.textContent = totalBV.toFixed(2);
+        }
+
+        // --- Payment ---
+        function wiSetPayment(method) {
+            _wiPayment = method;
+            const hidden = document.getElementById('wiPaymentMethod');
+            if (hidden) hidden.value = method;
+            ['cash','card','mobile','bank'].forEach(m => {
+                const btn = document.getElementById('wiPay_' + m);
+                if (!btn) return;
+                if (m === method) {
+                    btn.style.border = '2px solid #27ae60';
+                    btn.style.background = '#e8f5e9';
+                    btn.style.fontWeight = '700';
+                } else {
+                    btn.style.border = '2px solid #ddd';
+                    btn.style.background = '#fff';
+                    btn.style.fontWeight = '400';
+                }
+            });
+        }
+
+        // --- Review & Confirm ---
+        function wiReviewSale() {
+            // Validate
+            const cart = wiGetCart();
+            if (!cart.length) { alert('Please add at least one product to the cart before confirming.'); return; }
+
+            if (_wiType === 'registered' && !_wiRegClient) {
+                alert('Please search for and select the registered client, or switch to "New Customer".'); return;
+            }
+            if (_wiType === 'new') {
+                const nameEl = document.getElementById('wiNewName');
+                if (!nameEl || !nameEl.value.trim()) { alert('Please enter the customer name.'); nameEl && nameEl.focus(); return; }
+                if (!_wiNoReferral && !_wiRefClient) { alert('Please select a referring distributor, or tick "Customer has no referral".'); return; }
+            }
+
+            // Populate confirmation modal
+            const customerName = _wiType === 'registered'
+                ? (_wiRegClient ? _wiRegClient.name : '—')
+                : (document.getElementById('wiNewName')?.value?.trim() || 'Walk-in Customer');
+            const phone = _wiType === 'registered'
+                ? (_wiRegClient ? _wiRegClient.phone : '—')
+                : (document.getElementById('wiNewPhone')?.value?.trim() || '—');
+            const nbNum = _wiType === 'registered' ? (_wiRegClient ? _wiRegClient.code : '—') : '—';
+
+            const cfmName = document.getElementById('wiCfmName');
+            const cfmType = document.getElementById('wiCfmType');
+            const cfmNB   = document.getElementById('wiCfmNB');
+            const cfmPhone = document.getElementById('wiCfmPhone');
+            const cfmRefRow = document.getElementById('wiCfmRefRow');
+            const cfmRef  = document.getElementById('wiCfmRef');
+
+            if (cfmName) cfmName.textContent = customerName;
+            if (cfmType) cfmType.textContent = _wiType === 'registered' ? 'Registered Client (DP)' : 'New Customer (CP)';
+            if (cfmNB) cfmNB.textContent = nbNum;
+            if (cfmPhone) cfmPhone.textContent = phone;
+
+            if (_wiType === 'new' && _wiRefClient && !_wiNoReferral) {
+                if (cfmRefRow) cfmRefRow.style.display = 'block';
+                if (cfmRef) cfmRef.textContent = _wiRefClient.name + ' (NB: ' + _wiRefClient.code + ')';
+            } else {
+                if (cfmRefRow) cfmRefRow.style.display = 'none';
+            }
+
+            // Products
+            let total = 0, totalBV = 0;
+            const cfmProducts = document.getElementById('wiCfmProducts');
+            if (cfmProducts) {
+                cfmProducts.innerHTML = cart.map(item => {
+                    const qty = item.quantity || 1;
+                    const lineTotal = qty * (item.price||0);
+                    const bv = (item.bv||0) * qty;
+                    total += lineTotal;
+                    totalBV += bv;
+                    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e2e8f0;">
+                        <div><strong>${item.name}</strong> <span style="color:#94a3b8;">×${qty}</span></div>
+                        <div style="font-weight:600;color:#27ae60;">${_wiFmt(lineTotal)}</div>
+                    </div>`;
+                }).join('');
+            }
+            const cfmTotal = document.getElementById('wiCfmTotal');
+            const cfmBV = document.getElementById('wiCfmBV');
+            const cfmPayment = document.getElementById('wiCfmPayment');
+            if (cfmTotal) cfmTotal.textContent = _wiFmt(total);
+            if (cfmBV) cfmBV.textContent = totalBV.toFixed(2) + ' BV';
+            if (cfmPayment) cfmPayment.textContent = _WI_PAY_LABELS[_wiPayment] || _wiPayment;
+
+            const cfmModal = document.getElementById('walkInSaleConfirmationModal');
+            if (cfmModal) cfmModal.style.display = 'block';
+        }
+
+        // --- Complete Sale ---
+        function wiConfirmSale() {
+            const cart = wiGetCart();
+            const customerName = _wiType === 'registered'
+                ? (_wiRegClient ? _wiRegClient.name : 'Registered Client')
+                : (document.getElementById('wiNewName')?.value?.trim() || 'Walk-in Customer');
+            const phone = _wiType === 'registered'
+                ? (_wiRegClient?.phone || '')
+                : (document.getElementById('wiNewPhone')?.value?.trim() || '');
+
+            let total = 0, totalBV = 0;
+            cart.forEach(item => {
+                const qty = item.quantity || 1;
+                total += qty * (item.price||0);
+                totalBV += (item.bv||0) * qty;
+            });
+
+            const saleRecord = {
+                id: 'WS-' + Date.now(),
+                customerName,
+                customerType: _wiType,
+                nbNumber: _wiType === 'registered' ? (_wiRegClient?.code || '') : '',
+                phone,
+                referral: (_wiType === 'new' && _wiRefClient && !_wiNoReferral)
+                    ? { name: _wiRefClient.name, code: _wiRefClient.code } : null,
+                paymentMethod: _wiPayment,
+                items: cart.map(i => ({ ...i })),
+                subtotal: total,
+                total,
+                totalBV,
+                branch: (typeof saleRecordBranchHint === 'function') ? saleRecordBranchHint() : '',
+                soldBy: window.currentUser ? (window.currentUser.username || window.currentUser.fullName || '') : '',
+                createdAt: new Date().toISOString(),
+                synced: false
+            };
+
+            // Save to local storage
+            const key = 'dynapharm_walkin_sales';
+            let history = [];
+            try { history = JSON.parse(localStorage.getItem(key) || '[]'); } catch(_) {}
+            history.unshift(saleRecord);
+            try { localStorage.setItem(key, JSON.stringify(history.slice(0, 100))); } catch(_) {}
+
+            // Clear cart
+            if (window.walkInCartStore && typeof window.walkInCartStore.clear === 'function') {
+                window.walkInCartStore.clear();
+            } else { window.walkInCart = []; }
+
+            // Refresh the walk-in sales list in the portal (if function exists)
+            if (typeof renderWalkInSalesList === 'function') renderWalkInSalesList();
+            if (typeof refreshWalkInSalesList === 'function') refreshWalkInSalesList();
+
+            closeModal('walkInSaleConfirmationModal');
+            closeModal('walkInSaleModal');
+            wiRenderCart();
+
+            const label = _WI_PAY_LABELS[_wiPayment] || _wiPayment;
+            const ref = saleRecord.referral ? '\nReferral: ' + saleRecord.referral.name : '';
+            alert('✅ Sale recorded!\nCustomer: ' + customerName + '\nTotal: ' + _wiFmt(total) + ' | BV: ' + totalBV.toFixed(2) + ref);
+            console.log('[WI] Sale completed:', saleRecord);
+        }
+
+        // Legacy aliases (keep old function names working for any HTML that still calls them)
+        function showWalkInSaleConfirmation() { wiReviewSale(); }
+        function confirmWalkInSale() { wiConfirmSale(); }
+        function addToWalkInCart(name, price, bv) { wiAddToCart(name, price, bv||0); }
+        function renderWalkInCart() { wiRenderCart(); }
+        function loadWalkInProducts(term) { wiRenderProducts(term||''); }
+
+        // Export to window
+        window.showWalkInSaleModal = showWalkInSaleModal;
+        window.wiSetCustomerType = wiSetCustomerType;
+        window.wiSearchRegistered = wiSearchRegistered;
+        window.wiSelectRegistered = wiSelectRegistered;
+        window.wiClearRegistered = wiClearRegistered;
+        window.wiSearchReferral = wiSearchReferral;
+        window.wiSelectReferral = wiSelectReferral;
+        window.wiClearReferral = wiClearReferral;
+        window.wiToggleNoReferral = wiToggleNoReferral;
+        window.wiFilterProducts = wiFilterProducts;
+        window.wiAddToCart = wiAddToCart;
+        window.wiUpdateQty = wiUpdateQty;
+        window.wiRemoveFromCart = wiRemoveFromCart;
+        window.wiRenderCart = wiRenderCart;
+        window.wiSetPayment = wiSetPayment;
+        window.wiReviewSale = wiReviewSale;
+        window.wiConfirmSale = wiConfirmSale;
+        window.showWalkInSaleConfirmation = showWalkInSaleConfirmation;
+        window.confirmWalkInSale = confirmWalkInSale;
         window.addToWalkInCart = addToWalkInCart;
+        window.renderWalkInCart = renderWalkInCart;
+        window.loadWalkInProducts = loadWalkInProducts;
+
         
         // =============================================================================
         
