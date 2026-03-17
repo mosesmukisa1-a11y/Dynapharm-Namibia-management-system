@@ -37250,7 +37250,8 @@ async function reverseLastPrescriptionPayment(reportId){
         function loadWalkInProducts(searchTerm) {
             const container = document.getElementById('walkInProductsList');
             if (!container) return;
-            const products = (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) ? PRICE_LIST : [];
+            const products = (Array.isArray(window.PRICE_LIST) && window.PRICE_LIST.length > 0) ? window.PRICE_LIST : [];
+            console.log('[WalkIn] loadWalkInProducts called, products:', products.length, '| PRICE_LIST on window:', Array.isArray(window.PRICE_LIST) ? window.PRICE_LIST.length : 'none');
             if (products.length === 0) {
                 container.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">No products available. Please ensure stock has been loaded.</p>';
                 return;
@@ -37281,15 +37282,23 @@ async function reverseLastPrescriptionPayment(reportId){
 
         // Add product to the walk-in cart
         function addToWalkInCart(productName, price) {
-            if (typeof window.walkInCartStore !== 'undefined' && typeof window.walkInCartStore.add === 'function') {
-                window.walkInCartStore.add({ name: productName, price: price, quantity: 1 });
+            if (window.walkInCartStore && typeof window.walkInCartStore.update === 'function') {
+                window.walkInCartStore.update(cart => {
+                    const existing = cart.find(i => i.name === productName);
+                    if (existing) {
+                        existing.quantity = (existing.quantity || 1) + 1;
+                        existing.total = existing.quantity * existing.price;
+                    } else {
+                        cart.push({ name: productName, price: price, quantity: 1, total: price });
+                    }
+                });
             } else {
-                // Fallback: use window.walkInCart array directly
                 if (!Array.isArray(window.walkInCart)) window.walkInCart = [];
                 const existing = window.walkInCart.find(i => i.name === productName);
-                if (existing) { existing.quantity = (existing.quantity||1) + 1; }
+                if (existing) { existing.quantity = (existing.quantity || 1) + 1; existing.total = existing.quantity * existing.price; }
                 else { window.walkInCart.push({ name: productName, price: price, quantity: 1, total: price }); }
             }
+            console.log('[WalkIn] addToWalkInCart:', productName, price, '| cart size:', window.walkInCartStore ? window.walkInCartStore.get().length : (window.walkInCart||[]).length);
             if (typeof renderWalkInCart === 'function') renderWalkInCart();
         }
         window.addToWalkInCart = addToWalkInCart;
