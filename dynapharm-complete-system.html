@@ -1455,6 +1455,146 @@
 #stockContent .stock-hub-tab-row--secondary .tab-button.active {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(99, 102, 241, 0.95));
 }
+
+/* ── Full-width layout (no sidebar) ─────────────────────────── */
+#stockContent .stock-layout--full {
+    display: block;
+}
+#stockContent .stock-main--full {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ── Quick Action Strip ──────────────────────────────────────── */
+#stockContent .stock-quick-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    border-radius: 20px;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    box-shadow: 0 8px 32px rgba(15, 23, 42, 0.18);
+}
+#stockContent .stock-strip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 50px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.07);
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
+    white-space: nowrap;
+}
+#stockContent .stock-strip-btn:hover {
+    background: rgba(59, 130, 246, 0.35);
+    border-color: rgba(96, 165, 250, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.25);
+    color: #ffffff;
+}
+#stockContent .stock-strip-btn:active {
+    transform: translateY(0);
+}
+
+/* ── Pill Navigation Bar ─────────────────────────────────────── */
+#stockContent .stock-pill-nav-wrapper {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid rgba(15, 23, 42, 0.09);
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.09);
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(37, 99, 235, 0.3) transparent;
+    padding: 14px 16px;
+}
+#stockContent .stock-pill-nav-wrapper::-webkit-scrollbar {
+    height: 4px;
+}
+#stockContent .stock-pill-nav-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+}
+#stockContent .stock-pill-nav-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(37, 99, 235, 0.3);
+    border-radius: 999px;
+}
+#stockContent .stock-pill-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: max-content;
+}
+#stockContent .stock-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 15px;
+    border-radius: 50px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    background: rgba(15, 23, 42, 0.04);
+    color: #374151;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.15s, box-shadow 0.18s;
+    white-space: nowrap;
+}
+#stockContent .stock-pill:hover {
+    background: rgba(37, 99, 235, 0.09);
+    border-color: rgba(37, 99, 235, 0.3);
+    color: #1d4ed8;
+    transform: translateY(-1px);
+}
+#stockContent .stock-pill.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+    transform: translateY(-1px);
+}
+#stockContent .stock-pill--legacy {
+    background: rgba(100, 116, 139, 0.07);
+    color: #64748b;
+    border-color: rgba(100, 116, 139, 0.2);
+    font-style: italic;
+}
+#stockContent .stock-pill--legacy:hover {
+    background: rgba(100, 116, 139, 0.15);
+    border-color: rgba(100, 116, 139, 0.35);
+    color: #475569;
+}
+#stockContent .stock-pill--legacy.active {
+    background: linear-gradient(135deg, #64748b, #475569);
+    color: #ffffff;
+    border-color: transparent;
+}
+#stockContent .stock-pill-group-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    padding: 0 4px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+#stockContent .stock-pill-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(15, 23, 42, 0.1);
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin: 0 4px;
+}
+
 #stockContent .hub-tab-stack {
     display: flex;
     flex-direction: column;
@@ -7254,13 +7394,14 @@
                 tab.style.display = 'none';
             });
             
-            // Remove active class from all tab buttons, workflow tabs, quick actions, and sidebar links
+            // Remove active class from all tab buttons, workflow tabs, quick actions, sidebar links, and pill nav
             const allButtons = stockContent.querySelectorAll(
                 '.stock-hub-tab-row .tab-button, ' +
                 '.stock-hub-journey .workflow-tab, ' +
                 '.stock-quick-btn, ' +
                 '.stock-sidebar-links button, ' +
-                '.hub-action'
+                '.hub-action, ' +
+                '.stock-pill'
             );
             allButtons.forEach(btn => {
                 btn.classList.remove('active');
@@ -7295,9 +7436,9 @@
                 }
                 
                 // Ensure stock-main section is visible
-                const stockMain = stockContent.querySelector('.stock-main');
+                const stockMain = stockContent.querySelector('.stock-main, .stock-main--full');
                 if (stockMain) {
-                    stockMain.style.display = 'block';
+                    stockMain.style.display = 'flex';
                     stockMain.style.visibility = 'visible';
                 }
                 
@@ -12251,21 +12392,13 @@
                     <button id="stockStaffTabBtn" class="btn hub-toggle-btn" onclick="toggleStockView('staff')">👤 Staff Services</button>
                 </nav>
 
-                <div class="stock-layout">
-                    <aside class="stock-sidebar">
+                <div class="stock-layout stock-layout--full">
+                    <!-- Sidebar removed: workflow journey was duplicate of tab nav -->
+                    <div style="display:none;" id="stockWorkflowNav"></div>
+                    <aside class="stock-sidebar" style="display:none;">
                         <div class="stock-sidebar-card">
                             <div class="stock-sidebar-card__header">
-                                <h4>Workflow Journey</h4>
-                                <p>Navigate each stage of the national stock lifecycle.</p>
-                            </div>
-                            <div id="stockWorkflowNav" class="stock-workflow-stack stock-hub-journey">
-                                <button type="button" class="tab-button workflow-tab" data-tab="overview" onclick="showStockTab('overview')">1️⃣ Overview & KPIs</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="countryImport" onclick="showStockTab('countryImport')">2️⃣ Country Import & QA</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="warehouseDistribution" onclick="showStockTab('warehouseDistribution')">3️⃣ Warehouses & Putaway</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="branchDistribution" onclick="showStockTab('branchDistribution')">4️⃣ Branch Distribution</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="transfers" onclick="showStockTab('transfers')">5️⃣ Transfers & Approvals</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="orders" onclick="showStockTab('orders')">6️⃣ Orders & Procurement</button>
-                                <button type="button" class="tab-button workflow-tab" data-tab="distribution" onclick="showStockTab('distribution')">7️⃣ Distribution History</button>
+                                <h4>hidden</h4>
                             </div>
                         </div>
                         <div class="stock-sidebar-card">
@@ -12337,34 +12470,68 @@
                             </ul>
                         </div>
                     </aside>
-                    <section class="stock-main">
-                        <div class="stock-tab-nav">
-                            <!-- Stock Management Tabs -->
-                            <nav class="stock-hub-tab-row">
-                                <button class="tab-button active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
-                                <button class="tab-button" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
-                                <button class="tab-button" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse Distribution</button>
-                                <button class="tab-button" onclick="showStockTab('branchDistribution')" id="stockTabBranchDistribution">🏬 Branch Distribution</button>
-                                <button class="tab-button" onclick="showStockTab('transfers')" id="stockTabTransfers">🔄 Transfers</button>
-                                <button class="tab-button" onclick="showStockTab('sharing')" id="stockTabSharing">🤝 Shop & Warehouse Sharing</button>
-                                <button class="tab-button" onclick="showStockTab('orders')" id="stockTabOrders">📋 Orders (Auto & Manual)</button>
-                                <button class="tab-button" onclick="showStockTab('invoices')" id="stockTabInvoices">🧾 Invoices</button>
-                                <button class="tab-button" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Country Inventory</button>
-                                <button class="tab-button" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time Sync</button>
-                            </nav>
+                    <section class="stock-main stock-main--full">
 
-                            <nav class="stock-hub-tab-row stock-hub-tab-row--secondary">
-                                <span class="stock-hub-tab-label">Advanced Tools:</span>
-                                <button class="tab-button" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode &amp; Scans</button>
-                                <button class="tab-button" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder Plans</button>
-                                <button class="tab-button" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch &amp; Returns</button>
-                                <button class="tab-button" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
-                                <button class="tab-button" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Legacy Country</button>
-                                <button class="tab-button" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Legacy Windhoek</button>
-                                <button class="tab-button" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Legacy Ondangwa</button>
-                                <button class="tab-button" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Legacy Distribution</button>
-                                <button class="tab-button" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Inventory Log</button>
-                            </nav>
+                        <!-- Quick Action Strip -->
+                        <div class="stock-quick-strip">
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'countryImport')" data-stock-action="countryImport" data-import-mode="prompt">
+                                <span>📥</span><span>Import Stock</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'countryImport')" data-stock-action="countryImport" data-import-mode="manual">
+                                <span>✍️</span><span>Manual Intake</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'warehouseDistribution')" data-stock-action="warehouseDistribution">
+                                <span>🏢</span><span>Refill Warehouses</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'branchDistribution')" data-stock-action="branchDistribution">
+                                <span>🏬</span><span>Branch Allocation</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'transfers')" data-stock-action="transfers">
+                                <span>🔄</span><span>New Transfer</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'countryInventory')" data-stock-action="countryInventory">
+                                <span>🌍</span><span>View Inventory</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'barcode')" data-stock-action="barcode">
+                                <span>🏷️</span><span>Barcode Scans</span>
+                            </button>
+                            <button type="button" class="stock-strip-btn" onclick="handleStockQuickAction(event,'reorder')" data-stock-action="reorder">
+                                <span>⚠️</span><span>Reorder Plans</span>
+                            </button>
+                        </div>
+
+                        <!-- Consolidated Single Tab Navigation -->
+                        <div class="stock-tab-nav">
+                            <div class="stock-pill-nav-wrapper">
+                                <nav class="stock-pill-nav" id="stockPillNav">
+                                    <span class="stock-pill-group-label">Core</span>
+                                    <button class="stock-pill active" onclick="showStockTab('overview')" id="stockTabOverview">📊 Overview</button>
+                                    <button class="stock-pill" onclick="showStockTab('countryImport')" id="stockTabCountryImport">📥 Country Import</button>
+                                    <button class="stock-pill" onclick="showStockTab('warehouseDistribution')" id="stockTabWarehouseDistribution">🏢 Warehouse</button>
+                                    <button class="stock-pill" onclick="showStockTab('branchDistribution')" id="stockTabBranchDistribution">🏬 Branch</button>
+                                    <button class="stock-pill" onclick="showStockTab('transfers')" id="stockTabTransfers">🔄 Transfers</button>
+                                    <button class="stock-pill" onclick="showStockTab('orders')" id="stockTabOrders">📋 Orders</button>
+                                    <button class="stock-pill" onclick="showStockTab('sharing')" id="stockTabSharing">🤝 Sharing</button>
+                                    <span class="stock-pill-divider"></span>
+                                    <span class="stock-pill-group-label">Finance</span>
+                                    <button class="stock-pill" onclick="showStockTab('invoices')" id="stockTabInvoices">🧾 Invoices</button>
+                                    <button class="stock-pill" onclick="showStockTab('valuation')" id="stockTabValuation">💰 Valuation</button>
+                                    <span class="stock-pill-divider"></span>
+                                    <span class="stock-pill-group-label">Tools</span>
+                                    <button class="stock-pill" onclick="showStockTab('countryInventory')" id="stockTabCountryInventory">🌍 Inventory</button>
+                                    <button class="stock-pill" onclick="showStockTab('realtime')" id="stockTabRealtime">⚡ Real-time</button>
+                                    <button class="stock-pill" onclick="showStockTab('barcode')" id="stockTabBarcode">🏷️ Barcode</button>
+                                    <button class="stock-pill" onclick="showStockTab('reorder')" id="stockTabReorder">⚠️ Reorder</button>
+                                    <button class="stock-pill" onclick="showStockTab('batch')" id="stockTabBatch">🔢 Batch</button>
+                                    <button class="stock-pill" onclick="showStockTab('inventory')" id="stockTabInventory">📦 Log</button>
+                                    <span class="stock-pill-divider"></span>
+                                    <span class="stock-pill-group-label">Legacy</span>
+                                    <button class="stock-pill stock-pill--legacy" onclick="showStockTab('countryStock')" id="stockTabCountryStock">🚚 Country</button>
+                                    <button class="stock-pill stock-pill--legacy" onclick="showStockTab('windhoek')" id="stockTabWindhoek">🏢 Windhoek</button>
+                                    <button class="stock-pill stock-pill--legacy" onclick="showStockTab('ondangwa')" id="stockTabOndangwa">🏭 Ondangwa</button>
+                                    <button class="stock-pill stock-pill--legacy" onclick="showStockTab('distribution')" id="stockTabDistribution">🚛 Distribution</button>
+                                </nav>
+                            </div>
                         </div>
 
                         <div id="stockTabsContainer" class="stock-hub-tabs">
