@@ -1,0 +1,97 @@
+Send this to Replit:
+
+I need us to now properly fix the **Stock Management and Branch Portal workflows**, because the system is still not aligned with the actual operational structure. At the moment, several critical issues remain unresolved, and I need them corrected properly — not partially.
+
+**1. Stock Management Portal visibility is wrong**
+Right now, the **Stock Management workflow is appearing in Director, GM, MIS, and Finance portals**, which is incorrect.
+
+This must be fixed as follows:
+
+* **Remove Stock Management workflow completely from:**
+
+  * Director Portal
+  * GM Portal
+  * MIS Portal
+  * Finance Portal
+* **Maintain Stock Management ONLY inside the Stock Management Portal**, where it correctly belongs
+
+Each portal must only contain workflows relevant to its role. This duplication is causing confusion and is not acceptable.
+
+**2. Walk-in Sale in Branch Portal is not functional**
+The **Walk-in Sale tab exists but has no working workflow**, even though the logic already exists in the code.
+
+This means:
+
+* The tab is currently **static when clicked**
+* The workflow is **not connected/triggering**
+
+Please:
+
+* Properly **link the existing walk-in sale workflow to the Branch Portal**
+* Ensure it loads correctly and is fully functional (cart, product selection, checkout, stock deduction)
+
+**3. Prescription platform (Branch Portal) needs reorganization**
+The prescription section is currently not well structured.
+
+Please:
+
+* **Redesign and tidy up the interface** to look clean, professional, and easy to use
+* Keep all existing functionality but improve layout and flow
+* Ensure **no current data is lost**
+* Make actions like **Add / Apply Recommendation** fully functional
+
+**4. Online Shop Orders (Branch handling)**
+Orders sent to the branch must have proper processing controls.
+
+Please ensure:
+
+* Orders can be:
+
+  * **Marked as Paid**
+  * **Marked as Received**
+* Once confirmed, the system must:
+
+  * **Trigger stock deduction automatically**
+* This must be properly connected to inventory logic
+
+**5. Distributor Registration improvements**
+Inside Branch Portal:
+
+* When registering a distributor:
+
+  * The system must **fetch and allow selection of Upline and Sponsor from existing distributor records**
+* When a **new distributor is registered**:
+
+  * They must be **automatically added to the distributor list/database**
+
+No manual duplication or missing linkage.
+
+**6. Staff Signup improvements**
+The staff registration process is incomplete.
+
+Please add:
+
+* A **Username field (separate from Full Name)**
+  → Staff must be able to login using **Username + Password**, not just names
+
+Also:
+
+* When new staff are registered:
+
+  * Their data must **automatically populate into the HR Portal**
+  * No manual re-entry should be required
+
+**7. System-wide workflow validation**
+After making all these corrections, please:
+
+* **Test all portals end-to-end**
+* Ensure:
+
+  * No dead buttons
+  * No loading loops
+  * All workflows actually execute
+  * No duplicate or misplaced modules remain
+
+At this stage, I need **proper implementation and testing before confirmation**, because several previous updates were marked complete while still not functioning.
+
+Please treat this as a **full correction pass across Stock Management, Branch Portal, HR, and system workflows**, not isolated fixes.

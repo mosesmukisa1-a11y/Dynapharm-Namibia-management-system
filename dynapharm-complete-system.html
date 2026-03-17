@@ -1047,11 +1047,23 @@
             if (!o) { alert('Order not found'); return; }
             o.status = 'paid';
             o.payment = Object.assign({}, o.payment||{}, { verified: true, provider: o.payment?.provider||'manual', verifiedAt: new Date().toISOString(), verifiedBy: (window.currentUser && window.currentUser.fullName)||'system' });
+            // Trigger stock deduction on payment confirmation
+            const branchId = (window.currentUser && window.currentUser.branch) || 'unknown_branch';
+            const userName = (window.currentUser && window.currentUser.fullName) || 'system';
+            try {
+                if (typeof fefoDispenseProducts === 'function') {
+                    await fefoDispenseProducts((o.items||[]).map(i=>({ name:i.name||i.productName, quantity:i.quantity||1 })), branchId, userName, o.id);
+                }
+                if (typeof reduceInventoryForProducts === 'function') {
+                    reduceInventoryForProducts(o.items||[], userName, o.id);
+                }
+            } catch(stockErr) { console.warn('Stock deduction on paid order:', stockErr); }
             const res = await updateOrderOnServer(o);
             if (res && res.success) {
                 // Broadcast order update for real-time sync
                 try {
                     window.dispatchEvent(new CustomEvent('orders:updated', { detail: { order: o, action: 'paid' } }));
+                    window.dispatchEvent(new CustomEvent('sale:updated', { detail: { sale: o, type: 'online' } }));
                     const m = document.querySelector('meta[name="rt-base"]');
                     const rtBase = m && m.content && m.content.trim();
                     if (rtBase) {
@@ -11499,35 +11511,46 @@
                 
                 <!-- Prescription Section (Hidden by default) -->
                 <div id="dispenserPrescriptionSection" style="display: none;">
-                    <h3 style="color: #2c3e50; margin-bottom: 20px; text-align: center;">📋 Prescription Dispensing</h3>
-                
-                <div class="search-box">
-                    <input type="text" id="dispenserSearch" placeholder="Search prescriptions by client name, report ID, or consultant...">
-                    <button class="btn" onclick="searchPrescriptions('dispenser')">🔍 Search</button>
-                    <button class="btn btn-info" onclick="showAllPrescriptions('dispenser')">💊 Show All Prescriptions</button>
-                    <button class="btn btn-warning" onclick="updateExistingReportsPricing()">💰 Update Pricing</button>
-                    <button class="btn btn-primary" onclick="showDailyStatementModal()">📊 Daily Statement</button>
-                    <button class="btn btn-success" onclick="refreshDispenserData()">🔄 Refresh Data</button>
+
+                <!-- Prescription Header -->
+                <div style="background: linear-gradient(135deg, #27ae60, #1e8449); color: white; padding: 20px 24px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.3rem;">💊 Prescription Dispensing</h3>
+                        <p style="margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem;">Search, filter and dispense client prescriptions</p>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4);" onclick="showDailyStatementModal()">📊 Daily Statement</button>
+                        <button class="btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4);" onclick="refreshDispenserData()">🔄 Refresh</button>
+                    </div>
                 </div>
 
-                <!-- Status/Date/Branch Filters -->
-                <div class="search-box" style="gap: 10px; align-items: center;">
-                    <select id="rxBranchFilter" onchange="displayPrescriptions()" style="padding: 10px; border: 2px solid #ddd; border-radius: 6px;">
-                        <option value="">All Branches</option>
-                    </select>
-                    <select id="rxStatusFilter" onchange="displayPrescriptions()" style="padding: 10px;">
-                        <option value="all" selected>Status: All</option>
-                        <option value="pending">Pending</option>
-                        <option value="dispensed">Dispensed</option>
-                        <option value="paid">Paid</option>
-                        <option value="outstanding">Outstanding</option>
-                    </select>
-                    <input type="date" id="rxFromDate" onchange="displayPrescriptions()" title="From date" style="padding: 10px;">
-                    <input type="date" id="rxToDate" onchange="displayPrescriptions()" title="To date" style="padding: 10px;">
-                    <button class="btn" onclick="clearRxFilters()">♻️ Clear Filters</button>
+                <!-- Search & Filter Card -->
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                        <input type="text" id="dispenserSearch" placeholder="Search by client name, report ID or consultant…" style="flex: 1; min-width: 200px; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem;" onkeyup="if(event.key==='Enter') searchPrescriptions('dispenser')">
+                        <button class="btn btn-success" onclick="searchPrescriptions('dispenser')" style="padding: 10px 18px;">🔍 Search</button>
+                        <button class="btn btn-info" onclick="showAllPrescriptions('dispenser')" style="padding: 10px 18px;">💊 Show All</button>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <select id="rxBranchFilter" onchange="displayPrescriptions()" style="padding: 9px 12px; border: 2px solid #e2e8f0; border-radius: 8px; background: white; font-size: 0.9rem;">
+                            <option value="">All Branches</option>
+                        </select>
+                        <select id="rxStatusFilter" onchange="displayPrescriptions()" style="padding: 9px 12px; border: 2px solid #e2e8f0; border-radius: 8px; background: white; font-size: 0.9rem;">
+                            <option value="all" selected>All Status</option>
+                            <option value="pending">⏳ Pending</option>
+                            <option value="dispensed">✅ Dispensed</option>
+                            <option value="paid">💰 Paid</option>
+                            <option value="outstanding">⚠️ Outstanding</option>
+                        </select>
+                        <input type="date" id="rxFromDate" onchange="displayPrescriptions()" title="From date" style="padding: 9px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.9rem;">
+                        <input type="date" id="rxToDate" onchange="displayPrescriptions()" title="To date" style="padding: 9px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.9rem;">
+                        <button class="btn" onclick="clearRxFilters()" style="padding: 9px 14px; background: #f1f5f9; color: #64748b; border: 2px solid #e2e8f0; border-radius: 8px;">♻️ Clear</button>
+                        <button class="btn btn-warning" onclick="updateExistingReportsPricing()" style="padding: 9px 14px; margin-left: auto;">💰 Update Pricing</button>
+                    </div>
                 </div>
 
-                <div id="prescriptionList"></div>
+                <!-- Prescription List -->
+                <div id="prescriptionList" style="margin-bottom: 20px;"></div>
 
                 <!-- Business Intelligence Dashboard -->
                 <div class="form-section" style="margin-top: 30px;">
@@ -14626,11 +14649,10 @@
                     </div>
                 </div>
 
-                <!-- Inventory Oversight & Management -->
-                <div class="form-section" style="margin-top: 30px;">
+                <!-- Inventory Oversight moved to Stock Management Portal -->
+                <div style="display:none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h3>📦 Inventory Oversight & Management</h3>
-                        <button class="btn btn-primary" onclick="refreshGMInventoryData()">🔄 Refresh</button>
+                        <h3>hidden</h3>
                     </div>
                     
                     <!-- Inventory Tabs -->
@@ -14770,10 +14792,6 @@
                     <div id="specialSalesList" style="margin-top: 20px;"></div>
                 </div>
 
-                <div class="form-section" style="margin-top: 30px;">
-                    <h3>📦 Branch Inventory Breakdown</h3>
-                    <div id="gmInventoryBreakdown" class="scroll-x" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;"></div>
-                </div>
                 </div>
 
                 <div id="gmStaffSection" style="display: none;">
@@ -14879,16 +14897,6 @@
                     </div>
                 </div>
                 
-                <!-- Stock Depletion Dashboard -->
-                <div class="form-section" style="margin-top: 30px;">
-                    <h3>📦 Stock Depletion Overview</h3>
-                    <div id="stockDepletionDashboard"></div>
-                </div>
-
-                <div class="form-section" style="margin-top: 30px;">
-                    <h3>📦 Branch Inventory Breakdown</h3>
-                    <div id="directorInventoryBreakdown" class="scroll-x" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;"></div>
-                </div>
                 </div>
 
                 <div id="directorStaffSection" style="display: none;">
@@ -15680,11 +15688,6 @@
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3>📦 Branch Inventory Breakdown</h3>
-                <div id="financeInventoryBreakdown" class="scroll-x" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white;"></div>
-            </div>
-
             <!-- Expense Management -->
             <div class="form-section">
                 <h3>💸 Expense Management</h3>
@@ -16321,6 +16324,10 @@
                 <div class="form-group">
                     <label for="regFullName">Full Name *</label>
                     <input type="text" id="regFullName" name="regFullName" placeholder="e.g. Jane Doe" required autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="regUsername">Username * <small style="color:#999;">(used to login)</small></label>
+                    <input type="text" id="regUsername" name="regUsername" placeholder="e.g. jane.doe" required autocomplete="username" style="text-transform: lowercase;">
                 </div>
                 <div class="form-group">
                     <label for="regDOB">Date of Birth *</label>
@@ -30066,6 +30073,7 @@ if (staffSignupForm) {
     staffSignupForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         var fullName = (document.getElementById('regFullName').value || '').trim();
+        var username = (document.getElementById('regUsername') ? document.getElementById('regUsername').value || '' : '').trim().toLowerCase();
         var dob = document.getElementById('regDOB').value;
         var email = (document.getElementById('regEmail').value || '').trim();
         var role = document.getElementById('regRole').value;
@@ -30078,6 +30086,14 @@ if (staffSignupForm) {
 
         if (!fullName || !dob || !role || !pw) {
             if (errEl) errEl.textContent = 'Please fill in all required fields.';
+            return;
+        }
+        if (!username) {
+            if (errEl) errEl.textContent = 'Please enter a username.';
+            return;
+        }
+        if (!/^[a-z0-9._-]+$/.test(username)) {
+            if (errEl) errEl.textContent = 'Username may only contain letters, numbers, dots, underscores, or hyphens.';
             return;
         }
         if (pw.length < 6) {
@@ -30097,7 +30113,7 @@ if (staffSignupForm) {
             var res = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ full_name: fullName, dob: dob, email: email, role: role, password: pw })
+                body: JSON.stringify({ full_name: fullName, username: username, dob: dob, email: email, role: role, password: pw })
             });
             var data = await res.json();
             if (!res.ok) {
@@ -30105,10 +30121,31 @@ if (staffSignupForm) {
                 if (btn) { btn.disabled = false; btn.textContent = origText; }
                 return;
             }
+            var assignedUsername = data.username || username;
             if (successEl) {
-                successEl.textContent = (data.message || 'Registration submitted!') + (data.username ? ' Your username is: ' + data.username : '');
+                successEl.textContent = (data.message || 'Account created successfully!') + ' Login username: ' + assignedUsername;
                 successEl.style.display = 'block';
             }
+            // Auto-populate HR portal employee list
+            try {
+                var hrPayload = {
+                    name: fullName,
+                    role: role,
+                    email: email,
+                    username: assignedUsername,
+                    hireDate: new Date().toISOString().split('T')[0],
+                    employmentType: 'full-time',
+                    status: 'active',
+                    notes: 'Auto-registered via staff signup'
+                };
+                await fetch('/api/employees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(hrPayload)
+                });
+                // Refresh HR employee list if portal is currently open
+                if (typeof loadEmployeesData === 'function') { loadEmployeesData().catch(function(){}); }
+            } catch(hrErr) { console.warn('HR auto-populate warning:', hrErr); }
             e.target.reset();
             if (btn) { btn.disabled = false; btn.textContent = origText; }
         } catch (err) {
@@ -36715,6 +36752,8 @@ async function reverseLastPrescriptionPayment(reportId){
             if (countEl) countEl.textContent = sales.length;
         }
         
+        window.refreshWalkInSalesList = renderWalkInSalesList;
+        
         function saleRecordBranchHint() {
             if (typeof getBranchId === 'function') {
                 const derived = getBranchId();
@@ -37036,6 +37075,54 @@ async function reverseLastPrescriptionPayment(reportId){
         
         // Make function globally accessible
         window.showWalkInSaleModal = showWalkInSaleModal;
+
+        // Load products into the walk-in sale modal from PRICE_LIST + branch inventory
+        function loadWalkInProducts(searchTerm) {
+            const container = document.getElementById('walkInProductsList');
+            if (!container) return;
+            const products = (typeof PRICE_LIST !== 'undefined' && Array.isArray(PRICE_LIST)) ? PRICE_LIST : [];
+            if (products.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:20px;">No products available. Please ensure stock has been loaded.</p>';
+                return;
+            }
+            const term = (searchTerm || '').toLowerCase();
+            const filtered = term ? products.filter(p => (p.description||'').toLowerCase().includes(term)) : products;
+            if (filtered.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#7f8c8d; padding:15px;">No products match your search.</p>';
+                return;
+            }
+            container.innerHTML = [
+                '<div style="margin-bottom:8px;"><input type="text" placeholder="Filter products…" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;" oninput="loadWalkInProducts(this.value)"></div>',
+                '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px;">',
+                ...filtered.slice(0, 80).map(p => {
+                    const name = p.description || 'Unknown';
+                    const price = p.dp || p.cp || 0;
+                    const safeId = name.replace(/[^a-z0-9]/gi, '_');
+                    return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;cursor:pointer;" onclick="addToWalkInCart('${name.replace(/'/g,"\\'")}',${price})">
+                        <div style="font-size:0.85rem;font-weight:600;color:#1e293b;margin-bottom:4px;">${name}</div>
+                        <div style="font-size:0.8rem;color:#27ae60;font-weight:bold;">N$ ${Number(price).toFixed(2)}</div>
+                        <button type="button" style="margin-top:6px;width:100%;padding:4px;background:#3498db;color:white;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">+ Add to Cart</button>
+                    </div>`;
+                }),
+                '</div>'
+            ].join('');
+        }
+        window.loadWalkInProducts = loadWalkInProducts;
+
+        // Add product to the walk-in cart
+        function addToWalkInCart(productName, price) {
+            if (typeof window.walkInCartStore !== 'undefined' && typeof window.walkInCartStore.add === 'function') {
+                window.walkInCartStore.add({ name: productName, price: price, quantity: 1 });
+            } else {
+                // Fallback: use window.walkInCart array directly
+                if (!Array.isArray(window.walkInCart)) window.walkInCart = [];
+                const existing = window.walkInCart.find(i => i.name === productName);
+                if (existing) { existing.quantity = (existing.quantity||1) + 1; }
+                else { window.walkInCart.push({ name: productName, price: price, quantity: 1, total: price }); }
+            }
+            if (typeof renderWalkInCart === 'function') renderWalkInCart();
+        }
+        window.addToWalkInCart = addToWalkInCart;
         
         // =============================================================================
         

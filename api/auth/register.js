@@ -79,6 +79,7 @@ export default async function handler(req, res) {
     const dob = body?.dob?.trim();
     const password = body?.password || '';
     const role = body?.role?.trim()?.toLowerCase();
+    const email = body?.email?.trim() || null;
 
     if (!fullName || !dob || !password || !role) {
       return res.status(400).json({ error: 'full_name, dob, password, and role are required' });
@@ -92,13 +93,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    let username = generateUsername(fullName);
+    // Use provided username if valid, otherwise generate from full name
+    const requestedUsername = (body?.username || '').trim().toLowerCase();
+    let username = (requestedUsername && /^[a-z0-9._-]+$/.test(requestedUsername))
+      ? requestedUsername
+      : generateUsername(fullName);
+
     if (!username) {
       return res.status(400).json({ error: 'Could not generate username from full_name' });
     }
 
     const existing = await getOne('SELECT id FROM users WHERE username = $1', [username]);
     if (existing) {
+      if (requestedUsername === username) {
+        return res.status(409).json({ error: 'Username already taken. Please choose a different username.' });
+      }
       let suffix = 1;
       let candidate = `${username}${suffix}`;
       while (true) {
@@ -128,13 +137,14 @@ export default async function handler(req, res) {
       password_hash: passwordHash,
       role,
       full_name: fullName,
+      email,
       is_active: false,
       metadata,
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Registration pending admin approval',
+      message: 'Account created! Pending admin approval before login is enabled.',
       username,
     });
   } catch (error) {
