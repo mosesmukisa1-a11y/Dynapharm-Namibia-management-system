@@ -37014,6 +37014,9 @@ async function reverseLastPrescriptionPayment(reportId){
             const customerName = document.getElementById('walkInCustomerName')?.value?.trim() || 'Walk-in customer';
             const customerType = document.getElementById('walkInCustomerType')?.value || 'customer';
             const phone = document.getElementById('walkInPhone')?.value || '';
+            const email = document.getElementById('walkInEmail')?.value || '';
+            const referralName = document.getElementById('distributorReferralSearch')?.value || document.getElementById('clientReferralName')?.value || '';
+            const referralCode = document.getElementById('distributorReferralValue')?.value || document.getElementById('clientReferralNB')?.value || '';
             const paymentMethod = document.getElementById('walkInPaymentMethod')?.value || 'cash';
             const cartItems = getWalkInCartItems();
             
