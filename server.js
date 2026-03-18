@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
@@ -87,7 +88,6 @@ app.use('/api', async (req, res, next) => {
 app.get('/dynapharm-complete-system', (req, res) => res.redirect('/dynapharm-complete-system.html'));
 app.get('/distributor/guest', (req, res) => res.redirect('/distributor-guest.html'));
 app.get('/staff/appointments', (req, res) => res.redirect('/appointments-admin.html'));
-app.get('/shop', (req, res) => res.redirect('/'));
 
 const handlerCache = new Map();
 
@@ -183,6 +183,21 @@ app.use((req, res, next) => {
   next();
 });
 
+const distPath = path.join(__dirname, 'dist');
+const hasReactBuild = fs.existsSync(path.join(distPath, 'index.html'));
+
+if (hasReactBuild) {
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+}
+
 app.use(
   express.static(__dirname, {
     extensions: ['html', 'htm'],
@@ -195,7 +210,11 @@ app.use(
 );
 
 app.use((req, res) => {
-  res.status(404).send('Not found');
+  if (hasReactBuild && !req.path.startsWith('/api') && !req.path.includes('.')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  } else {
+    res.status(404).send('Not found');
+  }
 });
 
 const server = app.listen(PORT, HOST, () => {

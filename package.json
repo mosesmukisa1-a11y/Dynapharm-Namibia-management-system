@@ -7,6 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "dev:vite": "npx vite",
+    "build": "npx vite build",
+    "preview": "npx vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "auto-commit": "node tools/auto-commit.js",
@@ -14,11 +17,7 @@
     "seed:users": "node scripts/seed-users.js",
     "seed:users:file": "node scripts/seed-users.js --file",
     "migrate:user-passwords": "node scripts/migrate-user-passwords.js",
-    "import:local-users": "node scripts/import-local-users.js",
-    "predeploy": "npm run guard",
-    "lint": "eslint assets/js/main.js assets/js/sw-register.js index.html",
-    "format": "prettier --write index.html assets/js/**/*.js assets/css/**/*.css README.md",
-    "format:check": "prettier --check index.html assets/js/**/*.js assets/css/**/*.css README.md"
+    "import:local-users": "node scripts/import-local-users.js"
   },
   "keywords": [
     "healthcare",
@@ -42,12 +41,26 @@
   },
   "homepage": "https://dynapharm-cloud.vercel.app",
   "dependencies": {
+    "@tailwindcss/oxide": "^4.2.1",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.2.1",
+    "@tailwindcss/vite": "^4.2.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
     "cookie": "^0.6.0",
+    "date-fns": "^4.1.0",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.577.0",
     "pg": "^8.16.3",
-    "playwright": "^1.56.1"
+    "playwright": "^1.56.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^6.30.3",
+    "recharts": "^3.8.0",
+    "tailwindcss": "^4.2.1",
+    "vite": "^6.4.1",
+    "wouter": "^3.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.12.0",

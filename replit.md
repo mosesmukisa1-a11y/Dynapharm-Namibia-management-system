@@ -1,92 +1,114 @@
 # Dynapharm Namibia Health Management System
 
 ## Overview
-Cloud-based health management system for Dynapharm International Namibia. Built with Node.js/Express backend serving both API endpoints and static HTML frontend files.
+Cloud-based health management system for Dynapharm International Namibia. React + Vite frontend with Node.js/Express backend and PostgreSQL database.
 
 ## Architecture
-- **server.js** — Express server (port 5000), serves static files and API routes
+
+### Frontend (React + Vite)
+- **client/** — React SPA source code
+- **client/src/App.jsx** — Main routing (all 11 portals + public pages)
+- **client/src/components/** — Shared UI components (ui.jsx, Layout.jsx, LoginModal.jsx, ProtectedRoute.jsx)
+- **client/src/contexts/AuthContext.jsx** — Auth state, role-based portal access (ROLE_PORTAL_ACCESS)
+- **client/src/lib/api.js** — API client for all backend endpoints
+- **client/src/lib/constants.js** — Portal definitions, branches, currency formatting
+- **client/src/pages/** — Page components (Landing, Shop, HealthCheckup)
+- **client/src/pages/portals/** — All 11 portal components
+- **client/src/index.css** — Tailwind CSS v4 with Dynapharm theme colors
+- **vite.config.js** — Vite config at project root (root: ./client, outDir: ../dist)
+- **dist/** — Production build output (served by Express in production)
+
+### Backend (Express)
+- **server.js** — Express server, serves API + React build in production
 - **api/** — API route handlers (file-based routing, each .js file = one endpoint)
 - **api/_lib/auth.js** — JWT authentication library (cookie-based sessions)
 - **api/db.js** — PostgreSQL connection pool and query helpers
-- **assets/** — Static CSS, JS, images
-- **web-modules/** — Frontend JS modules
+
+### Development
+- **Backend API workflow**: `PORT=3001 node server.js` (port 3001)
+- **Start application workflow**: `npx vite` (port 5000, proxies /api to port 3001)
+- Vite dev server provides hot module reload for React components
+
+### Production / Deployment
+- Build: `npx vite build` (outputs to dist/)
+- Run: `node server.js` (port 5000, serves dist/ + API)
+- Deployment target: Autoscale
+
+## Theme Colors
+- Primary: #c41e3a (Dynapharm red)
+- Primary Dark: #8b0000
+- Secondary: #2c3e50
+- Accent Blue: #3498db
+- Accent Green: #27ae60
 
 ## Key API Routes
 - `/api/auth/login` — POST, user login
 - `/api/auth/logout` — POST, clear session
 - `/api/auth/me` — GET, current user profile
+- `/api/auth/register` — POST, staff registration (pending approval)
 - `/api/products` — CRUD for products (GET is public)
 - `/api/branches` — CRUD for branches (GET is public)
 - `/api/orders` — Order management
 - `/api/distributors` — Distributor management (GET is public)
-- `/api/notifications` — Notification system (GET/PUT public; POST/DELETE require auth)
-- `/api/stock/*` — Stock transfers, batches, requests
-- `/api/branch/*` — Branch operations (sales, payments, expenses, inventory)
-- `/api/mis/*` — Management information system reports
+- `/api/notifications` — Notification system
+- `/api/stock-batches` — Stock batch management
+- `/api/stock-movements` — Warehouse inventory movements
+- `/api/stock/transfers` — Stock transfer management
+- `/api/branch/*` — Branch operations (sales, payments, deposits, expenses, inventory)
+- `/api/mis/*` — Management information system (audit, reconcile, branch-status, etc.)
+- `/api/admin/*` — Admin operations (pending-registrations, approve/reject)
+- `/api/users` — User management (admin only)
+- `/api/employees` — Employee management
+- `/api/clients` — Client management
+- `/api/appointments` — Appointment management
+- `/api/reports` — Report management
 - `/api/health` — System health check
-- `/api/realtime_publish` — POST, realtime event relay (stub — returns success when gateway not configured)
-- `/api/stock-movements` — GET/POST, warehouse inventory movements
-- `/api/collect` — POST, data collection endpoint (stub)
-- `/api/media` — GET, file uploads listing
-- `/api/send-email` — POST, email dispatch (stub — queues for manual dispatch)
-- `/api/field_program_requests` — GET/POST, field program requests (stub)
-- `/api/users` — CRUD for user accounts (admin only)
+
+## Portals (11 total)
+1. **Distributor** — Shop, Full Body Check Up, Media, Testimonials
+2. **Front Desk** — Appointments, Checkup, Client Registration, Payments, Lookup, Delivery, CRM, Notifications, Staff Services
+3. **Consultant** — Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services
+4. **Branch** — Walk-in Sales, Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Registration, Field Program
+5. **HR** — Employees, Leave, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
+6. **Finance** — Dashboard, Deposit Inbox, Bonus Workflow, Staff Services
+7. **GM** — Dashboard KPIs, Approvals, Campaigns, Staff Services
+8. **Director** — Executive Dashboard, Staff Services
+9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
+10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inventory
+11. **Admin** — Staff Approvals, User Management, Branches, System Health
+
+## Role → Portal Access
+- admin: all portals
+- frontdesk: distributor, frontdesk
+- consultant: consultant
+- dispenser: distributor, frontdesk, branch
+- branch_manager: distributor, frontdesk, branch
+- hr_manager: hr
+- finance: finance
+- gm: distributor, frontdesk, consultant, branch, hr, finance, gm
+- director: all except admin, mis, stock
+- mis: mis
+- stock: stock
 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
-- Products table seeded with 95 products (Dynapharm price list)
-- Branches table and distributors table seeded with 15 Namibian branches + 10 sample individual distributors (NB001544-NB010333) with entity_type='individual'
-- Warehouse locations auto-seeded on startup: country_stock, windhoek_warehouse, ondangwa_warehouse
-- Towns (20) and delivery distances seeded for delivery fee calculations
-- Migration SQL files in `migrations/` and `backend/`
-
-## Stock Management Portal
-- All tabs fully functional with workflow logic: Overview, Country Import, Country Stock, Windhoek, Ondangwa, Distribution, Inventory, Warehouse Distribution, Branch Distribution, Invoices, Transfers, Sharing, Orders, Country Inventory, Realtime
-- Stock data sourced from `getBarcodeStockList()` (localStorage `dyna_barcode_stock` synced from `/api/stock-batches`)
-- Transfers use `/api/stock/transfers` API (POST creates transfer, GET lists with status/limit filters)
-- Warehouse transfer forms: country_stock → windhoek/ondangwa warehouses; distribution forms: warehouse → branches
-- Quality checks stored in localStorage `dyna_qc_records`; sharing rules in `dyna_sharing_rules`; manual orders in `dyna_manual_orders`
-- `api/stock/transfers.js` imports use `../` prefix (file is in `api/stock/` subdirectory)
+- Products table seeded with 95 products
+- Branches seeded with 15 Namibian branches
+- Warehouse locations auto-seeded: country_stock, windhoek_warehouse, ondangwa_warehouse
+- Super Admin auto-seeded (username: admin, password: Admin@2024)
 
 ## Authentication
-- JWT tokens stored in httpOnly cookies
-- Auth middleware in server.js enforces auth on all `/api/*` routes except public ones
-- Public routes: login, logout, register, health, distributor-login, orders, delivery, GET products/branches
-- Requires `AUTH_SECRET` (or `JWT_SECRET` or `SESSION_SECRET`) environment variable
-- Super Admin account auto-seeded on startup (username: admin, password: Admin@2024) if no admin exists
-- Staff Sign Up: POST `/api/auth/register` — creates inactive user (name, DOB, role, password); username auto-generated
-- Admin Approval: GET `/api/admin/pending-registrations`, POST `/api/admin/approve-registration`, POST `/api/admin/reject-registration`
-- Staff roles: frontdesk, consultant, dispenser, branch_manager, finance, hr_manager, gm, director, mis, stock
-- Admin role has access to all portals; each role maps to specific portal(s) via ROLE_PORTAL_ACCESS
+- JWT tokens in httpOnly cookies
+- Auth middleware in server.js for all /api/* routes
+- Public routes: login, logout, register, health, GET products/branches, POST orders/appointments
+- Staff registration requires admin approval
 
 ## Environment Variables
 - `DATABASE_URL` — PostgreSQL connection string (required)
 - `AUTH_SECRET` — JWT signing secret (required)
-- `REALTIME_GATEWAY_URL` — WebSocket gateway URL (optional)
 - `PORT` — Server port (default 5000)
+- `REALTIME_GATEWAY_URL` — WebSocket gateway URL (optional)
 
-## Frontend
-- Landing page: `index.html` — single entry point with hero (Online Shop + Full Body Check Up buttons), navbar with Dynapharm logo (About/Network/Global/Testimonials/Distributor Login/Staff Login)
-- Portal application: `dynapharm-complete-system.html` — monolithic SPA (Online Shop, Full Body Check Up tabs, staff portals after login)
-- Portal has streamlined navbar with Dynapharm logo (Home → index.html, Shop, Health Check, Staff Login) — no duplicate hero/welcome
-- Logo: `assets/dynapharm-logo.png` — displayed in navbar (all pages), checkup form header, distributor portal login/dashboard, preview/print output
-- Hash routing: `#client`/`#shop` → Online Shop tab, `#checkup` → Health Check tab, `#testimonials` → Shop tab
-- Staff Login from landing page uses sessionStorage flag to auto-open login modal on portal (landing page hidden during staff login flow — user goes straight to login modal)
-- Staff Login: `showStaffLogin()` moves `loginModal` to `document.body` before displaying it (critical: loginModal is 4 levels deep inside `.container` which has `display:none` — child elements of `display:none` parents don't render even with `position:fixed`). Sets `cssText` with `display:flex !important` and `z-index:99999`. Both Login and Sign Up tabs. Sign Up POSTs to `/api/auth/register` (pending admin approval). Staff users inactive until admin approves.
-- `routeByHash` sessionStorage handler waits for `functionsReady` event before calling `showStaffLogin()`.
-- Portal tab styling: Modern pill/card tabs with icons, hover effects, and animated active indicator. Branch Portal dispenserTab buttons styled via CSS classes (no inline styles). Sub-tabs use consistent `.tabs .tab-button` styling.
-- Debug cleanup: ~200 debug console.log/warn/debug statements removed (emoji-prefixed, diagnostic, loading/switching messages). Only essential error handling warnings remain.
-- Dead code removed: GM Inventory Oversight section (moved to Stock Portal), hidden stock sidebar, associated JS functions (switchGMInventoryTab, loadGMExpectedStock, loadGMStockLosses, loadGMStockManipulations, loadGMPendingInventoryApprovals, loadGMAllBranchInventory, exportGMInventoryReport, GM_INVENTORY_TAB_MAP).
-- Admin portal has "Staff Registration Approvals" section to approve/reject pending signups
-- Full Body Check Up form: Preview/Print/Submit buttons. Preview opens modal with formatted table (XSS-safe HTML escaping). Print opens new window with logo, structured sections (handles popup-block). Modal closable via Close button, Esc key, or backdrop click. Declaration checkbox replaces signature pad — captures client full name, initials, and date as acknowledgment on preview/print. Appointment POST is public (no auth required). API supports `type` query filter.
-- Consultant Portal: Redesigned with branded header and tabbed navigation (Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services). Consultant role restricted to only their own portal (no frontdesk/client tabs). openTab enforces ROLE_PORTAL_ACCESS authorization. Checkup Forms section shows submitted forms filtered by the consultant's branch. Split into Upcoming/Completed pill toggles. Cards show View Details (opens preview modal at z-index 99999), Create Report (bridges to report modal with prescription), Check In, Start, Mark Complete. Branch ID `townshop` = Windhoek CBD. `createReportFromCheckup(aptId)` creates a temp client entry and moves reportModal to document.body before opening. On report save, appointment status auto-updates to `in_progress`. Saved reports with prescriptions appear in branch portal's Prescriptions tab for dispensing.
-- Navigation system: `openTab(tabName, event)` handles top-level portal switching; scoped to `#portalTabs > .tab-button` to avoid affecting internal sub-tabs. **CRITICAL**: Portals with Auth walls (`consultant`, `dispenser`, `stock`, `gm`, `director`, `admin`, `mis`) have `{portal}Auth` (shown by default) and `{portal}Content` (hidden by default) inner divs. `openTab` MUST set `authEl.style.display='none'` and `contentEl.style.display='block'` when `currentUser` is set — this is done at the top of `openTab` right after activating the outer section. Portals WITHOUT Auth walls (`frontdesk`, `hr-portal`, `finance`, `client`): no inner Auth/Content, content is directly in the outer div.
-- Auth/Content lifecycle: `handlePortalLoginSuccess` hides ONLY the 7 known portal Auth/Content pairs (NOT mass-hide with `[id$="Content"]` which also catches sub-elements like `approvalContent`, `campaignContent`). `logout` restores Auth walls for the same 7 pairs. `openTab` shows the correct Content when switching.
-- `api/stock-batches.js` had duplicate `const batch` declaration in the POST handler causing a syntax error (SyntaxError: Identifier 'batch' has already been declared). Fixed by removing the redundant first declaration and using `normalizeInboundPayload(body)` before upsert. `showOrderTab(tabName)` handles Front Desk sub-tabs using `frontDeskTabMap` mapping (tab keys to actual section IDs like `pendingOrders`, `frontdeskAppointments`, etc.). `showDistributorTab(tabName)` handles Distributor sub-tabs (shop, checkup, media, testimonials). `showAuthorizedPortals(role)` scoped to `#portalTabs` children only. State persisted via localStorage (`dynapharm_active_portal`, `dynapharm_frontdesk_tab`).
-- Staff login hides Shop/Health Check nav links; logout restores them.
-- Distributor Portal: `distributor-portal.html` — tabbed auth (Login / Sign Up / Forgot Password), logo on login card and dashboard header
-  - Login: NB number + password (POST `/api/distributor-login`, JWT cookie)
-  - Sign Up: select distributor from 12K+ dropdown, DOB, email, password (POST `/api/distributors/set-password`, first-time only — rejects if account exists, verifies DOB)
-  - Forgot Password: NB number + email + DOB + new password (POST `/api/distributors/forgot-password`, verifies all three fields match)
-- `distributor-guest.html` is a health consultation booking form (separate from distributor login)
-- Individual portals: `gm-portal.html`, `hr-portal.html`, `mis-portal.html`, etc.
+## Legacy Files (preserved)
+- `dynapharm-complete-system.html` — Original monolithic SPA (preserved for reference)
+- `assets/` — Static CSS, JS, images (still served for legacy pages)
