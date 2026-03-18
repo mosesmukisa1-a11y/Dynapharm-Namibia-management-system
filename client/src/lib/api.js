@@ -48,6 +48,8 @@ export const api = {
 
   branches: {
     list: () => api.get('/branches'),
+    create: (data) => api.post('/branches', data),
+    update: (id, data) => api.put(`/branches/${id}`, data),
   },
 
   orders: {
@@ -60,6 +62,7 @@ export const api = {
     list: () => api.get('/distributors'),
     get: (id) => api.get(`/distributors/${id}`),
     create: (data) => api.post('/distributors', data),
+    search: (q) => api.get(`/distributors?search=${encodeURIComponent(q)}`),
   },
 
   appointments: {
@@ -101,6 +104,7 @@ export const api = {
     createMovement: (data) => api.post('/stock-movements', data),
     transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`),
     createTransfer: (data) => api.post('/stock/transfers', data),
+    updateTransfer: (id, data) => api.put(`/stock/transfers/${id}`, data),
     requests: () => api.get('/stock-requests'),
     createRequest: (data) => api.post('/stock-requests', data),
   },
@@ -114,6 +118,7 @@ export const api = {
     createCashMovement: (data) => api.post('/branch/cash-movements', data),
     deposits: () => api.get('/branch/deposits'),
     createDeposit: (data) => api.post('/branch/deposits', data),
+    verifyDeposit: (id) => api.put(`/branch/deposits/${id}`, { status: 'verified' }),
     expenses: () => api.get('/branch/expenses'),
     createExpense: (data) => api.post('/branch/expenses', data),
     payments: () => api.get('/branch/payments'),
@@ -138,6 +143,7 @@ export const api = {
     catalogs: () => api.get('/mis/catalogs'),
     drafts: () => api.get('/mis/drafts'),
     encodedSales: (params = '') => api.get(`/mis/encoded-sales${params ? '?' + params : ''}`),
+    createEncodedSale: (data) => api.post('/mis/encoded-sales', data),
     receipts: (params = '') => api.get(`/mis/receipts${params ? '?' + params : ''}`),
     reconcile: (params = '') => api.get(`/mis/reconcile${params ? '?' + params : ''}`),
     stock: () => api.get('/mis/stock'),

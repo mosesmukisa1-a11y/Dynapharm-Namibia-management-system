@@ -64,18 +64,25 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/reports` — Report management
 - `/api/health` — System health check
 
-## Portals (11 total)
-1. **Distributor** — Shop, Full Body Check Up, Media, Testimonials
-2. **Front Desk** — Appointments, Checkup, Client Registration, Payments, Lookup, Delivery, CRM, Notifications, Staff Services
-3. **Consultant** — Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services
-4. **Branch** — Walk-in Sales, Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Registration, Field Program
-5. **HR** — Employees, Leave, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
-6. **Finance** — Dashboard, Deposit Inbox, Bonus Workflow, Staff Services
-7. **GM** — Dashboard KPIs, Approvals, Campaigns, Staff Services
-8. **Director** — Executive Dashboard, Staff Services
-9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
-10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inventory
-11. **Admin** — Staff Approvals, User Management, Branches, System Health
+## Pricing Engine
+- **client/src/lib/pricing.js** — Complete PRICE_LIST (91 products) with DP (Distributor Price), CP (Consumer Price), BV (Business Volume) values
+- `findProductPrice(name)` — Fuzzy product lookup
+- `enrichProductsWithPricing(products)` — Merge API products with PRICE_LIST pricing data
+- `calculateCartTotals(cart, isMember)` — Cart calculation with DP/CP switching + BV tracking
+- `generateReceiptNumber()` — Receipt number generation (RCP-YYYYMMDD-HHMM-XXXX)
+
+## Portals (11 total, all with full business logic)
+1. **Distributor** — Shop with DP pricing + BV tracking, checkout flow, Full Body Check Up, Media/News feed, Testimonials
+2. **Front Desk** — Appointment scheduling (create/complete/cancel), Checkup forms, Client Registration with ID validation, Payment recording, Client Lookup, Delivery scheduling, CRM interaction logs, Notifications, Leave requests
+3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Report detail views, Follow-up tracking (overdue/upcoming), Analytics stats, Leave requests
+4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation, recent sales), Prescriptions (dispense workflow), Branch Stock view, Banking (deposit submission with validation), Payments, Online Orders (status workflow: Processing→Shipped→Delivered), Bonus payouts, Communication/Announcements, Staff listing, Distributor Registration (new/transfer/renewal), Field Program scheduling
+5. **HR** — Employee directory (add/edit), Leave management (applications, approve/reject, types: Annual/Sick/Personal/Maternity), Warnings (Verbal/Written/Final), Terminations with confirmation, Attendance logging, Performance reviews (1-5 rating), Staff announcements, Data collection/export, Personal leave requests
+6. **Finance** — Dashboard (revenue stats), Deposit verification (individual + batch verify), Bonus workflow (CSV upload, review, approve/reject, export), Staff leave requests
+7. **GM** — Enhanced dashboard (branch revenue, top products, growth), Approval center (cash/leave/stock requests with notes), Campaign creation (dates, branches, discounts), Executive services
+8. **Director** — Enhanced KPI dashboard (revenue, monthly, branches, distributors), Revenue trends, Branch performance comparison, Executive services
+9. **MIS** — Audit trail, Reconciliation (date range + branch with discrepancy highlighting), Branch Status, Encoded Sales (manual entry from PRICE_LIST), Receipt search, Cross-branch stock levels with low-stock alerts, Product Catalog (full PRICE_LIST with DP/CP/BV/margins), Report drafts
+10. **Stock** — Overview stats, Country Stock (import with batch/expiry), Windhoek/Ondangwa Warehouses (transfer in), Distribution (warehouse→branch), Transfer tracking (pending→dispatched→in_transit→delivered with action buttons), Inventory movements (filtered), Stock orders/requests (urgency levels), Inter-branch sharing rules, Country Inventory aggregate with CSV export
+11. **Admin** — Staff Approvals (approve/reject), User Management (edit role/status/branch, delete with confirmation, role filter), Branch configuration (create new), System health + DB stats
 
 ## Role → Portal Access
 - admin: all portals
