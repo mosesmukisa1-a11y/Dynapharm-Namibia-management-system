@@ -1,11 +1,18 @@
 {
-  "timestamp": "2025-11-06T11:29:46.102Z",
+  "timestamp": "2026-03-18T09:03:53.058Z",
   "summary": {
     "filesChecked": 11,
-    "errors": 59,
-    "warnings": 367
+    "errors": 119,
+    "warnings": 415
   },
   "errors": [
+    {
+      "file": "index.html",
+      "type": "missing_function",
+      "message": "Function \"getElementById\" is called in onclick handler but not defined",
+      "handler": "var n=document.getElementById(",
+      "context": "<button class=\"nav-toggle\" aria-label=\"Toggle menu\" aria-expanded=\"false\" aria-controls=\"main-nav\" onclick=\"var n=document.getElementById('main-nav');n.classList.toggle('open');this.setAttribute('ari"
+    },
     {
       "file": "mis-portal.html",
       "type": "missing_function",
@@ -23,16 +30,14 @@
     {
       "file": "mis-portal.html",
       "type": "missing_function",
-      "message": "Function \"exportAuditCsv\" is called in onclick handler but not defined",
-      "handler": "exportAuditCsv()",
-      "context": "tn-info\" onclick=\"loadAuditLogs()\">Load Logs</button>                 <button class=\"btn btn-light\" onclick=\"exportAuditCsv()\">Export CSV</button>             </div>             <div class=\"mt-12\">"
-    },
-    {
-      "file": "mis-portal.html",
-      "type": "missing_function",
       "message": "Function \"removeLine\" is called in onclick handler but not defined",
       "handler": "removeLine(",
       "context": "tor)} ${valBadge(l.validation?.product)}</td>                     <td><button class=\"btn btn-light\" onclick=\"removeLine('${l.tempId}')\">Remove</button></td>                 </tr>`;             }).join"
+    },
+    {
+      "file": "stock-management-portal.html",
+      "type": "file_not_found",
+      "message": "File not found: /home/runner/workspace/stock-management-portal.html"
     },
     {
       "file": "appointments-admin.html",
@@ -58,6 +63,76 @@
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
+      "message": "Function \"closest\" is called in onclick handler but not defined",
+      "handler": "performLogout(); this.closest(",
+      "context": "` : ''}                     <div style=\"display: flex; gap: 10px;\">                         <button onclick=\"performLogout(); this.closest('.modal-overlay').remove();\" class=\"btn\" style=\"background: #"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"closest\" is called in onclick handler but not defined",
+      "handler": "this.closest(",
+      "context": "one; border-radius: 8px; cursor: pointer; flex: 1;\">Logout</button>                         <button onclick=\"this.closest('.modal-overlay').remove();\" class=\"btn\" style=\"background: #f0f0f0; color: #6"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
+      "handler": "event.stopPropagation(); toggleFavorite(",
+      "context": "<span>${info.icon} ${info.name}</span>                                     <button onclick=\"event.stopPropagation(); toggleFavorite('${id}');\" style=\"background: none; border: none; c"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
+      "handler": "event.stopPropagation(); toggleFavorite(",
+      "context": "<span>${info.icon} ${info.name}</span>                                     <button onclick=\"event.stopPropagation(); toggleFavorite('${id}');\" style=\"background: none; border: none; c"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
+      "handler": "event.stopPropagation(); toggleFavorite(",
+      "context": "<span>${info.icon} ${info.name}</span>                                 <button onclick=\"event.stopPropagation(); toggleFavorite('${id}');\" style=\"background: none; border: none; c"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
+      "handler": "event.stopPropagation(); toggleFavorite(",
+      "context": "<span>${info.icon} ${info.name}</span>                             <button onclick=\"event.stopPropagation(); toggleFavorite('${id}');\" style=\"background: none; border: none; c"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
+      "handler": "event.stopPropagation()",
+      "context": "t === this) hideWarehouseManagerLogin()\">         <div class=\"modal-card\" style=\"max-width: 500px;\" onclick=\"event.stopPropagation()\">             <h2 style=\"margin-bottom: 20px; color: #10b981;\">🏭 W"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"checkoutShopOrder\" is called in onclick handler but not defined",
+      "handler": "checkoutShopOrder()",
+      "context": "andingShopCartTotal\">N$ 0.00</span></p>                             <button class=\"btn btn-success\" onclick=\"checkoutShopOrder()\" style=\"margin-top: 10px; padding: 12px 30px; font-size: 1.1rem;\">Proce"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"getElementById\" is called in onclick handler but not defined",
+      "handler": "document.getElementById(",
+      "context": ":0.9rem; font-weight:600; cursor:pointer;\">Print</button>                     <button type=\"button\" onclick=\"document.getElementById('checkupPreviewModal').style.display='none'\" style=\"padding:8px 16p"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"checkoutShopOrder\" is called in onclick handler but not defined",
+      "handler": "checkoutShopOrder()",
+      "context": "<span id=\"shopCartTotal\">N$ 0.00</span></p>                         <button class=\"btn btn-success\" onclick=\"checkoutShopOrder()\" style=\"margin-top: 10px;\">Proceed to Checkout</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
       "message": "Function \"getElementById\" is called in onclick handler but not defined",
       "handler": "document.getElementById(",
       "context": "tn btn-success\">Publish News</button>                             <button type=\"button\" class=\"btn\" onclick=\"document.getElementById('addNewsForm').style.display='none'\">Cancel</button>"
@@ -72,275 +147,667 @@
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"initFullCalendar\" is called in onclick handler but not defined",
-      "handler": "initFullCalendar()",
-      "context": "</option>                         </select>                         <button class=\"btn btn-success\" onclick=\"initFullCalendar()\">📅 Open Calendar</button>                         <button class=\"btn bt"
+      "message": "Function \"refreshPendingOrders\" is called in onclick handler but not defined",
+      "handler": "refreshPendingOrders()",
+      "context": "stomer name, order ID...\" style=\"flex: 1;\">                         <button class=\"btn btn-success\" onclick=\"refreshPendingOrders()\">🔄 Refresh</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showAppointmentBookingModal\" is called in onclick handler but not defined",
-      "handler": "showAppointmentBookingModal()",
-      "context": "itFullCalendar()\">📅 Open Calendar</button>                         <button class=\"btn btn-primary\" onclick=\"showAppointmentBookingModal()\">➕ Book Appointment</button>                         <button"
+      "message": "Function \"refreshFrontdeskAppointments\" is called in onclick handler but not defined",
+      "handler": "refreshFrontdeskAppointments()",
+      "context": "</option>                         </select>                         <button class=\"btn btn-success\" onclick=\"refreshFrontdeskAppointments()\">🔄 Refresh</button>                         <a href=\"/appoi"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showTimeSlotManagement\" is called in onclick handler but not defined",
-      "handler": "showTimeSlotManagement()",
-      "context": "entBookingModal()\">➕ Book Appointment</button>                         <button class=\"btn btn-info\" onclick=\"showTimeSlotManagement()\">⏰ Manage Time Slots</button>                         <button clas"
+      "message": "Function \"registerFrontDeskClient\" is called in onclick handler but not defined",
+      "handler": "registerFrontDeskClient()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"registerFrontDeskClient()\">➕ Register Client</button>                         <button class"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showAppointmentAnalytics\" is called in onclick handler but not defined",
-      "handler": "showAppointmentAnalytics()",
-      "context": "tManagement()\">⏰ Manage Time Slots</button>                         <button class=\"btn btn-warning\" onclick=\"showAppointmentAnalytics()\">📊 Analytics</button>                         <a href=\"/appoint"
+      "message": "Function \"checkExistingClient\" is called in onclick handler but not defined",
+      "handler": "checkExistingClient()",
+      "context": "rFrontDeskClient()\">➕ Register Client</button>                         <button class=\"btn btn-info\" onclick=\"checkExistingClient()\">🔍 Check Existing</button>                         <button class=\"bt"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showClientBookingPage\" is called in onclick handler but not defined",
-      "handler": "showClientBookingPage()",
-      "context": "<h3>🔗 Client Booking Page</h3>                     <button class=\"btn btn-success\" onclick=\"showClientBookingPage()\">🌐 Open Client Booking Page</button>                     <button c"
+      "message": "Function \"clearFrontDeskClientForm\" is called in onclick handler but not defined",
+      "handler": "clearFrontDeskClientForm()",
+      "context": "lick=\"checkExistingClient()\">🔍 Check Existing</button>                         <button class=\"btn\" onclick=\"clearFrontDeskClientForm()\">🔄 Clear Form</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"copyBookingLink\" is called in onclick handler but not defined",
-      "handler": "copyBookingLink()",
-      "context": "ookingPage()\">🌐 Open Client Booking Page</button>                     <button class=\"btn btn-info\" onclick=\"copyBookingLink()\">📋 Copy Booking Link</button>                 </div>             </div>"
+      "message": "Function \"lookupOrderForPayment\" is called in onclick handler but not defined",
+      "handler": "lookupOrderForPayment()",
+      "context": "red>                             <button class=\"btn btn-info\" style=\"margin-top: 5px; width: 100%;\" onclick=\"lookupOrderForPayment()\">🔍 Lookup Order</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"removePurchaseOrderRow\" is called in onclick handler but not defined",
-      "handler": "removePurchaseOrderRow(this)",
-      "context": "\">                                                     <button type=\"button\" class=\"btn btn-danger\" onclick=\"removePurchaseOrderRow(this)\" style=\"padding: 5px 10px;\">Remove</button>"
+      "message": "Function \"processFrontDeskPayment\" is called in onclick handler but not defined",
+      "handler": "processFrontDeskPayment()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"processFrontDeskPayment()\">💳 Process Payment</button>                         <button clas"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"addPurchaseOrderRow\" is called in onclick handler but not defined",
-      "handler": "addPurchaseOrderRow()",
-      "context": ">                                                     <button type=\"button\" class=\"btn btn-success\" onclick=\"addPurchaseOrderRow()\">➕ Add Row</button>"
+      "message": "Function \"clearPaymentForm\" is called in onclick handler but not defined",
+      "handler": "clearPaymentForm()",
+      "context": "\"processFrontDeskPayment()\">💳 Process Payment</button>                         <button class=\"btn\" onclick=\"clearPaymentForm()\">🔄 Clear</button>                     </div>                     <div i"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"autoGeneratePurchaseOrdersFromMovements\" is called in onclick handler but not defined",
-      "handler": "autoGeneratePurchaseOrdersFromMovements()",
-      "context": "ton>                                                     <button type=\"button\" class=\"btn btn-info\" onclick=\"autoGeneratePurchaseOrdersFromMovements()\" style=\"margin-left: 10px;\">🔄 Auto-Generate from"
+      "message": "Function \"refreshFrontDeskPayments\" is called in onclick handler but not defined",
+      "handler": "refreshFrontDeskPayments()",
+      "context": "customer name, order ID...\" style=\"flex: 1;\">                         <button class=\"btn btn-info\" onclick=\"refreshFrontDeskPayments()\">🔄 Refresh</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"clearPurchaseOrderForm\" is called in onclick handler but not defined",
-      "handler": "clearPurchaseOrderForm()",
-      "context": "reate Purchase Order</button>                                     <button type=\"button\" class=\"btn\" onclick=\"clearPurchaseOrderForm()\">Clear All</button>                                 </div>"
+      "message": "Function \"performClientLookup\" is called in onclick handler but not defined",
+      "handler": "performClientLookup()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"performClientLookup()\">🔍 Search</button>                         <button class=\"btn\" oncli"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"exportCountryStock\" is called in onclick handler but not defined",
-      "handler": "exportCountryStock()",
-      "context": "onclick=\"displayCountryStock()\">🔄 Refresh</button>                             <button class=\"btn\" onclick=\"exportCountryStock()\">📥 Export CSV</button>                         </div>"
+      "message": "Function \"clearLookupResults\" is called in onclick handler but not defined",
+      "handler": "clearLookupResults()",
+      "context": "ess\" onclick=\"performClientLookup()\">🔍 Search</button>                         <button class=\"btn\" onclick=\"clearLookupResults()\">🔄 Clear</button>                     </div>                     <div"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"refreshGMInventoryData\" is called in onclick handler but not defined",
-      "handler": "refreshGMInventoryData()",
-      "context": "h3>📦 Inventory Oversight & Management</h3>                         <button class=\"btn btn-primary\" onclick=\"refreshGMInventoryData()\">🔄 Refresh</button>                     </div>"
+      "message": "Function \"lookupOrderForDelivery\" is called in onclick handler but not defined",
+      "handler": "lookupOrderForDelivery()",
+      "context": "red>                             <button class=\"btn btn-info\" style=\"margin-top: 5px; width: 100%;\" onclick=\"lookupOrderForDelivery()\">🔍 Lookup Order</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "lass=\"tabs\" style=\"margin-bottom: 20px;\">                         <button class=\"tab-button active\" onclick=\"switchGMInventoryTab('overview')\" id=\"gmInvTabOverview\">📊 Overview</button>"
+      "message": "Function \"scheduleDelivery\" is called in onclick handler but not defined",
+      "handler": "scheduleDelivery()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"scheduleDelivery()\">📅 Schedule Delivery</button>                         <button class=\"bt"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "ew')\" id=\"gmInvTabOverview\">📊 Overview</button>                         <button class=\"tab-button\" onclick=\"switchGMInventoryTab('expected')\" id=\"gmInvTabExpected\">📥 Expected Stock</button>"
+      "message": "Function \"clearDeliveryForm\" is called in onclick handler but not defined",
+      "handler": "clearDeliveryForm()",
+      "context": "lick=\"scheduleDelivery()\">📅 Schedule Delivery</button>                         <button class=\"btn\" onclick=\"clearDeliveryForm()\">🔄 Clear</button>                     </div>                     <div"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "id=\"gmInvTabExpected\">📥 Expected Stock</button>                         <button class=\"tab-button\" onclick=\"switchGMInventoryTab('losses')\" id=\"gmInvTabLosses\">⚠️ Stock Losses</button>"
+      "message": "Function \"refreshDeliveries\" is called in onclick handler but not defined",
+      "handler": "refreshDeliveries()",
+      "context": "led</option>                         </select>                         <button class=\"btn btn-info\" onclick=\"refreshDeliveries()\">🔄 Refresh</button>                     </div>                     <di"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "')\" id=\"gmInvTabLosses\">⚠️ Stock Losses</button>                         <button class=\"tab-button\" onclick=\"switchGMInventoryTab('manipulations')\" id=\"gmInvTabManipulations\">🔍 Manipulations Audit</b"
+      "message": "Function \"registerVisitor\" is called in onclick handler but not defined",
+      "handler": "registerVisitor()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"registerVisitor()\">✅ Register Visitor</button>                         <button class=\"btn\""
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "abManipulations\">🔍 Manipulations Audit</button>                         <button class=\"tab-button\" onclick=\"switchGMInventoryTab('approvals')\" id=\"gmInvTabApprovals\">✅ Pending Approvals</button>"
+      "message": "Function \"clearVisitorForm\" is called in onclick handler but not defined",
+      "handler": "clearVisitorForm()",
+      "context": "onclick=\"registerVisitor()\">✅ Register Visitor</button>                         <button class=\"btn\" onclick=\"clearVisitorForm()\">🔄 Clear</button>                     </div>                     <div i"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"switchGMInventoryTab\" is called in onclick handler but not defined",
-      "handler": "switchGMInventoryTab(",
-      "context": "\"gmInvTabApprovals\">✅ Pending Approvals</button>                         <button class=\"tab-button\" onclick=\"switchGMInventoryTab('allbranches')\" id=\"gmInvTabAllBranches\">🏬 All Branches</button>"
+      "message": "Function \"refreshVisitors\" is called in onclick handler but not defined",
+      "handler": "refreshVisitors()",
+      "context": "eholder=\"Search visitors...\" style=\"flex: 1;\">                         <button class=\"btn btn-info\" onclick=\"refreshVisitors()\">🔄 Refresh</button>                     </div>                     <div"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"loadGMPendingInventoryApprovals\" is called in onclick handler but not defined",
-      "handler": "loadGMPendingInventoryApprovals()",
-      "context": "ending Inventory Approvals</h4>                                     <button class=\"btn btn-success\" onclick=\"loadGMPendingInventoryApprovals()\">🔄 Refresh</button>                                 </di"
+      "message": "Function \"addCRMLead\" is called in onclick handler but not defined",
+      "handler": "addCRMLead()",
+      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"addCRMLead()\">➕ Add Lead</button>                         <button class=\"btn btn-info\" oncl"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"exportGMInventoryReport\" is called in onclick handler but not defined",
-      "handler": "exportGMInventoryReport()",
-      "context": "</select>                                         <button class=\"btn btn-info\" onclick=\"exportGMInventoryReport()\">📥 Export Report</button>                                     </"
+      "message": "Function \"refreshCRMLeads\" is called in onclick handler but not defined",
+      "handler": "refreshCRMLeads()",
+      "context": "ss\" onclick=\"addCRMLead()\">➕ Add Lead</button>                         <button class=\"btn btn-info\" onclick=\"refreshCRMLeads()\">🔄 Refresh</button>                         <button class=\"btn\" onclick="
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showCRMTab\" is called in onclick handler but not defined",
-      "handler": "showCRMTab(",
-      "context": "<div class=\"tabs\" style=\"margin-bottom: 20px;\">                 <button class=\"tab-button active\" onclick=\"showCRMTab('communication')\">💬 Communication History</button>                 <button clas"
+      "message": "Function \"openMISFromCRM\" is called in onclick handler but not defined",
+      "handler": "openMISFromCRM()",
+      "context": "n-info\" onclick=\"refreshCRMLeads()\">🔄 Refresh</button>                         <button class=\"btn\" onclick=\"openMISFromCRM()\">📊 View in MIS</button>                     </div>                 </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showCRMTab\" is called in onclick handler but not defined",
-      "handler": "showCRMTab(",
-      "context": "MTab('communication')\">💬 Communication History</button>                 <button class=\"tab-button\" onclick=\"showCRMTab('segmentation')\">📊 Client Segmentation</button>                 <button class=\""
+      "message": "Function \"fdcrmAddInteraction\" is called in onclick handler but not defined",
+      "handler": "fdcrmAddInteraction()",
+      "context": "splay:flex; gap:10px; flex-wrap:wrap;\">                             <button class=\"btn btn-success\" onclick=\"fdcrmAddInteraction()\">➕ Add Interaction</button>                             <button class"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showCRMTab\" is called in onclick handler but not defined",
-      "handler": "showCRMTab(",
-      "context": "wCRMTab('segmentation')\">📊 Client Segmentation</button>                 <button class=\"tab-button\" onclick=\"showCRMTab('workflows')\">⚙️ Automated Workflows</button>                 <button class=\"tab"
+      "message": "Function \"fdcrmRefreshInteractions\" is called in onclick handler but not defined",
+      "handler": "fdcrmRefreshInteractions()",
+      "context": "dInteraction()\">➕ Add Interaction</button>                             <button class=\"btn btn-info\" onclick=\"fdcrmRefreshInteractions()\">🔄 Refresh</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showCRMTab\" is called in onclick handler but not defined",
-      "handler": "showCRMTab(",
-      "context": "showCRMTab('workflows')\">⚙️ Automated Workflows</button>                 <button class=\"tab-button\" onclick=\"showCRMTab('loyalty')\">🎁 Loyalty Program</button>             </div>              <!-- Com"
+      "message": "Function \"fdcrmCreateSegment\" is called in onclick handler but not defined",
+      "handler": "fdcrmCreateSegment()",
+      "context": "splay:flex; gap:10px; flex-wrap:wrap;\">                             <button class=\"btn btn-success\" onclick=\"fdcrmCreateSegment()\">➕ Create Segment</button>                             <button class=\""
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"addClientInteraction\" is called in onclick handler but not defined",
-      "handler": "addClientInteraction()",
-      "context": "</option>                         </select>                         <button class=\"btn btn-success\" onclick=\"addClientInteraction()\">➕ Add Interaction</button>                         <button class=\"b"
+      "message": "Function \"fdcrmRefreshSegments\" is called in onclick handler but not defined",
+      "handler": "fdcrmRefreshSegments()",
+      "context": "CreateSegment()\">➕ Create Segment</button>                             <button class=\"btn btn-info\" onclick=\"fdcrmRefreshSegments()\">🔄 Refresh</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"refreshCRMCommunication\" is called in onclick handler but not defined",
-      "handler": "refreshCRMCommunication()",
-      "context": "lientInteraction()\">➕ Add Interaction</button>                         <button class=\"btn btn-info\" onclick=\"refreshCRMCommunication()\">🔄 Refresh</button>                         <button class=\"btn\""
+      "message": "Function \"fdcrmCreateWorkflow\" is called in onclick handler but not defined",
+      "handler": "fdcrmCreateWorkflow()",
+      "context": "splay:flex; gap:10px; flex-wrap:wrap;\">                             <button class=\"btn btn-success\" onclick=\"fdcrmCreateWorkflow()\">➕ Create Workflow</button>                             <button class"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"exportClientHistory\" is called in onclick handler but not defined",
-      "handler": "exportClientHistory()",
-      "context": "onclick=\"refreshCRMCommunication()\">🔄 Refresh</button>                         <button class=\"btn\" onclick=\"exportClientHistory()\">📥 Export</button>                     </div>"
+      "message": "Function \"fdcrmRefreshWorkflows\" is called in onclick handler but not defined",
+      "handler": "fdcrmRefreshWorkflows()",
+      "context": "eateWorkflow()\">➕ Create Workflow</button>                             <button class=\"btn btn-info\" onclick=\"fdcrmRefreshWorkflows()\">🔄 Refresh</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"refreshSegmentation\" is called in onclick handler but not defined",
-      "handler": "refreshSegmentation()",
-      "context": "; display: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-info\" onclick=\"refreshSegmentation()\">🔄 Refresh Analysis</button>                         <button class=\""
+      "message": "Function \"renderNotifications\" is called in onclick handler but not defined",
+      "handler": "renderNotifications()",
+      "context": "ap:10px; flex-wrap:wrap; margin-bottom:10px;\">                         <button class=\"btn btn-info\" onclick=\"renderNotifications()\">🔄 Refresh</button>                         <button class=\"btn\" oncl"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"exportSegmentationReport\" is called in onclick handler but not defined",
-      "handler": "exportSegmentationReport()",
-      "context": "ck=\"refreshSegmentation()\">🔄 Refresh Analysis</button>                         <button class=\"btn\" onclick=\"exportSegmentationReport()\">📥 Export Report</button>                     </div>"
+      "message": "Function \"markAllNotificationsRead\" is called in onclick handler but not defined",
+      "handler": "markAllNotificationsRead()",
+      "context": "fo\" onclick=\"renderNotifications()\">🔄 Refresh</button>                         <button class=\"btn\" onclick=\"markAllNotificationsRead()\">✅ Mark All Read</button>                         <button class="
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"createWorkflow\" is called in onclick handler but not defined",
-      "handler": "createWorkflow()",
-      "context": "<div style=\"margin-bottom: 15px;\">                         <button class=\"btn btn-success\" onclick=\"createWorkflow()\">➕ Create Workflow</button>                         <button class=\"btn btn"
+      "message": "Function \"clearAllNotifications\" is called in onclick handler but not defined",
+      "handler": "clearAllNotifications()",
+      "context": "otificationsRead()\">✅ Mark All Read</button>                         <button class=\"btn btn-danger\" onclick=\"clearAllNotifications()\">🗑️ Clear All</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"refreshWorkflows\" is called in onclick handler but not defined",
-      "handler": "refreshWorkflows()",
-      "context": "=\"createWorkflow()\">➕ Create Workflow</button>                         <button class=\"btn btn-info\" onclick=\"refreshWorkflows()\">🔄 Refresh</button>                     </div>                      <!-"
+      "message": "Function \"refreshProcessingOrders\" is called in onclick handler but not defined",
+      "handler": "refreshProcessingOrders()",
+      "context": "holder=\"Search orders...\" style=\"flex: 1;\">                         <button class=\"btn btn-success\" onclick=\"refreshProcessingOrders()\">🔄 Refresh</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"configureWelcomeEmails\" is called in onclick handler but not defined",
-      "handler": "configureWelcomeEmails()",
-      "context": "rong></p>                             </div>                             <button class=\"btn btn-sm\" onclick=\"configureWelcomeEmails()\">Configure</button>                         </div>"
+      "message": "Function \"refreshShippedOrders\" is called in onclick handler but not defined",
+      "handler": "refreshShippedOrders()",
+      "context": "Search shipped orders...\" style=\"flex: 1;\">                         <button class=\"btn btn-success\" onclick=\"refreshShippedOrders()\">🔄 Refresh</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"configureBirthdayGreetings\" is called in onclick handler but not defined",
-      "handler": "configureBirthdayGreetings()",
-      "context": "rong></p>                             </div>                             <button class=\"btn btn-sm\" onclick=\"configureBirthdayGreetings()\">Configure</button>                         </div>"
+      "message": "Function \"refreshDeliveredOrders\" is called in onclick handler but not defined",
+      "handler": "refreshDeliveredOrders()",
+      "context": "arch delivered orders...\" style=\"flex: 1;\">                         <button class=\"btn btn-success\" onclick=\"refreshDeliveredOrders()\">🔄 Refresh</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"configureReorderReminders\" is called in onclick handler but not defined",
-      "handler": "configureReorderReminders()",
-      "context": "rong></p>                             </div>                             <button class=\"btn btn-sm\" onclick=\"configureReorderReminders()\">Configure</button>                         </div>"
+      "message": "Function \"refreshAllOrders\" is called in onclick handler but not defined",
+      "handler": "refreshAllOrders()",
+      "context": "er=\"Search all orders...\" style=\"flex: 1;\">                         <button class=\"btn btn-success\" onclick=\"refreshAllOrders()\">🔄 Refresh</button>                         <button class=\"btn btn-prim"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"configureFollowups\" is called in onclick handler but not defined",
-      "handler": "configureFollowups()",
-      "context": "rong></p>                             </div>                             <button class=\"btn btn-sm\" onclick=\"configureFollowups()\">Configure</button>                         </div>"
+      "message": "Function \"exportOrdersReport\" is called in onclick handler but not defined",
+      "handler": "exportOrdersReport()",
+      "context": "ck=\"refreshAllOrders()\">🔄 Refresh</button>                         <button class=\"btn btn-primary\" onclick=\"exportOrdersReport()\">📥 Export Report</button>                     </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"showLoyaltyConfig\" is called in onclick handler but not defined",
-      "handler": "showLoyaltyConfig()",
-      "context": "isplay: flex; gap: 10px; flex-wrap: wrap;\">                         <button class=\"btn btn-success\" onclick=\"showLoyaltyConfig()\">⚙️ Configure Program</button>                         <button class=\"b"
+      "message": "Function \"generateProductBarcode\" is called in onclick handler but not defined",
+      "handler": "generateProductBarcode()",
+      "context": ">                             <div>                                 <button class=\"btn btn-success\" onclick=\"generateProductBarcode()\">🏷️ Generate Barcode</button>                             </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"refreshLoyaltyData\" is called in onclick handler but not defined",
-      "handler": "refreshLoyaltyData()",
-      "context": "LoyaltyConfig()\">⚙️ Configure Program</button>                         <button class=\"btn btn-info\" onclick=\"refreshLoyaltyData()\">🔄 Refresh</button>                         <button class=\"btn\" oncli"
+      "message": "Function \"applyScannedUpdate\" is called in onclick handler but not defined",
+      "handler": "applyScannedUpdate()",
+      "context": ">                             </select>                             <button class=\"btn btn-success\" onclick=\"applyScannedUpdate()\">✅ Apply</button>                         </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"viewLoyaltyReport\" is called in onclick handler but not defined",
-      "handler": "viewLoyaltyReport()",
-      "context": "nfo\" onclick=\"refreshLoyaltyData()\">🔄 Refresh</button>                         <button class=\"btn\" onclick=\"viewLoyaltyReport()\">📊 Reports</button>                     </div>                      <!"
+      "message": "Function \"displayReorderPoints\" is called in onclick handler but not defined",
+      "handler": "displayReorderPoints()",
+      "context": "splay: flex; gap: 10px; flex-wrap: wrap;\">                             <button class=\"btn btn-info\" onclick=\"displayReorderPoints()\">🔄 Refresh</button>                             <button class=\"btn\""
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "missing_function",
-      "message": "Function \"confirmWalkInSale\" is called in onclick handler but not defined",
-      "handler": "confirmWalkInSale()",
-      "context": "ationModal')\">← Back to Edit</button>                 <button type=\"button\" class=\"btn btn-success\" onclick=\"confirmWalkInSale()\" style=\"padding: 12px 30px; font-size: 1.1rem;\">                     ✅"
+      "message": "Function \"exportReorderList\" is called in onclick handler but not defined",
+      "handler": "exportReorderList()",
+      "context": "nclick=\"displayReorderPoints()\">🔄 Refresh</button>                             <button class=\"btn\" onclick=\"exportReorderList()\">📥 Export</button>                             <button class=\"btn btn-"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generatePurchaseOrders\" is called in onclick handler but not defined",
+      "handler": "generatePurchaseOrders()",
+      "context": "exportReorderList()\">📥 Export</button>                             <button class=\"btn btn-primary\" onclick=\"generatePurchaseOrders()\">🧾 Generate Purchase Orders</button>                         </di"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"displayBatchTracking\" is called in onclick handler but not defined",
+      "handler": "displayBatchTracking()",
+      "context": "ion>                             </select>                             <button class=\"btn btn-info\" onclick=\"displayBatchTracking()\">🔄 Refresh</button>                         </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"displayStockValuation\" is called in onclick handler but not defined",
+      "handler": "displayStockValuation()",
+      "context": "ion>                             </select>                             <button class=\"btn btn-info\" onclick=\"displayStockValuation()\">🔄 Refresh</button>                             <button class=\"btn"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportStockValuation\" is called in onclick handler but not defined",
+      "handler": "exportStockValuation()",
+      "context": "click=\"displayStockValuation()\">🔄 Refresh</button>                             <button class=\"btn\" onclick=\"exportStockValuation()\">📥 Export</button>                         </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"removeStockImportRow\" is called in onclick handler but not defined",
+      "handler": "removeStockImportRow(this)",
+      "context": "<td style=\"text-align:center;\"><button type=\"button\" class=\"btn btn-danger\" onclick=\"removeStockImportRow(this)\">Remove</button></td>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"addStockImportRow\" is called in onclick handler but not defined",
+      "handler": "addStockImportRow(this)",
+      "context": "<button type=\"button\" class=\"btn btn-success\" onclick=\"addStockImportRow(this)\">➕ Add Row</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"importFromCSV\" is called in onclick handler but not defined",
+      "handler": "importFromCSV(this)",
+      "context": "<button type=\"button\" class=\"btn btn-info\" onclick=\"importFromCSV(this)\" data-import-csv-trigger=\"true\">📁 Import from CSV</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"clearStockImportForm\" is called in onclick handler but not defined",
+      "handler": "clearStockImportForm(this)",
+      "context": "k</button>                                     <button type=\"button\" class=\"hub-btn hub-btn--ghost\" onclick=\"clearStockImportForm(this)\">Clear All</button>                                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"displayCountryStock\" is called in onclick handler but not defined",
+      "handler": "displayCountryStock()",
+      "context": "untryStock()\">                                 <button class=\"hub-btn hub-btn--ghost\" type=\"button\" onclick=\"displayCountryStock()\">🔄 Refresh</button>                                 <button class=\"h"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"removeStockImportRow\" is called in onclick handler but not defined",
+      "handler": "removeStockImportRow(this)",
+      "context": "\">                                                     <button type=\"button\" class=\"btn btn-danger\" onclick=\"removeStockImportRow(this)\" style=\"padding: 5px 10px;\">Remove</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"addStockImportRow\" is called in onclick handler but not defined",
+      "handler": "addStockImportRow(this)",
+      "context": ">                                                     <button type=\"button\" class=\"btn btn-success\" onclick=\"addStockImportRow(this)\">➕ Add Row</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"importFromCSV\" is called in onclick handler but not defined",
+      "handler": "importFromCSV(this)",
+      "context": "ton>                                                     <button type=\"button\" class=\"btn btn-info\" onclick=\"importFromCSV(this)\" data-import-csv-trigger=\"true\" style=\"margin-left: 10px;\">📁 Import fr"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"clearStockImportForm\" is called in onclick handler but not defined",
+      "handler": "clearStockImportForm(this)",
+      "context": "em;\">📥 Import Stock</button>                                     <button type=\"button\" class=\"btn\" onclick=\"clearStockImportForm(this)\">Clear All</button>                                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"displayCountryStock\" is called in onclick handler but not defined",
+      "handler": "displayCountryStock()",
+      "context": "cts...\" onkeyup=\"searchCountryStock()\">                             <button class=\"btn btn-success\" onclick=\"displayCountryStock()\">Refresh</button>                         </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"printInvoices\" is called in onclick handler but not defined",
+      "handler": "printInvoices(",
+      "context": "dding: 8px 12px; min-width: 220px;\" />                                 <button class=\"btn btn-info\" onclick=\"printInvoices('all')\">🖨️ Print All</button>                                 <button class="
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"printInvoices\" is called in onclick handler but not defined",
+      "handler": "printInvoices(",
+      "context": "ices('all')\">🖨️ Print All</button>                                 <button class=\"btn btn-success\" onclick=\"printInvoices('selected')\">🖨️ Print Selected</button>                             </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"refreshEmployeeList\" is called in onclick handler but not defined",
+      "handler": "refreshEmployeeList()",
+      "context": "wAddEmployee()\">➕ Add New Employee</button>                         <button class=\"btn btn-primary\" onclick=\"refreshEmployeeList()\">🔄 Refresh List</button>                         <button class=\"btn"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportEmployeeData\" is called in onclick handler but not defined",
+      "handler": "exportEmployeeData()",
+      "context": "eshEmployeeList()\">🔄 Refresh List</button>                         <button class=\"btn btn-warning\" onclick=\"exportEmployeeData()\">📥 Export Employee Data</button>                     </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showLeaveReports\" is called in onclick handler but not defined",
+      "handler": "showLeaveReports()",
+      "context": "click=\"refreshLeaveList()\">🔄 Refresh</button>                         <button class=\"btn btn-info\" onclick=\"showLeaveReports()\">📊 Leave Reports</button>                     </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateAttendanceReport\" is called in onclick handler but not defined",
+      "handler": "generateAttendanceReport()",
+      "context": "=\"refreshAttendanceList()\">🔄 Refresh</button>                         <button class=\"btn btn-info\" onclick=\"generateAttendanceReport()\">📊 Generate Report</button>                     </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"clearDataCollectionForm\" is called in onclick handler but not defined",
+      "handler": "clearDataCollectionForm()",
+      "context": "cess\">Submit Data Collection</button>                             <button type=\"button\" class=\"btn\" onclick=\"clearDataCollectionForm()\">Clear Form</button>                         </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showShiftManager\" is called in onclick handler but not defined",
+      "handler": "showShiftManager()",
+      "context": "nd: white; color: #667eea;\">🔄 Refresh</button>                     <button class=\"btn btn-primary\" onclick=\"showShiftManager()\" style=\"background: white; color: #667eea;\">🕐 Shift Manager</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showCashBonus\" is called in onclick handler but not defined",
+      "handler": "showCashBonus()",
+      "context": "eposit-pending-pill\">0</span>                     </button>                     <button class=\"btn\" onclick=\"showCashBonus()\" style=\"background: white; color: #667eea;\">🎁 Cash Bonus</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showBankBonus\" is called in onclick handler but not defined",
+      "handler": "showBankBonus()",
+      "context": "\"background: white; color: #667eea;\">🎁 Cash Bonus</button>                     <button class=\"btn\" onclick=\"showBankBonus()\" style=\"background: white; color: #667eea;\">🏦 Bank Bonus</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showBonusUpload\" is called in onclick handler but not defined",
+      "handler": "showBonusUpload()",
+      "context": "\"background: white; color: #667eea;\">🏦 Bank Bonus</button>                     <button class=\"btn\" onclick=\"showBonusUpload()\" style=\"background: white; color: #667eea;\">📤 Bonus Upload</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateZReport\" is called in onclick handler but not defined",
+      "handler": "generateZReport()",
+      "context": "ackground: white; color: #667eea;\">📤 Bonus Upload</button>                     <button class=\"btn\" onclick=\"generateZReport()\" style=\"background: white; color: #667eea;\">📊 Z-Report</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportFinancialData\" is called in onclick handler but not defined",
+      "handler": "exportFinancialData()",
+      "context": "e=\"background: white; color: #667eea;\">📊 Z-Report</button>                     <button class=\"btn\" onclick=\"exportFinancialData()\" style=\"background: white; color: #667eea;\">📥 Export</button>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"setBonusWorkflowTab\" is called in onclick handler but not defined",
+      "handler": "setBonusWorkflowTab(",
+      "context": "button type=\"button\" class=\"bonus-workflow-tab active\" data-bonus-tab=\"upload\" aria-selected=\"true\" onclick=\"setBonusWorkflowTab('upload')\">📤 Upload</button>                     <button type=\"button\""
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"setBonusWorkflowTab\" is called in onclick handler but not defined",
+      "handler": "setBonusWorkflowTab(",
+      "context": "<button type=\"button\" class=\"bonus-workflow-tab\" data-bonus-tab=\"approval\" aria-selected=\"false\" onclick=\"setBonusWorkflowTab('approval')\">✅ Approval</button>                     <button type=\"butt"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"setBonusWorkflowTab\" is called in onclick handler but not defined",
+      "handler": "setBonusWorkflowTab(",
+      "context": "<button type=\"button\" class=\"bonus-workflow-tab\" data-bonus-tab=\"export\" aria-selected=\"false\" onclick=\"setBonusWorkflowTab('export')\">🏦 Bank Export</button>                     <button type=\"bu"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"setBonusWorkflowTab\" is called in onclick handler but not defined",
+      "handler": "setBonusWorkflowTab(",
+      "context": "tton type=\"button\" class=\"bonus-workflow-tab\" data-bonus-tab=\"reconciliation\" aria-selected=\"false\" onclick=\"setBonusWorkflowTab('reconciliation')\">🧾 Reconciliation</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"uploadBonusCsv\" is called in onclick handler but not defined",
+      "handler": "uploadBonusCsv()",
+      "context": "class=\"bonus-pane-actions\">                     <button class=\"btn btn-primary\" id=\"bonusUploadBtn\" onclick=\"uploadBonusCsv()\" disabled>Upload Monthly Bonus</button>                     <button class="
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"clearBonusUpload\" is called in onclick handler but not defined",
+      "handler": "clearBonusUpload()",
+      "context": "onusCsv()\" disabled>Upload Monthly Bonus</button>                     <button class=\"btn btn-ghost\" onclick=\"clearBonusUpload()\">Clear</button>                     <button class=\"btn btn-secondary\" on"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"downloadBonusTemplate\" is called in onclick handler but not defined",
+      "handler": "downloadBonusTemplate()",
+      "context": "\" onclick=\"clearBonusUpload()\">Clear</button>                     <button class=\"btn btn-secondary\" onclick=\"downloadBonusTemplate()\">Download Template</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"approveBonusUpload\" is called in onclick handler but not defined",
+      "handler": "approveBonusUpload()",
+      "context": "s-pane-actions\">                         <button class=\"btn btn-success\" id=\"approveBonusUploadBtn\" onclick=\"approveBonusUpload()\">Approve Upload</button>                         <button class=\"btn bt"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"rejectBonusUpload\" is called in onclick handler but not defined",
+      "handler": "rejectBonusUpload()",
+      "context": "ve Upload</button>                         <button class=\"btn btn-danger\" id=\"rejectBonusUploadBtn\" onclick=\"rejectBonusUpload()\">Reject Upload</button>                         <button class=\"btn\" onc"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"refreshBonusWorkflowSummary\" is called in onclick handler but not defined",
+      "handler": "refreshBonusWorkflowSummary()",
+      "context": "n\" onclick=\"rejectBonusUpload()\">Reject Upload</button>                         <button class=\"btn\" onclick=\"refreshBonusWorkflowSummary()\">🔄 Refresh Status</button>                     </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportBankBatch\" is called in onclick handler but not defined",
+      "handler": "exportBankBatch()",
+      "context": "v>                     <div class=\"bonus-pane-actions\">                         <button class=\"btn\" onclick=\"exportBankBatch()\">🏦 Export Bank Batch</button>                         <button class=\"btn"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportPain001\" is called in onclick handler but not defined",
+      "handler": "exportPain001()",
+      "context": "click=\"exportBankBatch()\">🏦 Export Bank Batch</button>                         <button class=\"btn\" onclick=\"exportPain001()\">📄 Export PAIN.001</button>                         <button class=\"btn\" on"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportCashSheet\" is called in onclick handler but not defined",
+      "handler": "exportCashSheet()",
+      "context": "\" onclick=\"exportPain001()\">📄 Export PAIN.001</button>                         <button class=\"btn\" onclick=\"exportCashSheet()\">💵 Export Cash Sheet</button>                     </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"loadReconciliation\" is called in onclick handler but not defined",
+      "handler": "loadReconciliation()",
+      "context": "#e3e7ee; border-radius: 8px; background: #fff;\" />                     <button class=\"btn btn-info\" onclick=\"loadReconciliation()\">🔄 Refresh</button>                 </div>                 <div id=\"r"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"displayFinanceCashRequests\" is called in onclick handler but not defined",
+      "handler": "displayFinanceCashRequests()",
+      "context": "10px; display: flex; gap: 10px; flex-wrap: wrap;\">                     <button class=\"btn btn-info\" onclick=\"displayFinanceCashRequests()\">🔄 Refresh</button>                 </div>                 <d"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showExpenseSummary\" is called in onclick handler but not defined",
+      "handler": "showExpenseSummary()",
+      "context": "onclick=\"refreshExpenses()\">🔄 Refresh</button>                     <button class=\"btn btn-warning\" onclick=\"showExpenseSummary()\">📊 Summary</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showRevenueBreakdown\" is called in onclick handler but not defined",
+      "handler": "showRevenueBreakdown()",
+      "context": "onclick=\"refreshRevenue()\">🔄 Refresh</button>                     <button class=\"btn btn-success\" onclick=\"showRevenueBreakdown()\">📊 Breakdown</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"showAddBudgetModal\" is called in onclick handler but not defined",
+      "handler": "showAddBudgetModal()",
+      "context": "<div style=\"margin-bottom: 15px;\">                     <button class=\"btn btn-success\" onclick=\"showAddBudgetModal()\">➕ Create Budget</button>                     <button class=\"btn btn-i"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"refreshBudgets\" is called in onclick handler but not defined",
+      "handler": "refreshBudgets()",
+      "context": "ck=\"showAddBudgetModal()\">➕ Create Budget</button>                     <button class=\"btn btn-info\" onclick=\"refreshBudgets()\">🔄 Refresh</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateMonthlySummary\" is called in onclick handler but not defined",
+      "handler": "generateMonthlySummary()",
+      "context": "solid #ddd; border-radius: 5px; width: 100px;\">                     <button class=\"btn btn-primary\" onclick=\"generateMonthlySummary()\">Generate Summary</button>                     <button class=\"btn"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportMonthlySummaryCSV\" is called in onclick handler but not defined",
+      "handler": "exportMonthlySummaryCSV()",
+      "context": "rateMonthlySummary()\">Generate Summary</button>                     <button class=\"btn btn-success\" onclick=\"exportMonthlySummaryCSV()\">📥 Export CSV</button>                     <button class=\"btn bt"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"printMonthlySummary\" is called in onclick handler but not defined",
+      "handler": "printMonthlySummary()",
+      "context": "\"exportMonthlySummaryCSV()\">📥 Export CSV</button>                     <button class=\"btn btn-info\" onclick=\"printMonthlySummary()\">🖨️ Print</button>                 </div>                 <div id=\"m"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateProfitLossReport\" is called in onclick handler but not defined",
+      "handler": "generateProfitLossReport()",
+      "context": "eat(auto-fit, minmax(250px, 1fr)); gap: 15px;\">                     <button class=\"btn btn-success\" onclick=\"generateProfitLossReport()\">📊 Profit & Loss</button>                     <button class=\"bt"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateCashFlowReport\" is called in onclick handler but not defined",
+      "handler": "generateCashFlowReport()",
+      "context": "teProfitLossReport()\">📊 Profit & Loss</button>                     <button class=\"btn btn-primary\" onclick=\"generateCashFlowReport()\">💸 Cash Flow Statement</button>                     <button class"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateBudgetReport\" is called in onclick handler but not defined",
+      "handler": "generateBudgetReport()",
+      "context": "shFlowReport()\">💸 Cash Flow Statement</button>                     <button class=\"btn btn-warning\" onclick=\"generateBudgetReport()\">📈 Budget vs Actual</button>                     <button class=\"btn"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"generateExpenseReport\" is called in onclick handler but not defined",
+      "handler": "generateExpenseReport()",
+      "context": "nerateBudgetReport()\">📈 Budget vs Actual</button>                     <button class=\"btn btn-info\" onclick=\"generateExpenseReport()\">💸 Expense Report</button>                 </div>"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"printZReport\" is called in onclick handler but not defined",
+      "handler": "printZReport()",
+      "context": "<div style=\"margin-top: 20px; text-align: center;\">                 <button class=\"btn btn-primary\" onclick=\"printZReport()\">🖨️ Print Z-Report</button>                 <button class=\"btn btn-success\""
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"exportZReportCSV\" is called in onclick handler but not defined",
+      "handler": "exportZReportCSV()",
+      "context": "nclick=\"printZReport()\">🖨️ Print Z-Report</button>                 <button class=\"btn btn-success\" onclick=\"exportZReportCSV()\">📥 Export CSV</button>                 <button class=\"btn\" onclick=\"clo"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "missing_function",
+      "message": "Function \"open\" is called in onclick handler but not defined",
+      "handler": "window.open(",
+      "context": "<span>${published}</span>                                 <button type=\"button\" onclick=\"window.open('${item.url}', '_blank')\">View</button>                             </div>"
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -368,56 +835,7 @@
       "type": "missing_function",
       "message": "Function \"stopPropagation\" is called in onclick handler but not defined",
       "handler": "event.stopPropagation(); selectRecommendedMedicine(",
-      "context": "le=\"padding: 5px 15px; font-size: 0.85rem; margin-left: 10px;\"                                      onclick=\"event.stopPropagation(); selectRecommendedMedicine('${medicine.replace(/'/g, \"\\\\'\")}')\">"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"select\" is called in onclick handler but not defined",
-      "handler": "this.select()",
-      "context": "onchange=\"updateWalkInCartQuantity(${index}, 0, this.value)\"                                     onclick=\"this.select()\"                                    style=\"width: 50px; text-align: center; p"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"print\" is called in onclick handler but not defined",
-      "handler": "window.print()",
-      "context": "<div class=\"no-print\" style=\"margin-top: 20px;\">                             <button onclick=\"window.print()\" style=\"padding: 10px 20px; background: #c41e3a; color: white; border: none;"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"close\" is called in onclick handler but not defined",
-      "handler": "window.close()",
-      "context": ": 5px; cursor: pointer; margin-right: 10px;\">🖨️ Print</button>                             <button onclick=\"window.close()\" style=\"padding: 10px 20px; background: #95a5a6; color: white; border: none;"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"print\" is called in onclick handler but not defined",
-      "handler": "window.print()",
-      "context": "<div class=\"no-print\" style=\"margin-top: 20px;\">                             <button onclick=\"window.print()\" style=\"padding: 10px 20px; background: #c41e3a; color: white; border: none;"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"close\" is called in onclick handler but not defined",
-      "handler": "window.close()",
-      "context": ": 5px; cursor: pointer; margin-right: 10px;\">🖨️ Print</button>                             <button onclick=\"window.close()\" style=\"padding: 10px 20px; background: #95a5a6; color: white; border: none;"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"remove\" is called in onclick handler but not defined",
-      "handler": "this.parentElement.parentElement.remove()",
-      "context": "<h2 style=\"margin:0;color:#2c3e50;\">Full Body Checkup Form</h2>                             <button onclick=\"this.parentElement.parentElement.remove()\" style=\"background:transparent;border:none;color:"
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "missing_function",
-      "message": "Function \"closest\" is called in onclick handler but not defined",
-      "handler": "this.closest(",
-      "context": "<div style=\"margin-top:24px;text-align:center;\">                             <button onclick=\"this.closest('div[style*=\\\\\"position:fixed\\\\\"]').remove()\" class=\"btn\" style=\"background:#0"
+      "context": "le=\"padding: 5px 15px; font-size: 0.85rem; margin-left: 10px;\"                                      onclick=\"event.stopPropagation(); selectRecommendedMedicine('${medicine.replace(/'/g, \"\\\\'\")}', this"
     }
   ],
   "warnings": [
@@ -425,36 +843,43 @@
       "file": "index.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showSection("
+      "handler": "var n=document.getElementById("
     },
     {
-      "file": "index.html",
+      "file": "distributor-portal.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showSection("
+      "handler": "switchAuthTab("
     },
     {
-      "file": "index.html",
+      "file": "distributor-portal.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showSection("
+      "handler": "switchAuthTab("
     },
     {
-      "file": "index.html",
+      "file": "distributor-portal.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchModalTab("
+      "handler": "switchAuthTab("
     },
     {
-      "file": "index.html",
+      "file": "distributor-portal.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchModalTab("
+      "handler": "switchAuthTab("
     },
     {
-      "file": "index.html",
-      "type": "missing_preventDefault",
-      "message": "Form submit handler may be missing preventDefault()"
+      "file": "distributor-portal.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchAuthTab("
+    },
+    {
+      "file": "distributor-portal.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchAuthTab("
     },
     {
       "file": "distributor-portal.html",
@@ -784,7 +1209,61 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchAnalyticsTab("
+      "handler": "performLogout(); this.closest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "this.closest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "event.stopPropagation(); toggleFavorite("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "event.stopPropagation(); toggleFavorite("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "event.stopPropagation(); toggleFavorite("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "event.stopPropagation(); toggleFavorite("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -815,6 +1294,48 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "switchAnalyticsTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchAnalyticsTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLandingPage(); showLandingTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLandingPage(); showLandingTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLandingPage(); showLandingTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLandingPage(); showLandingTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "togglePasswordVisibility("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "togglePasswordVisibility("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -832,13 +1353,37 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "openClientReg("
+      "handler": "setCheckupClientType("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "openClientReg("
+      "handler": "setCheckupClientType("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setCheckupVisitType("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setCheckupVisitType("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "if(event.target===this)this.style.display="
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "document.getElementById("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1060,6 +1605,12 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showOrderTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "openClientReg("
     },
     {
@@ -1102,7 +1653,79 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchConsultantSection("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showConsultantCheckups("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showConsultantCheckups("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1120,7 +1743,25 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showLogin("
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1187,12 +1828,6 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showDispenserTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showWalkInSaleModal("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1258,13 +1893,103 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showLogin("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showStockTab("
+      "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleStockView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleStockView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleStockQuickAction(event,"
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1343,6 +2068,84 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showStockTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "printInvoices("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "printInvoices("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showHRSubTab("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1475,6 +2278,18 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleGMView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleGMView("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1558,43 +2373,43 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
+      "handler": "openStaffLeaveRequest("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
+      "handler": "viewMyLeaveRequests("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
+      "handler": "openStaffCashRequest("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "switchGMInventoryTab("
+      "handler": "viewMyCashRequests("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleDirectorView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleDirectorView("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1618,37 +2433,25 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showLogin("
+      "handler": "openStaffLeaveRequest("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showCRMTab("
+      "handler": "viewMyLeaveRequests("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showCRMTab("
+      "handler": "openStaffCashRequest("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showCRMTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "showCRMTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "clearPortalCommunication("
+      "handler": "viewMyCashRequests("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1660,6 +2463,138 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showCRMTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showCRMTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showCRMTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showCRMTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleFinanceView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleFinanceView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "clearPortalCommunication("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setBonusWorkflowTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setBonusWorkflowTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setBonusWorkflowTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "setBonusWorkflowTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "showLogin("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleMISView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "toggleMISView("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffLeaveRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyLeaveRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "openStaffCashRequest("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "viewMyCashRequests("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "clearPortalCommunication("
     },
     {
@@ -1672,25 +2607,85 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectWalkInPaymentMethod("
+      "handler": "wiSetCustomerType("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectWalkInPaymentMethod("
+      "handler": "wiSetCustomerType("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectWalkInPaymentMethod("
+      "handler": "wiSetPayment("
     },
     {
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectWalkInPaymentMethod("
+      "handler": "wiSetPayment("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "wiSetPayment("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "wiSetPayment("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "closeModal("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "closeModal("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "closeModal("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchStaffAuthTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchStaffAuthTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchStaffAuthTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchStaffAuthTab("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "switchStaffAuthTab("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1840,7 +2835,13 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "closeModal("
+      "handler": "openMediaOverlay("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "window.open("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -1900,18 +2901,6 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "openTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "openTab("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "createReport("
     },
     {
@@ -1955,6 +2944,18 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "quickBookAppointment("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleGMDispatchDecision("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "handleGMDispatchDecision("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -2092,6 +3093,24 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "wiSelectRegistered("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "wiSelectReferral("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
+      "handler": "wiAddToCart("
+    },
+    {
+      "file": "dynapharm-complete-system.html",
+      "type": "syntax_warning",
+      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "selectUplineDistributor("
     },
     {
@@ -2123,12 +3142,6 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "issueFieldProgramStock("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectFieldProgramDistributor("
     },
     {
       "file": "dynapharm-complete-system.html",
@@ -2296,12 +3309,6 @@
       "file": "dynapharm-complete-system.html",
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "togglePasswordView("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "showResetPasswordModal("
     },
     {
@@ -2321,336 +3328,32 @@
       "type": "syntax_warning",
       "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
       "handler": "deleteBranch("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectDistributorForReferral("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectDistributorForBonus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "selectDistributorForCustomerName("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "addToWalkInCart("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "addToWalkInCart("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "printWalkInSaleReceipt("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "updatePurchaseOrderStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "updatePurchaseOrderStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "updatePurchaseOrderStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "markASNArrived("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "promoteASNToPutaway("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "removeASN("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "acceptReplenishmentSuggestion("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "transferToWarehouse("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "distributeToBranch("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "distributeToBranch("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "createPOForItem("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "deleteExpense("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "deleteBudget("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "approveVariance("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "viewDataCollection("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "exportDataCollection("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "editEmployee("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "deleteEmployee("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "approveLeave("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "rejectLeave("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "approveCashRequest("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "rejectCashRequest("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "addToShopCart("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "closeModal("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "closeModal("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "closeModal("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "closeModal("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "viewFrontdeskClientForm("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "this.closest("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "viewOrderDetails("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "updateCRMLeadStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "convertLeadToOrder("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "fdcrmPreviewSegment("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "removeProductPhoto("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "previewDocument("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "printDocument("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "emailDocument("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "assignDocument("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "advanceDocumentStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "overrideDocumentStatus("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "setDocumentDueDate("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "addDocumentComment("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "archiveDocument("
-    },
-    {
-      "file": "dynapharm-complete-system.html",
-      "type": "syntax_warning",
-      "message": "Potential syntax issue in onclick handler: Unexpected token '}'",
-      "handler": "viewDocumentActivity("
     }
   ],
   "stats": {
     "index.html": {
-      "handlers": 9,
-      "functions": 10
+      "handlers": 2,
+      "functions": 1
     },
     "director-portal.html": {
       "handlers": 0,
-      "functions": 12
+      "functions": 17
     },
     "distributor-portal.html": {
-      "handlers": 6,
-      "functions": 21
+      "handlers": 12,
+      "functions": 28
     },
     "gm-portal.html": {
       "handlers": 2,
-      "functions": 15
+      "functions": 25
     },
     "hr-portal.html": {
       "handlers": 62,
-      "functions": 70
+      "functions": 72
     },
     "mis-portal.html": {
-      "handlers": 32,
-      "functions": 28
-    },
-    "stock-management-portal.html": {
-      "handlers": 0,
-      "functions": 33
+      "handlers": 34,
+      "functions": 52
     },
     "appointments-admin.html": {
       "handlers": 5,
@@ -2665,8 +3368,8 @@
       "functions": 3
     },
     "dynapharm-complete-system.html": {
-      "handlers": 635,
-      "functions": 866
+      "handlers": 684,
+      "functions": 963
     }
   }
 }

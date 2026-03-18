@@ -17,7 +17,6 @@
         // Handle manifest.json 403 errors gracefully (non-critical for PWA)
         window.addEventListener('error', function(e) {
             if (e.target && e.target.href && e.target.href.includes('manifest.json')) {
-                console.warn('⚠️ Manifest.json not accessible (403) - PWA features may be limited. This is non-critical.');
                 e.preventDefault();
             }
         }, true);
@@ -542,7 +541,6 @@
                 const raw = localStorage.getItem(SYNC_SETTINGS_STORAGE_KEY);
                 stored = raw ? JSON.parse(raw) : null;
             } catch (error) {
-                console.debug('Sync settings unavailable', error);
             }
             cachedSyncSettings = mergeSyncSettings(getDefaultSyncSettings(), stored || {});
             return cachedSyncSettings;
@@ -569,7 +567,6 @@
                     events = parsed;
                 }
             } catch (error) {
-                console.debug('Sync events unavailable', error);
             }
             cachedSyncEvents = events;
             return events.slice();
@@ -1201,18 +1198,66 @@
         .header h1 { font-size: 2rem; margin-bottom: 10px; }
         .tabs {
             display: flex;
-            background: #ecf0f1;
-            border-bottom: 3px solid #c41e3a;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 2px solid #dee2e6;
+            gap: 2px;
+            padding: 4px 4px 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
         }
         .tab-button {
-            flex: 1;
-            padding: 15px;
-            background: none;
+            flex: 0 0 auto;
+            padding: 10px 18px;
+            background: transparent;
             border: none;
-            font-size: 1rem;
+            font-size: 0.88rem;
+            font-weight: 500;
             cursor: pointer;
+            color: #64748b;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+            position: relative;
+            letter-spacing: 0.01em;
         }
-        .tab-button.active { background: white; color: #c41e3a; font-weight: bold; }
+        .tab-button:hover { background: rgba(196,30,58,0.06); color: #c41e3a; }
+        .tab-button.active {
+            background: #fff;
+            color: #c41e3a;
+            font-weight: 600;
+            box-shadow: 0 -2px 8px rgba(196,30,58,0.08);
+        }
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #c41e3a;
+            border-radius: 3px 3px 0 0;
+        }
+        .dispenserTab {
+            flex: 1;
+            padding: 12px 16px;
+            background: transparent;
+            color: #64748b;
+            font-size: 0.88rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            white-space: nowrap;
+        }
+        .dispenserTab:hover { background: rgba(52,152,219,0.06); color: #3498db; }
+        .dispenserTab.dispenserTab--active,
+        .dispenserTab[style*="linear-gradient"] {
+            background: linear-gradient(135deg, #3498db, #2980b9) !important;
+            color: white !important;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(52,152,219,0.2);
+        }
 #stockWorkflowNav {
     margin-top: 18px;
     display: grid;
@@ -3467,7 +3512,6 @@
         // =============================================================================
         // CRITICAL: Initialize loading state
         // =============================================================================
-        console.log('🚀 Starting JavaScript initialization...');
         window.functionsLoaded = false;
         
         // Update loading status
@@ -3515,7 +3559,6 @@
             if (typeof showLogin === 'function') {
                 showLogin(portalKey);
             } else {
-                console.warn('showLogin not yet available, portal:', portalKey);
             }
         }
         
@@ -3527,7 +3570,6 @@
         function openLoginModal(portal) {
             // Guard: Do not open login modal if user is already authenticated
             if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
-                console.log('User already authenticated, skipping login modal');
                 return;
             }
             
@@ -3541,7 +3583,6 @@
                                   modalDisplay === 'block' || computedDisplay === 'block';
                 
                 if (isModalOpen) {
-                    console.log('Login modal already open, skipping duplicate call');
                     return;
                 }
             }
@@ -3551,7 +3592,6 @@
                 document.addEventListener('DOMContentLoaded', () => {
                     // Guard: Check again if user is authenticated before opening modal
                     if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
-                        console.log('User already authenticated, skipping login modal (DOMContentLoaded)');
                         return;
                     }
                     openLoginModal(portal);
@@ -3597,19 +3637,15 @@
             const passwordField = document.getElementById('password') || document.getElementById('loginPassword') || document.getElementById('warehousePassword') || document.getElementById('unifiedPassword');
             
             // Debug: Log what we found
-            console.log('openLoginModal called for portal:', portal);
-            console.log('loginModal element found:', !!loginModal);
             
             if (!loginModal) {
                 // If modal not available yet, retry after a short delay (max 10 retries)
                 if (!openLoginModal.retryCount) openLoginModal.retryCount = 0;
                 if (openLoginModal.retryCount < 10) {
                     openLoginModal.retryCount++;
-                    console.warn('Login modal not yet available, retrying...', openLoginModal.retryCount);
                     setTimeout(() => {
                         // Guard: Check again if user is authenticated before retrying
                         if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
-                            console.log('User already authenticated, skipping login modal (retry)');
                             return;
                         }
                         openLoginModal(portal);
@@ -3629,7 +3665,6 @@
             if (loginModal.parentElement !== document.body) {
                 // Modal might be inside a container that's collapsed - move to body
                 document.body.appendChild(loginModal);
-                console.log('Moved modal to body');
             }
             
             // Update modal title and description if available
@@ -3700,11 +3735,9 @@
                 requestAnimationFrame(() => {
                     const computedDisplay = getComputedStyle(loginModal).display;
                     const computedVisibility = getComputedStyle(loginModal).visibility;
-                    console.log('Modal computed styles - Display:', computedDisplay, 'Visibility:', computedVisibility, 'Opacity:', getComputedStyle(loginModal).opacity);
                     
                     // If still not showing, force it more aggressively
                     if (computedDisplay === 'none' || computedVisibility === 'hidden') {
-                        console.warn('Modal still hidden, forcing display...');
                         loginModal.style.setProperty('display', 'flex', 'important');
                         loginModal.style.setProperty('visibility', 'visible', 'important');
                     }
@@ -3712,9 +3745,6 @@
                     // Verify modal is actually visible on screen
                     const rect = loginModal.getBoundingClientRect();
                     const computed = getComputedStyle(loginModal);
-                    console.log('Modal final state (RAF) - Display:', computed.display, 'Visibility:', computed.visibility, 'Z-index:', computed.zIndex, 'Position:', computed.position);
-                    console.log('Modal dimensions (RAF) - Width:', computed.width, 'Height:', computed.height);
-                    console.log('Modal bounding rect (RAF):', rect);
                     
                     if (rect.width === 0 || rect.height === 0) {
                         console.error('Modal has zero dimensions! Computed:', computed.width, 'x', computed.height, 'but rect:', rect.width, 'x', rect.height);
@@ -3724,7 +3754,6 @@
                         let parentLevel = 0;
                         while (parent && parentLevel < 5) {
                             const parentComputed = getComputedStyle(parent);
-                            console.log(`Parent ${parentLevel} (${parent.tagName || 'unknown'}):`, {
                                 display: parentComputed.display,
                                 visibility: parentComputed.visibility,
                                 height: parentComputed.height,
@@ -3737,7 +3766,6 @@
                         }
                         
                         // Try DOM manipulation - remove and re-add
-                        console.warn('Trying DOM manipulation to force rendering...');
                         const parentElement = loginModal.parentElement;
                         const nextSibling = loginModal.nextSibling;
                         
@@ -3757,17 +3785,14 @@
                             requestAnimationFrame(() => {
                                 const newRect = loginModal.getBoundingClientRect();
                                 const newComputed = getComputedStyle(loginModal);
-                                console.log('After DOM manipulation - rect:', newRect.width, 'x', newRect.height, 'computed:', newComputed.width, 'x', newComputed.height);
                                 
                                 if (newRect.width === 0 || newRect.height === 0) {
                                     console.error('Still zero dimensions after DOM manipulation. Modal may be in a collapsed container or have conflicting CSS.');
                                 } else {
-                                    console.log('Success! Modal now has dimensions:', newRect.width, 'x', newRect.height);
                                 }
                             });
                         }
                     } else {
-                        console.log('Modal should be visible! Position:', { top: rect.top, left: rect.left, width: rect.width, height: rect.height });
                     }
                 });
             });
@@ -3779,7 +3804,6 @@
             if (usernameField) {
                 setTimeout(() => {
                     usernameField.focus();
-                    console.log('Focused username field');
                 }, 100);
             }
             
@@ -3848,7 +3872,6 @@
             const errorDiv = document.getElementById('loginError');
             
             if (!loginModal) {
-                console.warn('Login modal not found');
                 return;
             }
             
@@ -4086,12 +4109,10 @@
                 const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
                 
                 if (age > maxAge) {
-                    console.log('Session expired, clearing...');
                     localStorage.removeItem('dyna_portal_user');
                     return false;
                 }
                 
-                console.log('✅ Restoring session for:', userData.username);
                 window.currentUser = userData;
                 
                 // Wait for all functions to be loaded before attempting login
@@ -4105,7 +4126,6 @@
                     if (!window.functionsLoaded) {
                         if (retries < maxRetries) {
                             if (retries === 1 || retries % 10 === 0) {
-                                console.log(`⏳ Waiting for functions to load... (${retries}/${maxRetries})`);
                             }
                             setTimeout(tryLogin, 200);
                         } else {
@@ -4117,10 +4137,8 @@
                     
                     // Functions are loaded, now call handlePortalLoginSuccess
                     if (typeof window.handlePortalLoginSuccess === 'function') {
-                        console.log('✅ Calling handlePortalLoginSuccess for session restore');
                         window.handlePortalLoginSuccess(userData, { silent: true });
                     } else if (typeof handlePortalLoginSuccess === 'function') {
-                        console.log('✅ Calling handlePortalLoginSuccess (direct) for session restore');
                         handlePortalLoginSuccess(userData, { silent: true });
                     } else {
                         console.error('❌ handlePortalLoginSuccess not found even after functions loaded!');
@@ -4151,14 +4169,12 @@
         } else {
             // Wait for the functionsReady event (primary path)
             window.addEventListener('functionsReady', () => {
-                console.log('📡 functionsReady event received, restoring session...');
                 setTimeout(_runRestoreOnce, 500);
             });
             
             // Fallback: if event doesn't fire within 3s, try anyway
             setTimeout(() => {
                 if (!window._sessionRestoreDone) {
-                    console.warn('⚠️ functionsReady event not fired, attempting restore anyway...');
                     _runRestoreOnce();
                 }
             }, 3000);
@@ -4183,9 +4199,7 @@
                         return data;
                     }
                     // API failed, try local fallback
-                    console.warn('API login failed, trying local users...');
                 } catch (apiError) {
-                    console.warn('API error, trying local fallback:', apiError.message);
                 }
                 
                 // Local fallback authentication
@@ -4199,7 +4213,6 @@
                     }
                 }
                 
-                console.log('🔍 Login attempt - Username:', username.toLowerCase(), '| Password length:', password?.length);
                 
                 const user = localUsers.find(u => 
                     u.username.toLowerCase() === username.toLowerCase() && 
@@ -4219,7 +4232,6 @@
                 }
                 
                 // User authenticated successfully
-                console.log('✅ Local authentication successful:', user.username);
                 return { 
                     success: true, 
                     user: {
@@ -4603,7 +4615,6 @@
             if (typeof showToast === 'function') {
                 showToast(message, variant);
             } else {
-                console.log(`[Stock:${variant}]`, message);
             }
         }
 
@@ -4647,7 +4658,6 @@
                     });
                 }
             } catch (error) {
-                console.debug('Forecast enrichment skipped:', error.message);
             }
             return forecasts;
         }
@@ -5162,7 +5172,6 @@
                 renderPlanInsights();
                 renderSupplierScorecard();
             } catch (error) {
-                console.debug('Stock widgets deferred:', error.message);
             }
         });
         
@@ -5611,7 +5620,6 @@
                                     csvDist.forEach(function(d) {
                                         if (!existing4[d.code]) { distributors.push(d); existing4[d.code] = true; }
                                     });
-                                    console.log('Loaded ' + csvDist.length + ' distributors from CSV for checkup search');
                                     break;
                                 }
                             }
@@ -5622,7 +5630,6 @@
             _allCheckupDistributors = distributors;
             _checkupDistributorsLoaded = distributors.length > 0;
             _checkupDistributorsLoading = false;
-            console.log('Checkup distributor search: ' + distributors.length + ' distributors loaded');
             return distributors;
         }
 
@@ -6282,7 +6289,6 @@
         }
         
         function performLogout(isAutoLogout = false) {
-            console.log('🚪 Performing logout...');
             
             const modal = document.getElementById('sessionTimeoutModal');
             if (modal) modal.remove();
@@ -6305,7 +6311,6 @@
                 localStorage.removeItem('warehouseFilter');
                 localStorage.removeItem('dynapharm_active_portal');
                 localStorage.removeItem('dynapharm_frontdesk_tab');
-                console.log('✅ Session data cleared from localStorage');
             } catch (e) {
                 console.warn('Failed to clear localStorage:', e);
             }
@@ -6355,7 +6360,6 @@
                 if (c) c.style.display = 'none';
             });
             
-            console.log('✅ Logout complete - returning to landing page');
             
             if (!isAutoLogout) {
                 showToast('Logged out successfully', 'success');
@@ -6623,20 +6627,17 @@
         }
         
         function showStaffLogin() {
-            console.log('[NAV] showStaffLogin called');
             currentPortal = '__staff_login__';
             window.currentPortal = '__staff_login__';
             
             var loginModal = document.getElementById('loginModal');
             if (!loginModal) {
-                console.log('[NAV] loginModal not in DOM yet, retrying...');
                 setTimeout(showStaffLogin, 400);
                 return;
             }
             // Move to document.body so it is NOT inside the hidden .container div
             if (loginModal.parentNode !== document.body) {
                 document.body.appendChild(loginModal);
-                console.log('[NAV] loginModal moved to document.body');
             }
             loginModal.style.cssText = 'display:flex !important; position:fixed; z-index:99999; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;';
             loginModal.setAttribute('aria-hidden', 'false');
@@ -6661,11 +6662,9 @@
             const loginBtn = document.getElementById('staffLoginBtn');
             const errorDiv = document.getElementById('staffLoginError');
             
-            console.log('🔐 Staff login attempt:', { username, hasPassword: !!password });
             
             // Check if all functions have finished loading
             if (!window.functionsLoaded) {
-                console.warn('⚠️ Page still loading functions, please wait...');
                 if (errorDiv) {
                     errorDiv.textContent = 'Page is still loading... Please wait a moment and try again.';
                     errorDiv.style.display = 'block';
@@ -6698,9 +6697,7 @@
             }
             
             try {
-                console.log('🚀 Calling loginPortalRequest...');
                 const result = await window.loginPortalRequest(username, password);
-                console.log('✅ Login API response:', result);
                 
                 if (result && result.user) {
                     const user = result.user;
@@ -6715,7 +6712,6 @@
                         localStorage.removeItem('rememberedUsername');
                     }
                     
-                    console.log('✅ Staff login successful:', user.username, user.role);
                     
                     // Store user in localStorage for persistence
                     try {
@@ -6743,13 +6739,10 @@
                         retries++;
                         
                         if (typeof window.handlePortalLoginSuccess === 'function') {
-                            console.log('✅ Calling handlePortalLoginSuccess');
                             window.handlePortalLoginSuccess(user, { silent: true });
                         } else if (typeof handlePortalLoginSuccess === 'function') {
-                            console.log('✅ Calling handlePortalLoginSuccess (direct)');
                             handlePortalLoginSuccess(user, { silent: true });
                         } else if (retries < maxRetries) {
-                            console.log(`⏳ Waiting for handlePortalLoginSuccess... (attempt ${retries}/${maxRetries})`);
                             setTimeout(tryLoginSuccess, 200);
                         } else {
                             console.error('❌ handlePortalLoginSuccess not found after', retries, 'attempts! Opening portal manually...');
@@ -6774,7 +6767,6 @@
                                 // Determine portal based on role
                                 const targetPortal = getDefaultPortalForRole(user.role) || 'dispenser';
                                 
-                                console.log('📍 Opening portal manually:', targetPortal);
                                 
                                 // Open the portal
                                 if (typeof openTab === 'function') {
@@ -6795,7 +6787,6 @@
                                         // Show target portal
                                         portalElement.classList.add('active');
                                         portalElement.style.display = 'block';
-                                        console.log('✅ Portal opened via direct DOM manipulation');
                                     } else {
                                         console.error('Portal element not found:', targetPortal);
                                     }
@@ -7218,7 +7209,6 @@
          * Show Distributor/Client sub-tabs (Shop, Checkup, Media, Testimonials)
          */
         function showDistributorTab(tabName) {
-            console.log('[NAV] Switching distributor tab:', tabName);
             
             var clientDiv = document.getElementById('client');
             if (!clientDiv) return;
@@ -7240,7 +7230,6 @@
                 selectedTab.style.display = 'block';
                 selectedTab.classList.add('active');
             } else {
-                console.warn('[NAV] Distributor tab not found: distributor-' + tabName + '-tab');
             }
             
             if (event && event.target) {
@@ -7279,7 +7268,6 @@
         };
 
         function showOrderTab(tabName) {
-            console.log('[NAV] Switching front desk tab:', tabName);
             
             var frontdeskDiv = document.getElementById('frontdesk');
             if (!frontdeskDiv) { console.error('[NAV] frontdesk section not found'); return; }
@@ -7374,12 +7362,10 @@
          * Show Stock Management tabs
          */
         function showStockTab(tabName, evt = null) {
-            console.log('📊 Switching to stock tab:', tabName);
             const triggerEvent = evt || window.event || null;
             const stockContent = document.getElementById('stockContent');
             
             if (!stockContent) {
-                console.warn('stockContent element not found');
                 return;
             }
             
@@ -7450,12 +7436,9 @@
                 // Force a reflow to ensure display changes take effect
                 selectedTab.offsetHeight;
                 
-                console.log(`✅ Tab ${tabName} displayed (found as ${selectedTab.id})`);
             } else {
-                console.warn(`❌ Stock tab content not found for ${tabName}. Tried IDs:`, candidateIds);
                 // Try to find any tab with similar name
                 const allTabs = document.querySelectorAll('.stock-tab-content');
-                console.log('Available tabs:', Array.from(allTabs).map(t => t.id));
             }
             
             // Highlight the triggering button (or fallback)
@@ -7680,7 +7663,6 @@
          * Show Front Desk CRM tabs
          */
         function showFrontdeskCRMTab(tabName) {
-            console.log('👥 Switching to CRM tab:', tabName);
             
             // Hide all CRM tab contents
             const tabContents = document.querySelectorAll('[id^="crm-tab-"]');
@@ -7702,7 +7684,6 @@
             if (selectedTab) {
                 selectedTab.style.display = 'block';
             } else {
-                console.warn(`CRM tab content not found: crm-tab-${tabName}`);
             }
             
             // Set active button
@@ -9970,18 +9951,17 @@
         
         <div class="tabs" id="portalTabs" style="display: none; position: relative;">
             <button onclick="togglePortalQuickAccess()" class="btn" style="background: #c41e3a; color: white; padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; margin-right: 8px;" title="Quick Access Menu">🚀</button>
-            <button class="tab-button active" onclick="openTab('client', event)" data-portal-id="client">Distributor / Guest</button>
-            <button class="tab-button" onclick="openTab('frontdesk', event)" data-portal-id="frontdesk">Front Desk Portal</button>
-            <button class="tab-button" onclick="openTab('consultant', event)" data-portal-id="consultant">Consultant Portal</button>
-            <button class="tab-button" onclick="openTab('dispenser', event)" data-portal-id="dispenser">Branch Portal</button>
-            <button class="tab-button" onclick="openTab('hr-portal', event)" data-portal-id="hr-portal">HR Portal</button>
-            <button class="tab-button" onclick="openTab('finance', event)">Finance Portal</button>
-            
-            <button class="tab-button" onclick="openTab('gm', event)">GM Portal</button>
-            <button class="tab-button" onclick="openTab('director', event)">Director Portal</button>
-            <button class="tab-button" onclick="openTab('mis', event)">MIS Portal</button>
-            <button class="tab-button" onclick="openTab('stock', event)">Stock Management</button>
-            <button class="tab-button" onclick="openTab('admin', event)">Admin Portal</button>
+            <button class="tab-button active" onclick="openTab('client', event)" data-portal-id="client">🛒 Distributor</button>
+            <button class="tab-button" onclick="openTab('frontdesk', event)" data-portal-id="frontdesk">🏪 Front Desk</button>
+            <button class="tab-button" onclick="openTab('consultant', event)" data-portal-id="consultant">👩‍⚕️ Consultant</button>
+            <button class="tab-button" onclick="openTab('dispenser', event)" data-portal-id="dispenser">🏬 Branch</button>
+            <button class="tab-button" onclick="openTab('hr-portal', event)" data-portal-id="hr-portal">👥 HR</button>
+            <button class="tab-button" onclick="openTab('finance', event)">💰 Finance</button>
+            <button class="tab-button" onclick="openTab('gm', event)">📋 GM</button>
+            <button class="tab-button" onclick="openTab('director', event)">👔 Director</button>
+            <button class="tab-button" onclick="openTab('mis', event)">📊 MIS</button>
+            <button class="tab-button" onclick="openTab('stock', event)">📦 Stock</button>
+            <button class="tab-button" onclick="openTab('admin', event)">⚙️ Admin</button>
             
             <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
                 <span id="currentUserDisplay" style="color: #666; font-size: 0.9rem;"></span>
@@ -11667,37 +11647,37 @@
                 
                 <!-- Main Tabs -->
                 <div style="display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 3px solid #c41e3a; flex-wrap: wrap;">
-                    <button class="dispenserTab" id="walkInTab" onclick="showDispenserTab('walkIn')" style="flex: 1; padding: 15px; background: linear-gradient(135deg, #3498db, #2980b9); color: white; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: bold;">
+                    <button class="dispenserTab dispenserTab--active" id="walkInTab" onclick="showDispenserTab('walkIn')" >
                         🛒 Walk-in Sales
                     </button>
-                    <button class="dispenserTab" id="prescriptionTab" onclick="showDispenserTab('prescription')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="prescriptionTab" onclick="showDispenserTab('prescription')" >
                         💊 Prescriptions
                     </button>
-                    <button class="dispenserTab" id="stockTab" onclick="showDispenserTab('stock')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="stockTab" onclick="showDispenserTab('stock')" >
                         📦 Stock
                     </button>
-                    <button class="dispenserTab" id="bankingTab" onclick="showDispenserTab('banking')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="bankingTab" onclick="showDispenserTab('banking')" >
                         🏦 Banking
                     </button>
-                    <button class="dispenserTab" id="paymentsTab" onclick="showDispenserTab('payments')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="paymentsTab" onclick="showDispenserTab('payments')" >
                         💳 Payments
                     </button>
-                    <button class="dispenserTab" id="onlineOrdersTab" onclick="showDispenserTab('onlineOrders')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="onlineOrdersTab" onclick="showDispenserTab('onlineOrders')" >
                         🛍️ Online Orders
                     </button>
-                    <button class="dispenserTab" id="bonusTab" onclick="showDispenserTab('bonus')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="bonusTab" onclick="showDispenserTab('bonus')" >
                         🎁 Bonus
                     </button>
-                    <button class="dispenserTab" id="communicationTab" onclick="showDispenserTab('communication')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="communicationTab" onclick="showDispenserTab('communication')" >
                         💬 Communication
                     </button>
-                    <button class="dispenserTab" id="staffTab" onclick="showDispenserTab('staff')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="staffTab" onclick="showDispenserTab('staff')" >
                         👤 Staff
                     </button>
-                    <button class="dispenserTab" id="distributorRegistrationTab" onclick="showDispenserTab('distributorRegistration')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="distributorRegistrationTab" onclick="showDispenserTab('distributorRegistration')" >
                         📝 Distributor Registration
                     </button>
-                    <button class="dispenserTab" id="fieldProgramTab" onclick="showDispenserTab('fieldProgram')" style="flex: 1; padding: 15px; background: #ecf0f1; color: #2c3e50; font-size: 1rem; border: none; border-radius: 8px 8px 0 0; cursor: pointer;">
+                    <button class="dispenserTab" id="fieldProgramTab" onclick="showDispenserTab('fieldProgram')" >
                         🚐 Field Program
                     </button>
                 </div>
@@ -13195,83 +13175,6 @@
                 </nav>
 
                 <div class="stock-layout stock-layout--full">
-                    <!-- Sidebar removed: workflow journey was duplicate of tab nav -->
-                    <div style="display:none;" id="stockWorkflowNav"></div>
-                    <aside class="stock-sidebar" style="display:none;">
-                        <div class="stock-sidebar-card">
-                            <div class="stock-sidebar-card__header">
-                                <h4>hidden</h4>
-                            </div>
-                        </div>
-                        <div class="stock-sidebar-card">
-                            <h4>Quick Actions</h4>
-                            <div class="stock-quick-list">
-                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" onclick="handleStockQuickAction(event, 'countryImport')" data-import-mode="prompt">
-                                    <span class="quick-icon" aria-hidden="true">📥</span>
-                                    <span class="quick-label">Import Country Stock</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" data-import-mode="manual" onclick="handleStockQuickAction(event, 'countryImport')">
-                                    <span class="quick-icon" aria-hidden="true">✍️</span>
-                                    <span class="quick-label">Manual Intake</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="countryImport" data-target="countryImportTab" data-import-mode="csv" onclick="handleStockQuickAction(event, 'countryImport')">
-                                    <span class="quick-icon" aria-hidden="true">📁</span>
-                                    <span class="quick-label">Upload CSV</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="warehouseDistribution" data-target="warehouseDistributionTab" onclick="handleStockQuickAction(event, 'warehouseDistribution')">
-                                    <span class="quick-icon" aria-hidden="true">🏢</span>
-                                    <span class="quick-label">Refill Warehouses</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="branchDistribution" data-target="branchDistributionTab" onclick="handleStockQuickAction(event, 'branchDistribution')">
-                                    <span class="quick-icon" aria-hidden="true">🏬</span>
-                                    <span class="quick-label">Supply Branches</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="transfers" data-target="transfersTab" onclick="handleStockQuickAction(event, 'transfers')">
-                                    <span class="quick-icon" aria-hidden="true">🔄</span>
-                                    <span class="quick-label">Manage Transfers</span>
-                                </button>
-                                <button type="button" class="stock-quick-btn" data-stock-action="countryInventory" data-target="countryInventoryTab" onclick="handleStockQuickAction(event, 'countryInventory')">
-                                    <span class="quick-icon" aria-hidden="true">🌍</span>
-                                    <span class="quick-label">View Inventory</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="stock-sidebar-card">
-                            <h4>Reports & Tools</h4>
-                            <ul class="stock-sidebar-links">
-                                <li>
-                                    <button type="button" data-stock-action="overview" data-target="overviewTab" onclick="handleStockQuickAction(event, 'overview')">
-                                        <span class="quick-icon" aria-hidden="true">📊</span>
-                                        <span class="quick-label">Executive Overview</span>
-                                    </button>
-                                </li>
-                                <li>
-                                    <button type="button" data-stock-action="orders" data-target="ordersTab" onclick="handleStockQuickAction(event, 'orders')">
-                                        <span class="quick-icon" aria-hidden="true">🧾</span>
-                                        <span class="quick-label">Auto &amp; Manual Orders</span>
-                                    </button>
-                                </li>
-                                <li>
-                                    <button type="button" data-stock-action="invoices" data-target="invoicesTab" onclick="handleStockQuickAction(event, 'invoices')">
-                                        <span class="quick-icon" aria-hidden="true">📑</span>
-                                        <span class="quick-label">Invoices &amp; Billing</span>
-                                    </button>
-                                </li>
-                                <li>
-                                    <button type="button" data-stock-action="realtime" data-target="realtimeTab" onclick="handleStockQuickAction(event, 'realtime')">
-                                        <span class="quick-icon" aria-hidden="true">⚡</span>
-                                        <span class="quick-label">Sync Status</span>
-                                    </button>
-                                </li>
-                                <li>
-                                    <button type="button" data-stock-action="barcode" data-target="barcodeTab" onclick="handleStockQuickAction(event, 'barcode')">
-                                        <span class="quick-icon" aria-hidden="true">🏷️</span>
-                                        <span class="quick-label">Barcode &amp; Scans</span>
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </aside>
                     <section class="stock-main stock-main--full">
 
                         <!-- Quick Action Strip -->
@@ -15618,141 +15521,6 @@
                     </div>
                 </div>
 
-                <!-- Inventory Oversight moved to Stock Management Portal -->
-                <div style="display:none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h3>hidden</h3>
-                    </div>
-                    
-                    <!-- Inventory Tabs -->
-                    <div class="tabs" style="margin-bottom: 20px;">
-                        <button class="tab-button active" onclick="switchGMInventoryTab('overview')" id="gmInvTabOverview">📊 Overview</button>
-                        <button class="tab-button" onclick="switchGMInventoryTab('expected')" id="gmInvTabExpected">📥 Expected Stock</button>
-                        <button class="tab-button" onclick="switchGMInventoryTab('losses')" id="gmInvTabLosses">⚠️ Stock Losses</button>
-                        <button class="tab-button" onclick="switchGMInventoryTab('manipulations')" id="gmInvTabManipulations">🔍 Manipulations Audit</button>
-                        <button class="tab-button" onclick="switchGMInventoryTab('approvals')" id="gmInvTabApprovals">✅ Pending Approvals</button>
-                        <button class="tab-button" onclick="switchGMInventoryTab('allbranches')" id="gmInvTabAllBranches">🏬 All Branches</button>
-                    </div>
-                    
-                    <!-- Inventory Content -->
-                    <div id="gmInventoryContent" style="min-height: 400px;">
-                        <!-- Overview Tab -->
-                        <div id="gmInvOverview" class="gm-inv-tab-content active">
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                                <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px;">
-                                    <div style="font-size: 0.9rem; opacity: 0.9;">Total Stock Value (All Branches)</div>
-                                    <div id="gmTotalStockValue" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
-                                </div>
-                                <div style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white; padding: 20px; border-radius: 12px;">
-                                    <div style="font-size: 0.9rem; opacity: 0.9;">Pending Expected Stock Requests</div>
-                                    <div id="gmPendingExpectedStock" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
-                                </div>
-                                <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; padding: 20px; border-radius: 12px;">
-                                    <div style="font-size: 0.9rem; opacity: 0.9;">Stock Losses (This Month)</div>
-                                    <div id="gmStockLosses" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">N$ 0.00</div>
-                                </div>
-                                <div style="background: linear-gradient(135deg, #ffa726, #fb8c00); color: white; padding: 20px; border-radius: 12px;">
-                                    <div style="font-size: 0.9rem; opacity: 0.9;">Pending Adjustments</div>
-                                    <div id="gmPendingAdjustments" style="font-size: 2rem; font-weight: bold; margin-top: 10px;">0</div>
-                                </div>
-                            </div>
-                            <div id="gmInventoryOverviewTable" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <h4 style="margin-top: 0;">Branch Inventory Summary</h4>
-                                <div id="gmBranchInventorySummary"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Expected Stock Tab -->
-                        <div id="gmInvExpected" class="gm-inv-tab-content" style="display: none;">
-                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <h4 style="margin: 0;">Expected Stock Requests Requiring Approval</h4>
-                                    <div style="display: flex; gap: 10px;">
-                                        <select id="gmExpectedBranchFilter" onchange="loadGMExpectedStock()" style="padding: 8px;">
-                                            <option value="all">All Branches</option>
-                                        </select>
-                                        <select id="gmExpectedStatusFilter" onchange="loadGMExpectedStock()" style="padding: 8px;">
-                                            <option value="pending">Pending Approval</option>
-                                            <option value="all">All Status</option>
-                                            <option value="approved">Approved</option>
-                                            <option value="rejected">Rejected</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="gmExpectedStockList" style="max-height: 600px; overflow-y: auto;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Stock Losses Tab -->
-                        <div id="gmInvLosses" class="gm-inv-tab-content" style="display: none;">
-                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <h4 style="margin: 0;">Stock Losses & Discrepancies</h4>
-                                    <div style="display: flex; gap: 10px;">
-                                        <input type="date" id="gmLossesDateFrom" onchange="loadGMStockLosses()" style="padding: 8px;">
-                                        <input type="date" id="gmLossesDateTo" onchange="loadGMStockLosses()" style="padding: 8px;">
-                                        <select id="gmLossesBranchFilter" onchange="loadGMStockLosses()" style="padding: 8px;">
-                                            <option value="all">All Branches</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="gmStockLossesList" style="max-height: 600px; overflow-y: auto;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Manipulations Audit Tab -->
-                        <div id="gmInvManipulations" class="gm-inv-tab-content" style="display: none;">
-                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <h4 style="margin: 0;">Stock Manipulation Audit Trail</h4>
-                                    <div style="display: flex; gap: 10px;">
-                                        <input type="text" id="gmManipSearch" placeholder="Search by user, product, branch..." 
-                                               onkeyup="loadGMStockManipulations()" style="padding: 8px; min-width: 250px;">
-                                        <select id="gmManipBranchFilter" onchange="loadGMStockManipulations()" style="padding: 8px;">
-                                            <option value="all">All Branches</option>
-                                        </select>
-                                        <select id="gmManipTypeFilter" onchange="loadGMStockManipulations()" style="padding: 8px;">
-                                            <option value="all">All Types</option>
-                                            <option value="adjustment">Adjustments</option>
-                                            <option value="loss">Losses</option>
-                                            <option value="transfer">Transfers</option>
-                                            <option value="receive">Receipts</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="gmStockManipulationsList" style="max-height: 600px; overflow-y: auto;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Pending Approvals Tab -->
-                        <div id="gmInvApprovals" class="gm-inv-tab-content" style="display: none;">
-                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <h4 style="margin: 0;">Pending Inventory Approvals</h4>
-                                    <button class="btn btn-success" onclick="loadGMPendingInventoryApprovals()">🔄 Refresh</button>
-                                </div>
-                                <div id="gmApprovalAlerts" style="display: none; margin-bottom: 15px;"></div>
-                                <div id="gmPendingInventoryApprovalsList" style="max-height: 600px; overflow-y: auto;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- All Branches Tab -->
-                        <div id="gmInvAllBranches" class="gm-inv-tab-content" style="display: none;">
-                            <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <h4 style="margin: 0;">All Branch Inventory (Full Access)</h4>
-                                    <div style="display: flex; gap: 10px;">
-                                        <select id="gmAllBranchesBranchFilter" onchange="loadGMAllBranchInventory()" style="padding: 8px;">
-                                            <option value="all">All Branches</option>
-                                        </select>
-                                        <button class="btn btn-info" onclick="exportGMInventoryReport()">📥 Export Report</button>
-                                    </div>
-                                </div>
-                                <div id="gmAllBranchInventoryList" style="max-height: 600px; overflow-y: auto;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 <!-- Special Sales Management (Legacy) -->
                 <div class="form-section" style="margin-top: 30px;">
@@ -18066,7 +17834,6 @@
                     }
                 }
             } catch (error) {
-                console.debug('getCachedBranches: failed to read cache', error);
             }
             return [];
         }
@@ -18140,7 +17907,6 @@
                 try {
                     await syncBranchesFromBackend(force);
                 } catch (error) {
-                    console.debug('ensureBranchesHydrated: sync failed', error);
                 }
             }
             branches = getCachedBranches();
@@ -18229,7 +17995,6 @@
                         }
                     }
                 } catch (storageError) {
-                    console.debug('loadMediaLibrary: unable to read cache', storageError);
                 }
             }
             
@@ -18245,7 +18010,6 @@
                     }
                 }
             } catch (apiError) {
-                console.debug('loadMediaLibrary: API fetch failed', apiError);
             }
             
             if (!fetchedItems.length && Array.isArray(window.MEDIA_LIBRARY)) {
@@ -18259,7 +18023,6 @@
             try {
                 localStorage.setItem(MEDIA_LIBRARY_STORAGE_KEY, JSON.stringify(mediaLibraryCache));
             } catch (cacheError) {
-                console.debug('loadMediaLibrary: unable to cache media', cacheError);
             }
             return mediaLibraryCache;
         }
@@ -18659,7 +18422,6 @@
                     }
                 }
             } catch (error) {
-                console.debug('readCachedDistributors: failed', error);
             }
             return [];
         }
@@ -18668,7 +18430,6 @@
             try {
                 localStorage.setItem(DISTRIBUTOR_CACHE_KEY, JSON.stringify(list));
             } catch (error) {
-                console.debug('persistDistributorsToCache: failed', error);
             }
         }
         
@@ -18710,7 +18471,6 @@
                             list = rawList.map(normalizeDistributorRecord).filter(Boolean);
                         }
                     } catch (error) {
-                        console.debug('loadDistributors: backend unavailable', error);
                     }
                 }
                 if (!list.length) {
@@ -19966,7 +19726,6 @@
                         triggeredAt: new Date().toISOString()
                     });
             } catch (error) {
-                console.debug('recordDepartmentEvent finance_alert failed', error);
             }
             try {
                 logSyncEvent && logSyncEvent('finance-alert', message, { severity: 'warning', scope: 'finance' });
@@ -20244,7 +20003,6 @@
                 };
                 localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(payload));
             } catch (error) {
-                console.debug('Unable to persist finance cache', error);
             }
         }
 
@@ -20269,7 +20027,6 @@
                 bankDeposits = FINANCE_PORTAL_STATE.data.deposits || [];
                 expenses = FINANCE_PORTAL_STATE.data.expenses || [];
             } catch (error) {
-                console.debug('Unable to restore finance cache', error);
             }
         }
 
@@ -20309,7 +20066,6 @@
                                 const response = await apiRequest(endpoint, 'GET');
                                 return [key, response];
                             } catch (error) {
-                                console.debug(`Finance fetch failed for ${endpoint}`, error);
                                 return [key, null];
                             }
                         })
@@ -20340,7 +20096,6 @@
                     saveEnhancedFinanceData(snapshot);
                     return snapshot;
                 } catch (error) {
-                    console.debug('Finance data load failed; using cache if available', error);
                     if (FINANCE_PORTAL_STATE.data && FINANCE_PORTAL_STATE.data.deposits.length) {
                         return FINANCE_PORTAL_STATE.data;
                     }
@@ -22604,7 +22359,6 @@
                     });
                 }
             } catch (error) {
-                console.debug('Failed to hydrate appointments cache', error);
             }
         }
 
@@ -22667,7 +22421,6 @@
                         hydrateAppointmentsFromCache();
                     }
                 } catch (error) {
-                    console.debug('Remote appointment sync failed, falling back to cache', error);
                     if (!appointments.length) {
                         hydrateAppointmentsFromCache();
                     }
@@ -23195,7 +22948,6 @@
                     qtyInput.max = availableQty > 0 ? availableQty : '';
                 }
             } catch (error) {
-                console.debug('updateBranchDistAvailableQty error:', error);
             }
         }
 
@@ -23236,7 +22988,6 @@
                     qtyInput.max = availableQty > 0 ? availableQty : '';
                 }
             } catch (error) {
-                console.debug('updateTransferAvailableQty error:', error);
             }
         }
 
@@ -23379,7 +23130,6 @@
     // Defer initialization until AFTER all functions are loaded
     // Using functionsReady event instead of DOMContentLoaded to prevent blocking script parsing
     window.addEventListener('functionsReady', () => {
-        console.log('📡 functionsReady: Starting background data sync...');
         // Run data sync in background (non-blocking)
         setTimeout(() => {
             syncBranchesFromBackend().catch(err => console.debug('Branch sync (startup) error', err));
@@ -23481,9 +23231,8 @@
             try {
                 await module.refreshStockData();
             } catch (error) {
-                console.debug('Stock API refresh failed during bootstrap', error);
             } finally {
-                try { loadGMPendingInventoryApprovals(); } catch (_) {}
+                
             }
         });
         if (typeof updateTransferAvailableQty === 'function') {
@@ -23843,7 +23592,6 @@
                 setLeaveCacheRecords(normalized);
                 records = normalized;
             } catch (error) {
-                console.debug('fetchLeaveRecordsIncludingOffline fallback', error?.message || error);
                 records = getLeaveCacheRecords();
             }
             const offlineQueue = loadPendingQueue(LEAVE_PENDING_QUEUE_KEY).map((entry) =>
@@ -23892,7 +23640,6 @@
                 setCashCacheRecords(normalized);
                 records = normalized;
             } catch (error) {
-                console.debug('fetchCashRecordsIncludingOffline fallback', error?.message || error);
                 records = getCashCacheRecords();
             }
             const offlineQueue = loadPendingQueue(CASH_PENDING_QUEUE_KEY).map((entry) =>
@@ -24126,7 +23873,6 @@
                             disableStockMovementsApi('endpoint returned 404');
                         }
                     } catch(error){
-                        console.debug('Stock movements API fetch skipped:', error?.message || error);
                     }
                 }
                 
@@ -24274,11 +24020,9 @@
 // localStorage.setItem('dyna_clients', JSON.stringify(clients));
                     } catch(_) {}
                     
-                    console.log(`✅ Loaded ${clients.length} clients from backend database`);
                     return clients;
                 }
             } catch (apiError) {
-                console.warn('Backend load failed, using local cache:', apiError);
             }
             
             // FALLBACK: Try DB first
@@ -24311,11 +24055,9 @@
                     });
                     
                     if (response.ok) {
-                        console.log(`✅ Saved ${list.length} clients to backend database`);
                     }
                 }
             } catch (apiError) {
-                console.warn('Backend save failed, using local storage:', apiError);
             }
             
             // FALLBACK: Also save to local storage as cache
@@ -24354,12 +24096,10 @@
                 
                 if (response.ok) {
                     const saved = await response.json();
-                    console.log('✅ Client saved to backend database');
                     // Update record with saved data
                     Object.assign(record, saved);
                 }
             } catch (apiError) {
-                console.warn('Backend save failed, using local storage:', apiError);
             }
             
             // FALLBACK: Also save to local storage as cache
@@ -24526,7 +24266,6 @@
                         })).filter(p => p.is_active && p.description);
                         
                         if (transformedProducts.length > 0) {
-                            console.log(`✅ Loaded ${transformedProducts.length} products from API`);
                             // Update global PRICE_LIST
                             if (typeof window !== 'undefined') {
                                 window.PRICE_LIST = transformedProducts;
@@ -24538,14 +24277,12 @@
                                     timestamp: Date.now()
                                 }));
                             } catch (e) {
-                                console.debug('Could not cache products:', e);
                             }
                             return transformedProducts;
                         }
                     }
                 }
             } catch (error) {
-                console.debug('Failed to load products from API:', error);
             }
             
             // Fallback: Try cached products (if less than 1 hour old)
@@ -24555,7 +24292,6 @@
                     const parsed = JSON.parse(cached);
                     const age = Date.now() - (parsed.timestamp || 0);
                     if (age < 3600000 && parsed.data && parsed.data.length > 0) {
-                        console.log(`✅ Loaded ${parsed.data.length} products from cache`);
                         if (typeof window !== 'undefined') {
                             window.PRICE_LIST = parsed.data;
                         }
@@ -24563,11 +24299,9 @@
                     }
                 }
             } catch (e) {
-                console.debug('Cache read error:', e);
             }
             
             // Final fallback: Use hardcoded PRICE_LIST
-            console.log(`✅ Using hardcoded PRICE_LIST (${PRICE_LIST.length} products)`);
             return PRICE_LIST;
         }
 
@@ -24667,7 +24401,6 @@
                 if (!window._missingProducts) window._missingProducts = new Set();
                 if (!window._missingProducts.has(productName)) {
                     window._missingProducts.add(productName);
-                    console.debug(`Product not found in price list: "${productName}"`);
                 }
             }
             
@@ -24845,7 +24578,6 @@
         // Update existing reports with new pricing
         async function updateExistingReportsPricing() {
             try {
-                console.log('Updating existing reports with new pricing...');
                 
                 // Get all reports
                 await loadData();
@@ -24871,7 +24603,6 @@
                             );
                             
                             if (possibleMatch && PACKAGE_DATABASE[possibleMatch]) {
-                                console.log(`Found package match: "${medicineName}" -> "${possibleMatch}"`);
                                 medicineName = possibleMatch;
                                 med.name = possibleMatch; // Update the medicine name
                                 matchedPackage = PACKAGE_DATABASE[possibleMatch];
@@ -24893,7 +24624,6 @@
                                 // Initialize packageStatus for package medicines if it doesn't exist
                                 if (newPrice.isPackage && !med.packageStatus) {
                                     med.packageStatus = {};
-                                    console.log(`Initialized packageStatus for ${medicineName} in report ${report.id}`);
                                     reportUpdated = true;
                                 }
                                 
@@ -24907,7 +24637,6 @@
                                 const result = await apiRequest('/reports', 'PUT', report);
                                 if (result.success) {
                                     updatedCount++;
-                                    console.log(`Updated pricing for report: ${report.id}`);
                                 }
                             } catch (error) {
                                 console.error(`Error updating report ${report.id}:`, error);
@@ -24916,7 +24645,6 @@
                     }
                 }
                 
-                console.log(`Successfully updated pricing for ${updatedCount} reports`);
                 
                 // Refresh the display
                 if (currentPortal === 'dispenser') {
@@ -24938,7 +24666,6 @@
         // Fix existing client NB numbers to follow new format
         async function fixExistingClientNBNumbers() {
             try {
-                console.log('Fixing existing client NB numbers...');
                 
                 // Get all clients
                 await loadData();
@@ -24973,7 +24700,6 @@
                                     const result = await apiRequest('/clients', 'PUT', client);
                                     if (result.success) {
                                         fixedCount++;
-                                        console.log(`Fixed NB number for client: ${client.fullName} - ${client.referralNbNumber}`);
                                     }
                                 } catch (error) {
                                     console.error(`Error updating client ${client.referenceNumber}:`, error);
@@ -25004,7 +24730,6 @@
                     return;
                 }
                 
-                console.log('Running system maintenance...');
                 
                 // Fix NB numbers first
                 const nbFixed = await fixExistingClientNBNumbers();
@@ -25055,7 +24780,6 @@
             const distributorNbInput = document.querySelector('input[name="distributorNbNumber"]');
 
             function updateClientTypeVisibility(clientType) {
-                console.log('📝 Client type changed to:', clientType);
                 
                 if (clientType === 'customer') {
                     // Show referral fields (who referred this customer)
@@ -25268,7 +24992,6 @@
                             
                             const result = await response.json();
                             updateRealtimeStatus('online');
-                            console.log('Using secondary local API as fallback');
                             return result;
                         } catch (localError) {
                             console.error('Both APIs failed, using localStorage');
@@ -25288,7 +25011,6 @@
                 
                 if (!is404) {
                     // Only log non-404 errors in debug mode
-                    console.debug('API Error:', error.message || error);
                 }
                 
                 updateRealtimeStatus('offline');
@@ -25298,7 +25020,6 @@
         }
 
         async function fallbackToLocalStorage(endpoint, method, data) {
-            console.log('API unavailable, using localStorage fallback');
             if (endpoint === LEAVE_API_ENDPOINT) {
                 if (method === 'GET') {
                     return getLeaveCacheRecords();
@@ -25583,7 +25304,6 @@
                 
                 // Auto-extract clients from reports if clients array is empty
                 if (clients.length === 0 && reports.length > 0) {
-                    console.log('📋 No clients found, extracting from reports...');
                     const extractedClients = [];
                     
                     reports.forEach(report => {
@@ -25604,7 +25324,6 @@
                     clients = extractedClients;
                     // Database API only - no localStorage for client data
 // localStorage.setItem('dyna_clients', JSON.stringify(clients));
-                    console.log(`✅ Extracted ${clients.length} clients from reports`);
                 }
             }
             ensureBranchDirectory();
@@ -25613,14 +25332,12 @@
                     populateBranchSelects();
                 }
             } catch (e) {
-                console.debug('Unable to populate branch selectors after data load:', e);
             }
         }
         window.loadData = loadData;
 
         async function saveData() {
             // This function is kept for compatibility but data is now saved via API calls
-            console.log('Data saved via API calls');
         }
 
         // Global refresh function to update all portals
@@ -25641,26 +25358,22 @@
             try {
                 await loadData();
             } catch (e) {
-                console.debug('refreshGMData: loadData error', e);
                 showErrorToast('Failed to load data. Please try again.');
             }
             if (typeof loadEnhancedFinanceData === 'function') {
                 try {
                     await loadEnhancedFinanceData();
                 } catch (e) {
-                    console.debug('refreshGMData: loadEnhancedFinanceData error', e);
                     showErrorToast('Failed to load finance data.');
                 }
             }
             try {
                 calculateGMMetrics();
             } catch (e) {
-                console.debug('refreshGMData: calculateGMMetrics error', e);
             }
             try {
                 renderGMFinancialReport();
             } catch (e) {
-                console.debug('refreshGMData: renderGMFinancialReport error', e);
             }
             refreshAllApprovals();
             loadSpecialSales();
@@ -25934,7 +25647,6 @@
                 try {
                     await loadEnhancedFinanceData();
                 } catch (e) {
-                    console.debug('refreshGMFinancialReportSection: loadEnhancedFinanceData error', e);
                 }
             }
             renderGMFinancialReport();
@@ -25982,7 +25694,6 @@
                 try {
                     await loadDistributors({ skipBackend: true });
                 } catch (e) {
-                    console.debug('showGMBonusHistoryModal: loadDistributors error', e);
                 }
             }
             populateGMBonusHistoryDistributorList();
@@ -27543,19 +27254,16 @@
                         await refreshAllData();
                     } catch (error) {
                         // Silently handle errors to prevent console spam
-                        console.debug('Auto-refresh error (using localStorage):', error.message);
                     }
                 }
             }, 30000); // 30 seconds instead of 5 seconds
             
-            console.log('🔄 Auto-refresh started (30 second intervals)');
         }
 
         function stopAutoRefresh() {
             if (autoRefreshInterval) {
                 clearInterval(autoRefreshInterval);
                 autoRefreshInterval = null;
-                console.log('⏹️ Auto-refresh stopped');
             }
         }
 
@@ -27907,7 +27615,6 @@
         }
 
         function loadBranches() {
-            console.log('Loading branches:', branches);
             const selects = [document.getElementById('branchSelect'), document.getElementById('userBranchSelect'), document.getElementById('checkupBranchSelect'), document.getElementById('chkBranch')];
             selects.forEach(select => {
                 if(select) {
@@ -27915,13 +27622,11 @@
                     branches.forEach(b => {
                         select.innerHTML += `<option value="${b.id}">${b.name}</option>`;
                     });
-                    console.log('Populated select:', select.id, 'with', branches.length, 'branches');
                 }
             });
         }
 
         function openTab(tabName, event) {
-            console.log('[NAV] Switching portal:', tabName);
             // Close any open operational modals before switching portals
             var _wim = document.getElementById('walkInSaleModal');
             if (_wim) _wim.style.display = 'none';
@@ -27937,7 +27642,6 @@
                 var userRole = (currentUser.role || '').toLowerCase();
                 var allowed = ROLE_PORTAL_ACCESS[userRole] || ['client'];
                 if (userRole !== 'admin' && !allowed.includes(tabName)) {
-                    console.warn('[NAV] Access denied to portal:', tabName);
                     return;
                 }
                 currentPortal = tabName;
@@ -27990,7 +27694,6 @@
                             + ' <button class="btn btn-danger" onclick="logout()">Logout</button>';
                     }
                 }
-                console.log('[NAV] Auth bypassed for portal:', tabName, '| authEl:', !!authEl, '| contentEl:', !!contentEl);
             }
 
             if (event && event.target) {
@@ -28044,7 +27747,6 @@
                             refreshRevenue();
                         }
                     } catch (e) {
-                        console.debug('Finance portal initialization error:', e);
                     }
                 }, 100);
             }
@@ -28115,7 +27817,6 @@
                         var tgt = document.getElementById(_tname);
                         if (!tgt) return;
                         var cs = window.getComputedStyle(tgt);
-                        console.log('[DIAG]', _tname, '| style:', tgt.style.display, '| computed:', cs.display, '| offsetH:', tgt.offsetHeight, '| scrollH:', tgt.scrollHeight);
                         // Check parent chain for hidden ancestors and fix them
                         var par = tgt.parentElement;
                         while (par && par !== document.body) {
@@ -28129,17 +27830,14 @@
                         // Re-enforce portal section visibility
                         if (cs.display === 'none') {
                             tgt.style.display = 'block';
-                            console.warn('[DIAG] FAILSAFE: forced', _tname, 'to display:block');
                         }
                         // Re-enforce *Content visibility, hide *Auth
                         var ce = document.getElementById(_tname + 'Content');
                         var ae = document.getElementById(_tname + 'Auth');
                         if (ce) {
                             var ccs = window.getComputedStyle(ce);
-                            console.log('[DIAG]', _tname + 'Content', '| style:', ce.style.display, '| computed:', ccs.display, '| offsetH:', ce.offsetHeight);
                             if (ccs.display === 'none') {
                                 ce.style.display = 'block';
-                                console.warn('[DIAG] FAILSAFE: forced', _tname + 'Content', 'to display:block');
                             }
                         }
                         if (ae) ae.style.display = 'none';
@@ -28164,7 +27862,6 @@
                 };
                 localStorage.setItem(MIS_RECEIPT_CACHE_KEY, JSON.stringify(payload));
             } catch (error) {
-                console.debug('persistMISReceiptsCache error', error);
             }
         }
 
@@ -28185,7 +27882,6 @@
                 }
                 MIS_PORTAL_STATE.lastLoadedAt = payload.savedAt || 0;
             } catch (error) {
-                console.debug('restoreMISReceiptsCache error', error);
             }
         }
 
@@ -28239,7 +27935,6 @@
         function requestNotificationPermission() {
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission().then(permission => {
-                    console.log('Front Desk notification permission:', permission);
                 });
             }
         }
@@ -28264,7 +27959,6 @@
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.3);
             } catch (error) {
-                console.debug('Sound notification error:', error);
                 // Fallback: try HTML5 audio if available
                 try {
                     const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBlou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC');
@@ -28303,7 +27997,6 @@
                         notification.close();
                     };
                 } catch (error) {
-                    console.debug('Browser notification error:', error);
                 }
             } else if (playSound) {
                 // Play sound even if notifications are not allowed
@@ -28328,7 +28021,6 @@
                 frontDeskWebSocket = new WebSocket(wsUrl);
 
                 frontDeskWebSocket.onopen = () => {
-                    console.log('✅ Front Desk: Connected to realtime gateway');
                     // Subscribe to orders channel
                     frontDeskWebSocket.send(JSON.stringify({
                         type: 'subscribe',
@@ -28344,10 +28036,8 @@
                         if (data.type === 'event') {
                             handleFrontDeskRealtimeEvent(data);
                         } else if (data.type === 'subscribed') {
-                            console.log('✅ Front Desk: Subscribed to channels:', data.channels);
                         }
                     } catch (error) {
-                        console.debug('Front Desk WebSocket message parse error:', error);
                     }
                 };
 
@@ -28357,7 +28047,6 @@
                 };
 
                 frontDeskWebSocket.onclose = () => {
-                    console.log('⚠️ Front Desk: WebSocket closed, reconnecting in 5s...');
                     updateFrontDeskConnectionStatus(false);
                     setTimeout(connectFrontDeskWebSocket, 5000);
                 };
@@ -28372,7 +28061,6 @@
             
             if (resource === 'orders') {
                 if (action === 'created') {
-                    console.log('📥 Front Desk: New order received', eventData);
                     refreshAllFrontDeskOrderTabs();
                     updatePendingOrderCount();
                     showBrowserNotification(
@@ -28384,7 +28072,6 @@
                     // Show visual indicator
                     showNewOrderIndicator();
                 } else if (action === 'updated') {
-                    console.log('🔄 Front Desk: Order updated', eventData);
                     refreshAllFrontDeskOrderTabs();
                     updatePendingOrderCount();
                     // Show notification for status changes (no sound for updates)
@@ -28399,7 +28086,6 @@
                 }
             } else if (resource === 'clients') {
                 if (action === 'created' || action === 'updated') {
-                    console.log('👤 Front Desk: Client updated', eventData);
                     // Refresh client lookup if tab is open
                     const clientLookupTab = document.getElementById('frontdeskClientLookup');
                     if (clientLookupTab && !clientLookupTab.classList.contains('hidden')) {
@@ -28410,7 +28096,6 @@
                 }
             } else if (resource === 'visitors') {
                 if (action === 'created') {
-                    console.log('🚪 Front Desk: New visitor registered', eventData);
                     refreshVisitors();
                     showBrowserNotification(
                         '🚪 New Visitor',
@@ -28446,7 +28131,6 @@
                         pendingCount = Array.isArray(orders) ? orders.length : 0;
                     }
                 } catch (error) {
-                    console.debug('Failed to fetch pending orders from API:', error);
                 }
                 
                 // Fallback to localStorage
@@ -28457,14 +28141,12 @@
                             ? localOrders.filter(o => (o.status || '').toLowerCase() === 'pending').length 
                             : 0;
                     } catch (error) {
-                        console.debug('Failed to get orders from localStorage:', error);
                     }
                 }
                 
                 frontDeskPendingOrderCount = pendingCount;
                 updateOrderCountBadge(pendingCount);
             } catch (error) {
-                console.debug('Error updating pending order count:', error);
             }
         }
 
@@ -28591,7 +28273,6 @@
                 refreshAllFrontDeskOrderTabs();
             });
 
-            console.log('✅ Front Desk real-time sync initialized');
         }
 
         // Make functions globally accessible
@@ -28776,7 +28457,6 @@
                 const endpoint = params.toString() ? `/mis/receipts?${params}` : '/mis/receipts';
                 response = await apiRequest(endpoint);
             } catch (error) {
-                console.debug('loadMISReceipts apiRequest error', error);
             }
 
             let receipts = extractArray(response?.receipts, []);
@@ -28944,7 +28624,6 @@
                         triggeredAt: new Date().toISOString()
                     });
             } catch (error) {
-                console.debug('recordDepartmentEvent mis_alert failed', error);
             }
             try {
                 logSyncEvent && logSyncEvent('mis-alert', message, { severity: 'warning', scope: 'mis' });
@@ -29255,7 +28934,6 @@
                             : Number(totals.total?.cp || 0);
                     }
                 } catch (error) {
-                    console.debug('calculateReportTotal membership calc error', error);
                 }
             }
 
@@ -29312,7 +28990,6 @@
             try {
                 await loadData();
             } catch (error) {
-                console.debug('refreshMISData loadData error', error);
             }
             try {
                 await loadMISReceipts({ force: true });
@@ -29326,7 +29003,6 @@
                 const branchId = document.getElementById('misBranchSelect')?.value || 'all';
                 renderInventoryBreakdown('misInventoryBreakdown', branchId);
             } catch (e) {
-                console.debug('refreshMISData inventory error', e);
             }
         }
 
@@ -29483,7 +29159,6 @@
                 const dietOther = document.querySelector('input[name="dietOther"]');
                 
                 if (!dietOptions) {
-                    console.warn('⚠️ Diet options element not found');
                     return;
                 }
                 
@@ -30034,7 +29709,6 @@
                 }
                 
                 // STEP 1: Save to backend database FIRST
-                console.log('💾 Saving client to backend database...');
                 const result = await apiRequest('/clients', 'POST', client);
                 
                 // Handle different response formats
@@ -30048,7 +29722,6 @@
                     return; // Stop here - don't add to local arrays or trigger updates
                 }
                 
-                console.log('✅ Client saved to backend database successfully');
                 
                 // STEP 3: Now make it available to all users (add to local arrays and trigger real-time updates)
                 // Add to clients array only after successful backend save
@@ -30058,7 +29731,6 @@
                     try {
                         // Database API only - no localStorage for client data
 // localStorage.setItem('dyna_clients', JSON.stringify(clients));
-                    console.log(`✅ Client cached to localStorage: ${referenceNumber}`);
                     } catch (storageError) {
                     console.error('❌ Error caching client to localStorage:', storageError);
                     // Continue anyway - backend save was successful
@@ -30339,7 +30011,6 @@ function handleLoginEscape(event) {
 function openLoginModal(portal) {
     // Guard: Do not open login modal if user is already authenticated
     if (window.currentUser || (typeof currentUser !== 'undefined' && currentUser)) {
-        console.log('User already authenticated, skipping login modal');
         return;
     }
     
@@ -30358,7 +30029,6 @@ function openLoginModal(portal) {
         if (loginModal.parentElement !== document.body) {
             // Modal might be inside a container that's collapsed - move to body
             document.body.appendChild(loginModal);
-            console.log('Moved modal to body');
         }
         
         // Remove any classes that might hide it
@@ -30396,7 +30066,6 @@ function openLoginModal(portal) {
             const computed = getComputedStyle(loginModal);
             const rect = loginModal.getBoundingClientRect();
             
-            console.log('Modal styles set (after RAF), checking...', {
                 display: computed.display,
                 width: computed.width,
                 height: computed.height,
@@ -30411,7 +30080,6 @@ function openLoginModal(portal) {
             // If bounding rect is still zero, the element might be in a weird state
             // Try removing and re-adding it
             if (rect.width === 0 || rect.height === 0) {
-                console.warn('Modal has zero bounding rect, trying DOM manipulation...');
                 const parent = loginModal.parentElement;
                 const nextSibling = loginModal.nextSibling;
                 parent.removeChild(loginModal);
@@ -30425,7 +30093,6 @@ function openLoginModal(portal) {
                 
                 // Re-check after DOM manipulation
                 const newRect = loginModal.getBoundingClientRect();
-                console.log('After DOM manipulation:', {
                     rectWidth: newRect.width,
                     rectHeight: newRect.height
                 });
@@ -30443,7 +30110,6 @@ function openLoginModal(portal) {
             modalContent.style.width = '90%';
             modalContent.style.maxHeight = '80vh';
             modalContent.style.overflowY = 'auto';
-            console.log('Modal content dimensions set:', {
                 width: modalContent.style.width,
                 minWidth: modalContent.style.minWidth,
                 maxWidth: modalContent.style.maxWidth
@@ -30467,7 +30133,6 @@ function openLoginModal(portal) {
             
             const rect = loginModal.getBoundingClientRect();
             const computed = getComputedStyle(loginModal);
-            console.log('Modal dimensions after setup:', {
                 width: rect.width,
                 height: rect.height,
                 display: computed.display,
@@ -30481,7 +30146,6 @@ function openLoginModal(portal) {
             let parentLevel = 0;
             while (parent && parentLevel < 5) {
                 const parentComputed = getComputedStyle(parent);
-                console.log(`Parent ${parentLevel} (${parent.tagName}):`, {
                     display: parentComputed.display,
                     visibility: parentComputed.visibility,
                     height: parentComputed.height,
@@ -30495,7 +30159,6 @@ function openLoginModal(portal) {
                 void modalContent.offsetHeight; // Force reflow
                 const contentRect = modalContent.getBoundingClientRect();
                 const contentComputed = getComputedStyle(modalContent);
-                console.log('Modal content dimensions:', {
                     rectWidth: contentRect.width,
                     rectHeight: contentRect.height,
                     computedWidth: contentComputed.width,
@@ -30505,7 +30168,6 @@ function openLoginModal(portal) {
             
             // If still zero, try to force render with !important
             if (rect.width === 0 || rect.height === 0) {
-                console.warn('Modal still has zero dimensions, forcing with !important...');
                 loginModal.style.setProperty('display', 'flex', 'important');
                 loginModal.style.setProperty('width', '100vw', 'important');
                 loginModal.style.setProperty('height', '100vh', 'important');
@@ -30641,7 +30303,6 @@ function handlePortalLoginSuccess(user, options = {}) {
         portal = roleDefaultPortal || 'client';
     }
     
-    console.log('📍 Opening portal:', portal, 'for role:', role);
     
     // Hide only the known portal-level Auth/Content wrappers (not sub-elements inside portals)
     // openTab() will correctly show/hide these when navigating to a portal
@@ -30726,7 +30387,6 @@ function handlePortalLoginSuccess(user, options = {}) {
     // Load portal-specific dashboard data
     if (portal === 'consultant') {
         refreshConsultantData({ forceAppointments: true }).catch(err => {
-            console.debug('refreshConsultantData error', err);
         });
     } else if (portal === 'dispenser') {
         displayPrescriptions();
@@ -30753,7 +30413,6 @@ function handlePortalLoginSuccess(user, options = {}) {
         }
         if (typeof refreshFinancialDashboard === 'function') {
             refreshFinancialDashboard(true).catch(err => {
-                console.debug('refreshFinancialDashboard error', err);
             });
         }
     } else if (portal === 'hr-portal') {
@@ -30855,7 +30514,6 @@ if (typeof window.loadShopProducts !== 'function') {
             document.getElementById('landingShopProductsGrid')
         ].filter(Boolean);
         if (grids.length === 0) return;
-        console.log('[SHOP] Loading products...');
         grids.forEach(function(g) { g.innerHTML = '<p style="text-align:center;color:#999;">Loading products...</p>'; });
         try {
             var resp = await fetch('/api/products');
@@ -30865,7 +30523,6 @@ if (typeof window.loadShopProducts !== 'function') {
                 grids.forEach(function(g) { g.innerHTML = '<p style="text-align:center;color:#999;">No products available.</p>'; });
                 return;
             }
-            console.log('[SHOP] products loaded:', products.length);
             function escHtml(str) {
                 var d = document.createElement('div');
                 d.textContent = str;
@@ -30910,7 +30567,6 @@ if (typeof window.loadShopProducts !== 'function') {
 // =============================================================================
 // CRITICAL: Mark core login functions as loaded (EARLY FLAG)
 // =============================================================================
-console.log('✅ Core login functions loaded! (handlePortalLoginSuccess, openTab)');
 window.functionsLoaded = true;
 window.dispatchEvent(new Event('functionsReady'));
 
@@ -31095,7 +30751,6 @@ if (loginForm) {
             if (currentPortal === '__staff_login__') {
                 currentPortal = getDefaultPortalForRole(user.role);
                 window.currentPortal = currentPortal;
-                console.log('[NAV] Staff login auto-detected portal:', currentPortal, 'for role:', user.role);
             } else if (!isPortalAllowedForRole(user.role, currentPortal)) {
                 await logoutRequest();
                 if (loginError) loginError.textContent = `The ${getPortalLabel(currentPortal)} portal is not available for the ${user.role} role.`;
@@ -31512,7 +31167,6 @@ if (loginForm) {
         function calculateConsultantAnalytics(timeframe) {
             // Safety check for currentUser
             if (!currentUser || !currentUser.fullName) {
-                console.warn('⚠️ currentUser not set, cannot calculate consultant analytics');
                 return { totalReports: 0, totalClients: 0, totalRevenue: 0 };
             }
             const userFullName = currentUser.fullName; // Capture to prevent race conditions
@@ -31932,15 +31586,6 @@ if (loginForm) {
                         }
                 }
 
-                const GM_INVENTORY_TAB_MAP = {
-                        overview: 'Overview',
-                        expected: 'Expected',
-                        losses: 'Losses',
-                        manipulations: 'Manipulations',
-                        approvals: 'Approvals',
-                        allbranches: 'AllBranches'
-                };
-
                 function getGMBranches() {
                         try {
                                 const list = (Array.isArray(branches) && branches.length)
@@ -31972,32 +31617,6 @@ if (loginForm) {
                                 select.appendChild(option);
                         });
                 }
-
-                function refreshGMInventoryData() {
-                        loadStockData();
-                        calculateGMMetrics();
-                        renderPlanInsights();
-                        displayGMInventoryBreakdown();
-                        loadGMExpectedStock();
-                        loadGMStockLosses();
-                        loadGMStockManipulations();
-                        loadGMPendingInventoryApprovals();
-                        loadGMAllBranchInventory();
-                }
-
-                function switchGMInventoryTab(view) {
-                        const key = (view || 'overview').toLowerCase();
-                        const suffix = GM_INVENTORY_TAB_MAP[key] || GM_INVENTORY_TAB_MAP.overview;
-                        const tabs = document.querySelectorAll('#gmInventoryContent .gm-inv-tab-content');
-                        tabs.forEach(tab => {
-                                tab.style.display = 'none';
-                                tab.classList.remove('active');
-                        });
-                        const buttons = document.querySelectorAll('#gm .form-section .tabs .tab-button');
-                        buttons.forEach(btn => {
-                                if (btn.id && btn.id.startsWith('gmInvTab')) {
-                                        btn.classList.remove('active');
-                                }
                         });
                         const target = document.getElementById(`gmInv${suffix}`);
                         const button = document.getElementById(`gmInvTab${suffix}`);
@@ -32008,266 +31627,18 @@ if (loginForm) {
                         if (button) button.classList.add('active');
                         switch (key) {
                                 case 'expected':
-                                        loadGMExpectedStock();
                                         break;
                                 case 'losses':
-                                        loadGMStockLosses();
                                         break;
                                 case 'manipulations':
-                                        loadGMStockManipulations();
                                         break;
                                 case 'approvals':
-                                        loadGMPendingInventoryApprovals();
                                         break;
                                 case 'allbranches':
-                                        loadGMAllBranchInventory();
                                         break;
                                 default:
                                         displayGMInventoryBreakdown();
                         }
-                }
-
-                function loadGMExpectedStock() {
-                        const listEl = document.getElementById('gmExpectedStockList');
-                        if (!listEl) return;
-                        const branchSelect = document.getElementById('gmExpectedBranchFilter');
-                        populateSelectWithBranches(branchSelect);
-                        const statusSelect = document.getElementById('gmExpectedStatusFilter');
-                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-                        const statusFilter = (statusSelect?.value || 'pending').toLowerCase();
-                        let requests = safeParseFromStorage('dyna_stock_requests', '[]');
-                        if (!Array.isArray(requests)) requests = [];
-                        const filtered = requests.filter(req => {
-                                const status = (req.status || '').toLowerCase();
-                                const branch = (req.branch || req.branchId || '').toLowerCase();
-                                const matchesBranch = branchFilter === 'all' || branch === branchFilter;
-                                const matchesStatus = statusFilter === 'all'
-                                        || (statusFilter === 'pending' && (status === 'pending' || status === 'pending_gm'))
-                                        || status === statusFilter;
-                                return matchesBranch && matchesStatus;
-                        }).sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0));
-                        const pendingCount = requests.filter(req => {
-                                const status = (req.status || '').toLowerCase();
-                                return status === 'pending' || status === 'pending_gm';
-                        }).length;
-                        const badge = document.getElementById('gmPendingExpectedStock');
-                        if (badge) badge.textContent = `${pendingCount}`;
-                        if (!filtered.length) {
-                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No expected stock requests found for the selected filters.</p>';
-                                return;
-                        }
-                        listEl.innerHTML = filtered.slice(0, 20).map(req => {
-                                const status = (req.status || 'Pending').toUpperCase();
-                                const created = new Date(req.createdAt || req.date || Date.now()).toLocaleString();
-                                const itemSummary = formatPurchaseOrderItemSummary(req.items || [], 4);
-                                return `
-                                        <div class="client-card" style="border-left:4px solid #2980b9;">
-                                                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-                                                        <div>
-                                                                <div style="font-weight:700; color:#2c3e50;">${req.branch || 'Unknown Branch'}</div>
-                                                                <div style="font-size:.8rem; color:#999;">${req.reference || req.id || ''}</div>
-                                                        </div>
-                                                        <div style="text-align:right;">
-                                                                <span style="display:inline-block; padding:4px 8px; border-radius:10px; background:#f0f4ff; color:#1f2937; font-size:.75rem;">${status}</span>
-                                                                <div style="font-size:.75rem; color:#999; margin-top:4px;">${created}</div>
-                                                        </div>
-                                                </div>
-                                                ${itemSummary ? `<div style="font-size:.85rem; color:#555; margin-top:8px;">${itemSummary}${Array.isArray(req.items) && req.items.length > 4 ? '…' : ''}</div>` : ''}
-                                                ${req.notes ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${req.notes}</p>` : ''}
-                                        </div>
-                                `;
-                        }).join('');
-                }
-
-                function loadGMStockLosses() {
-                        const listEl = document.getElementById('gmStockLossesList');
-                        if (!listEl) return;
-                        const branchSelect = document.getElementById('gmLossesBranchFilter');
-                        populateSelectWithBranches(branchSelect);
-                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-                        const from = document.getElementById('gmLossesDateFrom')?.value;
-                        const to = document.getElementById('gmLossesDateTo')?.value;
-                        const startDate = from ? new Date(from) : null;
-                        const endDate = to ? new Date(to + 'T23:59:59') : null;
-                        let records = [];
-                        const damages = safeParseFromStorage('dyna_stock_damages', '[]');
-                        if (Array.isArray(damages)) {
-                                damages.forEach(entry => records.push({
-                                        branch: (entry.branch || entry.location || '').toLowerCase(),
-                                        product: entry.product || entry.description || 'Item',
-                                        quantity: Number(entry.quantity || entry.qty || 0),
-                                        reason: entry.reason || entry.notes || 'Damage',
-                                        createdAt: entry.createdAt || entry.date || entry.timestamp,
-                                        source: 'Damage Report'
-                                }));
-                        }
-                        if (Array.isArray(returnsLog) && returnsLog.length) {
-                                returnsLog.filter(ret => (ret.disposition || '').toLowerCase() !== 'released').forEach(ret => {
-                                        records.push({
-                                                branch: (ret.branch || ret.location || '').toLowerCase(),
-                                                product: ret.product || ret.description || 'Item',
-                                                quantity: Number(ret.quantity || 0),
-                                                reason: ret.disposition || ret.reason || 'Disposition',
-                                                createdAt: ret.createdAt || ret.timestamp,
-                                                source: 'Return'
-                                        });
-                                });
-                        }
-                        records = records.filter(record => {
-                                const branch = record.branch || 'all';
-                                if (branchFilter !== 'all' && branch !== branchFilter) return false;
-                                if (startDate || endDate) {
-                                        const created = record.createdAt ? new Date(record.createdAt) : null;
-                                        if (startDate && created && created < startDate) return false;
-                                        if (endDate && created && created > endDate) return false;
-                                }
-                                return true;
-                        }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-                        const lossQuantity = records.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
-                        const metric = document.getElementById('gmStockLosses');
-                        if (metric) metric.textContent = `${lossQuantity} units`;
-                        if (!records.length) {
-                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock losses recorded for the selected filters.</p>';
-                                return;
-                        }
-                        listEl.innerHTML = records.slice(0, 20).map(record => `
-                                <div class="client-card" style="border-left:4px solid #e74c3c;">
-                                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                                <div>
-                                                        <div style="font-weight:700; color:#2c3e50;">${record.product}</div>
-                                                        <div style="font-size:.8rem; color:#999;">${record.source}</div>
-                                                </div>
-                                                <div style="text-align:right;">
-                                                        <div style="font-weight:700; color:#c41e3a;">-${Number(record.quantity || 0)}</div>
-                                                        <div style="font-size:.75rem; color:#999;">${record.createdAt ? new Date(record.createdAt).toLocaleString() : ''}</div>
-                                                </div>
-                                        </div>
-                                        ${record.reason ? `<p style="font-size:.8rem; color:#777; margin-top:6px;">${record.reason}</p>` : ''}
-                                </div>
-                        `).join('');
-                }
-
-                function loadGMStockManipulations() {
-                        const listEl = document.getElementById('gmStockManipulationsList');
-                        if (!listEl) return;
-                        const branchSelect = document.getElementById('gmManipBranchFilter');
-                        populateSelectWithBranches(branchSelect);
-                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-                        const typeFilter = (document.getElementById('gmManipTypeFilter')?.value || 'all').toLowerCase();
-                        const search = (document.getElementById('gmManipSearch')?.value || '').toLowerCase();
-                        let audit = [];
-                        try {
-                                audit = JSON.parse(localStorage.getItem('dyna_stock_audit') || '[]');
-                        } catch (_) {
-                                audit = [];
-                        }
-                        if (!Array.isArray(audit)) audit = [];
-                        const filtered = audit.filter(entry => {
-                                const action = (entry.action || '').toLowerCase();
-                                const details = entry.details || {};
-                                const branch = (details.branch || details.branchId || '').toLowerCase();
-                                if (branchFilter !== 'all' && branch !== branchFilter) return false;
-                                if (typeFilter !== 'all') {
-                                        if (typeFilter === 'adjustment' && !action.includes('adjust')) return false;
-                                        if (typeFilter === 'loss' && !(action.includes('loss') || action.includes('damage'))) return false;
-                                        if (typeFilter === 'transfer' && !action.includes('transfer')) return false;
-                                        if (typeFilter === 'receive' && !(action.includes('receive') || action.includes('distribution'))) return false;
-                                }
-                                if (search && !JSON.stringify(entry).toLowerCase().includes(search)) return false;
-                                return true;
-                        }).sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
-                        if (!filtered.length) {
-                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No stock manipulation records found.</p>';
-                                return;
-                        }
-                        listEl.innerHTML = filtered.slice(0, 25).map(entry => {
-                                const details = entry.details || {};
-                                const product = details.product || details.description || 'Item';
-                                const quantity = Number(details.quantity || details.qty || 0);
-                                const branch = details.branch || details.branchId || 'Unknown';
-                                const user = details.user || entry.user || 'System';
-                                return `
-                                        <div class="client-card" style="border-left:4px solid #5c6bc0;">
-                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                                        <div>
-                                                                <div style="font-weight:700; color:#2c3e50;">${product}</div>
-                                                                <div style="font-size:.8rem; color:#999;">${branch}</div>
-                                                        </div>
-                                                        <div style="text-align:right;">
-                                                                <div style="font-weight:700; color:#1f2937;">${entry.action || 'Action'}</div>
-                                                                <div style="font-size:.75rem; color:#999;">${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
-                                                        </div>
-                                                </div>
-                                                <div style="font-size:.8rem; color:#555; margin-top:6px;">Quantity: ${quantity}</div>
-                                                <div style="font-size:.75rem; color:#999;">By: ${user}</div>
-                                        </div>
-                                `;
-                        }).join('');
-                }
-
-                async function loadGMPendingInventoryApprovals() {
-                        const listEl = document.getElementById('gmPendingInventoryApprovalsList');
-                        if (!listEl) return;
-
-                        let pending = [];
-                        const stockApiModule = await stockApiReady.catch(() => null);
-                        if (stockApiModule && typeof stockApiModule.refreshStockData === 'function') {
-                                try {
-                                        await stockApiModule.refreshStockData();
-                                        const result = stockApiModule.getStockTransfers({ status: 'pending_gm' });
-                                        if (result && Array.isArray(result.data)) {
-                                                pending = result.data.slice();
-                                        }
-                                } catch (error) {
-                                        console.debug('loadGMPendingInventoryApprovals: backend fetch failed', error);
-                                }
-                        }
-
-                        if (!pending.length) {
-                                const localFallback = safeParseFromStorage('gm_inventory_approvals', '[]');
-                                if (Array.isArray(localFallback) && localFallback.length) {
-                                        pending = localFallback
-                                                .filter(entry => (entry.status || 'pending').toLowerCase() === 'pending')
-                                                .map(entry => ({
-                                                        id: entry.transferId || entry.id,
-                                                        fromWarehouse: entry.warehouse,
-                                                        toBranch: entry.branch,
-                                                        status: 'pending_gm',
-                                                        items: [{
-                                                                productName: entry.product || entry.productName || 'Item',
-                                                                quantity: Number(entry.quantityRequested || entry.quantity || 0)
-                                                        }],
-                                                        dispatchNotes: entry.notes || '',
-                                                        createdAt: entry.createdAt || new Date().toISOString(),
-                                                        metadata: {
-                                                                gmApproval: entry.gmApprovalMeta || {
-                                                                        required: true,
-                                                                        status: 'pending',
-                                                                        requestedBy: entry.requestedBy || 'System',
-                                                                        requestedQuantity: Number(entry.quantityRequested || entry.quantity || 0),
-                                                                        autoReleaseLimit: entry.autoReleaseLimit ?? null,
-                                                                        expectedSupply: entry.expectedSupply ?? null,
-                                                                        recentDemand: entry.recentDemand ?? null,
-                                                                        openRequests: entry.openRequests ?? null,
-                                                                        inTransit: entry.inTransit ?? null,
-                                                                        notes: entry.notes || '',
-                                                                        dispatchNumber: entry.dispatchNumber || ''
-                                                                }
-                                                        }
-                                                }));
-                                }
-                        }
-
-                        renderGMApprovalAlerts(pending);
-
-                        if (!pending.length) {
-                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending inventory approvals.</p>';
-                                return;
-                        }
-
-                        pending.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
-
-                        listEl.innerHTML = pending.slice(0, 20).map(renderGMDispatchApprovalCard).join('');
                 }
 
                 function renderGMDispatchApprovalCard(transfer) {
@@ -32405,7 +31776,6 @@ if (loginForm) {
                         try {
                                 await stockApiModule.refreshStockData();
                         } catch (_) {}
-                        loadGMPendingInventoryApprovals();
                 }
 
                 function normaliseBranchInventoryData(data) {
@@ -32419,85 +31789,6 @@ if (loginForm) {
                         }
                         if (data && typeof data === 'object') return data;
                         return {};
-                }
-
-                function loadGMAllBranchInventory() {
-                        const listEl = document.getElementById('gmAllBranchInventoryList');
-                        if (!listEl) return;
-                        const branchSelect = document.getElementById('gmAllBranchesBranchFilter');
-                        populateSelectWithBranches(branchSelect);
-                        const branchFilter = (branchSelect?.value || 'all').toLowerCase();
-                        let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
-                        if (!Object.keys(branchStock).length) {
-                                const legacy = safeParseFromStorage('branchInventory', '[]');
-                                branchStock = normaliseBranchInventoryData(legacy);
-                        }
-                        const entries = Object.entries(branchStock).filter(([branch]) => branchFilter === 'all' || branch === branchFilter);
-                        if (!entries.length) {
-                                listEl.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No branch inventory data available.</p>';
-                                return;
-                        }
-                        listEl.innerHTML = entries.map(([branch, items]) => {
-                                const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
-                                const totalQty = safeItems.reduce((sum, item) => sum + Number(item.quantity || item.currentStock || 0), 0);
-                                const lowStock = safeItems.filter(item => Number(item.quantity || item.currentStock || 0) <= Number(item.reorderLevel || 5)).length;
-                                const branchName = (getGMBranches().find(b => b.id === branch)?.name) || branch;
-                                return `
-                                        <div class="client-card" style="border-left:4px solid #009688;">
-                                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                                        <div>
-                                                                <div style="font-weight:700; color:#2c3e50;">${branchName}</div>
-                                                                <div style="font-size:.8rem; color:#999;">Total Items: ${safeItems.length}</div>
-                                                        </div>
-                                                        <div style="text-align:right;">
-                                                                <div style="font-weight:700; color:#27ae60;">${totalQty} units</div>
-                                                                <div style="font-size:.75rem; color:#999;">Low stock: ${lowStock}</div>
-                                                        </div>
-                                                </div>
-                                                ${safeItems.slice(0, 5).map(item => {
-                                                        const name = item.description || item.product || 'Item';
-                                                        const qty = Number(item.quantity || item.currentStock || 0);
-                                                        return `<div style="display:flex; justify-content:space-between; font-size:.8rem; color:#555; margin-top:6px;">
-                                                                <span>${name}</span>
-                                                                <span>${qty}</span>
-                                                        </div>`;
-                                                }).join('')}
-                                                ${safeItems.length > 5 ? '<div style="font-size:.75rem; color:#999; margin-top:6px;">… more items</div>' : ''}
-                                        </div>
-                                `;
-                        }).join('');
-                }
-
-                function exportGMInventoryReport() {
-                        let branchStock = normaliseBranchInventoryData(safeParseFromStorage('dyna_branch_stock', '{}'));
-                        if (!Object.keys(branchStock).length) {
-                                const legacy = safeParseFromStorage('branchInventory', '[]');
-                                branchStock = normaliseBranchInventoryData(legacy);
-                        }
-                        const entries = Object.entries(branchStock);
-                        if (!entries.length) {
-                                alert('No branch inventory data available to export.');
-                                return;
-                        }
-                        const rows = [['Branch', 'Product', 'Quantity', 'Reorder Level']];
-                        entries.forEach(([branch, items]) => {
-                                const safeItems = Array.isArray(items) ? items : Object.entries(items).map(([product, qty]) => ({ description: product, quantity: qty }));
-                                safeItems.forEach(item => {
-                                        rows.push([
-                                                branch,
-                                                item.description || item.product || 'Item',
-                                                Number(item.quantity || item.currentStock || 0),
-                                                Number(item.reorderLevel || 0)
-                                        ]);
-                                });
-                        });
-                        const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-                        const blob = new Blob([csv], { type: 'text/csv' });
-                        const link = document.createElement('a');
-                        link.href = URL.createObjectURL(blob);
-                        link.download = 'gm-branch-inventory.csv';
-                        link.click();
-                        URL.revokeObjectURL(link.href);
                 }
 
         var countryStock = Array.isArray(window.countryStock) ? window.countryStock : [];
@@ -33235,7 +32526,6 @@ if (loginForm) {
                 if (!res.ok) throw new Error('Failed to load: ' + res.status);
                 _consultantCheckups = await res.json();
                 if (!Array.isArray(_consultantCheckups)) _consultantCheckups = [];
-                console.log('Checkup forms loaded:', _consultantCheckups.length);
                 showConsultantCheckups(_consultantCheckupsView);
             } catch (err) {
                 console.error('loadConsultantCheckups error:', err);
@@ -33719,7 +33009,6 @@ if (loginForm) {
                 
                 // Safety check for currentUser
                 if (!currentUser || !currentUser.fullName) {
-                    console.warn('⚠️ currentUser not set, cannot display reports');
                     list.innerHTML = '<p style="padding: 20px; text-align: center; color: #999;">Please log in to view your reports.</p>';
                     return;
                 }
@@ -33727,19 +33016,15 @@ if (loginForm) {
                 // Capture to prevent race conditions
                 const userFullName = currentUser.fullName;
                 if (!userFullName) {
-                    console.warn('⚠️ currentUser.fullName is empty');
                     list.innerHTML = '<p style="padding: 20px; text-align: center; color: #999;">Please log in to view your reports.</p>';
                     return;
                 }
                 
-                console.log('🔍 Displaying reports for:', userFullName);
-                console.log('📊 Total reports available:', reports.length);
                 console.log('👥 Consultants in reports:', [...new Set(reports.map(r => r && r.consultant).filter(Boolean))]);
                 
                 // Get all reports created by this consultant
                 const myReports = reports.filter(r => r && r.id && r.consultant === userFullName);
                 
-                console.log('✅ Reports found for', userFullName + ':', myReports.length);
                 
                 if (myReports.length === 0) {
                     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #7f8c8d;"><h3>📋 No reports created yet</h3><p>Reports you create will appear here for review and editing.</p></div>';
@@ -33756,7 +33041,6 @@ if (loginForm) {
                 myReports.forEach(report => {
                     const client = clients.find(c => c.referenceNumber === report.clientId);
                     if (!client) {
-                        console.warn('⚠️ No client found for report:', report.id, 'clientId:', report.clientId);
                         return;
                     }
                     
@@ -34035,7 +33319,6 @@ if (loginForm) {
 
                 // Safety check for currentUser
                 if (!currentUser || !currentUser.fullName) {
-                    console.warn('⚠️ currentUser not set, cannot display follow-ups');
                     list.innerHTML = '<p style="padding: 20px; text-align: center; color: #999;">Please log in to view follow-ups.</p>';
                     return;
                 }
@@ -34043,7 +33326,6 @@ if (loginForm) {
                 // Capture to prevent race conditions
                 const userFullName = currentUser.fullName;
                 if (!userFullName) {
-                    console.warn('⚠️ currentUser.fullName is empty');
                     list.innerHTML = '<p style="padding: 20px; text-align: center; color: #999;">Please log in to view follow-ups.</p>';
                     return;
                 }
@@ -35505,7 +34787,6 @@ if (loginForm) {
                 // STEP 1: Save to backend database FIRST
                 // Use PUT for editing, POST for new reports
                 const method = isEditing ? 'PUT' : 'POST';
-                console.log(`💾 Saving report to backend database (${method})...`);
                 const result = await apiRequest('/reports', method, validatedReport);
                 
                 // STEP 2: Only proceed if backend save was successful
@@ -35516,7 +34797,6 @@ if (loginForm) {
                     return; // Stop here - don't add to local arrays or trigger updates
                 }
                 
-                console.log('✅ Report saved to backend database successfully');
 
                 if (window._checkupAppointmentId && currentClientId === 'CHKUP-' + window._checkupAppointmentId) {
                     try {
@@ -35565,7 +34845,6 @@ if (loginForm) {
                     // Persist to localStorage as cache/backup (backend is source of truth)
                     try { 
                         localStorage.setItem('dyna_reports', JSON.stringify(reports));
-                        console.log(`✅ Report cached to localStorage: ${validatedReport.id} for client ${validatedReport.clientId}`);
                     } catch(storageError) {
                         console.error('❌ Error caching report to localStorage:', storageError);
                     }
@@ -36456,12 +35735,10 @@ if (loginForm) {
             
             // Verify clients are loaded
             if (!clients || clients.length === 0) {
-                console.warn('⚠️ No clients found when displaying prescriptions. Reloading...');
                 try {
                     const clientsData = localStorage.getItem('dyna_clients');
                     if (clientsData) {
                         clients = JSON.parse(clientsData);
-                        console.log(`✅ Loaded ${clients.length} clients from localStorage for prescriptions`);
                     }
                 } catch(error) {
                     console.error('❌ Error loading clients for prescriptions:', error);
@@ -36470,12 +35747,10 @@ if (loginForm) {
             
             // Verify reports are loaded
             if (!reports || reports.length === 0) {
-                console.warn('⚠️ No reports found when displaying prescriptions. Reloading...');
                 try {
                     const reportsData = localStorage.getItem('dyna_reports');
                     if (reportsData) {
                         reports = JSON.parse(reportsData);
-                        console.log(`✅ Loaded ${reports.length} reports from localStorage for prescriptions`);
                     }
                 } catch(error) {
                     console.error('❌ Error loading reports for prescriptions:', error);
@@ -36887,7 +36162,6 @@ if (loginForm) {
                 );
                 
                 if (possibleMatch) {
-                    console.log(`Found package match: "${medicine.name}" -> "${possibleMatch}"`);
                     const matchedPackage = PACKAGE_DATABASE[possibleMatch];
                     
                     // Initialize packageStatus for the matched package
@@ -37466,7 +36740,6 @@ async function reverseLastPrescriptionPayment(reportId){
                 } else if (walkInType.value === 'distributor') {
                     if (customerReferralField) customerReferralField.style.display = 'none';
                 }
-                console.log('🔄 Walk-in customer type changed to:', walkInType.value);
             }
             
             if (clientType && typeof handleMembershipStatusChange === 'function') {
@@ -37501,7 +36774,6 @@ async function reverseLastPrescriptionPayment(reportId){
                 if (fdDistributorNB) fdDistributorNB.required = false;
             }
             
-            console.log('📝 Front Desk client type changed to:', type);
         }
         window.onFrontDeskCustomerTypeChange = onFrontDeskCustomerTypeChange;
         
@@ -37982,7 +37254,6 @@ async function reverseLastPrescriptionPayment(reportId){
             const label = _WI_PAY_LABELS[_wiPayment] || _wiPayment;
             const ref = saleRecord.referral ? '\nReferral: ' + saleRecord.referral.name : '';
             alert('✅ Sale recorded!\nCustomer: ' + customerName + '\nTotal: ' + _wiFmt(total) + ' | BV: ' + totalBV.toFixed(2) + ref);
-            console.log('[WI] Sale completed:', saleRecord);
         }
 
         // --- Recent Sales List Renderer ---
@@ -38488,7 +37759,6 @@ async function reverseLastPrescriptionPayment(reportId){
                         if (photoResponse.ok) {
                             const photoResult = await photoResponse.json();
                             photoUrl = photoResult.file.url;
-                            console.log('✅ Distributor photo uploaded to backend');
                         } else {
                             console.warn('Photo upload failed, continuing without photo');
                         }
@@ -39004,7 +38274,6 @@ async function reverseLastPrescriptionPayment(reportId){
                 // Continue - sale is saved locally
             }
             
-            console.log('✅ Registration kit sale created:', sale.id);
             return sale;
         }
 
@@ -45453,7 +44722,6 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
                 warehouseConfig = WAREHOUSE_CONFIG[currentWarehouse];
                 if (!warehouseConfig) return;
                 
-                console.log(`🏭 Initializing ${warehouseConfig.name} Portal`);
                 
                 // Wait for stock portal to be visible
                 const checkInterval = setInterval(() => {
@@ -45495,7 +44763,6 @@ function selectFieldProgramDistributor(code, name, mobile = '', id = '') {
         // =============================================================================
         // Note: functionsLoaded was already set to true at line 27047
         // This is just a completion marker for the end of the script
-        console.log('🎉 End of file reached - all 40,000+ lines parsed successfully!');
         
     </script>
 </body>
