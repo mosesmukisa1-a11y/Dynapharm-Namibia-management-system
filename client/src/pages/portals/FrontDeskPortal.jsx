@@ -2,19 +2,22 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Table, Alert, Select, Textarea } from '../../components/ui';
-import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus } from 'lucide-react';
+import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus, Package, Eye, Send, Megaphone } from 'lucide-react';
 
 export default function FrontDeskPortal() {
   const [activeTab, setActiveTab] = useState('appointments');
   const tabs = [
     { id: 'appointments', label: 'Appointments', icon: '📅' },
-    { id: 'checkup', label: 'Checkup', icon: '🏥' },
+    { id: 'checkup', label: 'Full Body Checkup', icon: '🏥' },
     { id: 'registration', label: 'Client Reg', icon: '📝' },
+    { id: 'orders', label: 'Orders', icon: '📦' },
     { id: 'payments', label: 'Payments', icon: '💳' },
     { id: 'lookup', label: 'Client Lookup', icon: '🔍' },
     { id: 'delivery', label: 'Delivery', icon: '🚚' },
+    { id: 'visitors', label: 'Visitors', icon: '🪪' },
     { id: 'crm', label: 'CRM', icon: '👥' },
     { id: 'notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'staffcomm', label: 'Staff Comm', icon: '📢' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
 
@@ -29,11 +32,14 @@ export default function FrontDeskPortal() {
         {activeTab === 'appointments' && <AppointmentsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'registration' && <RegistrationTab />}
+        {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'payments' && <PaymentsTab />}
         {activeTab === 'lookup' && <ClientLookupTab />}
         {activeTab === 'delivery' && <DeliveryTab />}
+        {activeTab === 'visitors' && <VisitorsTab />}
         {activeTab === 'crm' && <CRMTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
+        {activeTab === 'staffcomm' && <StaffCommunicationTab />}
         {activeTab === 'staff' && <StaffServicesTab />}
       </div>
     </div>
@@ -171,17 +177,48 @@ function AppointmentsTab() {
 }
 
 function CheckupTab() {
+  const [recentCheckups, setRecentCheckups] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.appointments.list('type=Checkup')
+      .then(data => {
+        const all = Array.isArray(data) ? data : data.appointments || [];
+        setRecentCheckups(all.filter(a => a.type === 'Checkup').slice(0, 20));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
-    <Card>
-      <CardBody>
-        <div className="text-center py-8">
-          <Heart size={48} className="text-primary mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Full Body Check Up</h3>
-          <p className="text-gray-500 mb-4">Process walk-in health checkup forms</p>
-          <Button onClick={() => window.location.href = '/checkup'}>Open Checkup Form</Button>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardBody>
+          <div className="text-center py-8">
+            <Heart size={48} className="text-primary mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Full Body Check Up</h3>
+            <p className="text-gray-500 mb-4">Process walk-in health checkup forms</p>
+            <Button onClick={() => window.location.href = '/checkup'}>Open Checkup Form</Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Recent Checkup Forms</h3></CardHeader>
+        {loading ? <LoadingSpinner /> : (
+          <Table
+            columns={[
+              { header: 'Patient', key: 'patient_name' },
+              { header: 'Date', render: r => formatDateTime(r.appointment_date || r.created_at) },
+              { header: 'Branch', key: 'branch_id' },
+              { header: 'Status', render: r => <Badge variant={r.status === 'completed' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
+            ]}
+            data={recentCheckups}
+            emptyMessage="No recent checkup forms"
+          />
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -250,6 +287,99 @@ function RegistrationTab() {
         </form>
       </CardBody>
     </Card>
+  );
+}
+
+function OrdersTab() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [subView, setSubView] = useState('pending');
+
+  useEffect(() => {
+    api.orders.list()
+      .then(data => setOrders(Array.isArray(data) ? data : data.orders || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleStatusUpdate = async (id, status) => {
+    try {
+      await api.orders.update(id, { status });
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    } catch {}
+  };
+
+  const subTabs = [
+    { id: 'pending', label: 'Pending Orders' },
+    { id: 'processing', label: 'Processing' },
+    { id: 'shipped', label: 'Shipped' },
+    { id: 'delivered', label: 'Delivered' },
+    { id: 'all', label: 'All Orders' },
+  ];
+
+  const filteredOrders = subView === 'all'
+    ? orders
+    : orders.filter(o => (o.status || 'pending').toLowerCase() === subView);
+
+  const statusCounts = {
+    pending: orders.filter(o => (o.status || 'pending').toLowerCase() === 'pending').length,
+    processing: orders.filter(o => (o.status || '').toLowerCase() === 'processing').length,
+    shipped: orders.filter(o => (o.status || '').toLowerCase() === 'shipped').length,
+    delivered: orders.filter(o => (o.status || '').toLowerCase() === 'delivered').length,
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <StatCard title="Pending" value={statusCounts.pending} color="orange" />
+        <StatCard title="Processing" value={statusCounts.processing} color="blue" />
+        <StatCard title="Shipped" value={statusCounts.shipped} color="purple" />
+        <StatCard title="Delivered" value={statusCounts.delivered} color="green" />
+      </div>
+
+      <div className="flex gap-1 mb-4 bg-gray-50 p-1 rounded-lg overflow-x-auto">
+        {subTabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSubView(t.id)}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer whitespace-nowrap ${subView === t.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.label}
+            {t.id !== 'all' && <span className="ml-1.5 text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{statusCounts[t.id]}</span>}
+          </button>
+        ))}
+      </div>
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'Order ID', render: r => <span className="font-mono text-xs">#{r.id}</span> },
+            { header: 'Client', key: 'client_name', render: r => r.client_name || r.distributor_name || r.customer_name || '-' },
+            { header: 'Date', render: r => formatDateTime(r.created_at || r.order_date) },
+            { header: 'Total', render: r => <span className="font-bold text-green-600">{formatCurrency(r.total_amount || r.total || 0)}</span> },
+            { header: 'Status', render: r => {
+              const s = (r.status || 'pending').toLowerCase();
+              const v = s === 'delivered' ? 'success' : s === 'shipped' ? 'info' : s === 'processing' ? 'primary' : 'warning';
+              return <Badge variant={v}>{r.status || 'Pending'}</Badge>;
+            }},
+            { header: 'Actions', render: r => {
+              const s = (r.status || 'pending').toLowerCase();
+              return (
+                <div className="flex gap-1">
+                  {s === 'pending' && <Button size="sm" variant="primary" onClick={() => handleStatusUpdate(r.id, 'processing')}>Process</Button>}
+                  {s === 'processing' && <Button size="sm" variant="warning" onClick={() => handleStatusUpdate(r.id, 'shipped')}>Ship</Button>}
+                  {s === 'shipped' && <Button size="sm" variant="success" onClick={() => handleStatusUpdate(r.id, 'delivered')}>Delivered</Button>}
+                </div>
+              );
+            }},
+          ]}
+          data={filteredOrders}
+          emptyMessage={`No ${subView === 'all' ? '' : subView + ' '}orders found`}
+        />
+      </Card>
+    </div>
   );
 }
 
@@ -472,6 +602,105 @@ function DeliveryTab() {
   );
 }
 
+function VisitorsTab() {
+  const [visitors, setVisitors] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ name: '', company: '', purpose: '', time_in: '', time_out: '', badge_number: '' });
+  const [error, setError] = useState('');
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    if (!form.name || !form.purpose || !form.time_in) {
+      setError('Name, purpose and time in are required');
+      return;
+    }
+    setError('');
+    const visitor = {
+      ...form,
+      id: Date.now(),
+      created_at: new Date().toISOString(),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    setVisitors(prev => [visitor, ...prev]);
+    setShowModal(false);
+    setForm({ name: '', company: '', purpose: '', time_in: '', time_out: '', badge_number: '' });
+  };
+
+  const signOut = (id) => {
+    const now = new Date().toTimeString().slice(0, 5);
+    setVisitors(prev => prev.map(v => v.id === id ? { ...v, time_out: now } : v));
+  };
+
+  const todayVisitors = visitors.filter(v => v.date === new Date().toISOString().slice(0, 10));
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex gap-2 items-center">
+          <h3 className="font-semibold text-gray-800">Visitor Log</h3>
+          <Badge variant="primary">{todayVisitors.length} today</Badge>
+        </div>
+        <Button size="sm" onClick={() => setShowModal(true)}><Plus size={14} /> Log Visitor</Button>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-3 mb-4">
+        <StatCard title="Total Visitors Today" value={todayVisitors.length} color="blue" />
+        <StatCard title="Currently In" value={todayVisitors.filter(v => !v.time_out).length} color="green" />
+        <StatCard title="Signed Out" value={todayVisitors.filter(v => v.time_out).length} color="orange" />
+      </div>
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'Name', key: 'name' },
+            { header: 'Company', render: r => r.company || '-' },
+            { header: 'Purpose', key: 'purpose' },
+            { header: 'Badge #', render: r => r.badge_number || '-' },
+            { header: 'Time In', key: 'time_in' },
+            { header: 'Time Out', render: r => r.time_out || <Badge variant="warning">Still In</Badge> },
+            { header: 'Actions', render: r => (
+              !r.time_out && <Button size="sm" variant="danger" onClick={() => signOut(r.id)}>Sign Out</Button>
+            )},
+          ]}
+          data={visitors}
+          emptyMessage="No visitors logged"
+        />
+      </Card>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Log Visitor">
+        <form onSubmit={handleCreate} className="p-6 space-y-4">
+          {error && <Alert type="error">{error}</Alert>}
+          <Input label="Visitor Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+          <Input label="Company / Organization" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} />
+          <Select
+            label="Purpose of Visit"
+            value={form.purpose}
+            onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}
+            options={[
+              { value: '', label: 'Select Purpose' },
+              { value: 'Meeting', label: 'Meeting' },
+              { value: 'Delivery', label: 'Delivery' },
+              { value: 'Interview', label: 'Interview' },
+              { value: 'Client Visit', label: 'Client Visit' },
+              { value: 'Maintenance', label: 'Maintenance' },
+              { value: 'Other', label: 'Other' },
+            ]}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Time In" type="time" value={form.time_in} onChange={e => setForm(f => ({ ...f, time_in: e.target.value }))} required />
+            <Input label="Time Out" type="time" value={form.time_out} onChange={e => setForm(f => ({ ...f, time_out: e.target.value }))} />
+          </div>
+          <Input label="Badge Number" value={form.badge_number} onChange={e => setForm(f => ({ ...f, badge_number: e.target.value }))} />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit">Log Visitor</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
 function CRMTab() {
   const [interactions, setInteractions] = useState([]);
   const [form, setForm] = useState({ client_name: '', type: 'Call', notes: '', follow_up_date: '' });
@@ -579,6 +808,139 @@ function NotificationsTab() {
           </Card>
         ))
       )}
+    </div>
+  );
+}
+
+function StaffCommunicationTab() {
+  const [announcements, setAnnouncements] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
+  const [showMessageForm, setShowMessageForm] = useState(false);
+  const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'normal' });
+  const [messageForm, setMessageForm] = useState({ recipient: '', subject: '', body: '' });
+  const [success, setSuccess] = useState('');
+
+  const handleAnnouncement = (e) => {
+    e.preventDefault();
+    if (!announcementForm.title || !announcementForm.content) return;
+    const announcement = {
+      ...announcementForm,
+      id: Date.now(),
+      author: 'Front Desk',
+      created_at: new Date().toISOString(),
+    };
+    setAnnouncements(prev => [announcement, ...prev]);
+    setAnnouncementForm({ title: '', content: '', priority: 'normal' });
+    setShowAnnouncementForm(false);
+    setSuccess('Announcement posted successfully');
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const handleMessage = (e) => {
+    e.preventDefault();
+    if (!messageForm.recipient || !messageForm.body) return;
+    const message = {
+      ...messageForm,
+      id: Date.now(),
+      sender: 'Front Desk',
+      status: 'sent',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [message, ...prev]);
+    setMessageForm({ recipient: '', subject: '', body: '' });
+    setShowMessageForm(false);
+    setSuccess('Message sent successfully');
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  return (
+    <div className="space-y-6">
+      {success && <Alert type="success">{success}</Alert>}
+
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-gray-800">Staff Communication</h3>
+        <div className="flex gap-2">
+          <Button size="sm" variant="primary" onClick={() => setShowAnnouncementForm(true)}><Megaphone size={14} /> New Announcement</Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowMessageForm(true)}><Send size={14} /> Send Message</Button>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Announcements</h3></CardHeader>
+        {announcements.length === 0 ? (
+          <CardBody>
+            <EmptyState icon={<Megaphone size={40} />} title="No Announcements" description="Post an announcement for all staff" />
+          </CardBody>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {announcements.map(a => (
+              <div key={a.id} className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-gray-800">{a.title}</h4>
+                      {a.priority === 'urgent' && <Badge variant="danger">Urgent</Badge>}
+                      {a.priority === 'important' && <Badge variant="warning">Important</Badge>}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">{a.content}</p>
+                  </div>
+                  <span className="text-xs text-gray-400 whitespace-nowrap ml-4">{formatDateTime(a.created_at)}</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Posted by {a.author}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Messages</h3></CardHeader>
+        <Table
+          columns={[
+            { header: 'To', key: 'recipient' },
+            { header: 'Subject', render: r => r.subject || '-' },
+            { header: 'Message', render: r => <span className="truncate max-w-[200px] block">{r.body}</span> },
+            { header: 'Status', render: r => <Badge variant="success">{r.status}</Badge> },
+            { header: 'Sent', render: r => formatDateTime(r.created_at) },
+          ]}
+          data={messages}
+          emptyMessage="No messages sent"
+        />
+      </Card>
+
+      <Modal open={showAnnouncementForm} onClose={() => setShowAnnouncementForm(false)} title="New Announcement">
+        <form onSubmit={handleAnnouncement} className="p-6 space-y-4">
+          <Input label="Title" value={announcementForm.title} onChange={e => setAnnouncementForm(f => ({ ...f, title: e.target.value }))} required />
+          <Textarea label="Content" value={announcementForm.content} onChange={e => setAnnouncementForm(f => ({ ...f, content: e.target.value }))} required />
+          <Select
+            label="Priority"
+            value={announcementForm.priority}
+            onChange={e => setAnnouncementForm(f => ({ ...f, priority: e.target.value }))}
+            options={[
+              { value: 'normal', label: 'Normal' },
+              { value: 'important', label: 'Important' },
+              { value: 'urgent', label: 'Urgent' },
+            ]}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowAnnouncementForm(false)}>Cancel</Button>
+            <Button type="submit">Post Announcement</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={showMessageForm} onClose={() => setShowMessageForm(false)} title="Send Message">
+        <form onSubmit={handleMessage} className="p-6 space-y-4">
+          <Input label="Recipient" value={messageForm.recipient} onChange={e => setMessageForm(f => ({ ...f, recipient: e.target.value }))} required />
+          <Input label="Subject" value={messageForm.subject} onChange={e => setMessageForm(f => ({ ...f, subject: e.target.value }))} />
+          <Textarea label="Message" value={messageForm.body} onChange={e => setMessageForm(f => ({ ...f, body: e.target.value }))} required />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowMessageForm(false)}>Cancel</Button>
+            <Button type="submit">Send Message</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

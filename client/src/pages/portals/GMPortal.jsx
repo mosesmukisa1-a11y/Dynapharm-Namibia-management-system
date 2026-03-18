@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle } from 'lucide-react';
+import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download } from 'lucide-react';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -10,6 +10,8 @@ export default function GMPortal() {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'approvals', label: 'Approvals', icon: '✅' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
+    { id: 'bonus', label: 'Bonus History', icon: '🎁' },
+    { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
 
@@ -24,6 +26,8 @@ export default function GMPortal() {
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'approvals' && <ApprovalsTab />}
         {activeTab === 'campaigns' && <CampaignsTab />}
+        {activeTab === 'bonus' && <BonusHistoryTab />}
+        {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>
     </div>
@@ -31,7 +35,7 @@ export default function GMPortal() {
 }
 
 function DashboardTab() {
-  const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [] });
+  const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,8 +44,9 @@ function DashboardTab() {
       api.branches.list().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
       api.products.list().then(d => Array.isArray(d) ? d : d.products || []).catch(() => []),
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-    ]).then(([orders, branches, products, sales]) => {
-      setData({ orders, branches, products, sales });
+      api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
+    ]).then(([orders, branches, products, sales, deposits]) => {
+      setData({ orders, branches, products, sales, deposits });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -49,6 +54,15 @@ function DashboardTab() {
 
   const totalRevenue = data.orders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
     data.sales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
+
+  const cifDeposits = data.deposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
+  const totalBV = data.sales.reduce((sum, s) => {
+    const items = s.items || [];
+    return sum + items.reduce((iSum, item) => iSum + Number(item.bv || item.bonus_volume || 0), 0);
+  }, 0);
+
+  const grossMargin = totalRevenue - (totalRevenue * 0.6);
 
   const productCounts = {};
   data.sales.forEach(s => {
@@ -68,13 +82,34 @@ function DashboardTab() {
     branchRevenue[branch] = (branchRevenue[branch] || 0) + Number(s.total || s.amount || 0);
   });
 
+  const kpiCards = [
+    { label: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
+    { label: 'CIF Deposits', value: formatCurrency(cifDeposits), icon: '📦', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
+    { label: 'Total BV Points', value: totalBV.toLocaleString(), icon: '⭐', gradient: 'linear-gradient(135deg, #4facfe, #00f2fe)' },
+    { label: 'Gross Margin', value: formatCurrency(grossMargin), icon: '📊', gradient: 'linear-gradient(135deg, #fa709a, #fee140)' },
+  ];
+
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} color="blue" icon={<TrendingUp size={24} />} />
+        {kpiCards.map((kpi) => (
+          <div key={kpi.label} style={{ background: kpi.gradient }} className="rounded-xl p-5 shadow-lg text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>{kpi.label}</p>
+                <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{kpi.value}</p>
+              </div>
+              <span style={{ fontSize: '2.5rem' }}>{kpi.icon}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Orders" value={data.orders.length} color="green" icon={<DollarSign size={24} />} />
         <StatCard title="Active Branches" value={data.branches.length} color="purple" icon={<Users size={24} />} />
         <StatCard title="Products" value={data.products.length} color="orange" icon={<Package size={24} />} />
+        <StatCard title="Deposits Count" value={data.deposits.length} color="teal" icon={<TrendingUp size={24} />} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -121,7 +156,7 @@ function DashboardTab() {
 }
 
 function ApprovalsTab() {
-  const [approvalTab, setApprovalTab] = useState('cash');
+  const [approvalTab, setApprovalTab] = useState('all');
   const [cashRequests, setCashRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [stockRequests, setStockRequests] = useState([]);
@@ -131,9 +166,11 @@ function ApprovalsTab() {
   const [note, setNote] = useState('');
 
   const subTabs = [
+    { id: 'all', label: 'All Requests' },
     { id: 'cash', label: 'Cash Requests' },
     { id: 'leave', label: 'Leave Requests' },
-    { id: 'stock', label: 'Stock Requests' },
+    { id: 'stock', label: 'Stock Movements' },
+    { id: 'other', label: 'Other Requests' },
   ];
 
   useEffect(() => {
@@ -171,15 +208,30 @@ function ApprovalsTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const renderRequests = () => {
-    let items = [];
-    let type = '';
-    if (approvalTab === 'cash') { items = cashRequests; type = 'cash'; }
-    else if (approvalTab === 'leave') { items = leaveRequests; type = 'leave'; }
-    else { items = stockRequests; type = 'stock'; }
+  const getFilteredItems = () => {
+    const allItems = [
+      ...cashRequests.map(r => ({ ...r, _type: 'cash' })),
+      ...leaveRequests.map(r => ({ ...r, _type: 'leave' })),
+      ...stockRequests.map(r => ({ ...r, _type: 'stock' })),
+    ];
 
-    if (items.length === 0) {
-      return <EmptyState icon={<CheckCircle size={48} />} title="No Pending Approvals" description={`No pending ${approvalTab} requests require your approval.`} />;
+    if (approvalTab === 'all') return allItems;
+    if (approvalTab === 'cash') return allItems.filter(r => r._type === 'cash' || r.type === 'cash' || r.type === 'cash_request');
+    if (approvalTab === 'leave') return allItems.filter(r => r._type === 'leave' || r.type === 'leave' || r.type === 'leave_request');
+    if (approvalTab === 'stock') return allItems.filter(r => r._type === 'stock' || r.type === 'stock' || r.type === 'stock_movement');
+    if (approvalTab === 'other') return allItems.filter(r => {
+      const t = r._type || r.type || '';
+      return !['cash', 'cash_request', 'leave', 'leave_request', 'stock', 'stock_movement'].includes(t);
+    });
+    return allItems;
+  };
+
+  const filteredItems = getFilteredItems();
+  const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length;
+
+  const renderRequests = () => {
+    if (filteredItems.length === 0) {
+      return <EmptyState icon={<CheckCircle size={48} />} title="No Pending Approvals" description={`No pending ${approvalTab === 'all' ? '' : approvalTab + ' '}requests require your approval.`} />;
     }
 
     return (
@@ -187,17 +239,18 @@ function ApprovalsTab() {
         <Table
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
+            { header: 'Type', render: r => <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : 'success'}>{r._type || 'other'}</Badge> },
             { header: 'Requester', render: r => r.employee_name || r.requested_by || r.user || '-' },
             { header: 'Details', render: r => r.reason || r.description || r.product_name || '-' },
             { header: 'Amount/Qty', render: r => r.amount ? formatCurrency(r.amount) : (r.quantity || '-') },
             { header: 'Actions', render: r => (
               <div className="flex gap-1">
-                <Button size="sm" variant="success" onClick={() => setNoteModal({ type, id: r.id, action: 'approved' })}>Approve</Button>
-                <Button size="sm" variant="danger" onClick={() => setNoteModal({ type, id: r.id, action: 'rejected' })}>Reject</Button>
+                <Button size="sm" variant="success" onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'approved' })}>Approve</Button>
+                <Button size="sm" variant="danger" onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'rejected' })}>Reject</Button>
               </div>
             )},
           ]}
-          data={items}
+          data={filteredItems}
         />
       </Card>
     );
@@ -206,11 +259,12 @@ function ApprovalsTab() {
   return (
     <div>
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {subTabs.map(t => (
           <button key={t.id} onClick={() => setApprovalTab(t.id)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer ${approvalTab === t.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${approvalTab === t.id ? 'bg-primary text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {t.label}
+            {t.id === 'all' && totalCount > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{totalCount}</span>}
             {t.id === 'cash' && cashRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{cashRequests.length}</span>}
             {t.id === 'leave' && leaveRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{leaveRequests.length}</span>}
             {t.id === 'stock' && stockRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{stockRequests.length}</span>}
@@ -319,6 +373,206 @@ function CampaignsTab() {
           data={campaigns}
           emptyMessage="No campaigns created yet"
         />
+      </Card>
+    </div>
+  );
+}
+
+function BonusHistoryTab() {
+  const [filterForm, setFilterForm] = useState({ start_date: '', end_date: '', branch: '' });
+  const [bonusData] = useState([
+    { id: 1, period: 'March 2026', branch: 'Windhoek CBD', total_amount: 45200, distributors_count: 23, status: 'Paid', date: '2026-03-15' },
+    { id: 2, period: 'March 2026', branch: 'Oshakati', total_amount: 32100, distributors_count: 18, status: 'Paid', date: '2026-03-15' },
+    { id: 3, period: 'February 2026', branch: 'Windhoek CBD', total_amount: 41800, distributors_count: 21, status: 'Paid', date: '2026-02-15' },
+    { id: 4, period: 'February 2026', branch: 'Walvis Bay', total_amount: 28500, distributors_count: 15, status: 'Paid', date: '2026-02-15' },
+    { id: 5, period: 'April 2026', branch: 'Katutura', total_amount: 38900, distributors_count: 20, status: 'Pending', date: '2026-04-15' },
+    { id: 6, period: 'April 2026', branch: 'Rundu', total_amount: 19700, distributors_count: 12, status: 'Pending', date: '2026-04-15' },
+  ]);
+
+  const filteredData = bonusData.filter(b => {
+    if (filterForm.branch && b.branch !== filterForm.branch) return false;
+    if (filterForm.start_date && b.date < filterForm.start_date) return false;
+    if (filterForm.end_date && b.date > filterForm.end_date) return false;
+    return true;
+  });
+
+  const totalPaid = filteredData.filter(b => b.status === 'Paid').reduce((sum, b) => sum + b.total_amount, 0);
+  const pendingAmount = filteredData.filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.total_amount, 0);
+  const lastPayout = filteredData.filter(b => b.status === 'Paid').sort((a, b) => b.date.localeCompare(a.date))[0]?.date || '-';
+
+  const handleCSVExport = () => {
+    const headers = 'Period,Branch,Total Amount,Distributors,Status,Date\n';
+    const rows = filteredData.map(b => `${b.period},${b.branch},${b.total_amount},${b.distributors_count},${b.status},${b.date}`).join('\n');
+    const csv = headers + rows;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bonus_history.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div style={{ background: 'linear-gradient(135deg, #43e97b, #38f9d7)' }} className="rounded-xl p-5 shadow-lg text-white">
+          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Total Paid</p>
+          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(totalPaid)}</p>
+        </div>
+        <div style={{ background: 'linear-gradient(135deg, #fa709a, #fee140)' }} className="rounded-xl p-5 shadow-lg text-white">
+          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Pending Amount</p>
+          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(pendingAmount)}</p>
+        </div>
+        <div style={{ background: 'linear-gradient(135deg, #4facfe, #00f2fe)' }} className="rounded-xl p-5 shadow-lg text-white">
+          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Last Payout Date</p>
+          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatDate(lastPayout)}</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Bonus History Filter</h3>
+            <Button size="sm" onClick={handleCSVExport}><Download size={16} /> Export CSV</Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Input label="Start Date" type="date" value={filterForm.start_date} onChange={e => setFilterForm({ ...filterForm, start_date: e.target.value })} />
+            <Input label="End Date" type="date" value={filterForm.end_date} onChange={e => setFilterForm({ ...filterForm, end_date: e.target.value })} />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Branch</label>
+              <select value={filterForm.branch} onChange={e => setFilterForm({ ...filterForm, branch: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                <option value="">All Branches</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button size="sm" variant="secondary" onClick={() => setFilterForm({ start_date: '', end_date: '', branch: '' })}>Clear Filters</Button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'Period', key: 'period' },
+            { header: 'Branch', key: 'branch' },
+            { header: 'Total Amount', render: r => formatCurrency(r.total_amount) },
+            { header: 'Distributors', key: 'distributors_count' },
+            { header: 'Status', render: r => <Badge variant={r.status === 'Paid' ? 'success' : 'warning'}>{r.status}</Badge> },
+            { header: 'Date', render: r => formatDate(r.date) },
+          ]}
+          data={filteredData}
+          emptyMessage="No bonus records found"
+        />
+      </Card>
+    </div>
+  );
+}
+
+function CommunicationTab() {
+  const [form, setForm] = useState({ message: '', priority: 'Normal', target: 'all_staff', branch: '' });
+  const [messages, setMessages] = useState([
+    { id: 1, message: 'Monthly targets have been updated for all branches. Please review your dashboard.', priority: 'Info', sender: 'GM Office', timestamp: '2026-03-10T09:00:00Z' },
+    { id: 2, message: 'Urgent: Stock audit scheduled for next week. All branch managers must prepare inventory reports.', priority: 'Urgent', sender: 'GM Office', timestamp: '2026-03-08T14:30:00Z' },
+    { id: 3, message: 'Congratulations to Windhoek CBD branch for exceeding March targets!', priority: 'Normal', sender: 'GM Office', timestamp: '2026-03-05T11:00:00Z' },
+  ]);
+  const [submitMessage, setSubmitMessage] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.message.trim()) {
+      setSubmitMessage('Error: Please enter a message.');
+      return;
+    }
+    const newMsg = {
+      id: Date.now(),
+      message: form.message,
+      priority: form.priority,
+      sender: 'GM Office',
+      target: form.target === 'specific_branch' ? form.branch : form.target,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [newMsg, ...prev]);
+    setForm({ message: '', priority: 'Normal', target: 'all_staff', branch: '' });
+    setSubmitMessage('Message sent successfully!');
+  };
+
+  const priorityColors = { Normal: 'default', Urgent: 'danger', Info: 'info' };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Send Communication</h3></CardHeader>
+        <CardBody>
+          {submitMessage && <Alert type={submitMessage.startsWith('Error') ? 'error' : 'success'} className="mb-4">{submitMessage}</Alert>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Message</label>
+              <textarea value={form.message} onChange={e => setForm({ ...form, message: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[100px] resize-y"
+                placeholder="Type your message to staff..." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Priority</label>
+                <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="Normal">Normal</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="Info">Info</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Target</label>
+                <select value={form.target} onChange={e => setForm({ ...form, target: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="all_staff">All Staff</option>
+                  <option value="branch_managers">Branch Managers</option>
+                  <option value="specific_branch">Specific Branch</option>
+                </select>
+              </div>
+              {form.target === 'specific_branch' && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Branch</label>
+                  <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                    <option value="">Select Branch</option>
+                    {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <Button type="submit">Send Message</Button>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Message History</h3></CardHeader>
+        <CardBody>
+          {messages.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">No messages sent yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {messages.map(msg => (
+                <div key={msg.id} className="border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-400">{formatDateTime(msg.timestamp)}</span>
+                    <Badge variant={priorityColors[msg.priority] || 'default'}>{msg.priority}</Badge>
+                    <span className="text-xs font-medium text-gray-600">{msg.sender}</span>
+                    {msg.target && <span className="text-xs text-gray-400">→ {msg.target}</span>}
+                  </div>
+                  <p className="text-sm text-gray-700">{msg.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
       </Card>
     </div>
   );

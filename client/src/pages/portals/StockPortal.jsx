@@ -18,6 +18,12 @@ export default function StockPortal() {
     { id: 'orders', label: 'Orders', icon: '🧾' },
     { id: 'sharing', label: 'Sharing', icon: '🔗' },
     { id: 'countryInventory', label: 'Country Inv.', icon: '🗂️' },
+    { id: 'invoices', label: 'Invoices', icon: '🧾' },
+    { id: 'valuation', label: 'Valuation', icon: '💰' },
+    { id: 'barcode', label: 'Barcode', icon: '🏷️' },
+    { id: 'reorder', label: 'Reorder', icon: '⚠️' },
+    { id: 'batch', label: 'Batch', icon: '🔢' },
+    { id: 'realtime', label: 'Realtime', icon: '⚡' },
   ];
 
   return (
@@ -40,6 +46,12 @@ export default function StockPortal() {
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'sharing' && <SharingTab />}
         {activeTab === 'countryInventory' && <CountryInventoryTab />}
+        {activeTab === 'invoices' && <InvoicesTab />}
+        {activeTab === 'valuation' && <ValuationTab />}
+        {activeTab === 'barcode' && <BarcodeTab />}
+        {activeTab === 'reorder' && <ReorderTab />}
+        {activeTab === 'batch' && <BatchTab />}
+        {activeTab === 'realtime' && <RealtimeTab />}
       </div>
     </div>
   );
@@ -887,6 +899,632 @@ function CountryInventoryTab() {
           ]}
           data={aggregatedList}
           emptyMessage="No inventory data available"
+        />
+      </Card>
+    </div>
+  );
+}
+
+function InvoicesTab() {
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [viewPO, setViewPO] = useState(null);
+  const [alert, setAlert] = useState(null);
+  const [form, setForm] = useState({ supplier: '', items: [{ product_name: '', quantity: 1, unit_price: 0 }], status: 'Draft' });
+
+  const generatePONumber = () => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const seq = String(purchaseOrders.length + 1).padStart(3, '0');
+    return `PO-${date}-${seq}`;
+  };
+
+  const addItem = () => {
+    setForm(f => ({ ...f, items: [...f.items, { product_name: '', quantity: 1, unit_price: 0 }] }));
+  };
+
+  const removeItem = (idx) => {
+    setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  };
+
+  const updateItem = (idx, field, value) => {
+    setForm(f => {
+      const items = [...f.items];
+      items[idx] = { ...items[idx], [field]: value };
+      if (field === 'product_name') {
+        const prod = PRICE_LIST.find(p => p.description === value);
+        if (prod) items[idx].unit_price = prod.dp;
+      }
+      return { ...f, items };
+    });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.supplier || form.items.length === 0 || !form.items[0].product_name) {
+      setAlert({ type: 'error', msg: 'Supplier and at least one product are required' });
+      return;
+    }
+    const po = {
+      id: Date.now(),
+      po_number: generatePONumber(),
+      supplier: form.supplier,
+      items: form.items.filter(i => i.product_name),
+      items_count: form.items.filter(i => i.product_name).length,
+      total_amount: form.items.filter(i => i.product_name).reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0),
+      status: form.status,
+      date: new Date().toISOString(),
+    };
+    setPurchaseOrders(prev => [po, ...prev]);
+    setForm({ supplier: '', items: [{ product_name: '', quantity: 1, unit_price: 0 }], status: 'Draft' });
+    setShowForm(false);
+    setAlert({ type: 'success', msg: `Purchase order ${po.po_number} created` });
+  };
+
+  const markReceived = (id) => {
+    setPurchaseOrders(prev => prev.map(po => po.id === id ? { ...po, status: 'Received' } : po));
+    setAlert({ type: 'success', msg: 'Purchase order marked as received' });
+  };
+
+  return (
+    <div className="space-y-6">
+      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Purchase Orders</h3>
+            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Purchase Order</Button>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'PO Number', key: 'po_number' },
+            { header: 'Supplier', key: 'supplier' },
+            { header: 'Items', key: 'items_count' },
+            { header: 'Total', render: r => formatCurrency(r.total_amount) },
+            { header: 'Status', render: r => <Badge variant={r.status === 'Received' ? 'success' : r.status === 'Submitted' ? 'info' : 'warning'}>{r.status}</Badge> },
+            { header: 'Date', render: r => formatDate(r.date) },
+            { header: 'Actions', render: r => (
+              <div className="flex gap-1">
+                <Button size="sm" variant="secondary" onClick={() => setViewPO(r)}>View</Button>
+                {r.status !== 'Received' && <Button size="sm" variant="success" onClick={() => markReceived(r.id)}>Mark Received</Button>}
+              </div>
+            )},
+          ]}
+          data={purchaseOrders}
+          emptyMessage="No purchase orders yet"
+        />
+      </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Purchase Order" size="lg">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <Input label="Supplier Name" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} required />
+          <Select
+            label="Status"
+            options={[{ value: 'Draft', label: 'Draft' }, { value: 'Submitted', label: 'Submitted' }]}
+            value={form.status}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+          />
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">Products</label>
+              <Button type="button" size="sm" variant="secondary" onClick={addItem}><Plus size={14} /> Add Item</Button>
+            </div>
+            {form.items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-end">
+                <div className="col-span-5">
+                  <select
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                    value={item.product_name}
+                    onChange={e => updateItem(idx, 'product_name', e.target.value)}
+                  >
+                    <option value="">Select product...</option>
+                    {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <input type="number" min="1" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Qty" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <input type="number" min="0" step="0.01" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Price" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} />
+                </div>
+                <div className="col-span-2 text-sm font-medium text-gray-700 py-2.5">
+                  {formatCurrency(Number(item.quantity) * Number(item.unit_price))}
+                </div>
+                <div className="col-span-1">
+                  {form.items.length > 1 && <Button type="button" size="sm" variant="danger" onClick={() => removeItem(idx)}>×</Button>}
+                </div>
+              </div>
+            ))}
+            <div className="text-right font-bold text-gray-800 mt-2">
+              Total: {formatCurrency(form.items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0))}
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit">Create Purchase Order</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!viewPO} onClose={() => setViewPO(null)} title={viewPO ? `Purchase Order: ${viewPO.po_number}` : ''} size="lg">
+        {viewPO && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div><span className="text-sm text-gray-500">Supplier:</span> <span className="font-medium">{viewPO.supplier}</span></div>
+              <div><span className="text-sm text-gray-500">Date:</span> <span className="font-medium">{formatDate(viewPO.date)}</span></div>
+              <div><span className="text-sm text-gray-500">Status:</span> <Badge variant={viewPO.status === 'Received' ? 'success' : 'warning'}>{viewPO.status}</Badge></div>
+              <div><span className="text-sm text-gray-500">Total:</span> <span className="font-bold">{formatCurrency(viewPO.total_amount)}</span></div>
+            </div>
+            <Table
+              columns={[
+                { header: 'Product', key: 'product_name' },
+                { header: 'Quantity', key: 'quantity' },
+                { header: 'Unit Price', render: r => formatCurrency(r.unit_price) },
+                { header: 'Total', render: r => formatCurrency(Number(r.quantity) * Number(r.unit_price)) },
+              ]}
+              data={viewPO.items}
+              emptyMessage="No items"
+            />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function ValuationTab() {
+  const [batches, setBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.stock.batches()
+      .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const getDP = (productName) => {
+    const prod = PRICE_LIST.find(p => p.description === productName);
+    return prod ? prod.dp : 0;
+  };
+
+  const locationGroups = {};
+  batches.forEach(b => {
+    const loc = (b.location || 'unknown').includes('windhoek') ? 'Windhoek' : (b.location || 'unknown').includes('ondangwa') ? 'Ondangwa' : 'Country';
+    if (!locationGroups[loc]) locationGroups[loc] = { items: 0, value: 0 };
+    const qty = Number(b.quantity || 0);
+    const dp = getDP(b.product_name) || Number(b.unit_price || 0);
+    locationGroups[loc].items += qty;
+    locationGroups[loc].value += qty * dp;
+  });
+
+  const breakdown = batches.map(b => {
+    const qty = Number(b.quantity || 0);
+    const dp = getDP(b.product_name) || Number(b.unit_price || 0);
+    return { product_name: b.product_name, location: b.location || 'Unknown', quantity: qty, unit_price: dp, total_value: qty * dp };
+  });
+
+  const grandTotal = breakdown.reduce((s, r) => s + r.total_value, 0);
+  const grandItems = breakdown.reduce((s, r) => s + r.quantity, 0);
+
+  const colors = { Windhoek: 'blue', Ondangwa: 'orange', Country: 'green' };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {['Windhoek', 'Ondangwa', 'Country'].map(loc => (
+          <StatCard
+            key={loc}
+            title={`${loc} Stock`}
+            value={formatCurrency((locationGroups[loc] || {}).value || 0)}
+            subtitle={`${((locationGroups[loc] || {}).items || 0).toLocaleString()} items`}
+            color={colors[loc]}
+            icon={<Warehouse size={24} />}
+          />
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Category Breakdown</h3></CardHeader>
+        <Table
+          columns={[
+            { header: 'Product', key: 'product_name' },
+            { header: 'Location', key: 'location' },
+            { header: 'Quantity', key: 'quantity' },
+            { header: 'Unit Price (DP)', render: r => formatCurrency(r.unit_price) },
+            { header: 'Total Value', render: r => formatCurrency(r.total_value) },
+          ]}
+          data={breakdown}
+          emptyMessage="No stock data for valuation"
+        />
+      </Card>
+
+      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
+        <CardBody>
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-emerald-600 font-medium">Grand Total Stock Value</p>
+              <p className="text-3xl font-bold text-emerald-800">{formatCurrency(grandTotal)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-emerald-600">Total Items</p>
+              <p className="text-2xl font-bold text-emerald-800">{grandItems.toLocaleString()}</p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+function BarcodeTab() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const results = searchTerm.length >= 2
+    ? PRICE_LIST.map((p, idx) => ({ ...p, idx })).filter(p => p.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    : [];
+
+  const generateBarcode = (idx) => `DYN-${String(idx).padStart(4, '0')}`;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Barcode Lookup</h3></CardHeader>
+        <CardBody>
+          <div className="relative max-w-lg">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+              placeholder="Search by product name or code..."
+              value={searchTerm}
+              onChange={e => { setSearchTerm(e.target.value); setSelectedProduct(null); }}
+            />
+          </div>
+        </CardBody>
+      </Card>
+
+      {selectedProduct && (
+        <Card className="border-primary/30">
+          <CardBody>
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex-1 space-y-3">
+                <h3 className="text-lg font-bold text-gray-800">{selectedProduct.description}</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-blue-50 p-3 rounded-lg text-center">
+                    <p className="text-xs text-blue-600">DP Price</p>
+                    <p className="text-lg font-bold text-blue-800">{formatCurrency(selectedProduct.dp)}</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg text-center">
+                    <p className="text-xs text-green-600">CP Price</p>
+                    <p className="text-lg font-bold text-green-800">{formatCurrency(selectedProduct.cp)}</p>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg text-center">
+                    <p className="text-xs text-purple-600">BV</p>
+                    <p className="text-lg font-bold text-purple-800">{selectedProduct.bv}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col items-center justify-center bg-gray-50 p-6 rounded-lg min-w-[200px]">
+                <div className="flex gap-[2px] mb-2">
+                  {generateBarcode(selectedProduct.idx).split('').map((c, i) => (
+                    <div key={i} className="bg-black" style={{ width: (c.charCodeAt(0) % 3) + 1 + 'px', height: '60px' }} />
+                  ))}
+                  {Array.from({ length: 20 }).map((_, i) => (
+                    <div key={`b${i}`} className="bg-black" style={{ width: ((i * 7 + 3) % 3) + 1 + 'px', height: '60px', marginLeft: ((i * 3) % 2) + 1 + 'px' }} />
+                  ))}
+                </div>
+                <p className="text-sm font-mono font-bold text-gray-700">{generateBarcode(selectedProduct.idx)}</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {results.length > 0 && !selectedProduct && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Search Results ({results.length})</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Code', render: r => <span className="font-mono text-xs">{generateBarcode(r.idx)}</span> },
+              { header: 'Product', key: 'description' },
+              { header: 'DP', render: r => formatCurrency(r.dp) },
+              { header: 'CP', render: r => formatCurrency(r.cp) },
+              { header: 'BV', key: 'bv' },
+              { header: 'Action', render: r => <Button size="sm" onClick={() => setSelectedProduct(r)}>View</Button> },
+            ]}
+            data={results}
+            emptyMessage="No products found"
+          />
+        </Card>
+      )}
+
+      {searchTerm.length >= 2 && results.length === 0 && (
+        <EmptyState icon={<Search size={48} />} title="No products found" description={`No products matching "${searchTerm}"`} />
+      )}
+    </div>
+  );
+}
+
+function ReorderTab() {
+  const [batches, setBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [thresholds, setThresholds] = useState({});
+  const [editProduct, setEditProduct] = useState(null);
+  const [editThreshold, setEditThreshold] = useState('');
+  const defaultReorderLevel = 10;
+
+  useEffect(() => {
+    api.stock.batches()
+      .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const stockByProduct = {};
+  batches.forEach(b => {
+    const name = b.product_name || 'Unknown';
+    if (!stockByProduct[name]) stockByProduct[name] = 0;
+    stockByProduct[name] += Number(b.quantity || 0);
+  });
+
+  const alerts = Object.entries(stockByProduct).map(([product_name, current_qty]) => {
+    const reorder_level = thresholds[product_name] || defaultReorderLevel;
+    let status = 'OK';
+    if (current_qty < 5) status = 'Critical';
+    else if (current_qty < reorder_level) status = 'Low';
+    return { product_name, current_qty, reorder_level, status };
+  }).sort((a, b) => {
+    const order = { Critical: 0, Low: 1, OK: 2 };
+    return order[a.status] - order[b.status];
+  });
+
+  const criticalCount = alerts.filter(a => a.status === 'Critical').length;
+  const lowCount = alerts.filter(a => a.status === 'Low').length;
+
+  const saveThreshold = () => {
+    if (editProduct && editThreshold) {
+      setThresholds(prev => ({ ...prev, [editProduct]: Number(editThreshold) }));
+      setEditProduct(null);
+      setEditThreshold('');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Critical Items" value={criticalCount} color="red" icon={<Package size={24} />} />
+        <StatCard title="Low Stock Items" value={lowCount} color="orange" icon={<Package size={24} />} />
+        <StatCard title="OK Items" value={alerts.length - criticalCount - lowCount} color="green" icon={<Package size={24} />} />
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Reorder Alerts</h3></CardHeader>
+        <Table
+          columns={[
+            { header: 'Product', key: 'product_name' },
+            { header: 'Current Qty', render: r => <span className={r.status === 'Critical' ? 'text-red-600 font-bold' : r.status === 'Low' ? 'text-amber-600 font-bold' : 'font-medium'}>{r.current_qty}</span> },
+            { header: 'Reorder Level', key: 'reorder_level' },
+            { header: 'Status', render: r => <Badge variant={r.status === 'Critical' ? 'danger' : r.status === 'Low' ? 'warning' : 'success'}>{r.status}</Badge> },
+            { header: 'Actions', render: r => (
+              <Button size="sm" variant="secondary" onClick={() => { setEditProduct(r.product_name); setEditThreshold(String(r.reorder_level)); }}>Set Threshold</Button>
+            )},
+          ]}
+          data={alerts}
+          emptyMessage="No stock data available"
+        />
+      </Card>
+
+      <Modal open={!!editProduct} onClose={() => setEditProduct(null)} title={`Set Reorder Threshold: ${editProduct}`} size="sm">
+        <div className="p-6 space-y-4">
+          <Input label="Reorder Threshold" type="number" min="1" value={editThreshold} onChange={e => setEditThreshold(e.target.value)} />
+          <div className="flex gap-3">
+            <Button onClick={saveThreshold}>Save Threshold</Button>
+            <Button variant="secondary" onClick={() => setEditProduct(null)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function BatchTab() {
+  const [localBatches, setLocalBatches] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'Windhoek' });
+
+  const generateBatchNumber = () => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const seq = String(localBatches.length + 1).padStart(3, '0');
+    return `BATCH-${date}-${seq}`;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.product_name || !form.quantity) {
+      setAlert({ type: 'error', msg: 'Product and quantity are required' });
+      return;
+    }
+    const batch = {
+      id: Date.now(),
+      batch_number: generateBatchNumber(),
+      product_name: form.product_name,
+      quantity: Number(form.quantity),
+      manufacture_date: form.manufacture_date || null,
+      expiry_date: form.expiry_date || null,
+      location: form.location,
+    };
+    setLocalBatches(prev => [batch, ...prev]);
+    setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'Windhoek' });
+    setShowForm(false);
+    setAlert({ type: 'success', msg: `Batch ${batch.batch_number} created` });
+  };
+
+  const getDaysUntilExpiry = (expiryDate) => {
+    if (!expiryDate) return null;
+    const diff = new Date(expiryDate) - new Date();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const getExpiryStatus = (days) => {
+    if (days === null) return { label: 'N/A', variant: 'default' };
+    if (days <= 0) return { label: 'Expired', variant: 'danger' };
+    if (days <= 30) return { label: 'Expiring Soon', variant: 'warning' };
+    return { label: 'OK', variant: 'success' };
+  };
+
+  return (
+    <div className="space-y-6">
+      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Batch Tracking</h3>
+            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Batch</Button>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Batch Number', key: 'batch_number' },
+            { header: 'Product', key: 'product_name' },
+            { header: 'Quantity', key: 'quantity' },
+            { header: 'Manufacture Date', render: r => formatDate(r.manufacture_date) },
+            { header: 'Expiry Date', render: r => formatDate(r.expiry_date) },
+            { header: 'Location', key: 'location' },
+            { header: 'Days to Expiry', render: r => { const d = getDaysUntilExpiry(r.expiry_date); return d !== null ? d : '-'; } },
+            { header: 'Status', render: r => { const s = getExpiryStatus(getDaysUntilExpiry(r.expiry_date)); return <Badge variant={s.variant}>{s.label}</Badge>; } },
+          ]}
+          data={localBatches}
+          emptyMessage="No batches tracked yet"
+        />
+      </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Batch" size="md">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Product</label>
+            <select
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+              value={form.product_name}
+              onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
+              required
+            >
+              <option value="">Select product...</option>
+              {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+            </select>
+          </div>
+          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
+          <Input label="Manufacture Date" type="date" value={form.manufacture_date} onChange={e => setForm(f => ({ ...f, manufacture_date: e.target.value }))} />
+          <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+          <Select
+            label="Location"
+            options={[{ value: 'Windhoek', label: 'Windhoek' }, { value: 'Ondangwa', label: 'Ondangwa' }]}
+            value={form.location}
+            onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+          />
+          <div className="flex gap-3 pt-2">
+            <Button type="submit">Create Batch</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+function RealtimeTab() {
+  const [batches, setBatches] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const fetchData = useCallback(() => {
+    Promise.all([
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+    ]).then(([b, m]) => {
+      setBatches(b);
+      setMovements(m);
+      setLastRefresh(new Date());
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const stockByProduct = {};
+  batches.forEach(b => {
+    const name = b.product_name || 'Unknown';
+    if (!stockByProduct[name]) stockByProduct[name] = { qty: 0, lastMovement: null };
+    stockByProduct[name].qty += Number(b.quantity || 0);
+  });
+
+  movements.forEach(m => {
+    const name = m.product_name || 'Unknown';
+    if (stockByProduct[name] && (!stockByProduct[name].lastMovement || new Date(m.created_at) > new Date(stockByProduct[name].lastMovement))) {
+      stockByProduct[name].lastMovement = m.created_at;
+    }
+  });
+
+  const stockCards = Object.entries(stockByProduct).map(([name, data]) => ({ name, ...data }));
+  const recentMovements = [...movements].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <Zap size={20} className="text-yellow-500" /> Real-Time Stock Dashboard
+          </h3>
+          <p className="text-xs text-gray-500">Auto-refreshes every 30 seconds • Last: {formatDateTime(lastRefresh)}</p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={fetchData}><Zap size={14} /> Refresh Now</Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {stockCards.map(item => (
+          <Card key={item.name} className="hover:shadow-md transition-shadow">
+            <CardBody>
+              <h4 className="text-sm font-semibold text-gray-800 truncate" title={item.name}>{item.name}</h4>
+              <div className="flex justify-between items-end mt-2">
+                <div>
+                  <p className="text-2xl font-bold text-primary">{item.qty}</p>
+                  <p className="text-xs text-gray-400">in stock</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">{item.lastMovement ? formatDateTime(item.lastMovement) : 'No movements'}</p>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        ))}
+        {stockCards.length === 0 && <div className="col-span-full"><EmptyState icon={<Package size={48} />} title="No stock data" description="No real-time stock data available" /></div>}
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Live Movement Feed</h3></CardHeader>
+        <Table
+          columns={[
+            { header: 'Time', render: r => formatDateTime(r.created_at) },
+            { header: 'Product', key: 'product_name' },
+            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : r.movement_type === 'out' ? 'danger' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
+            { header: 'Quantity', key: 'quantity' },
+            { header: 'Location', key: 'location' },
+          ]}
+          data={recentMovements}
+          emptyMessage="No recent movements"
         />
       </Card>
     </div>
