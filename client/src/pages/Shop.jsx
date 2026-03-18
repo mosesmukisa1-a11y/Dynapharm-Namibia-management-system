@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { formatCurrency } from '../lib/constants';
+import { formatCurrency, BRANCHES } from '../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../lib/pricing';
-import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert } from '../components/ui';
-import { ShoppingCart, Search, Plus, Minus, Package, User, Users } from 'lucide-react';
+import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert, Select } from '../components/ui';
+import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store } from 'lucide-react';
+
+const DEFAULT_REFERRAL_NAME = 'Dynapharm Namibia';
+const DEFAULT_REFERRAL_NB = 'NB005676';
 
 export default function Shop() {
   const [products, setProducts] = useState([]);
@@ -12,19 +15,39 @@ export default function Shop() {
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [category, setCategory] = useState('all');
-  const [isMember, setIsMember] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkoutForm, setCheckoutForm] = useState({ name: '', phone: '', email: '', nbNumber: '', paymentMethod: 'cash' });
   const [orderSuccess, setOrderSuccess] = useState('');
+  const [orderError, setOrderError] = useState('');
+
+  const [customerType, setCustomerType] = useState(null);
+  const [distributors, setDistributors] = useState([]);
+  const [selectedDistributor, setSelectedDistributor] = useState(null);
+  const [distributorSearch, setDistributorSearch] = useState('');
+  const [referralName, setReferralName] = useState('');
+  const [referralNB, setReferralNB] = useState('');
+
+  const [checkoutForm, setCheckoutForm] = useState({
+    name: '', phone: '', email: '',
+    deliveryMethod: 'pickup',
+    branch: 'Windhoek CBD',
+    address: '',
+    paymentMethod: 'cash',
+    notes: ''
+  });
+
+  const isMember = customerType === 'member';
 
   useEffect(() => {
-    api.products.list()
-      .then(data => {
+    Promise.all([
+      api.products.list().then(data => {
         const raw = Array.isArray(data) ? data : data.products || [];
         setProducts(enrichProductsWithPricing(raw));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      }).catch(() => {}),
+      api.distributors.list().then(data => {
+        const raw = Array.isArray(data) ? data : data.distributors || [];
+        setDistributors(raw);
+      }).catch(() => []),
+    ]).finally(() => setLoading(false));
   }, []);
 
   const categories = ['all', ...new Set(products.map(p => p.category || 'General').filter(Boolean))];
@@ -36,6 +59,11 @@ export default function Shop() {
   });
 
   const addToCart = (product) => {
+    if (!customerType) {
+      setOrderError('Please select whether you are a Registered Member or Non-Member first.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
@@ -50,15 +78,41 @@ export default function Shop() {
   const { items: cartItems, totalAmount, totalBV } = calculateCartTotals(cart, isMember);
   const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
 
+  const filteredDistributors = distributors.filter(d =>
+    !distributorSearch ||
+    (d.distributor_name || '').toLowerCase().includes(distributorSearch.toLowerCase()) ||
+    (d.distributor_code || '').toLowerCase().includes(distributorSearch.toLowerCase())
+  );
+
+  const effectiveReferralName = isMember
+    ? (selectedDistributor?.distributor_name || '')
+    : (referralName.trim() || DEFAULT_REFERRAL_NAME);
+  const effectiveReferralNB = isMember
+    ? (selectedDistributor?.distributor_code || '')
+    : (referralNB.trim() || DEFAULT_REFERRAL_NB);
+
   const handleCheckout = async () => {
+    setOrderError('');
+    if (!checkoutForm.name.trim()) { setOrderError('Please enter your full name'); return; }
+    if (!checkoutForm.phone.trim()) { setOrderError('Please enter your phone number'); return; }
+    if (isMember && !selectedDistributor) { setOrderError('Please select your NB number from the distributor list'); return; }
+    if (checkoutForm.deliveryMethod === 'delivery' && !checkoutForm.address.trim()) { setOrderError('Please enter a delivery address'); return; }
+
     try {
       await api.orders.create({
         customer_name: checkoutForm.name,
-        phone: checkoutForm.phone,
-        email: checkoutForm.email,
-        nb_number: checkoutForm.nbNumber,
-        is_member: isMember,
+        customer_phone: checkoutForm.phone,
+        customer_email: checkoutForm.email,
+        customer_type: isMember ? 'member' : 'non-member',
+        delivery_method: checkoutForm.deliveryMethod,
+        delivery_address: checkoutForm.deliveryMethod === 'delivery' ? checkoutForm.address : undefined,
+        subtotal: totalAmount,
         payment_method: checkoutForm.paymentMethod,
+        notes: [
+          checkoutForm.notes,
+          `Referral: ${effectiveReferralName} (${effectiveReferralNB})`,
+          `Pricing: ${isMember ? 'DP (Member)' : 'CP (Non-Member)'}`,
+        ].filter(Boolean).join(' | '),
         items: cartItems.map(item => ({
           product_id: item.id,
           product_name: item.name || item.description,
@@ -66,34 +120,84 @@ export default function Shop() {
           unit_price: item.unitPrice,
           bv: item.bv || 0,
         })),
-        total: totalAmount,
-        total_bv: totalBV,
       });
       setOrderSuccess('Order placed successfully! You will be contacted for delivery arrangements.');
       setCart([]);
       setCheckoutOpen(false);
       setCartOpen(false);
     } catch (err) {
-      alert(err.message || 'Failed to place order');
+      setOrderError(err.message || 'Failed to place order');
     }
   };
 
   if (loading) return <LoadingSpinner />;
 
+  if (!customerType) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dynapharm Online Shop</h1>
+          <p className="text-gray-500">Please select your customer type to continue</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <button onClick={() => setCustomerType('member')}
+            className="p-8 bg-white rounded-2xl border-2 border-gray-200 hover:border-primary hover:shadow-lg transition-all cursor-pointer text-left group">
+            <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <Users size={28} className="text-primary" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Registered Member</h3>
+            <p className="text-sm text-gray-500 mb-3">I am a Dynapharm distributor with an NB number</p>
+            <ul className="text-xs text-gray-400 space-y-1">
+              <li>Distributor Price (DP) applies</li>
+              <li>Select your NB number from the list</li>
+              <li>BV points will be tracked</li>
+            </ul>
+          </button>
+          <button onClick={() => setCustomerType('non-member')}
+            className="p-8 bg-white rounded-2xl border-2 border-gray-200 hover:border-primary hover:shadow-lg transition-all cursor-pointer text-left group">
+            <div className="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+              <User size={28} className="text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Non-Member</h3>
+            <p className="text-sm text-gray-500 mb-3">I am a regular customer or walk-in</p>
+            <ul className="text-xs text-gray-400 space-y-1">
+              <li>Consumer Price (CP) applies</li>
+              <li>Optional referral field</li>
+              <li>Default referral: {DEFAULT_REFERRAL_NAME}</li>
+            </ul>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      {orderSuccess && (
+        <Alert type="success" className="mb-4">
+          {orderSuccess}
+          <button onClick={() => setOrderSuccess('')} className="ml-3 text-xs underline cursor-pointer">Dismiss</button>
+        </Alert>
+      )}
+      {orderError && (
+        <Alert type="error" className="mb-4">
+          {orderError}
+          <button onClick={() => setOrderError('')} className="ml-3 text-xs underline cursor-pointer">Dismiss</button>
+        </Alert>
+      )}
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Product Catalog</h1>
           <p className="text-sm text-gray-500 mt-1">{products.length} products available</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex bg-gray-100 rounded-lg p-1">
-            <button onClick={() => setIsMember(false)}
+            <button onClick={() => { setCustomerType('non-member'); setSelectedDistributor(null); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all cursor-pointer ${!isMember ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
               <User size={14} /> Non-Member
             </button>
-            <button onClick={() => setIsMember(true)}
+            <button onClick={() => setCustomerType('member')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all cursor-pointer ${isMember ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
               <Users size={14} /> Member (DP)
             </button>
@@ -115,6 +219,78 @@ export default function Shop() {
         </div>
       </div>
 
+      {isMember && (
+        <div className="mb-4 p-4 bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={16} className="text-primary" />
+            <span className="text-sm font-semibold text-gray-800">Member Purchase — Select Your NB Number</span>
+          </div>
+          {selectedDistributor ? (
+            <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-primary/30">
+              <div>
+                <span className="font-bold text-primary">{selectedDistributor.distributor_code}</span>
+                <span className="text-gray-600 ml-2">{selectedDistributor.distributor_name}</span>
+                {selectedDistributor.branch && <span className="text-gray-400 ml-2 text-xs">({selectedDistributor.branch})</span>}
+              </div>
+              <button onClick={() => setSelectedDistributor(null)} className="text-xs text-primary underline cursor-pointer">Change</button>
+            </div>
+          ) : (
+            <div>
+              <input
+                value={distributorSearch}
+                onChange={e => setDistributorSearch(e.target.value)}
+                placeholder="Search by NB number or distributor name..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <div className="max-h-40 overflow-y-auto bg-white rounded-lg border border-gray-200">
+                {filteredDistributors.length === 0 ? (
+                  <p className="p-3 text-sm text-gray-400 text-center">No distributors found</p>
+                ) : (
+                  filteredDistributors.slice(0, 20).map(d => (
+                    <button key={d.id} onClick={() => { setSelectedDistributor(d); setDistributorSearch(''); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-100 last:border-0 cursor-pointer transition-colors">
+                      <span className="font-semibold text-primary">{d.distributor_code}</span>
+                      <span className="text-gray-600 ml-2">{d.distributor_name}</span>
+                      {d.branch && <span className="text-gray-400 ml-1 text-xs">- {d.branch}</span>}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isMember && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <User size={16} className="text-blue-600" />
+            <span className="text-sm font-semibold text-gray-800">Non-Member Purchase — Referral (Optional)</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input
+              value={referralName}
+              onChange={e => setReferralName(e.target.value)}
+              placeholder={`Referral name (default: ${DEFAULT_REFERRAL_NAME})`}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <input
+              value={referralNB}
+              onChange={e => setReferralNB(e.target.value)}
+              placeholder={`NB number (default: ${DEFAULT_REFERRAL_NB})`}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            If no referral is entered, the default referral <strong>{DEFAULT_REFERRAL_NAME} ({DEFAULT_REFERRAL_NB})</strong> will be used.
+          </p>
+        </div>
+      )}
+
+      <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+        Showing <strong>{isMember ? 'Distributor Price (DP)' : 'Consumer Price (CP)'}</strong> — Toggle above to switch pricing.
+      </div>
+
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {categories.map(cat => (
           <button key={cat} onClick={() => setCategory(cat)}
@@ -124,18 +300,22 @@ export default function Shop() {
         ))}
       </div>
 
-      <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-        Showing <strong>{isMember ? 'Distributor Price (DP)' : 'Consumer Price (CP)'}</strong> — Toggle above to switch pricing.
-      </div>
-
       {filtered.length === 0 ? (
         <EmptyState icon={<Package size={48} />} title="No products found" description="Try adjusting your search or filter." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map(product => {
             const displayPrice = isMember ? product.dp : product.cp;
+            const imgSrc = (product.images && product.images.length > 0) ? (product.images[0].image_data || product.images[0].image_url || '') : '';
             return (
-              <Card key={product.id} className="flex flex-col hover:shadow-md transition-shadow">
+              <Card key={product.id} className="flex flex-col hover:shadow-md transition-shadow overflow-hidden">
+                {imgSrc ? (
+                  <img src={imgSrc} alt={product.name || product.description} className="w-full h-44 object-contain bg-gray-50" onError={e => { e.target.style.display = 'none'; }} />
+                ) : (
+                  <div className="w-full h-44 bg-gray-50 flex items-center justify-center text-gray-300">
+                    <Package size={48} />
+                  </div>
+                )}
                 <div className="p-4 flex-1">
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="font-semibold text-gray-900 text-sm leading-tight">{product.name || product.description}</h3>
@@ -164,9 +344,6 @@ export default function Shop() {
         <div className="p-6">
           <div className="mb-3 flex justify-between items-center text-sm">
             <span className="text-gray-500">Pricing: <strong>{isMember ? 'Member (DP)' : 'Non-Member (CP)'}</strong></span>
-            <button onClick={() => setIsMember(!isMember)} className="text-primary underline cursor-pointer text-sm">
-              Switch to {isMember ? 'CP' : 'DP'}
-            </button>
           </div>
 
           {cart.length === 0 ? (
@@ -213,6 +390,18 @@ export default function Shop() {
                   <span>Total BV</span>
                   <span className="font-semibold">{totalBV.toFixed(1)} BV</span>
                 </div>
+                {isMember && selectedDistributor && (
+                  <div className="flex justify-between items-center text-sm text-gray-500 mt-1">
+                    <span>NB Number</span>
+                    <span className="font-semibold">{selectedDistributor.distributor_code}</span>
+                  </div>
+                )}
+                {!isMember && (
+                  <div className="flex justify-between items-center text-sm text-gray-500 mt-1">
+                    <span>Referral</span>
+                    <span className="font-semibold">{effectiveReferralName} ({effectiveReferralNB})</span>
+                  </div>
+                )}
               </div>
 
               <Button className="w-full" onClick={() => setCheckoutOpen(true)}>
@@ -223,15 +412,66 @@ export default function Shop() {
         </div>
       </Modal>
 
-      <Modal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} title="Checkout" size="md">
+      <Modal open={checkoutOpen} onClose={() => { setCheckoutOpen(false); setOrderError(''); }} title="Checkout" size="md">
         <div className="p-6 space-y-4">
-          {orderSuccess && <Alert type="success">{orderSuccess}</Alert>}
-          <Input label="Full Name" value={checkoutForm.name} onChange={e => setCheckoutForm(f => ({ ...f, name: e.target.value }))} required />
-          <Input label="Phone Number" type="tel" value={checkoutForm.phone} onChange={e => setCheckoutForm(f => ({ ...f, phone: e.target.value }))} required />
-          <Input label="Email" type="email" value={checkoutForm.email} onChange={e => setCheckoutForm(f => ({ ...f, email: e.target.value }))} />
-          {isMember && (
-            <Input label="NB Number (Distributor ID)" value={checkoutForm.nbNumber} onChange={e => setCheckoutForm(f => ({ ...f, nbNumber: e.target.value }))} placeholder="e.g. NB001234" />
+          {orderError && <Alert type="error">{orderError}</Alert>}
+
+          <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <div className="flex justify-between">
+              <span>Customer Type:</span>
+              <span className="font-semibold">{isMember ? 'Registered Member' : 'Non-Member'}</span>
+            </div>
+            {isMember && selectedDistributor && (
+              <div className="flex justify-between mt-1">
+                <span>NB Number:</span>
+                <span className="font-semibold text-primary">{selectedDistributor.distributor_code} - {selectedDistributor.distributor_name}</span>
+              </div>
+            )}
+            {!isMember && (
+              <div className="flex justify-between mt-1">
+                <span>Referral:</span>
+                <span className="font-semibold">{effectiveReferralName} ({effectiveReferralNB})</span>
+              </div>
+            )}
+          </div>
+
+          <Input label="Full Name *" value={checkoutForm.name} onChange={e => setCheckoutForm(f => ({ ...f, name: e.target.value }))} placeholder="Enter your full name" required />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Phone Number *" type="tel" value={checkoutForm.phone} onChange={e => setCheckoutForm(f => ({ ...f, phone: e.target.value }))} placeholder="+264 81 123 4567" required />
+            <Input label="Email" type="email" value={checkoutForm.email} onChange={e => setCheckoutForm(f => ({ ...f, email: e.target.value }))} placeholder="name@example.com" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Delivery Method *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setCheckoutForm(f => ({ ...f, deliveryMethod: 'pickup' }))}
+                className={`flex items-center justify-center gap-2 px-3 py-3 text-sm rounded-lg border-2 transition-all cursor-pointer ${checkoutForm.deliveryMethod === 'pickup' ? 'border-primary bg-primary/5 text-primary font-semibold' : 'border-gray-200 text-gray-600'}`}>
+                <Store size={16} /> Branch Pickup
+              </button>
+              <button onClick={() => setCheckoutForm(f => ({ ...f, deliveryMethod: 'delivery' }))}
+                className={`flex items-center justify-center gap-2 px-3 py-3 text-sm rounded-lg border-2 transition-all cursor-pointer ${checkoutForm.deliveryMethod === 'delivery' ? 'border-primary bg-primary/5 text-primary font-semibold' : 'border-gray-200 text-gray-600'}`}>
+                <Truck size={16} /> Delivery
+              </button>
+            </div>
+          </div>
+
+          {checkoutForm.deliveryMethod === 'pickup' && (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Pickup Branch</label>
+              <select
+                value={checkoutForm.branch}
+                onChange={e => setCheckoutForm(f => ({ ...f, branch: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+              >
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
           )}
+
+          {checkoutForm.deliveryMethod === 'delivery' && (
+            <Input label="Delivery Address *" value={checkoutForm.address} onChange={e => setCheckoutForm(f => ({ ...f, address: e.target.value }))} placeholder="Full delivery address" required />
+          )}
+
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Payment Method</label>
             <div className="grid grid-cols-2 gap-2">
@@ -243,12 +483,16 @@ export default function Shop() {
               ))}
             </div>
           </div>
+
           <div className="bg-gray-50 rounded-lg p-4 text-sm">
             <div className="flex justify-between mb-1">
               <span>Items:</span><span>{cartCount}</span>
             </div>
             <div className="flex justify-between mb-1">
               <span>Pricing:</span><span>{isMember ? 'Member (DP)' : 'Non-Member (CP)'}</span>
+            </div>
+            <div className="flex justify-between mb-1">
+              <span>Delivery:</span><span className="capitalize">{checkoutForm.deliveryMethod}</span>
             </div>
             <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
               <span>Total:</span><span className="text-primary">{formatCurrency(totalAmount)}</span>

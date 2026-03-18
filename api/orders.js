@@ -74,17 +74,21 @@ export default async function handler(req, res) {
         payment_method,
       } = req.body;
 
-      // Validation
-      if (!customer_name || !delivery_method || !subtotal || !items || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: 'Missing required fields: customer_name, delivery_method, subtotal, and items are required' });
+      // Validation — customer_name and items are truly required; delivery_method and subtotal have defaults
+      if (!customer_name) {
+        return res.status(400).json({ error: 'customer_name is required' });
+      }
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'items array is required and must not be empty' });
       }
 
-      if (delivery_method === 'pickup' && !branch_id) {
-        return res.status(400).json({ error: 'Branch ID is required for pickup orders' });
-      }
+      const effectiveDeliveryMethod = delivery_method || 'pickup';
 
-      if (delivery_method === 'delivery' && !town_id) {
-        return res.status(400).json({ error: 'Town ID is required for delivery orders' });
+      const serverSubtotal = items.reduce((sum, item) => sum + (parseFloat(item.unit_price || 0) * parseInt(item.quantity || 1, 10)), 0);
+      const effectiveSubtotal = serverSubtotal || parseFloat(subtotal || 0);
+
+      if (effectiveDeliveryMethod === 'delivery' && !town_id && !delivery_address) {
+        return res.status(400).json({ error: 'delivery_address or town_id is required for delivery orders' });
       }
 
       // Calculate delivery fee
@@ -92,7 +96,7 @@ export default async function handler(req, res) {
       let deliveryFeePercentage = 0;
       let distanceKm = null;
 
-      if (delivery_method === 'delivery' && town_id) {
+      if (effectiveDeliveryMethod === 'delivery' && town_id) {
         // Get delivery distance from database
         try {
           let distance;
@@ -124,16 +128,15 @@ export default async function handler(req, res) {
             distanceKm = null;
           }
           
-          deliveryFee = (parseFloat(subtotal) * deliveryFeePercentage) / 100;
+          deliveryFee = (parseFloat(effectiveSubtotal) * deliveryFeePercentage) / 100;
         } catch (error) {
           console.error('Error calculating delivery fee:', error);
-          // Default: assume far distance (20%)
           deliveryFeePercentage = 20.00;
-          deliveryFee = (parseFloat(subtotal) * 20.00) / 100;
+          deliveryFee = (parseFloat(effectiveSubtotal) * 20.00) / 100;
         }
       }
 
-      const totalAmount = parseFloat(subtotal) + deliveryFee;
+      const totalAmount = parseFloat(effectiveSubtotal) + deliveryFee;
 
       // Generate order number
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
@@ -147,11 +150,11 @@ export default async function handler(req, res) {
         customer_email: customer_email || null,
         customer_phone: customer_phone || null,
         customer_type: customer_type || 'customer',
-        delivery_method,
+        delivery_method: effectiveDeliveryMethod,
         branch_id: branch_id || null,
         town_id: town_id || null,
         delivery_address: delivery_address || null,
-        subtotal: parseFloat(subtotal),
+        subtotal: parseFloat(effectiveSubtotal),
         delivery_fee: deliveryFee,
         delivery_fee_percentage: deliveryFeePercentage,
         total_amount: totalAmount,

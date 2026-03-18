@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatCurrency } from '../../lib/constants';
+import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function DistributorPortal() {
-  const [activeTab, setActiveTab] = useState('shop');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'shop', label: 'Shop', icon: '🛒' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'media', label: 'Media & News', icon: '📰' },
@@ -18,11 +20,166 @@ export default function DistributorPortal() {
     <div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
+        {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'shop' && <ShopTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
+    </div>
+  );
+}
+
+function DashboardTab() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.orders.list()
+      .then(data => {
+        const all = Array.isArray(data) ? data : data.orders || [];
+        const mine = user?.username
+          ? all.filter(o =>
+              (o.customer_name || '').toLowerCase().includes(user.full_name?.toLowerCase() || '') ||
+              (o.notes || '').includes(user.username)
+            )
+          : [];
+        setOrders(mine);
+      })
+      .catch(() => [])
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const myOrders = orders;
+  const totalSpent = myOrders.reduce((sum, o) => sum + Number(o.total_amount || o.subtotal || 0), 0);
+  const totalBV = myOrders.reduce((sum, o) => {
+    const items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
+    return sum + items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
+  }, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-6 text-white">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+            <User size={32} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold">{user?.full_name || 'Distributor'}</h2>
+            <p className="text-white/80 text-sm">Distributor Portal</p>
+            {user?.username && <p className="text-white/60 text-xs mt-1">Username: {user.username}</p>}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="bg-white/15 rounded-xl p-4 text-center">
+            <p className="text-white/70 text-xs mb-1">Total Orders</p>
+            <p className="text-2xl font-bold">{myOrders.length}</p>
+          </div>
+          <div className="bg-white/15 rounded-xl p-4 text-center">
+            <p className="text-white/70 text-xs mb-1">Total Spent</p>
+            <p className="text-2xl font-bold">{formatCurrency(totalSpent)}</p>
+          </div>
+          <div className="bg-white/15 rounded-xl p-4 text-center">
+            <p className="text-white/70 text-xs mb-1">Total BV</p>
+            <p className="text-2xl font-bold">{totalBV.toFixed(1)}</p>
+          </div>
+          <div className="bg-white/15 rounded-xl p-4 text-center">
+            <p className="text-white/70 text-xs mb-1">Member Since</p>
+            <p className="text-lg font-bold">{user?.created_at ? formatDate(user.created_at) : 'N/A'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><User size={18} /> Profile Details</h3>
+          </CardHeader>
+          <CardBody>
+            <div className="space-y-3">
+              <div className="flex justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm">Full Name</span>
+                <span className="font-medium text-sm">{user?.full_name || '-'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm">Username</span>
+                <span className="font-medium text-sm">{user?.username || '-'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm">Role</span>
+                <Badge variant="info">{user?.role || 'distributor'}</Badge>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm">Email</span>
+                <span className="font-medium text-sm">{user?.email || '-'}</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-gray-500 text-sm">Status</span>
+                <Badge variant={user?.is_active ? 'success' : 'warning'}>{user?.is_active ? 'Active' : 'Pending'}</Badge>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingBag size={18} /> Recent Orders</h3>
+          </CardHeader>
+          <CardBody>
+            {myOrders.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-6">No orders yet. Visit the Shop tab to place your first order.</p>
+            ) : (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {myOrders.slice(0, 10).map((order, idx) => (
+                  <div key={order.id || idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{order.order_number || `Order #${idx + 1}`}</p>
+                      <p className="text-xs text-gray-400">{formatDate(order.created_at)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-primary">{formatCurrency(order.total_amount || order.subtotal || 0)}</p>
+                      <Badge variant={
+                        order.status === 'delivered' ? 'success' :
+                        order.status === 'shipped' ? 'info' :
+                        order.status === 'processing' ? 'warning' : 'default'
+                      }>{order.status || 'pending'}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2"><Star size={18} /> Quick Actions</h3>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <button onClick={() => window.location.href = '/shop'} className="p-4 bg-primary/5 rounded-xl text-center hover:bg-primary/10 transition-colors cursor-pointer">
+              <ShoppingCart size={24} className="text-primary mx-auto mb-2" />
+              <span className="text-sm font-medium text-gray-700">Shop Products</span>
+            </button>
+            <button onClick={() => window.location.href = '/checkup'} className="p-4 bg-green-50 rounded-xl text-center hover:bg-green-100 transition-colors cursor-pointer">
+              <Heart size={24} className="text-green-600 mx-auto mb-2" />
+              <span className="text-sm font-medium text-gray-700">Health Check Up</span>
+            </button>
+            <button className="p-4 bg-blue-50 rounded-xl text-center hover:bg-blue-100 transition-colors cursor-pointer">
+              <BarChart3 size={24} className="text-blue-600 mx-auto mb-2" />
+              <span className="text-sm font-medium text-gray-700">BV Summary</span>
+            </button>
+            <button className="p-4 bg-purple-50 rounded-xl text-center hover:bg-purple-100 transition-colors cursor-pointer">
+              <MessageSquare size={24} className="text-purple-600 mx-auto mb-2" />
+              <span className="text-sm font-medium text-gray-700">Communications</span>
+            </button>
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -77,15 +234,19 @@ function ShopTab() {
     setSubmitting(true);
     try {
       await api.orders.create({
+        customer_name: 'Distributor Order',
+        delivery_method: 'pickup',
+        subtotal: cartTotals.totalAmount,
         items: cartTotals.items.map(item => ({
+          product_id: item.id,
           product_name: item.name || item.description,
           quantity: item.qty,
           unit_price: item.unitPrice,
           bv: item.bv || 0,
         })),
-        total: cartTotals.totalAmount,
-        total_bv: cartTotals.totalBV,
-        pricing_type: 'DP',
+        customer_type: 'member',
+        payment_method: 'cash',
+        notes: `Distributor purchase | Pricing: DP | Total BV: ${cartTotals.totalBV.toFixed(1)}`,
       });
       setMessage('Order submitted successfully!');
       setCart([]);
@@ -119,6 +280,10 @@ function ShopTab() {
         </Button>
       </div>
 
+      <div className="mb-3 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg text-sm text-primary font-medium">
+        Showing Distributor Price (DP) — BV points tracked on all purchases
+      </div>
+
       {cart.length > 0 && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center">
           <span className="text-sm text-green-700">
@@ -129,24 +294,34 @@ function ShopTab() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((product, idx) => (
-          <Card key={product.id || idx} className="hover:shadow-md transition-shadow">
-            <CardBody>
-              <h3 className="font-semibold text-gray-900 text-sm mb-1">{product.name || product.description}</h3>
-              <div className="flex items-center justify-between mt-2">
-                <div>
-                  <span className="text-lg font-bold text-primary">{formatCurrency(product.dp)}</span>
-                  <span className="text-xs text-gray-400 ml-1">DP</span>
-                  {product.bv > 0 && <span className="text-xs text-gray-400 ml-2">{product.bv} BV</span>}
+        {filtered.map((product, idx) => {
+          const imgSrc = (product.images && product.images.length > 0) ? (product.images[0].image_data || product.images[0].image_url || '') : '';
+          return (
+            <Card key={product.id || idx} className="hover:shadow-md transition-shadow overflow-hidden">
+              {imgSrc ? (
+                <img src={imgSrc} alt={product.name || product.description} className="w-full h-40 object-contain bg-gray-50" onError={e => { e.target.style.display = 'none'; }} />
+              ) : (
+                <div className="w-full h-40 bg-gray-50 flex items-center justify-center text-gray-300">
+                  <Package size={40} />
                 </div>
-                <Button size="sm" onClick={() => addToCart(product)}><Plus size={14} /> Add</Button>
-              </div>
-              {product.cp > product.dp && (
-                <p className="text-xs text-gray-400 mt-1">Retail: {formatCurrency(product.cp)}</p>
               )}
-            </CardBody>
-          </Card>
-        ))}
+              <CardBody>
+                <h3 className="font-semibold text-gray-900 text-sm mb-1">{product.name || product.description}</h3>
+                <div className="flex items-center justify-between mt-2">
+                  <div>
+                    <span className="text-lg font-bold text-primary">{formatCurrency(product.dp)}</span>
+                    <span className="text-xs text-gray-400 ml-1">DP</span>
+                    {product.bv > 0 && <span className="text-xs text-blue-600 ml-2">{product.bv} BV</span>}
+                  </div>
+                  <Button size="sm" onClick={() => addToCart(product)}><Plus size={14} /> Add</Button>
+                </div>
+                {product.cp > product.dp && (
+                  <p className="text-xs text-gray-400 mt-1">Retail: {formatCurrency(product.cp)}</p>
+                )}
+              </CardBody>
+            </Card>
+          );
+        })}
       </div>
 
       <Modal open={showCart} onClose={() => setShowCart(false)} title="Shopping Cart" size="lg">
@@ -161,7 +336,7 @@ function ShopTab() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800">{item.name || item.description}</p>
                       <p className="text-xs text-gray-500">{formatCurrency(item.unitPrice)} x {item.qty} = {formatCurrency(item.lineTotal)}</p>
-                      {item.lineBV > 0 && <p className="text-xs text-gray-400">{item.lineBV.toFixed(1)} BV</p>}
+                      {item.lineBV > 0 && <p className="text-xs text-blue-500">{item.lineBV.toFixed(1)} BV</p>}
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => updateQty(item.id || item.description, -1)}

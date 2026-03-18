@@ -41,6 +41,13 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - Accent Blue: #3498db
 - Accent Green: #27ae60
 
+## Shop Flow
+- **Member/Non-Member Selection**: Landing page asks customer type before showing products
+- **Member (DP)**: Must select NB number from distributor list; gets Distributor Price + BV tracking
+- **Non-Member (CP)**: Optional referral field, defaults to "Dynapharm Namibia (NB005676)"; gets Consumer Price
+- **Checkout**: Name + phone required; delivery method (pickup/delivery); payment method (cash/card/mobile/bank)
+- **Orders API**: Only customer_name + items[] required; delivery_method defaults to 'pickup'; subtotal recomputed server-side from items
+
 ## Key API Routes
 - `/api/auth/login` — POST, user login
 - `/api/auth/logout` — POST, clear session
@@ -48,7 +55,7 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/auth/register` — POST, staff registration (pending approval)
 - `/api/products` — CRUD for products (GET is public)
 - `/api/branches` — CRUD for branches (GET is public)
-- `/api/orders` — Order management
+- `/api/orders` — Order management (POST public for shop; subtotal recomputed server-side)
 - `/api/distributors` — Distributor management (GET is public)
 - `/api/notifications` — Notification system
 - `/api/stock-batches` — Stock batch management

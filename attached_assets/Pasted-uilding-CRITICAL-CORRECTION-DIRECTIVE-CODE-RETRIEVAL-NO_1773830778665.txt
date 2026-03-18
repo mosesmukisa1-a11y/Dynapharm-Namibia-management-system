@@ -1,0 +1,147 @@
+uilding:
+
+🚨 CRITICAL CORRECTION DIRECTIVE – CODE RETRIEVAL (NO REBUILDING)
+
+Replit must STOP creating new versions of features and instead retrieve and reuse the EXACT original code that already existed in the system before migration.
+
+❗ ROOT ISSUE
+
+Most of the system functionality was lost or broken during migration from HTML, but the original logic, workflows, and structures already existed and worked.
+
+The current problem is NOT missing features —
+👉 it is failure to retrieve and reconnect existing code properly.
+
+🔴 NON-NEGOTIABLE RULE (APPLIES SYSTEM-WIDE)
+
+DO NOT CREATE NEW CODE WHERE ORIGINAL CODE EXISTS
+
+Replit must:
+
+Retrieve the exact original implementation from:
+
+previous HTML structures
+
+earlier working versions
+
+existing backend logic
+
+Reconnect it to the current system
+
+Preserve the original workflow logic
+
+Ensure full functionality as it was before
+
+❌ Do NOT:
+
+rebuild simplified versions
+
+replace with static pages
+
+recreate partial logic
+
+omit workflows that already existed
+
+🔁 APPLY THIS RULE TO ALL MODULES
+
+This instruction applies across ALL portals shown in the system, including:
+
+Distributor
+
+Front Desk
+
+Consultant
+
+Branch
+
+HR
+
+Finance
+
+GM
+
+Director
+
+MIS
+
+Stock
+
+Admin
+
+Every module must follow the same rule:
+👉 Retrieve → Restore → Reconnect → Test
+
+🔧 SPECIFIC MODULE EMPHASIS
+1. Full Body Check Up (CRITICAL EXAMPLE)
+
+This module already had complete working code
+
+Replit must:
+
+retrieve the exact previous version
+
+restore all fields, logic, and workflows
+
+reconnect it properly
+
+⚠️ Any rebuilt or simplified version is incorrect and unacceptable
+
+2. Distributor Portal (OMITTED)
+
+This portal already existed with full workflow
+
+Must be fully restored from original code
+
+Not recreated from scratch
+
+3. Sales / Shop / Customer Logic
+
+Member / Non-member logic must be applied using existing logic patterns
+
+Do NOT rewrite — retrieve and reconnect
+
+⚠️ MIGRATION FIX REQUIREMENT
+
+Replit must specifically:
+
+audit what was lost during HTML → current system migration
+
+identify missing components
+
+restore them using the original logic and structure
+
+ensure backend and frontend are correctly linked again
+
+🧠 DEVELOPMENT APPROACH (MANDATORY)
+
+Before writing ANY new code:
+
+Search for existing implementation
+
+Check old HTML / previous system logic
+
+Reuse exact structure
+
+Only patch where necessary
+
+Reconnect to current UI
+
+✅ FINAL EXPECTATION
+
+After correction:
+
+No duplicated logic
+
+No missing workflows
+
+No simplified replacements
+
+No static/non-functional buttons
+
+All original system intelligence restored
+
+🔚 FINAL WARNING
+
+The system was already functional before migration.
+This task is restoration, not redevelopment.
+
+👉 Any newly created code where original code exists will be considered a failure to follow instruction

@@ -1,0 +1,152 @@
+Replit Correction Script – Online Shop and Distributor Portal
+
+Please implement the following corrections properly and ensure no existing saved data is lost. Some of these workflows already existed before, so restore and reconnect them instead of omitting them.
+
+1. Online Shop – Member / Non-Member Selection
+
+At the online shop, the user must first choose whether the customer is:
+
+Registered Member
+
+Non-Member
+
+This selection must control the pricing rules automatically.
+
+If the customer is a Non-Member:
+
+A referral field must be provided
+
+If no referral is entered, the system must automatically assign the default referral:
+Dynapharm Namibia – NB005676
+
+The correct non-member price rule must then apply
+
+If the customer is a Registered Member:
+
+The system must require the user to select the NB number
+
+This NB number must be selected from the existing distributor list saved in the system
+
+The correct member price rule must then apply
+
+This logic must work smoothly and automatically in the online shop.
+
+2. Fix the Missing Required Fields Error
+
+The system is currently showing this error:
+
+Error: Missing required fields: customer_name, delivery_method, subtotal, and items are required
+
+However, these fields are not visible or available for the user to complete.
+
+Please fix this properly by ensuring:
+
+all required fields are actually visible and usable on the form, or
+
+hidden/unavailable fields are not validated
+
+The system must never require fields that the user cannot see or fill in.
+
+Also confirm that:
+
+customer_name
+
+delivery_method
+
+subtotal
+
+items
+
+are either properly generated or properly captured in the workflow.
+
+3. Product Pictures in the Online Shop
+
+The online shop must display product pictures.
+
+Please add the following:
+
+Admin must be able to upload product images from the Admin tab
+
+These uploaded images must automatically display in the online shop
+
+Each product card should properly show:
+
+product image
+
+product name
+
+price
+
+BV where applicable
+
+action button such as Add to Cart / Buy
+
+The shop must look complete, functional, and well-organized.
+
+4. Restore the Distributor Portal
+
+You completely omitted the Distributor Portal and its workflow. Please restore it fully.
+
+Do not leave it out.
+
+The Distributor Portal must be brought back with its proper workflow and should be accessible after distributor sign-in.
+
+5. Distributor Sign-In and Dashboard Access
+
+After signing in, distributors must be able to enter their portal and access their dashboard immediately.
+
+They should be able to view relevant distributor information such as:
+
+distributor dashboard
+
+profile details
+
+NB number
+
+sponsor / upline information where applicable
+
+purchases / orders where applicable
+
+any distributor tools already existing in the code
+
+The distributor must not sign in and land on a broken, blank, or incomplete page.
+
+6. Restore Existing Workflow Instead of Replacing It
+
+Please check the existing codebase carefully because some of these workflows were already present and working before they were omitted.
+
+Your task is to:
+
+restore missing workflows
+
+reconnect incomplete processes
+
+preserve current saved data
+
+avoid replacing working logic with static or partial pages
+
+7. Final Testing Requirement
+
+After applying all corrections, do a full end-to-end test of the following:
+
+online shop member / non-member selection
+
+referral default logic for non-members
+
+NB number selection from distributor list for members
+
+correct pricing rule application
+
+missing required fields error resolved
+
+admin image upload from Admin tab
+
+product pictures showing in online shop
+
+distributor portal restored
+
+distributor sign-in working
+
+distributor dashboard accessible after login
+
+Nothing should remain broken, omitted, static, or disconnected.
