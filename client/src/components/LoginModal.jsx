@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Modal, Input, Button, Alert } from './ui';
+import { BRANCHES } from '../lib/constants';
+
+const DEPARTMENTS = ['Operations', 'Sales', 'Finance', 'Human Resources', 'IT', 'Warehouse', 'Health Services', 'Marketing', 'Administration'];
 
 export function LoginModal({ open, onClose }) {
   const [tab, setTab] = useState('login');
@@ -9,7 +12,11 @@ export function LoginModal({ open, onClose }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [regForm, setRegForm] = useState({ fullName: '', dob: '', role: 'frontdesk', password: '', confirmPassword: '' });
+  const [regStep, setRegStep] = useState(1);
+  const [regForm, setRegForm] = useState({
+    username: '', fullName: '', dob: '', role: 'frontdesk', password: '', confirmPassword: '',
+    position: '', department: '', branch: '', phone: '', email: '', id_number: '', gender: '', address: ''
+  });
   const [regSuccess, setRegSuccess] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -41,24 +48,53 @@ export function LoginModal({ open, onClose }) {
     }
   };
 
+  const validateStep1 = () => {
+    if (!regForm.username.trim()) return 'Username is required';
+    if (!/^[a-zA-Z0-9._-]+$/.test(regForm.username.trim())) return 'Username can only contain letters, numbers, dots, dashes, and underscores';
+    if (regForm.username.trim().length < 3) return 'Username must be at least 3 characters';
+    if (!regForm.fullName.trim()) return 'Full name is required';
+    if (!regForm.dob) return 'Date of birth is required';
+    if (!regForm.password || regForm.password.length < 6) return 'Password must be at least 6 characters';
+    if (regForm.password !== regForm.confirmPassword) return 'Passwords do not match';
+    return null;
+  };
+
+  const handleNextStep = () => {
+    const err = validateStep1();
+    if (err) { setError(err); return; }
+    setError('');
+    setRegStep(2);
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
-    if (regForm.password !== regForm.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
+    if (!regForm.position.trim()) { setError('Position/Job title is required'); return; }
+    if (!regForm.branch) { setError('Please select your branch'); return; }
     setLoading(true);
     try {
       const apiModule = await import('../lib/api');
       await apiModule.api.auth.register({
+        username: regForm.username.trim().toLowerCase(),
         full_name: regForm.fullName,
         dob: regForm.dob,
         role: regForm.role,
         password: regForm.password,
+        email: regForm.email || undefined,
+        position: regForm.position,
+        department: regForm.department,
+        branch: regForm.branch,
+        phone: regForm.phone,
+        id_number: regForm.id_number,
+        gender: regForm.gender,
+        address: regForm.address,
       });
       setRegSuccess('Registration submitted! Your account is pending admin approval.');
-      setRegForm({ fullName: '', dob: '', role: 'frontdesk', password: '', confirmPassword: '' });
+      setRegForm({
+        username: '', fullName: '', dob: '', role: 'frontdesk', password: '', confirmPassword: '',
+        position: '', department: '', branch: '', phone: '', email: '', id_number: '', gender: '', address: ''
+      });
+      setRegStep(1);
     } catch (err) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -67,7 +103,7 @@ export function LoginModal({ open, onClose }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Staff Access" size="sm">
+    <Modal open={open} onClose={() => { onClose(); setRegStep(1); setError(''); }} title="Staff Access" size={tab === 'register' && regStep === 2 ? 'md' : 'sm'}>
       <div className="px-6 pt-4">
         <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
           <button
@@ -95,37 +131,117 @@ export function LoginModal({ open, onClose }) {
           </Button>
         </form>
       ) : (
-        <form onSubmit={handleRegister} className="px-6 pb-6 space-y-4">
-          {error && <Alert type="error">{error}</Alert>}
-          {regSuccess && <Alert type="success">{regSuccess}</Alert>}
-          <Input label="Full Name" value={regForm.fullName} onChange={e => setRegForm(f => ({ ...f, fullName: e.target.value }))} required />
-          <Input label="Date of Birth" type="date" value={regForm.dob} onChange={e => setRegForm(f => ({ ...f, dob: e.target.value }))} required />
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Role</label>
-            <select
-              value={regForm.role}
-              onChange={e => setRegForm(f => ({ ...f, role: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-            >
-              <option value="frontdesk">Front Desk</option>
-              <option value="consultant">Consultant</option>
-              <option value="dispenser">Branch Staff</option>
-              <option value="branch_manager">Branch Manager</option>
-              <option value="hr_manager">HR Manager</option>
-              <option value="finance">Finance</option>
-              <option value="gm">General Manager</option>
-              <option value="director">Director</option>
-              <option value="mis">MIS</option>
-              <option value="stock">Stock</option>
-            </select>
-          </div>
-          <Input label="Password" type="password" value={regForm.password} onChange={e => setRegForm(f => ({ ...f, password: e.target.value }))} required />
-          <Input label="Confirm Password" type="password" value={regForm.confirmPassword} onChange={e => setRegForm(f => ({ ...f, confirmPassword: e.target.value }))} required />
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Submitting...' : 'Submit Registration'}
-          </Button>
-          <p className="text-xs text-gray-400 text-center">Your account will be reviewed by an administrator.</p>
-        </form>
+        <div className="px-6 pb-6">
+          {regSuccess ? (
+            <div className="space-y-4">
+              <Alert type="success">{regSuccess}</Alert>
+              <Button className="w-full" onClick={() => { setTab('login'); setRegSuccess(''); }}>Go to Login</Button>
+            </div>
+          ) : regStep === 1 ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">1</div>
+                <div className="text-sm font-medium text-gray-700">Account Details</div>
+                <div className="flex-1 h-0.5 bg-gray-200 mx-2" />
+                <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center text-sm font-bold">2</div>
+                <div className="text-sm text-gray-400">Staff Info</div>
+              </div>
+              {error && <Alert type="error">{error}</Alert>}
+              <Input label="Username" value={regForm.username} onChange={e => setRegForm(f => ({ ...f, username: e.target.value }))} placeholder="Choose your username" required autoFocus />
+              <Input label="Full Name" value={regForm.fullName} onChange={e => setRegForm(f => ({ ...f, fullName: e.target.value }))} placeholder="Enter your full name" required />
+              <Input label="Date of Birth" type="date" value={regForm.dob} onChange={e => setRegForm(f => ({ ...f, dob: e.target.value }))} required />
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Role</label>
+                <select
+                  value={regForm.role}
+                  onChange={e => setRegForm(f => ({ ...f, role: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                >
+                  <option value="frontdesk">Front Desk</option>
+                  <option value="consultant">Consultant</option>
+                  <option value="dispenser">Branch Staff</option>
+                  <option value="branch_manager">Branch Manager</option>
+                  <option value="hr_manager">HR Manager</option>
+                  <option value="finance">Finance</option>
+                  <option value="gm">General Manager</option>
+                  <option value="director">Director</option>
+                  <option value="mis">MIS</option>
+                  <option value="stock">Stock</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Password" type="password" value={regForm.password} onChange={e => setRegForm(f => ({ ...f, password: e.target.value }))} placeholder="Min 6 characters" required />
+                <Input label="Confirm Password" type="password" value={regForm.confirmPassword} onChange={e => setRegForm(f => ({ ...f, confirmPassword: e.target.value }))} required />
+              </div>
+              <Button className="w-full" onClick={handleNextStep}>Next: Staff Information</Button>
+            </div>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-bold">&#10003;</div>
+                <div className="text-sm text-green-600 font-medium">Account</div>
+                <div className="flex-1 h-0.5 bg-primary mx-2" />
+                <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">2</div>
+                <div className="text-sm font-medium text-gray-700">Staff Information</div>
+              </div>
+              {error && <Alert type="error">{error}</Alert>}
+              <Input label="Position / Job Title" value={regForm.position} onChange={e => setRegForm(f => ({ ...f, position: e.target.value }))} placeholder="e.g. Receptionist, Pharmacist" required />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Department</label>
+                  <select
+                    value={regForm.department}
+                    onChange={e => setRegForm(f => ({ ...f, department: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                  >
+                    <option value="">Select Department</option>
+                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Branch *</label>
+                  <select
+                    value={regForm.branch}
+                    onChange={e => setRegForm(f => ({ ...f, branch: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                    required
+                  >
+                    <option value="">Select Branch</option>
+                    {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Phone Number" type="tel" value={regForm.phone} onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))} placeholder="+264 81 123 4567" />
+                <Input label="Email" type="email" value={regForm.email} onChange={e => setRegForm(f => ({ ...f, email: e.target.value }))} placeholder="name@example.com" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="ID/Passport Number" value={regForm.id_number} onChange={e => setRegForm(f => ({ ...f, id_number: e.target.value }))} placeholder="National ID or Passport" />
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Gender</label>
+                  <select
+                    value={regForm.gender}
+                    onChange={e => setRegForm(f => ({ ...f, gender: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <Input label="Address" value={regForm.address} onChange={e => setRegForm(f => ({ ...f, address: e.target.value }))} placeholder="Physical address" />
+              <div className="flex gap-3 pt-2">
+                <Button variant="secondary" type="button" className="flex-1" onClick={() => { setRegStep(1); setError(''); }}>Back</Button>
+                <Button type="submit" className="flex-1" disabled={loading}>
+                  {loading ? 'Submitting...' : 'Submit Registration'}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 text-center">Your account will be reviewed by an administrator.</p>
+            </form>
+          )}
+        </div>
       )}
     </Modal>
   );

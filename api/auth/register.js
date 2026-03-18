@@ -129,7 +129,15 @@ export default async function handler(req, res) {
 
     const id = crypto.randomUUID();
 
-    const metadata = JSON.stringify({ dob });
+    const position = body?.position?.trim() || null;
+    const department = body?.department?.trim() || null;
+    const branch = body?.branch?.trim() || null;
+    const phone = body?.phone?.trim() || null;
+    const idNumber = body?.id_number?.trim() || null;
+    const gender = body?.gender?.trim() || null;
+    const address = body?.address?.trim() || null;
+
+    const metadata = JSON.stringify({ dob, position, department, branch, phone, id_number: idNumber, gender, address });
 
     await insert('users', {
       id,
@@ -141,6 +149,28 @@ export default async function handler(req, res) {
       is_active: false,
       metadata,
     });
+
+    try {
+      const empId = `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      await insert('employees', {
+        id: empId,
+        employee_id: empId,
+        user_id: id,
+        full_name: fullName,
+        role,
+        position: position || role,
+        department: department || null,
+        branch: branch || null,
+        phone: phone || null,
+        email: email || null,
+        hire_date: new Date().toISOString().slice(0, 10),
+        employment_status: 'pending',
+        address: address || null,
+        dob: dob || null,
+      });
+    } catch (empErr) {
+      console.error('Employee record creation (non-critical):', empErr.message);
+    }
 
     return res.status(201).json({
       success: true,
