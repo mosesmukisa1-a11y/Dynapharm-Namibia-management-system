@@ -109,19 +109,18 @@ async function handlePost(req, res) {
 
   const result = await query(
     `INSERT INTO users (
-       id, username, password, password_hash, role, full_name, email, phone,
+       id, username, password_hash, role, full_name, email, phone,
        branch, branches, is_active, must_change_password, metadata, created_at, updated_at
      )
      VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8,
-       $9, $10::jsonb, COALESCE($11::boolean, TRUE), COALESCE($12::boolean, FALSE),
-       $13::jsonb, NOW(), NOW()
+       $1, $2, $3, $4, $5, $6, $7,
+       $8, $9::jsonb, COALESCE($10::boolean, TRUE), COALESCE($11::boolean, FALSE),
+       $12::jsonb, NOW(), NOW()
      )
      RETURNING *`,
     [
       id,
       username.toLowerCase(),
-      passwordHash,
       passwordHash,
       role.toLowerCase(),
       body.fullName || body.full_name || null,
@@ -161,8 +160,6 @@ async function handlePut(req, res) {
 
   if (body.password) {
     const hashed = await bcrypt.hash(body.password, 10);
-    updates.push(`password = $${updates.length + 1}`);
-    params.push(hashed);
     updates.push(`password_hash = $${updates.length + 1}`);
     params.push(hashed);
   }

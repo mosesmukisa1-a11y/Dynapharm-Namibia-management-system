@@ -18,12 +18,19 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - `/api/products` — CRUD for products (GET is public)
 - `/api/branches` — CRUD for branches (GET is public)
 - `/api/orders` — Order management
-- `/api/distributors` — Distributor management (GET is public for search; search also queries `users` table for distributor-role users; results sorted with individual distributors before branch records)
-- `/api/notifications` — Notification system (GET/PUT public with recipient_id required; POST/DELETE require auth). Used for distributor referral notifications.
+- `/api/distributors` — Distributor management (GET is public)
+- `/api/notifications` — Notification system (GET/PUT public; POST/DELETE require auth)
 - `/api/stock/*` — Stock transfers, batches, requests
 - `/api/branch/*` — Branch operations (sales, payments, expenses, inventory)
 - `/api/mis/*` — Management information system reports
 - `/api/health` — System health check
+- `/api/realtime_publish` — POST, realtime event relay (stub — returns success when gateway not configured)
+- `/api/stock-movements` — GET/POST, warehouse inventory movements
+- `/api/collect` — POST, data collection endpoint (stub)
+- `/api/media` — GET, file uploads listing
+- `/api/send-email` — POST, email dispatch (stub — queues for manual dispatch)
+- `/api/field_program_requests` — GET/POST, field program requests (stub)
+- `/api/users` — CRUD for user accounts (admin only)
 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more

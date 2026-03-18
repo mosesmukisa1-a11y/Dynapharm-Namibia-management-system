@@ -37,6 +37,10 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/orders',
   '/api/delivery',
   '/api/appointments',
+  '/api/collect',
+  '/api/realtime_publish',
+  '/api/field_program_requests',
+  '/api/send-email',
 ]);
 
 const PUBLIC_GET_ROUTES = new Set([
@@ -45,6 +49,8 @@ const PUBLIC_GET_ROUTES = new Set([
   '/api/product_images',
   '/api/distributors',
   '/api/notifications',
+  '/api/media',
+  '/api/stock-movements',
 ]);
 
 const PUBLIC_PUT_ROUTES = new Set([

@@ -7841,7 +7841,7 @@
         }
         async function notifyScheduledReport(portal){
             try {
-                await fetch('/api/notifications.js', { method:'POST', headers:{ 'Content-Type':'application/json','x-role': getCurrentUserRole() }, body: JSON.stringify({ type:'report', title:`${portal.toUpperCase()} report sent`, message:new Date().toLocaleString() }) });
+                await fetch('/api/notifications', { method:'POST', headers:{ 'Content-Type':'application/json','x-role': getCurrentUserRole() }, body: JSON.stringify({ type:'report', title:`${portal.toUpperCase()} report sent`, message:new Date().toLocaleString() }) });
             } catch(_){}
         }
         function sendReportNow(){
