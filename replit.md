@@ -36,8 +36,17 @@ Cloud-based health management system for Dynapharm International Namibia. Built 
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
 - Products table seeded with 95 products (Dynapharm price list)
 - Branches table and distributors table seeded with 15 Namibian branches + 10 sample individual distributors (NB001544-NB010333) with entity_type='individual'
+- Warehouse locations auto-seeded on startup: country_stock, windhoek_warehouse, ondangwa_warehouse
 - Towns (20) and delivery distances seeded for delivery fee calculations
 - Migration SQL files in `migrations/` and `backend/`
+
+## Stock Management Portal
+- All tabs fully functional with workflow logic: Overview, Country Import, Country Stock, Windhoek, Ondangwa, Distribution, Inventory, Warehouse Distribution, Branch Distribution, Invoices, Transfers, Sharing, Orders, Country Inventory, Realtime
+- Stock data sourced from `getBarcodeStockList()` (localStorage `dyna_barcode_stock` synced from `/api/stock-batches`)
+- Transfers use `/api/stock/transfers` API (POST creates transfer, GET lists with status/limit filters)
+- Warehouse transfer forms: country_stock → windhoek/ondangwa warehouses; distribution forms: warehouse → branches
+- Quality checks stored in localStorage `dyna_qc_records`; sharing rules in `dyna_sharing_rules`; manual orders in `dyna_manual_orders`
+- `api/stock/transfers.js` imports use `../` prefix (file is in `api/stock/` subdirectory)
 
 ## Authentication
 - JWT tokens stored in httpOnly cookies

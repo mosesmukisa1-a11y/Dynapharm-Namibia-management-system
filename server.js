@@ -218,6 +218,12 @@ server.on('error', (error) => {
     await query('SELECT 1');
     console.log('Database connection verified');
 
+    await query(`INSERT INTO warehouse_locations (id, name, code, type, status, created_at, updated_at)
+      VALUES ('country_stock', 'Country Stock', 'CS', 'country', 'active', NOW(), NOW()),
+             ('windhoek_warehouse', 'Windhoek Warehouse', 'WHK', 'warehouse', 'active', NOW(), NOW()),
+             ('ondangwa_warehouse', 'Ondangwa Warehouse', 'OND', 'warehouse', 'active', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING`);
+
     const existingAdmin = await getOne("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE LIMIT 1");
     if (!existingAdmin) {
       const bcrypt = await import('bcryptjs');

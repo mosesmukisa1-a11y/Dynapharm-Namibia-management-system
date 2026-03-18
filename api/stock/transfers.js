@@ -1,5 +1,5 @@
-import { applyAuthCors } from './_lib/auth.js';
-import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { applyAuthCors } from '../_lib/auth.js';
+import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from '../db.js';
 
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;

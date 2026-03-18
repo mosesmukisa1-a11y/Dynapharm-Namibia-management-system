@@ -7739,6 +7739,784 @@
         window.showDistributorTab = showDistributorTab;
         window.showOrderTab = showOrderTab;
         window.showStockTab = showStockTab;
+
+
+        function _stockProductOptions(locationKey) {
+            const batches = getBarcodeStockList();
+            const map = new Map();
+            batches.forEach(b => {
+                const name = b.description || b.productName || '';
+                const loc = String(b.location || '').toLowerCase();
+                if (!name) return;
+                if (locationKey && !loc.includes(locationKey)) return;
+                const prev = map.get(name) || 0;
+                const qty = Number(b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0);
+                map.set(name, prev + (Number.isFinite(qty) ? qty : 0));
+            });
+            return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        }
+
+        function _populateProductSelect(selectId, locationKey) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">Select Product</option>';
+            _stockProductOptions(locationKey).forEach(([name, qty]) => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name + ' (Avail: ' + qty + ')';
+                sel.appendChild(opt);
+            });
+            if (cur) sel.value = cur;
+        }
+
+        function _populateBranchSelect(selectId) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">Select Branch</option>';
+            (Array.isArray(branches) ? branches : []).forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.id || b.name;
+                opt.textContent = b.name || b.id;
+                sel.appendChild(opt);
+            });
+            if (cur) sel.value = cur;
+        }
+
+        function _renderStockTable(items, containerId) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items.length) {
+                el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">No stock data available.</p>';
+                return;
+            }
+            let html = '<table class="table"><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Available</th><th>Expiry</th><th>Status</th></tr></thead><tbody>';
+            items.forEach(b => {
+                const expiry = b.expiryDate || b.expiry_date || '-';
+                const status = b.status || 'available';
+                const statusColor = status === 'available' ? '#27ae60' : status === 'low' ? '#f39c12' : '#e74c3c';
+                html += '<tr>' +
+                    '<td>' + (b.description || b.productName || '-') + '</td>' +
+                    '<td>' + (b.batchNo || b.batch_no || '-') + '</td>' +
+                    '<td>' + (b.quantity ?? 0) + '</td>' +
+                    '<td style="font-weight:bold;color:#27ae60;">' + (b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0) + '</td>' +
+                    '<td>' + expiry + '</td>' +
+                    '<td><span style="background:' + statusColor + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:0.85rem;">' + status + '</span></td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table>';
+            el.innerHTML = html;
+        }
+
+        function loadWindhoekProducts() {
+            _populateProductSelect('windhoekProduct-legacy', 'country');
+        }
+
+        function updateWindhoekAvailableQuantity() {
+            const sel = document.getElementById('windhoekProduct-legacy');
+            const display = document.getElementById('windhoekAvailableQty-legacy');
+            if (!sel || !display) return;
+            const name = sel.value;
+            if (!name) { display.value = 'Select product'; return; }
+            display.value = calculateAvailableQuantity(name, 'country');
+        }
+
+        function displayWindhoekStock() {
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                return loc.includes('windhoek') || loc === 'windhoek_warehouse';
+            });
+            _renderStockTable(batches, 'windhoekStockList');
+            if (typeof showToast === 'function') showToast('Windhoek inventory refreshed (' + batches.length + ' items)');
+        }
+
+        function showLowStockWindhoek() {
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                if (!loc.includes('windhoek') && loc !== 'windhoek_warehouse') return false;
+                const qty = Number(b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0);
+                return qty < 10;
+            });
+            _renderStockTable(batches, 'windhoekStockList');
+            if (typeof showToast === 'function') showToast('Showing ' + batches.length + ' low stock items');
+        }
+
+        function searchWindhoekStock() {
+            const term = (document.getElementById('windhoekSearch')?.value || '').toLowerCase();
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                if (!loc.includes('windhoek') && loc !== 'windhoek_warehouse') return false;
+                if (!term) return true;
+                return (b.description || b.productName || '').toLowerCase().includes(term);
+            });
+            _renderStockTable(batches, 'windhoekStockList');
+        }
+
+        function loadOndangwaProducts() {
+            _populateProductSelect('ondangwaProduct', 'country');
+            _populateProductSelect('ondangwaProductNew', 'country');
+        }
+
+        function updateOndangwaAvailableQuantity() {
+            const sel = document.getElementById('ondangwaProduct');
+            const display = document.getElementById('ondangwaAvailableQty');
+            if (sel && display) {
+                display.value = sel.value ? calculateAvailableQuantity(sel.value, 'country') : 'Select product';
+            }
+            const sel2 = document.getElementById('ondangwaProductNew');
+            const display2 = document.getElementById('ondangwaAvailableQtyNew');
+            if (sel2 && display2) {
+                display2.value = sel2.value ? calculateAvailableQuantity(sel2.value, 'country') : 'Select product';
+            }
+        }
+
+        function displayOndangwaStock() {
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                return loc.includes('ondangwa') || loc === 'ondangwa_warehouse';
+            });
+            _renderStockTable(batches, 'ondangwaStockList');
+            if (typeof showToast === 'function') showToast('Ondangwa inventory refreshed (' + batches.length + ' items)');
+        }
+
+        function showLowStockOndangwa() {
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                if (!loc.includes('ondangwa') && loc !== 'ondangwa_warehouse') return false;
+                const qty = Number(b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0);
+                return qty < 10;
+            });
+            _renderStockTable(batches, 'ondangwaStockList');
+            if (typeof showToast === 'function') showToast('Showing ' + batches.length + ' low stock items');
+        }
+
+        function searchOndangwaStock() {
+            const term = (document.getElementById('ondangwaSearch')?.value || '').toLowerCase();
+            const batches = getBarcodeStockList().filter(b => {
+                const loc = String(b.location || '').toLowerCase();
+                if (!loc.includes('ondangwa') && loc !== 'ondangwa_warehouse') return false;
+                if (!term) return true;
+                return (b.description || b.productName || '').toLowerCase().includes(term);
+            });
+            _renderStockTable(batches, 'ondangwaStockList');
+        }
+
+        function loadDistributionProducts() {
+            const wh = document.getElementById('distributionWarehouse')?.value || '';
+            _populateProductSelect('distributionProduct', wh || undefined);
+            _populateBranchSelect('distributionBranch');
+        }
+
+        function updateDistributionGuidance() {
+            const guidance = document.getElementById('distributionGuidance');
+            if (!guidance) return;
+            const product = document.getElementById('distributionProduct')?.value || '';
+            const wh = document.getElementById('distributionWarehouse')?.value || '';
+            const qty = Number(document.getElementById('distributionQuantity')?.value || 0);
+            if (!product || !wh) {
+                guidance.textContent = 'Select warehouse, branch, and product to see suggested quantities.';
+                guidance.style.color = '#64748b';
+                return;
+            }
+            const available = calculateAvailableQuantity(product, wh);
+            if (qty > available) {
+                guidance.textContent = 'Warning: Requested ' + qty + ' exceeds available ' + available + ' in ' + wh + ' warehouse.';
+                guidance.style.color = '#e74c3c';
+            } else {
+                guidance.textContent = 'Available in ' + wh + ': ' + available + ' units. Remaining after transfer: ' + (available - qty) + '.';
+                guidance.style.color = '#27ae60';
+            }
+        }
+
+        function displayDistributionHistory() {
+            const el = document.getElementById('distributionHistoryList');
+            if (!el) return;
+            fetchJsonFromApi(API_BASE + '/stock/transfers?status=all&limit=50', []).then(data => {
+                const items = Array.isArray(data) ? data : (data && Array.isArray(data.transfers) ? data.transfers : []);
+                if (!items.length) {
+                    el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">No distribution history found.</p>';
+                    return;
+                }
+                let html = '<table class="table"><thead><tr><th>ID</th><th>From</th><th>To</th><th>Status</th><th>Date</th><th>Items</th></tr></thead><tbody>';
+                items.forEach(t => {
+                    const itemCount = Array.isArray(t.items) ? t.items.length : 0;
+                    html += '<tr>' +
+                        '<td>' + (t.id || '-').substring(0, 12) + '</td>' +
+                        '<td>' + (t.fromWarehouse || t.from_warehouse || '-') + '</td>' +
+                        '<td>' + (t.toBranch || t.to_branch || '-') + '</td>' +
+                        '<td><span class="pill ' + (t.status === 'delivered' ? 'good' : 'pending') + '">' + (t.status || 'pending') + '</span></td>' +
+                        '<td>' + (t.createdAt || t.created_at || '-').substring(0, 10) + '</td>' +
+                        '<td>' + itemCount + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            });
+        }
+
+        function searchDistribution() {
+            const term = (document.getElementById('distributionSearch')?.value || '').toLowerCase();
+            const rows = document.querySelectorAll('#distributionHistoryList tbody tr');
+            rows.forEach(row => {
+                row.style.display = !term || row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            });
+        }
+
+        function filterInventoryMovements() {
+            displayInventoryMovements();
+        }
+
+        function displayInventoryMovements() {
+            const el = document.getElementById('inventoryMovementsList');
+            if (!el) return;
+            const locationFilter = document.getElementById('inventoryLocationFilter')?.value || 'all';
+            const typeFilter = document.getElementById('inventoryMovementFilter')?.value || 'all';
+            const search = (document.getElementById('inventoryProductSearch')?.value || '').toLowerCase();
+            const dateFrom = document.getElementById('inventoryDateFrom')?.value || '';
+            const dateTo = document.getElementById('inventoryDateTo')?.value || '';
+
+            el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">Loading movements...</p>';
+
+            fetchJsonFromApi(API_BASE + '/stock-movements?limit=200', []).then(apiData => {
+                let items = Array.isArray(apiData) ? apiData : [];
+                if (locationFilter !== 'all') {
+                    items = items.filter(m => (m.warehouseId || '').toLowerCase().includes(locationFilter));
+                }
+                if (typeFilter !== 'all') {
+                    items = items.filter(m => (m.movementType || '').toLowerCase() === typeFilter);
+                }
+                if (search) {
+                    items = items.filter(m => (m.productName || '').toLowerCase().includes(search));
+                }
+                if (dateFrom) {
+                    items = items.filter(m => (m.createdAt || '') >= dateFrom);
+                }
+                if (dateTo) {
+                    items = items.filter(m => (m.createdAt || '').substring(0, 10) <= dateTo);
+                }
+
+                if (!items.length) {
+                    el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">No inventory movements match the selected filters.</p>';
+                    return;
+                }
+                let html = '<table class="table"><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th><th>Reference</th><th>Notes</th></tr></thead><tbody>';
+                items.forEach(m => {
+                    const typeColors = { import: '#2196f3', transfer: '#9c27b0', distribution: '#ff9800', adjustment: '#607d8b', receipt: '#4caf50' };
+                    const color = typeColors[(m.movementType || '').toLowerCase()] || '#607d8b';
+                    html += '<tr>' +
+                        '<td>' + (m.createdAt || '-').substring(0, 10) + '</td>' +
+                        '<td>' + (m.productName || '-') + '</td>' +
+                        '<td><span style="background:' + color + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:0.85rem;">' + (m.movementType || '-') + '</span></td>' +
+                        '<td style="font-weight:bold;">' + (m.quantity || 0) + '</td>' +
+                        '<td>' + (m.warehouseId || '-') + '</td>' +
+                        '<td>' + (m.reference || '-') + '</td>' +
+                        '<td>' + (m.notes || '-') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            });
+        }
+
+        function exportInventoryMovements() {
+            const table = document.querySelector('#inventoryMovementsList table');
+            if (!table) { showToast('No data to export'); return; }
+            let csv = [];
+            table.querySelectorAll('tr').forEach(row => {
+                const cells = [];
+                row.querySelectorAll('th, td').forEach(cell => cells.push('"' + (cell.textContent || '').replace(/"/g, '""') + '"'));
+                csv.push(cells.join(','));
+            });
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'inventory_movements_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            showToast('Inventory movements exported');
+        }
+
+        async function handleStockTransfer(event) {
+            if (event) event.preventDefault();
+            const fromLoc = document.getElementById('transferFromLocation')?.value;
+            const toLoc = document.getElementById('transferToLocation')?.value;
+            const toBranch = document.getElementById('transferBranch')?.value;
+            const product = document.getElementById('transferProduct')?.value;
+            const qty = Number(document.getElementById('transferQuantity-ondangwa')?.value || 0);
+            const reason = document.getElementById('transferReason-ondangwa')?.value || 'replenishment';
+
+            if (!fromLoc || !toLoc || !product || qty <= 0) {
+                showToast('Please fill in all required fields');
+                return;
+            }
+            const destination = toLoc === 'branch' ? toBranch : toLoc;
+            if (!destination) { showToast('Please select a destination'); return; }
+
+            try {
+                const resp = await fetch(API_BASE + '/stock/transfers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        fromWarehouse: fromLoc,
+                        toBranch: destination,
+                        items: [{ productName: product, productId: product, quantity: qty }],
+                        notes: reason,
+                        status: 'pending'
+                    })
+                });
+                const result = await resp.json();
+                if (result && (result.success !== false)) {
+                    showToast('Transfer created successfully');
+                    document.getElementById('stockTransferForm')?.reset();
+                    loadStockTransfers();
+                } else {
+                    showToast('Transfer failed: ' + (result.error || 'Unknown error'));
+                }
+            } catch (e) {
+                showToast('Transfer error: ' + e.message);
+            }
+        }
+
+        function loadTransferFromProducts() {
+            const fromLoc = document.getElementById('transferFromLocation')?.value || '';
+            _populateProductSelect('transferProduct', fromLoc || undefined);
+            const branchDiv = document.getElementById('transferBranchSelect');
+            if (branchDiv) {
+                branchDiv.style.display = document.getElementById('transferToLocation')?.value === 'branch' ? 'block' : 'none';
+            }
+            populateTransferBranchOptions();
+        }
+
+        function loadStockTransfers() {
+            const el = document.getElementById('stockTransferHistory');
+            if (!el) return;
+            const statusFilter = document.getElementById('transferStatusFilter')?.value || 'all';
+            fetchJsonFromApi(API_BASE + '/stock/transfers?status=' + statusFilter + '&limit=100', []).then(data => {
+                const items = Array.isArray(data) ? data : (data && Array.isArray(data.transfers) ? data.transfers : []);
+                if (!items.length) {
+                    el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">No transfers found.</p>';
+                    return;
+                }
+                let html = '<table class="table"><thead><tr><th>ID</th><th>From</th><th>To</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
+                items.forEach(t => {
+                    const statusClass = t.status === 'delivered' ? 'good' : t.status === 'dispatched' ? 'warning' : 'pending';
+                    html += '<tr>' +
+                        '<td>' + (t.id || '-').substring(0, 12) + '</td>' +
+                        '<td>' + (t.fromWarehouse || t.from_warehouse || '-') + '</td>' +
+                        '<td>' + (t.toBranch || t.to_branch || '-') + '</td>' +
+                        '<td><span class="pill ' + statusClass + '">' + (t.status || 'pending') + '</span></td>' +
+                        '<td>' + (t.createdAt || t.created_at || '-').substring(0, 10) + '</td>' +
+                        '<td><button class="btn btn-sm" onclick="viewTransferDetails(\'' + t.id + '\')">View</button></td></tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            });
+        }
+
+        function viewTransferDetails(transferId) {
+            showToast('Transfer details: ' + transferId);
+        }
+
+        function populateTransferBranchOptions() {
+            _populateBranchSelect('transferBranch');
+        }
+
+        async function handleSharingRule(event) {
+            if (event) event.preventDefault();
+            const form = event?.target;
+            const sourceEl = form?.querySelector('[id*="sharingSource"]') || document.getElementById('sharingSource');
+            const targetEl = form?.querySelector('[id*="sharingTarget"]') || document.getElementById('sharingTarget');
+            const source = sourceEl?.value || '';
+            const target = targetEl?.value || '';
+            if (!source || !target) { showToast('Select both source and target locations'); return; }
+            const rules = JSON.parse(localStorage.getItem('dyna_sharing_rules') || '[]');
+            rules.push({ id: 'SHARE-' + Date.now(), source, target, createdAt: new Date().toISOString(), status: 'active' });
+            localStorage.setItem('dyna_sharing_rules', JSON.stringify(rules));
+            showToast('Sharing rule created: ' + source + ' → ' + target);
+            loadShopWarehouseSharing();
+            form?.reset();
+        }
+
+        function loadShopWarehouseSharing() {
+            const rules = JSON.parse(localStorage.getItem('dyna_sharing_rules') || '[]');
+            const el = document.getElementById('sharingRulesList');
+            if (!el) return;
+            if (!rules.length) {
+                el.innerHTML = '<p style="text-align:center;padding:20px;color:#666;">No sharing rules configured.</p>';
+                return;
+            }
+            let html = '<table class="table"><thead><tr><th>Source</th><th>Target</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>';
+            rules.forEach(r => {
+                html += '<tr><td>' + r.source + '</td><td>' + r.target + '</td>' +
+                    '<td><span class="pill good">' + r.status + '</span></td>' +
+                    '<td>' + (r.createdAt || '-').substring(0, 10) + '</td>' +
+                    '<td><button class="btn btn-sm btn-danger" onclick="removeSharingRule(\'' + r.id + '\')">Remove</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            el.innerHTML = html;
+        }
+
+        function removeSharingRule(ruleId) {
+            let rules = JSON.parse(localStorage.getItem('dyna_sharing_rules') || '[]');
+            rules = rules.filter(r => r.id !== ruleId);
+            localStorage.setItem('dyna_sharing_rules', JSON.stringify(rules));
+            loadShopWarehouseSharing();
+            showToast('Sharing rule removed');
+        }
+
+        function displayCountryStockInventory() {
+            const locationFilter = document.getElementById('countryInvLocationFilter')?.value || 'all';
+            const productFilter = document.getElementById('countryInvProductFilter')?.value || 'all';
+            const el = document.getElementById('countryInventoryTable');
+            if (!el) return;
+
+            const batches = getBarcodeStockList();
+            let filtered = batches;
+            if (locationFilter !== 'all') {
+                filtered = filtered.filter(b => {
+                    const loc = String(b.location || '').toLowerCase();
+                    if (locationFilter === 'country') return loc.includes('country') || loc === 'country_stock';
+                    if (locationFilter === 'windhoek') return loc.includes('windhoek');
+                    if (locationFilter === 'ondangwa') return loc.includes('ondangwa');
+                    if (locationFilter === 'branches') return !loc.includes('country') && !loc.includes('windhoek') && !loc.includes('ondangwa');
+                    return true;
+                });
+            }
+            if (productFilter !== 'all') {
+                filtered = filtered.filter(b => (b.description || b.productName || '') === productFilter);
+            }
+
+            const countryBatches = batches.filter(b => (b.location || '').toLowerCase().includes('country'));
+            const whkBatches = batches.filter(b => (b.location || '').toLowerCase().includes('windhoek'));
+            const ondBatches = batches.filter(b => (b.location || '').toLowerCase().includes('ondangwa'));
+            const branchBatches = batches.filter(b => {
+                const loc = (b.location || '').toLowerCase();
+                return !loc.includes('country') && !loc.includes('windhoek') && !loc.includes('ondangwa');
+            });
+
+            const sumQty = (arr) => arr.reduce((s, b) => s + Number(b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0), 0);
+            const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            setEl('countryTotalValue', sumQty(countryBatches) + ' units');
+            setEl('warehouseTotalValue', (sumQty(whkBatches) + sumQty(ondBatches)) + ' units');
+            setEl('branchTotalValue', sumQty(branchBatches) + ' units');
+            setEl('countryTotalProducts', new Set(batches.map(b => b.description || b.productName || '')).size);
+
+            const prodSelect = document.getElementById('countryInvProductFilter');
+            if (prodSelect && prodSelect.options.length <= 1) {
+                const names = [...new Set(batches.map(b => b.description || b.productName || '').filter(Boolean))].sort();
+                names.forEach(n => {
+                    const opt = document.createElement('option');
+                    opt.value = n; opt.textContent = n;
+                    prodSelect.appendChild(opt);
+                });
+            }
+
+            _renderStockTable(filtered, 'countryInventoryTable');
+        }
+
+        function exportCountryInventory() {
+            const table = document.querySelector('#countryInventoryTable table');
+            if (!table) { showToast('No data to export'); return; }
+            let csv = [];
+            table.querySelectorAll('tr').forEach(row => {
+                const cells = [];
+                row.querySelectorAll('th, td').forEach(cell => cells.push('"' + (cell.textContent || '').replace(/"/g, '""') + '"'));
+                csv.push(cells.join(','));
+            });
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'country_inventory_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            showToast('Country inventory exported');
+        }
+
+        function renderInventoryTimelyReport(period) {
+            period = period || document.getElementById('inventoryTimelyRange')?.value || 'monthly';
+            const batches = getBarcodeStockList();
+            const now = new Date();
+            let startDate;
+            if (period === 'daily') startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            else if (period === 'weekly') startDate = new Date(now - 7 * 86400000);
+            else if (period === 'monthly') startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            else if (period === 'quarterly') startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+            else startDate = new Date(now.getFullYear(), 0, 1);
+
+            const recentBatches = batches.filter(b => {
+                const d = new Date(b.import_date || b.createdAt || b.created_at || 0);
+                return d >= startDate;
+            });
+
+            const totalReceived = recentBatches.reduce((s, b) => s + Number(b.quantity ?? 0), 0);
+            const totalDispatched = recentBatches.reduce((s, b) => s + Number(b.dispatchedQuantity ?? b.dispatched_quantity ?? 0), 0);
+
+            const setVal = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            const setMeta = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            setVal('inventoryReportReceived', totalReceived);
+            setMeta('inventoryReportReceivedMeta', recentBatches.length + ' batches in ' + period + ' period');
+            setVal('inventoryReportSold', totalDispatched);
+            setMeta('inventoryReportSoldMeta', 'Dispatched from stock');
+            setVal('inventoryReportFieldSales', 0);
+            setMeta('inventoryReportFieldSalesMeta', 'No field sales data');
+            setVal('inventoryReportConsultantSales', 0);
+            setMeta('inventoryReportConsultantSalesMeta', 'No consultant sales data');
+        }
+
+        function handleQualitySubmit(event) {
+            if (event) event.preventDefault();
+            const form = event.target;
+            const batchInput = form.querySelector('[id^="qcBatch"]');
+            const asnInput = form.querySelector('[id^="qcAsn"]');
+            const dateInput = form.querySelector('[id^="qcDate"]');
+            const tempInput = form.querySelector('[id^="qcTemperature"]');
+            const visualInput = form.querySelector('[id^="qcVisual"]') || form.querySelector('[id^="qcResult"]');
+            const batchNo = batchInput?.value || '';
+            if (!batchNo) { showToast('Batch number is required'); return; }
+
+            const qcRecords = JSON.parse(localStorage.getItem('dyna_qc_records') || '[]');
+            qcRecords.push({
+                id: 'QC-' + Date.now(),
+                batchNo,
+                asnRef: asnInput?.value || '',
+                date: dateInput?.value || new Date().toISOString().slice(0, 10),
+                temperature: tempInput?.value || 'ambient',
+                visual: visualInput?.value || 'pass',
+                status: 'inspected',
+                createdAt: new Date().toISOString()
+            });
+            localStorage.setItem('dyna_qc_records', JSON.stringify(qcRecords));
+            showToast('Quality check recorded for batch ' + batchNo);
+            form.reset();
+
+            const qualityList = document.getElementById('qualityList');
+            if (qualityList) {
+                let html = '';
+                qcRecords.slice(-10).reverse().forEach(r => {
+                    html += '<div style="padding:8px;margin-bottom:6px;background:#f0f7ff;border-radius:6px;border-left:3px solid #2196f3;">' +
+                        '<strong>' + r.batchNo + '</strong> - ' + r.visual + ' <small style="color:#888;">' + r.date + '</small></div>';
+                });
+                qualityList.innerHTML = html || '<div class="hub-activity-empty">No quality inspections yet</div>';
+            }
+        }
+
+        async function handleBranchDistribution(event) {
+            if (event) event.preventDefault();
+            const source = document.getElementById('branchDistSourceWarehouse')?.value;
+            const dest = document.getElementById('branchDistDestination')?.value;
+            const product = document.getElementById('branchDistProduct')?.value;
+            const qty = Number(document.getElementById('branchDistQuantity')?.value || 0);
+            const priority = document.getElementById('branchDistPriority')?.value || 'normal';
+            const notes = document.getElementById('branchDistNotes')?.value || '';
+            if (!source || !dest || !product || qty <= 0) { showToast('Please fill all required fields'); return; }
+
+            try {
+                const resp = await fetch(API_BASE + '/stock/transfers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        fromWarehouse: source,
+                        toBranch: dest,
+                        items: [{ productName: product, productId: product, quantity: qty }],
+                        notes: priority + ': ' + notes,
+                        status: 'pending'
+                    })
+                });
+                const result = await resp.json();
+                if (result && result.success !== false) {
+                    showToast('Distribution to branch created successfully');
+                    document.getElementById('branchDistributionForm')?.reset();
+                    loadBranchDistributionHistory();
+                } else {
+                    showToast('Distribution failed: ' + (result.error || 'Unknown error'));
+                }
+            } catch (e) {
+                showToast('Distribution error: ' + e.message);
+            }
+        }
+
+        function loadBranchDistributionHistory() {
+            const el = document.getElementById('branchDistributionHistory');
+            if (!el) return;
+            fetchJsonFromApi(API_BASE + '/stock/transfers?status=all&limit=50', []).then(data => {
+                const items = Array.isArray(data) ? data : (data && Array.isArray(data.transfers) ? data.transfers : []);
+                const branchTransfers = items.filter(t => t.toBranch || t.to_branch);
+                if (!branchTransfers.length) {
+                    el.innerHTML = '<p style="text-align:center;padding:15px;color:#666;">No branch distributions yet.</p>';
+                    return;
+                }
+                let html = '<table class="table"><thead><tr><th>Date</th><th>From</th><th>To</th><th>Status</th></tr></thead><tbody>';
+                branchTransfers.slice(0, 20).forEach(t => {
+                    html += '<tr><td>' + (t.createdAt || t.created_at || '-').substring(0, 10) + '</td>' +
+                        '<td>' + (t.fromWarehouse || t.from_warehouse || '-') + '</td>' +
+                        '<td>' + (t.toBranch || t.to_branch || '-') + '</td>' +
+                        '<td><span class="pill ' + (t.status === 'delivered' ? 'good' : 'pending') + '">' + (t.status || 'pending') + '</span></td></tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            });
+        }
+
+        function loadBranchesForDistribution() {
+            _populateBranchSelect('distributionBranch');
+            _populateBranchSelect('branchDistDestination');
+        }
+
+        function populateBranchDistributionProducts() {
+            _populateProductSelect('branchDistProduct', undefined);
+        }
+
+        function loadStockOrders() {
+            const orders = JSON.parse(localStorage.getItem('dyna_manual_orders') || '[]');
+            const autoEl = document.getElementById('automaticOrdersList');
+            const manualEl = document.getElementById('manualOrdersList');
+
+            if (autoEl) {
+                const batches = getBarcodeStockList();
+                const lowStock = batches.filter(b => Number(b.remainingQuantity ?? b.remaining_quantity ?? b.quantity ?? 0) < 10);
+                if (lowStock.length) {
+                    let html = '';
+                    lowStock.slice(0, 10).forEach(b => {
+                        html += '<div style="padding:10px;margin-bottom:8px;background:#fff3e0;border-radius:8px;border-left:3px solid #ff9800;">' +
+                            '<strong>' + (b.description || b.productName) + '</strong> - ' +
+                            '<span style="color:#e74c3c;font-weight:bold;">' + (b.remainingQuantity ?? b.quantity ?? 0) + ' left</span>' +
+                            ' at ' + (b.location || 'Unknown') +
+                            '</div>';
+                    });
+                    autoEl.innerHTML = html;
+                } else {
+                    autoEl.innerHTML = '<p style="color:#27ae60;text-align:center;padding:15px;">All stock levels are healthy.</p>';
+                }
+            }
+
+            if (manualEl) {
+                if (!orders.length) {
+                    manualEl.innerHTML = '<p style="color:#7f8c8d;text-align:center;">No manual orders created.</p>';
+                    return;
+                }
+                let html = '';
+                orders.slice(-10).reverse().forEach(o => {
+                    html += '<div style="padding:10px;margin-bottom:8px;background:#f0f7ff;border-radius:8px;border-left:3px solid #2196f3;">' +
+                        '<strong>' + (o.product || 'Product') + '</strong> × ' + (o.quantity || 0) +
+                        ' → ' + (o.branch || 'All') +
+                        ' <small style="color:#888;">' + (o.createdAt || '-').substring(0, 10) + '</small>' +
+                        ' <span class="pill ' + (o.status === 'fulfilled' ? 'good' : 'pending') + '">' + (o.status || 'pending') + '</span>' +
+                        '</div>';
+                });
+                manualEl.innerHTML = html;
+            }
+        }
+
+        function toggleSelectAllInvoices(checked) {
+            document.querySelectorAll('#invoiceReportTableBody input[type="checkbox"]').forEach(cb => { cb.checked = checked; });
+        }
+
+        function populateInvoiceBranchFilter() {
+            _populateBranchSelect('invoiceBranchFilter');
+        }
+
+        window.loadWindhoekProducts = loadWindhoekProducts;
+        window.updateWindhoekAvailableQuantity = updateWindhoekAvailableQuantity;
+        window.displayWindhoekStock = displayWindhoekStock;
+        window.showLowStockWindhoek = showLowStockWindhoek;
+        window.searchWindhoekStock = searchWindhoekStock;
+        window.loadOndangwaProducts = loadOndangwaProducts;
+        window.updateOndangwaAvailableQuantity = updateOndangwaAvailableQuantity;
+        window.displayOndangwaStock = displayOndangwaStock;
+        window.showLowStockOndangwa = showLowStockOndangwa;
+        window.searchOndangwaStock = searchOndangwaStock;
+        window.loadDistributionProducts = loadDistributionProducts;
+        window.updateDistributionGuidance = updateDistributionGuidance;
+        window.displayDistributionHistory = displayDistributionHistory;
+        window.searchDistribution = searchDistribution;
+        window.filterInventoryMovements = filterInventoryMovements;
+        window.displayInventoryMovements = displayInventoryMovements;
+        window.exportInventoryMovements = exportInventoryMovements;
+        window.handleStockTransfer = handleStockTransfer;
+        window.loadTransferFromProducts = loadTransferFromProducts;
+        window.loadStockTransfers = loadStockTransfers;
+        window.viewTransferDetails = viewTransferDetails;
+        window.populateTransferBranchOptions = populateTransferBranchOptions;
+        window.handleSharingRule = handleSharingRule;
+        window.loadShopWarehouseSharing = loadShopWarehouseSharing;
+        window.removeSharingRule = removeSharingRule;
+        window.displayCountryStockInventory = displayCountryStockInventory;
+        window.exportCountryInventory = exportCountryInventory;
+        window.renderInventoryTimelyReport = renderInventoryTimelyReport;
+        window.handleQualitySubmit = handleQualitySubmit;
+        window.handleBranchDistribution = handleBranchDistribution;
+        window.loadBranchDistributionHistory = loadBranchDistributionHistory;
+        window.loadBranchesForDistribution = loadBranchesForDistribution;
+        window.populateBranchDistributionProducts = populateBranchDistributionProducts;
+        window.loadStockOrders = loadStockOrders;
+        window.toggleSelectAllInvoices = toggleSelectAllInvoices;
+        window.populateInvoiceBranchFilter = populateInvoiceBranchFilter;
+
+        async function handleTransferToWindhoek(event) {
+            if (event) event.preventDefault();
+            const form = event.target;
+            const productEl = form.querySelector('[id*="windhoekProduct"]') || form.querySelector('select[required]');
+            const qtyEl = form.querySelector('[id*="windhoekQuantity"]') || form.querySelector('input[type="number"]');
+            const notesEl = form.querySelector('[id*="windhoekNotes"]') || form.querySelector('textarea');
+            const product = productEl?.value || '';
+            const qty = Number(qtyEl?.value || 0);
+            if (!product || qty <= 0) { showToast('Select a product and enter quantity'); return; }
+            try {
+                const resp = await fetch(API_BASE + '/stock/transfers', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ fromWarehouse: 'country_stock', toBranch: 'windhoek_warehouse', items: [{ productName: product, productId: product, quantity: qty }], notes: notesEl?.value || '', status: 'pending' })
+                });
+                const result = await resp.json();
+                if (result && result.success !== false) { showToast('Transfer to Windhoek created'); form.reset(); displayWindhoekStock(); }
+                else showToast('Transfer failed: ' + (result.error || 'Unknown error'));
+            } catch (e) { showToast('Error: ' + e.message); }
+        }
+
+        async function handleTransferToOndangwa(event) {
+            if (event) event.preventDefault();
+            const form = event.target;
+            const productEl = form.querySelector('[id*="ondangwaProduct"]') || form.querySelector('select[required]');
+            const qtyEl = form.querySelector('[id*="ondangwaQuantity"]') || form.querySelector('input[type="number"]');
+            const notesEl = form.querySelector('[id*="ondangwaNotes"]') || form.querySelector('textarea');
+            const product = productEl?.value || '';
+            const qty = Number(qtyEl?.value || 0);
+            if (!product || qty <= 0) { showToast('Select a product and enter quantity'); return; }
+            try {
+                const resp = await fetch(API_BASE + '/stock/transfers', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ fromWarehouse: 'country_stock', toBranch: 'ondangwa_warehouse', items: [{ productName: product, productId: product, quantity: qty }], notes: notesEl?.value || '', status: 'pending' })
+                });
+                const result = await resp.json();
+                if (result && result.success !== false) { showToast('Transfer to Ondangwa created'); form.reset(); displayOndangwaStock(); }
+                else showToast('Transfer failed: ' + (result.error || 'Unknown error'));
+            } catch (e) { showToast('Error: ' + e.message); }
+        }
+
+        async function handleDistributeStock(event) {
+            if (event) event.preventDefault();
+            const wh = document.getElementById('distributionWarehouse')?.value;
+            const branch = document.getElementById('distributionBranch')?.value;
+            const product = document.getElementById('distributionProduct')?.value;
+            const qty = Number(document.getElementById('distributionQuantity')?.value || 0);
+            const date = document.getElementById('distributionDate')?.value || '';
+            const expiry = document.getElementById('distributionExpiryDate')?.value || '';
+            const dispatch = document.getElementById('distributionDispatchNumber')?.value || '';
+            const notes = document.getElementById('distributionNotes')?.value || '';
+            if (!wh || !branch || !product || qty <= 0) { showToast('Please fill all required fields'); return; }
+            try {
+                const resp = await fetch(API_BASE + '/stock/transfers', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ fromWarehouse: wh, toBranch: branch, dispatchReference: dispatch, items: [{ productName: product, productId: product, quantity: qty, batchNo: expiry }], notes: notes, status: 'pending' })
+                });
+                const result = await resp.json();
+                if (result && result.success !== false) { showToast('Distribution to branch created'); document.getElementById('distributeStockForm')?.reset(); displayDistributionHistory(); }
+                else showToast('Distribution failed: ' + (result.error || 'Unknown error'));
+            } catch (e) { showToast('Error: ' + e.message); }
+        }
+
+        window.handleDistributeStock = handleDistributeStock;
+        window.handleTransferToWindhoek = handleTransferToWindhoek;
+        window.handleTransferToOndangwa = handleTransferToOndangwa;
+
         window.showFrontdeskCRMTab = showFrontdeskCRMTab;
         
         function populateBranchFilters() {
@@ -13137,7 +13915,7 @@
                     </div>
                     <div class="form-section">
                         <h3>🏢 Windhoek Warehouse - Transfer Stock from Country Stock</h3>
-                        <form id="transferToWindhoekForm-legacy">
+                        <form id="transferToWindhoekForm-legacy" onsubmit="handleTransferToWindhoek(event)">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">Source</label>
@@ -13193,7 +13971,7 @@
                     </div>
                     <div class="form-section">
                         <h3>🏢 Ondangwa Warehouse - Transfer Stock from Country Stock</h3>
-                        <form id="transferToOndangwaForm">
+                        <form id="transferToOndangwaForm" onsubmit="handleTransferToOndangwa(event)">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">Source</label>
@@ -13249,7 +14027,7 @@
                     </div>
                     <div class="form-section">
                         <h3>🚚 Distribute Stock to Branches from Warehouses</h3>
-                        <form id="distributeStockForm">
+                        <form id="distributeStockForm" onsubmit="handleDistributeStock(event)">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label class="required">From Warehouse</label>
