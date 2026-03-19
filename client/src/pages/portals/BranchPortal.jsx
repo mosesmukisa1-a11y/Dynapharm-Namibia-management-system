@@ -18,22 +18,33 @@ export default function BranchPortal() {
     { id: 'stock', label: 'Stock', icon: '📦' },
     { id: 'banking', label: 'Banking', icon: '🏦' },
     { id: 'payments', label: 'Payments', icon: '💳' },
-    { id: 'onlineOrders', label: 'Online Orders', icon: '📦' },
+    { id: 'onlineOrders', label: 'Online Orders', icon: '🛍️' },
     { id: 'bonus', label: 'Bonus', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
-    { id: 'staff', label: 'Staff', icon: '👥' },
-    { id: 'registration', label: 'Distributor Reg', icon: '📝' },
-    { id: 'fieldProgram', label: 'Field Program', icon: '🗺️' },
+    { id: 'staff', label: 'Staff', icon: '👤' },
+    { id: 'registration', label: 'Distributor Registration', icon: '📝' },
+    { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
   ];
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Branch Portal</h1>
-        <p className="text-sm text-gray-500">Manage branch operations, sales, and inventory</p>
+      <h2 className="text-center text-2xl font-bold mb-6" style={{ color: '#2c3e50' }}>🏬 Branch Portal</h2>
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-1 flex-wrap" style={{ borderBottom: '3px solid #c41e3a' }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="px-4 py-3 text-sm font-medium rounded-t-lg whitespace-nowrap cursor-pointer transition-all"
+            style={activeTab === tab.id
+              ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600, boxShadow: '0 2px 8px rgba(52,152,219,0.2)' }
+              : { background: 'transparent', color: '#64748b', border: 'none' }
+            }
+          >
+            <span className="mr-1.5">{tab.icon}</span>{tab.label}
+          </button>
+        ))}
       </div>
-      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
-      <div className="mt-6">
+      <div>
         {activeTab === 'walkIn' && <WalkInSalesTab />}
         {activeTab === 'prescriptions' && <PrescriptionsTab />}
         {activeTab === 'stock' && <BranchStockTab />}
@@ -73,13 +84,17 @@ function WalkInSalesTab() {
   const [receiptSearch, setReceiptSearch] = useState('');
   const [foundReceipt, setFoundReceipt] = useState(null);
 
+  const loadSales = () => {
+    return api.branch.walkinSales().then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
+  };
+
   useEffect(() => {
     Promise.all([
       api.products.list().then(d => {
         const raw = Array.isArray(d) ? d : d.products || [];
         setProducts(enrichProductsWithPricing(raw));
       }),
-      api.branch.walkinSales().then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {}),
+      loadSales(),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -269,15 +284,16 @@ function WalkInSalesTab() {
 
     return (
       <div className="max-w-lg mx-auto">
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-green-700">Sale Complete</h3>
-              <Button size="sm" variant="secondary" onClick={() => printReceipt(receiptHTML)}>
-                <Printer size={14} /> Print Receipt
-              </Button>
+        <Card className="overflow-hidden">
+          <div className="p-5 flex justify-between items-center" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>
+            <div>
+              <h3 className="text-white text-lg font-bold m-0">✓ Sale Complete</h3>
+              <p className="text-white/80 text-sm mt-1 m-0">Transaction recorded successfully</p>
             </div>
-          </CardHeader>
+            <button onClick={() => printReceipt(receiptHTML)} className="px-4 py-2 bg-white/20 text-white border border-white/40 rounded-lg text-sm font-semibold cursor-pointer hover:bg-white/30 transition-all">
+              <span className="inline-flex items-center gap-1"><Printer size={14} /> Print Receipt</span>
+            </button>
+          </div>
           <CardBody>
             <div className="text-center mb-4">
               <img src={COMPANY_INFO.logo} alt="Dynapharm" className="h-12 mx-auto mb-2" onError={e => { e.target.style.display = 'none'; }} />
@@ -289,8 +305,7 @@ function WalkInSalesTab() {
               })()}
             </div>
             <div className="text-center mb-3">
-              <p className="text-2xl font-bold text-green-600">✓</p>
-              <p className="text-sm text-gray-500">Receipt: {receipt.receipt_number}</p>
+              <p className="text-sm text-gray-500">Receipt: <strong>{receipt.receipt_number}</strong></p>
               <p className="text-sm text-gray-500">{formatDateTime(receipt.created_at)}</p>
               {user?.full_name && <p className="text-xs text-gray-400">Cashier: {user.full_name}</p>}
             </div>
@@ -352,75 +367,117 @@ function WalkInSalesTab() {
 
   if (!customerType) {
     return (
-      <div className="max-w-md mx-auto mt-8">
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800 text-center">Select Customer Type</h3></CardHeader>
-          <CardBody>
-            <p className="text-sm text-gray-500 text-center mb-6">Every sale starts by selecting whether the customer is a member or non-member.</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => selectCustomerType('member')}
-                className="p-6 border-2 border-gray-200 rounded-xl hover:border-primary hover:bg-red-50 transition-all cursor-pointer text-center"
-              >
-                <Users size={32} className="mx-auto mb-2 text-primary" />
-                <p className="font-bold text-gray-800">Member</p>
-                <p className="text-xs text-gray-500 mt-1">Distributor Price (DP)</p>
-                <p className="text-xs text-gray-400">BV tracking enabled</p>
-              </button>
-              <button
-                onClick={() => selectCustomerType('non-member')}
-                className="p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer text-center"
-              >
-                <ShoppingCart size={32} className="mx-auto mb-2 text-blue-500" />
-                <p className="font-bold text-gray-800">Non-Member</p>
-                <p className="text-xs text-gray-500 mt-1">Consumer Price (CP)</p>
-                <p className="text-xs text-gray-400">Referral required</p>
-              </button>
-            </div>
+      <div>
+        <div className="rounded-xl p-6 mb-5 flex justify-between items-center flex-wrap gap-4" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+          <div>
+            <h3 className="text-white text-xl font-bold m-0">🛒 Walk-in Sales</h3>
+            <p className="text-white/75 text-sm mt-1 m-0">Process walk-in purchases for registered clients and new customers</p>
+          </div>
+          <button
+            onClick={() => selectCustomerType('non-member')}
+            className="px-7 py-3.5 text-white border-none rounded-xl text-base font-bold cursor-pointer"
+            style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', boxShadow: '0 3px 8px rgba(0,0,0,0.2)' }}
+          >
+            ➕ New Walk-in Sale
+          </button>
+        </div>
 
-            {sales.length > 0 && (
-              <div className="mt-6 pt-4 border-t">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Search Receipt / Customer</h4>
-                <div className="flex gap-2">
-                  <Input placeholder="Receipt # or customer name..." value={receiptSearch} onChange={e => setReceiptSearch(e.target.value)} />
-                  <Button size="sm" onClick={searchReceipt}><Search size={14} /></Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
+          <div className="rounded-xl p-4 cursor-pointer transition-all hover:shadow-md" style={{ background: '#ebf5fb', border: '2px solid #3498db' }} onClick={() => selectCustomerType('member')}>
+            <div className="text-lg font-bold mb-1.5" style={{ color: '#1a5276' }}>🪪 Registered Client</div>
+            <ul className="m-0 pl-5 text-sm leading-7" style={{ color: '#2c3e50' }}>
+              <li>Has an NB number in the system</li>
+              <li>Pays at <strong>DP price</strong> (distributor price)</li>
+              <li>Earns <strong>BV points</strong> on their account</li>
+              <li>No referral required</li>
+            </ul>
+          </div>
+          <div className="rounded-xl p-4 cursor-pointer transition-all hover:shadow-md" style={{ background: '#fef9e7', border: '2px solid #f39c12' }} onClick={() => selectCustomerType('non-member')}>
+            <div className="text-lg font-bold mb-1.5" style={{ color: '#784212' }}>👤 New Customer</div>
+            <ul className="m-0 pl-5 text-sm leading-7" style={{ color: '#2c3e50' }}>
+              <li>Walk-in, not yet registered</li>
+              <li>Pays at <strong>CP price</strong> (retail price)</li>
+              <li>Referring distributor gets <strong>BVs &amp; commission</strong></li>
+              <li>Referral distributor required (or tick "no referral")</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl overflow-hidden" style={{ border: '1px solid #e2e8f0' }}>
+          <div className="flex justify-between items-center px-4 py-3" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+            <h4 className="m-0 text-base font-semibold" style={{ color: '#1e293b' }}>📋 Recent Walk-in Sales</h4>
+            <div className="flex gap-2 items-center">
+              {sales.length > 0 && (
+                <div className="flex gap-2 items-center">
+                  <Input placeholder="Receipt # or customer name..." value={receiptSearch} onChange={e => setReceiptSearch(e.target.value)} className="text-sm" style={{ minWidth: 180 }} />
+                  <Button size="sm" variant="secondary" onClick={searchReceipt}><Search size={14} /></Button>
                 </div>
-                {foundReceipt && (
-                  <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm">
-                    <p className="font-medium">{foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id}</p>
-                    <p className="text-gray-500">{foundReceipt.distributor_name || foundReceipt.customer_name || foundReceipt.customerName || 'Walk-in'}</p>
-                    <p className="text-gray-500">{formatCurrency(foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount)} | {formatDateTime(foundReceipt.created_at || foundReceipt.timestamp)}</p>
-                    <Button size="sm" variant="secondary" className="mt-2" onClick={() => {
-                      const fIsM = (foundReceipt.customerType || foundReceipt.customer_type) === 'member';
-                      const html = generateReceiptHTML({
-                        receiptNumber: foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id,
-                        branch: foundReceipt.branch || user?.branch || '',
-                        items: foundReceipt.products || foundReceipt.items || [],
-                        totalAmount: foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount || 0,
-                        totalBV: foundReceipt.totalBV || foundReceipt.total_bv || 0,
-                        paymentMethod: foundReceipt.paymentMethod || foundReceipt.payment_method || '',
-                        customerType: foundReceipt.customerType || foundReceipt.customer_type || 'non_member',
-                        customerName: foundReceipt.distributor_name || foundReceipt.customerName || foundReceipt.customer_name || (fIsM ? null : 'Walk-in Customer'),
-                        nbNumber: fIsM ? (foundReceipt.distributor_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
-                        referralName: !fIsM ? (foundReceipt.referral_name || foundReceipt.distributorReferral?.name || null) : null,
-                        referralNB: !fIsM ? (foundReceipt.referral_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
-                        cashier: foundReceipt.soldBy || '',
-                        showBV: true,
-                      });
-                      printReceipt(html);
-                    }}><Printer size={14} /> Reprint</Button>
-                  </div>
-                )}
+              )}
+              <button onClick={loadSales} className="px-3 py-1.5 rounded-md bg-white cursor-pointer text-xs" style={{ border: '1px solid #cbd5e1', color: '#64748b' }}>🔄 Refresh</button>
+            </div>
+          </div>
+          <div className="min-h-[80px] py-1.5 px-0">
+            {foundReceipt && (
+              <div className="mx-4 mt-2 p-3 bg-gray-50 rounded-lg text-sm">
+                <p className="font-medium">{foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id}</p>
+                <p className="text-gray-500">{foundReceipt.distributor_name || foundReceipt.customer_name || foundReceipt.customerName || 'Walk-in'}</p>
+                <p className="text-gray-500">{formatCurrency(foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount)} | {formatDateTime(foundReceipt.created_at || foundReceipt.timestamp)}</p>
+                <Button size="sm" variant="secondary" className="mt-2" onClick={() => {
+                  const fIsM = (foundReceipt.customerType || foundReceipt.customer_type) === 'member';
+                  const html = generateReceiptHTML({
+                    receiptNumber: foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id,
+                    branch: foundReceipt.branch || user?.branch || '',
+                    items: foundReceipt.products || foundReceipt.items || [],
+                    totalAmount: foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount || 0,
+                    totalBV: foundReceipt.totalBV || foundReceipt.total_bv || 0,
+                    paymentMethod: foundReceipt.paymentMethod || foundReceipt.payment_method || '',
+                    customerType: foundReceipt.customerType || foundReceipt.customer_type || 'non_member',
+                    customerName: foundReceipt.distributor_name || foundReceipt.customerName || foundReceipt.customer_name || (fIsM ? null : 'Walk-in Customer'),
+                    nbNumber: fIsM ? (foundReceipt.distributor_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
+                    referralName: !fIsM ? (foundReceipt.referral_name || foundReceipt.distributorReferral?.name || null) : null,
+                    referralNB: !fIsM ? (foundReceipt.referral_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
+                    cashier: foundReceipt.soldBy || '',
+                    showBV: true,
+                  });
+                  printReceipt(html);
+                }}><Printer size={14} /> Reprint</Button>
               </div>
             )}
-          </CardBody>
-        </Card>
+            {sales.length === 0 && !foundReceipt && (
+              <p className="text-center py-6" style={{ color: '#94a3b8' }}>No walk-in sales recorded yet</p>
+            )}
+            {sales.length > 0 && !foundReceipt && (
+              <div className="divide-y">
+                {sales.slice(0, 10).map((s, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50">
+                    <div>
+                      <span className="font-medium">{s.receipt_number || s.saleNumber || `#${s.id}`}</span>
+                      <span className="text-gray-400 mx-2">|</span>
+                      <span className="text-gray-500">{s.distributor_name || s.customer_name || s.customerName || 'Walk-in'}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold">{formatCurrency(s.total || s.totalAmount || s.total_amount || 0)}</span>
+                      <span className="text-xs text-gray-400">{formatDate(s.created_at || s.timestamp)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <div>
+          <h3 className="text-white text-lg font-bold m-0">🛒 Walk-in Sales</h3>
+          <p className="text-white/75 text-xs mt-1 m-0">Processing {isMember ? 'Registered Client (DP)' : 'New Customer (CP)'} sale</p>
+        </div>
+        <button onClick={resetSale} className="px-4 py-2 bg-white/20 text-white border border-white/40 rounded-lg text-sm font-semibold cursor-pointer hover:bg-white/30 transition-all">✕ Cancel Sale</button>
+      </div>
       {error && <Alert type="error" className="mb-4">{error}</Alert>}
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -428,13 +485,15 @@ function WalkInSalesTab() {
             <div className="flex items-center gap-2 bg-white border rounded-lg p-2">
               <button
                 onClick={() => selectCustomerType('non-member')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer ${!isMember ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className="px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer"
+                style={!isMember ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600 } : { color: '#64748b' }}
               >
                 Non-Member (CP)
               </button>
               <button
                 onClick={() => selectCustomerType('member')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer ${isMember ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className="px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer"
+                style={isMember ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600 } : { color: '#64748b' }}
               >
                 Member (DP)
               </button>
@@ -549,8 +608,10 @@ function WalkInSalesTab() {
           )}
         </div>
         <div>
-          <Card className="sticky top-20">
-            <CardHeader><h3 className="font-bold text-gray-800">Current Sale</h3></CardHeader>
+          <Card className="sticky top-20 overflow-hidden">
+            <div className="px-5 py-3" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+              <h3 className="font-bold text-white m-0 text-sm">🛒 Current Sale</h3>
+            </div>
             <CardBody>
               {cart.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">Add items to start a sale</p>
@@ -747,6 +808,13 @@ function PrescriptionsTab() {
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>
+        <div>
+          <h3 className="text-white text-lg font-bold m-0">💊 Prescription Dispensing</h3>
+          <p className="text-white/85 text-sm mt-1 m-0">Search, filter and dispense client prescriptions</p>
+        </div>
+      </div>
+
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
 
       {dispensedReceipt && (
@@ -981,16 +1049,24 @@ function BranchStockTab() {
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'radial-gradient(120% 150% at 100% 0%, rgba(99,102,241,0.55) 0%, rgba(30,64,175,0.92) 55%, rgba(17,24,39,0.98) 100%)' }}>
+        <div>
+          <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1 m-0">Branch Operations</p>
+          <h3 className="text-white text-lg font-bold m-0">📦 Stock Management</h3>
+          <p className="text-white/80 text-sm mt-1 m-0">Monitor inventory levels, request stock & manage transfers</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowRequestForm(true)} className="px-5 py-2.5 border-none rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'linear-gradient(135deg, #22d3ee, #0ea5e9)', boxShadow: '0 14px 28px rgba(15,23,42,0.18)' }}>📋 Request Stock</button>
+          <button onClick={() => setShowTransferForm(true)} className="px-5 py-2.5 border-none rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'linear-gradient(135deg, #a855f7, #6366f1)', boxShadow: '0 14px 28px rgba(15,23,42,0.18)' }}>↔ Transfer</button>
+          <button onClick={() => setShowWriteOffForm(true)} className="px-5 py-2.5 border-none rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', boxShadow: '0 14px 28px rgba(15,23,42,0.18)' }}>🗑️ Write Off</button>
+        </div>
+      </div>
+
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
       <div className="flex gap-2 mb-4 flex-wrap">
         {stockSubTabs.map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer ${subTab === t.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>
+          <button key={t.id} onClick={() => setSubTab(t.id)} className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer transition-all" style={subTab === t.id ? { background: 'rgba(99,102,241,0.15)', color: '#312e81', border: 'none' } : { background: 'rgba(99,102,241,0.06)', color: '#64748b', border: 'none' }}>{t.label}</button>
         ))}
-      </div>
-      <div className="flex gap-2 mb-4">
-        <Button size="sm" onClick={() => setShowRequestForm(true)}>Request Stock</Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowTransferForm(true)}>Transfer Stock</Button>
-        <Button size="sm" variant="warning" onClick={() => setShowWriteOffForm(true)}>Write Off</Button>
       </div>
 
       {subTab === 'inventory' && (
