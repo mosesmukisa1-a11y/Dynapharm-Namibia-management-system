@@ -1,10 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
 import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '24px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', textAlign: 'center', color: '#991b1b' }}>
+          <p style={{ fontWeight: 600, marginBottom: '10px' }}>Something went wrong loading this section.</p>
+          <button onClick={() => this.setState({ hasError: false })} style={{ padding: '8px 18px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function ConsultantPortal() {
   const [activeSection, setActiveSection] = useState('checkups');
@@ -56,12 +75,14 @@ export default function ConsultantPortal() {
       </div>
 
       <div>
-        {activeSection === 'checkups' && <CheckupsSection key={`chk-${refreshKey}`} />}
-        {activeSection === 'clients' && <ClientsSection key={`cli-${refreshKey}`} />}
-        {activeSection === 'reports' && <ReportsSection key={`rep-${refreshKey}`} />}
-        {activeSection === 'followups' && <FollowupsSection key={`fol-${refreshKey}`} />}
-        {activeSection === 'analytics' && <AnalyticsSection key={`ana-${refreshKey}`} />}
-        {activeSection === 'staff' && <StaffServicesSection key={`stf-${refreshKey}`} />}
+        <ErrorBoundary key={`eb-${activeSection}-${refreshKey}`}>
+          {activeSection === 'checkups' && <CheckupsSection key={`chk-${refreshKey}`} />}
+          {activeSection === 'clients' && <ClientsSection key={`cli-${refreshKey}`} />}
+          {activeSection === 'reports' && <ReportsSection key={`rep-${refreshKey}`} />}
+          {activeSection === 'followups' && <FollowupsSection key={`fol-${refreshKey}`} />}
+          {activeSection === 'analytics' && <AnalyticsSection key={`ana-${refreshKey}`} />}
+          {activeSection === 'staff' && <StaffServicesSection key={`stf-${refreshKey}`} />}
+        </ErrorBoundary>
       </div>
     </div>
   );
@@ -445,7 +466,7 @@ function CheckupsSection() {
                   {symptoms.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {symptoms.map((s, i) => (
-                        <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 500 }}>{s.toUpperCase().replace(/_/g, ' ')}</span>
+                        <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 500 }}>{(s || '').toUpperCase().replace(/_/g, ' ')}</span>
                       ))}
                     </div>
                   ) : <p style={{ color: '#7f8c8d', fontStyle: 'italic', margin: 0 }}>No specific symptoms reported</p>}

@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const { id, order_number, status, customer_email, customer_phone } = req.query;
+      const { id, order_number, status, customer_email, customer_phone, distributor_code } = req.query;
 
       if (id) {
         const order = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
@@ -52,6 +52,12 @@ export default async function handler(req, res) {
         paramIndex++;
       }
 
+      if (distributor_code) {
+        queryText += ` AND (o.distributor_code = $${paramIndex} OR o.notes ILIKE $${paramIndex + 1})`;
+        params.push(distributor_code, `%${distributor_code}%`);
+        paramIndex += 2;
+      }
+
       queryText += ' ORDER BY o.created_at DESC';
 
       const orders = await getMany(queryText, params);
@@ -72,6 +78,7 @@ export default async function handler(req, res) {
         items,
         notes,
         payment_method,
+        distributor_code,
       } = req.body;
 
       // Validation — customer_name and items are truly required; delivery_method and subtotal have defaults
@@ -163,6 +170,7 @@ export default async function handler(req, res) {
         payment_status: 'pending',
         payment_method: payment_method || null,
         notes: notes || null,
+        distributor_code: distributor_code || null,
         items: JSON.stringify(items),
       });
 

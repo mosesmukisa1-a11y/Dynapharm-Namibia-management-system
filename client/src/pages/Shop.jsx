@@ -109,6 +109,7 @@ export default function Shop() {
         delivery_address: checkoutForm.deliveryMethod === 'delivery' ? checkoutForm.address : undefined,
         subtotal: totalAmount,
         payment_method: checkoutForm.paymentMethod,
+        distributor_code: effectiveReferralNB || null,
         notes: [
           checkoutForm.notes,
           `Referral: ${effectiveReferralName} (${effectiveReferralNB})`,

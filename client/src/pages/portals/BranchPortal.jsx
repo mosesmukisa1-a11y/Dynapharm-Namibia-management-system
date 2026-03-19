@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
@@ -105,13 +105,17 @@ function WalkInSalesTab() {
     phone: d.phone || d.mobile_no || '',
   });
 
-  const searchRegistered = async (q) => {
+  const regSearchTimer = useRef(null);
+  const searchRegistered = (q) => {
     setRegSearch(q);
     if (q.length < 2) { setRegResults([]); return; }
-    try {
-      const res = await api.distributors.search(q);
-      setRegResults(Array.isArray(res) ? res : res.distributors || []);
-    } catch { setRegResults([]); }
+    if (regSearchTimer.current) clearTimeout(regSearchTimer.current);
+    regSearchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(q);
+        setRegResults(Array.isArray(res) ? res : res.distributors || []);
+      } catch { setRegResults([]); }
+    }, 300);
   };
 
   const selectRegistered = (d) => {
@@ -126,13 +130,17 @@ function WalkInSalesTab() {
     setRegSearch('');
   };
 
-  const searchReferrals = async (q) => {
+  const refSearchTimer = useRef(null);
+  const searchReferrals = (q) => {
     setReferralSearch(q);
     if (q.length < 2) { setReferralResults([]); return; }
-    try {
-      const res = await api.distributors.search(q);
-      setReferralResults(Array.isArray(res) ? res : res.distributors || []);
-    } catch { setReferralResults([]); }
+    if (refSearchTimer.current) clearTimeout(refSearchTimer.current);
+    refSearchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(q);
+        setReferralResults(Array.isArray(res) ? res : res.distributors || []);
+      } catch { setReferralResults([]); }
+    }, 300);
   };
 
   const selectReferral = (d) => {
@@ -1898,14 +1906,18 @@ function FieldProgramTab() {
     setLoading(false);
   };
 
-  const searchDistributor = async (val) => {
+  const distSearchTimer = useRef(null);
+  const searchDistributor = (val) => {
     setDistributorSearch(val);
     if (val.length < 2) { setDistributorResults([]); return; }
-    try {
-      const res = await api.distributors.search(val);
-      const list = Array.isArray(res) ? res : res.distributors || [];
-      setDistributorResults(list.slice(0, 8));
-    } catch { setDistributorResults([]); }
+    if (distSearchTimer.current) clearTimeout(distSearchTimer.current);
+    distSearchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(val);
+        const list = Array.isArray(res) ? res : res.distributors || [];
+        setDistributorResults(list.slice(0, 8));
+      } catch { setDistributorResults([]); }
+    }, 300);
   };
 
   const selectDistributor = (d) => {

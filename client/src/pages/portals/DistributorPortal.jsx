@@ -110,35 +110,31 @@ function DashboardTab() {
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [publicNBCode, setPublicNBCode] = useState('');
+  const [nbInput, setNBInput] = useState('');
+
+  const fetchByNB = async (nbCode) => {
+    setLoading(true);
+    try {
+      const [orderData, distData] = await Promise.all([
+        api.orders.list({ distributor_code: nbCode }).catch(() => []),
+        api.get(`/distributors?code=${encodeURIComponent(nbCode)}`).catch(() => null),
+      ]);
+      const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
+      setOrders(all);
+      if (distData && distData.distributor_code) setProfile(distData);
+    } catch {}
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [orderData] = await Promise.all([
-          api.orders.list().catch(() => ({ orders: [] })),
-        ]);
-        const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
-        const mine = user?.username
-          ? all.filter(o =>
-              (o.customer_name || '').toLowerCase().includes(user.full_name?.toLowerCase() || '') ||
-              (o.notes || '').includes(user.username)
-            )
-          : [];
-        setOrders(mine);
-
-        if (user?.username) {
-          try {
-            const nbCode = user.username.toUpperCase();
-            const distData = await api.get(`/distributors?code=${encodeURIComponent(nbCode)}`);
-            if (distData && distData.distributor_code) {
-              setProfile(distData);
-            }
-          } catch {}
-        }
-      } catch {}
+    if (user?.username) {
+      const nbCode = user.username.toUpperCase();
+      setPublicNBCode(nbCode);
+      fetchByNB(nbCode);
+    } else {
       setLoading(false);
-    };
-    fetchAll();
+    }
   }, [user]);
 
   if (loading) return <LoadingSpinner />;
@@ -150,13 +146,34 @@ function DashboardTab() {
     return sum + items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
   }, 0);
 
-  const displayName = profile?.distributor_name || user?.full_name || 'Distributor';
-  const nbNumber = profile?.distributor_code || user?.username?.toUpperCase() || '';
+  const displayName = profile?.distributor_name || user?.full_name || publicNBCode || 'Distributor';
+  const nbNumber = profile?.distributor_code || publicNBCode || '';
   const position = profile?.position || 'Distributor';
   const dateJoined = profile?.date_joined || (user?.created_at ? formatDate(user.created_at) : 'N/A');
 
   return (
     <div className="space-y-6">
+      {!user && (
+        <Card>
+          <CardBody>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your dashboard</label>
+                <input
+                  type="text"
+                  value={nbInput}
+                  onChange={e => setNBInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
+                  placeholder="e.g. NB001234"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                />
+              </div>
+              <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNBCode(nb); fetchByNB(nb); } }}>Look Up</Button>
+            </div>
+            {publicNBCode && <p className="text-xs text-gray-500 mt-2">Showing dashboard for: <strong>{publicNBCode}</strong></p>}
+          </CardBody>
+        </Card>
+      )}
       <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
@@ -505,21 +522,26 @@ function BVProfitTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [publicNBCode, setPublicNBCode] = useState('');
+  const [nbInput, setNBInput] = useState('');
 
-  useEffect(() => {
-    api.orders.list()
+  const fetchByNB = (nbCode) => {
+    setLoading(true);
+    api.orders.list({ distributor_code: nbCode })
       .then(data => {
         const all = Array.isArray(data) ? data : data.orders || [];
-        const mine = user?.username
-          ? all.filter(o =>
-              (o.customer_name || '').toLowerCase().includes(user.full_name?.toLowerCase() || '') ||
-              (o.notes || '').includes(user.username)
-            )
-          : [];
-        setOrders(mine);
+        setOrders(all);
       })
-      .catch(() => [])
+      .catch(() => setOrders([]))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (user?.username) {
+      fetchByNB(user.username.toUpperCase());
+    } else {
+      setLoading(false);
+    }
   }, [user]);
 
   if (loading) return <LoadingSpinner />;
@@ -547,6 +569,27 @@ function BVProfitTab() {
 
   return (
     <div className="space-y-6">
+      {!user && (
+        <Card>
+          <CardBody>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your BV & Profit</label>
+                <input
+                  type="text"
+                  value={nbInput}
+                  onChange={e => setNBInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
+                  placeholder="e.g. NB001234"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                />
+              </div>
+              <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNBCode(nb); fetchByNB(nb); } }}>Look Up</Button>
+            </div>
+            {publicNBCode && <p className="text-xs text-gray-500 mt-2">Showing BV data for: <strong>{publicNBCode}</strong></p>}
+          </CardBody>
+        </Card>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title="Total BV" value={totalBV.toFixed(1)} color="blue" />
         <StatCard title="Est. Profit" value={formatCurrency(totalProfit)} color="green" />

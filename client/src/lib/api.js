@@ -53,7 +53,10 @@ export const api = {
   },
 
   orders: {
-    list: () => api.get('/orders'),
+    list: (params) => {
+      const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v != null))).toString() : '';
+      return api.get('/orders' + qs);
+    },
     create: (data) => api.post('/orders', data),
     update: (id, data) => api.put('/orders', { ...data, id }),
   },
