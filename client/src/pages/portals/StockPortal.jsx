@@ -358,119 +358,91 @@ function SupplierImportTab() {
 function CountryStockTab() {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ product_name: '', quantity: '', batch_number: '', expiry_date: '', unit_price: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [alert, setAlert] = useState(null);
+  const [showDetail, setShowDetail] = useState(false);
 
   const loadBatches = useCallback(() => {
     setLoading(true);
     api.stock.batches()
-      .then(d => setBatches((Array.isArray(d) ? d : d.batches || []).filter(b => b.location === 'country_stock')))
+      .then(d => {
+        const all = Array.isArray(d) ? d : d.batches || [];
+        setBatches(all.filter(b => b.location === 'country_stock'));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadBatches(); }, [loadBatches]);
 
-  const handleImport = async (e) => {
-    e.preventDefault();
-    if (!form.product_name || !form.quantity || Number(form.quantity) <= 0) {
-      setAlert({ type: 'error', msg: 'Product and quantity are required' });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await api.stock.createBatch({
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
-        batch_number: form.batch_number || `BATCH-${Date.now()}`,
-        expiry_date: form.expiry_date || null,
-        unit_price: Number(form.unit_price) || 0,
-        location: 'country_stock',
-      });
-      setAlert({ type: 'success', msg: 'Stock imported successfully' });
-      setForm({ product_name: '', quantity: '', batch_number: '', expiry_date: '', unit_price: '' });
-      setShowImport(false);
-      loadBatches();
-    } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const selectedProduct = PRICE_LIST.find(p => p.description === form.product_name);
-
   if (loading) return <LoadingSpinner />;
 
   const totalQty = batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
   const totalValue = batches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
 
-  return (
-    <div>
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+  const byProduct = {};
+  batches.forEach(b => {
+    const name = b.product_name || 'Unknown';
+    if (!byProduct[name]) byProduct[name] = { product_name: name, total_qty: 0, total_value: 0, batch_count: 0, earliest_expiry: null };
+    byProduct[name].total_qty += Number(b.quantity || 0);
+    byProduct[name].total_value += Number(b.quantity || 0) * Number(b.unit_price || 0);
+    byProduct[name].batch_count += 1;
+    if (b.expiry_date) {
+      const d = b.expiry_date;
+      if (!byProduct[name].earliest_expiry || d < byProduct[name].earliest_expiry) byProduct[name].earliest_expiry = d;
+    }
+  });
+  const productRows = Object.values(byProduct).sort((a, b) => b.total_qty - a.total_qty);
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Products in Country" value={batches.length} color="blue" icon={<Globe size={24} />} />
-        <StatCard title="Total Quantity" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
-        <StatCard title="Total Value" value={formatCurrency(totalValue)} color="purple" icon={<DollarSign size={24} />} />
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Distinct Products" value={productRows.length} color="blue" icon={<Globe size={24} />} />
+        <StatCard title="Total Units" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
+        <StatCard title="Total CIF Value" value={formatCurrency(totalValue)} color="purple" icon={<DollarSign size={24} />} />
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Country Stock Inventory</h3>
-            <Button size="sm" onClick={() => setShowImport(true)}><Plus size={16} /> Import Stock</Button>
+            <div>
+              <h3 className="font-bold text-gray-800">Country Stock — Product Summary</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Inventory received via Supplier Import. Use the Supplier Import tab to add new shipments.</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => setShowDetail(v => !v)}>
+              {showDetail ? 'Show Summary' : 'Show Batch Detail'}
+            </Button>
           </div>
         </CardHeader>
-        <Table
-          columns={[
-            { header: 'Product', key: 'product_name' },
-            { header: 'Batch', key: 'batch_number' },
-            { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
-            { header: 'Expiry', render: r => formatDateTime(r.expiry_date) },
-            { header: 'Value', render: r => formatCurrency(Number(r.quantity || 0) * Number(r.unit_price || 0)) },
-          ]}
-          data={batches}
-          emptyMessage="No country stock data"
-        />
+        {!showDetail ? (
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-medium text-gray-800">{r.product_name}</span> },
+              { header: 'Batches', render: r => <span className="text-sm text-gray-500">{r.batch_count}</span> },
+              { header: 'Total Qty', render: r => (
+                <span className={r.total_qty < 10 ? 'text-red-600 font-bold' : r.total_qty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                  {r.total_qty.toLocaleString()}
+                </span>
+              )},
+              { header: 'Earliest Expiry', render: r => r.earliest_expiry ? formatDate(r.earliest_expiry) : '—' },
+              { header: 'CIF Value', render: r => formatCurrency(r.total_value) },
+            ]}
+            data={productRows}
+            emptyMessage="No country stock yet — record a supplier import to populate this."
+          />
+        ) : (
+          <Table
+            columns={[
+              { header: 'Product', key: 'product_name' },
+              { header: 'Batch #', render: r => r.batch_number || '—' },
+              { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
+              { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
+              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.unit_price || 0)) },
+              { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-xs block">{r.notes || '—'}</span> },
+            ]}
+            data={batches}
+            emptyMessage="No country stock batches found."
+          />
+        )}
       </Card>
-
-      <Modal open={showImport} onClose={() => setShowImport(false)} title="Import Stock to Country Stock" size="md">
-        <form onSubmit={handleImport} className="p-6 space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Product</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              value={form.product_name}
-              onChange={e => {
-                const prod = PRICE_LIST.find(p => p.description === e.target.value);
-                setForm(f => ({ ...f, product_name: e.target.value, unit_price: prod ? String(prod.cif) : f.unit_price }));
-              }}
-              required
-            >
-              <option value="">Select a product...</option>
-              {PRICE_LIST.map(p => (
-                <option key={p.description} value={p.description}>{p.description}</option>
-              ))}
-            </select>
-          </div>
-          {selectedProduct && (
-            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              CIF: {formatCurrency(selectedProduct.cif)} | DP: {formatCurrency(selectedProduct.dp)} | CP: {formatCurrency(selectedProduct.cp)} | BV: {selectedProduct.bv}
-            </div>
-          )}
-          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
-          <Input label="Batch Number" value={form.batch_number} onChange={e => setForm(f => ({ ...f, batch_number: e.target.value }))} placeholder="Auto-generated if empty" />
-          <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
-          <Input label="CIF Price (N$)" type="number" min="0" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-          <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Importing...' : 'Import Stock'}</Button>
-            <Button variant="secondary" type="button" onClick={() => setShowImport(false)}>Cancel</Button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 }
@@ -636,7 +608,7 @@ function WarehouseTab({ name }) {
 }
 
 function DistributionTab() {
-  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '', release_reason: '' });
+  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '' });
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [recentTransfers, setRecentTransfers] = useState([]);
@@ -693,10 +665,6 @@ function DistributionTab() {
       setAlert({ type: 'error', msg: 'Source and destination must be different' });
       return;
     }
-    if (!form.release_reason) {
-      setAlert({ type: 'error', msg: 'Stock release reason is required. Stock can only leave when cash has been received or field program has been approved.' });
-      return;
-    }
     setSubmitting(true);
     try {
       await api.stock.createTransfer({
@@ -704,10 +672,9 @@ function DistributionTab() {
         to_location: form.to_location,
         product_name: form.product_name,
         quantity: Number(form.quantity),
-        notes: `Release reason: ${form.release_reason}`,
       });
       setAlert({ type: 'success', msg: 'Distribution transfer created successfully' });
-      setForm({ from_location: '', to_location: '', product_name: '', quantity: '', release_reason: '' });
+      setForm({ from_location: '', to_location: '', product_name: '', quantity: '' });
       const d = await api.stock.transfers().catch(() => []);
       setRecentTransfers(Array.isArray(d) ? d : d.transfers || []);
     } catch (err) {
@@ -720,24 +687,6 @@ function DistributionTab() {
   return (
     <div className="space-y-6">
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
-
-      <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
-        <CardBody>
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">⚠️</span>
-            <div>
-              <h3 className="font-bold text-amber-900">Stock Release Rules</h3>
-              <p className="text-sm text-amber-700 mt-1">
-                Stock may only be released/distributed when one of the following conditions is met:
-              </p>
-              <ul className="text-sm text-amber-700 list-disc ml-5 mt-1">
-                <li><strong>Cash has been received</strong> — Payment confirmed for the order</li>
-                <li><strong>Field program has been approved</strong> — Approved by management for field activities</li>
-              </ul>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
 
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Create Distribution Transfer</h3></CardHeader>
@@ -776,19 +725,6 @@ function DistributionTab() {
                 </select>
               </div>
               <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Release Reason <span className="text-red-500">*</span></label>
-              <select
-                className={`w-full px-3 py-2.5 rounded-lg border bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 ${!form.release_reason ? 'border-gray-300' : 'border-green-400'}`}
-                value={form.release_reason}
-                onChange={e => setForm(f => ({ ...f, release_reason: e.target.value }))}
-                required
-              >
-                <option value="">Select release reason...</option>
-                <option value="cash_received">Cash Received — Payment confirmed</option>
-                <option value="field_program_approved">Field Program Approved — Management approved</option>
-              </select>
             </div>
             <Button type="submit" disabled={submitting}><Truck size={16} /> {submitting ? 'Creating...' : 'Create Distribution'}</Button>
           </form>
