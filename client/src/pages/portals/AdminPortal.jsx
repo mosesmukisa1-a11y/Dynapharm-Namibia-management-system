@@ -418,21 +418,34 @@ function ProductsTab() {
 
 function DistributorsTab() {
   const [distributors, setDistributors] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const fileInputRef = useRef(null);
   const [form, setForm] = useState({ distributor_code: '', distributor_name: '', branch: '', mobile_no: '', email: '' });
 
-  const loadDistributors = () => {
+  const loadDistributors = (searchTerm) => {
     setLoading(true);
-    api.distributors.list()
-      .then(d => setDistributors(Array.isArray(d) ? d : d.distributors || []))
+    const endpoint = searchTerm
+      ? `/distributors?search=${encodeURIComponent(searchTerm)}&limit=100`
+      : '/distributors?limit=100';
+    api.get(endpoint)
+      .then(d => {
+        const list = Array.isArray(d) ? d : d.distributors || [];
+        setDistributors(list);
+        if (d.total_count) setTotalCount(d.total_count);
+        else if (!searchTerm) setTotalCount(list.length);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(loadDistributors, []);
+  useEffect(() => loadDistributors(''), []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -451,13 +464,70 @@ function DistributorsTab() {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+      setMessage('Error: Please upload a CSV or Excel file (.csv, .xlsx, .xls)');
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+    setMessage('');
+
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      if (rows.length === 0) {
+        setMessage('Error: No data rows found in the file');
+        setUploading(false);
+        return;
+      }
+
+      setMessage(`Processing ${rows.length} rows...`);
+
+      const BATCH = 500;
+      let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalErrors = 0;
+
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const chunk = rows.slice(i, i + BATCH);
+        setMessage(`Importing batch ${Math.floor(i/BATCH)+1}/${Math.ceil(rows.length/BATCH)} (${i+1}-${Math.min(i+BATCH, rows.length)} of ${rows.length})...`);
+
+        const result = await api.post('/distributor-import', { distributors: chunk });
+        if (result.summary) {
+          totalInserted += result.summary.inserted;
+          totalUpdated += result.summary.updated;
+          totalSkipped += result.summary.skipped;
+          totalErrors += result.summary.errors;
+        }
+      }
+
+      setUploadResult({ inserted: totalInserted, updated: totalUpdated, skipped: totalSkipped, errors: totalErrors, total: rows.length });
+      setMessage(`Import complete: ${totalInserted} new, ${totalUpdated} updated, ${totalSkipped} unchanged`);
+      loadDistributors();
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Upload failed'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => loadDistributors(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   if (loading) return <LoadingSpinner />;
 
-  const filtered = distributors.filter(d =>
-    !search ||
-    (d.distributor_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (d.distributor_code || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = distributors;
 
   return (
     <div>
@@ -469,11 +539,73 @@ function DistributorsTab() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by NB number or name..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
         </div>
-        <Badge variant="info">{distributors.length} distributors</Badge>
-        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+        <Badge variant="info">{totalCount > distributors.length ? `${distributors.length} of ${totalCount}` : distributors.length} distributors</Badge>
+        <Button size="sm" variant="secondary" onClick={() => { setShowUpload(!showUpload); setShowForm(false); }}>
+          {showUpload ? 'Cancel Upload' : <><Upload size={14} /> Import CSV/Excel</>}
+        </Button>
+        <Button size="sm" onClick={() => { setShowForm(!showForm); setShowUpload(false); }}>
           {showForm ? 'Cancel' : <><Plus size={14} /> Add Distributor</>}
         </Button>
       </div>
+
+      {showUpload && (
+        <Card className="mb-4">
+          <CardBody>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-bold text-gray-800 mb-1">Bulk Import Distributors</h4>
+                <p className="text-xs text-gray-500 mb-3">
+                  Upload a CSV or Excel file with distributor data. The system will automatically detect columns
+                  (DRN/NB Number, NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, etc.).
+                  Existing distributors (by NB number) will be skipped unless their position has changed, in which case it will be updated.
+                </p>
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary/50 transition-colors">
+                <Upload size={32} className="text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 mb-3">Select a CSV or Excel file to upload</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="block mx-auto text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer cursor-pointer"
+                />
+              </div>
+              {uploading && (
+                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                  <LoadingSpinner />
+                  <span className="text-sm text-blue-700">Importing... Please wait.</span>
+                </div>
+              )}
+              {uploadResult && (
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-green-600">{uploadResult.inserted}</p>
+                    <p className="text-xs text-green-500">New</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-blue-600">{uploadResult.updated}</p>
+                    <p className="text-xs text-blue-500">Updated</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-gray-600">{uploadResult.skipped}</p>
+                    <p className="text-xs text-gray-500">Unchanged</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-red-600">{uploadResult.errors}</p>
+                    <p className="text-xs text-red-500">Errors</p>
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-gray-400">
+                <p className="font-semibold mb-1">Expected columns (auto-detected):</p>
+                <p>DRN (NB Number), NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, SEX, CITY/ADDR1, STATUS, EMAIL</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {showForm && (
         <Card className="mb-4">
@@ -506,9 +638,10 @@ function DistributorsTab() {
           columns={[
             { header: 'NB Number', key: 'distributor_code' },
             { header: 'Name', key: 'distributor_name' },
-            { header: 'Branch', render: r => r.branch || '-' },
+            { header: 'Position', render: r => r.position || r.position_code || '-' },
+            { header: 'Branch', render: r => r.branch || r.location || '-' },
             { header: 'Phone', render: r => r.mobile_no || '-' },
-            { header: 'Email', render: r => r.email || '-' },
+            { header: 'Joined', render: r => r.date_joined || '-' },
             { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'warning'}>{r.status || 'active'}</Badge> },
           ]}
           data={filtered}

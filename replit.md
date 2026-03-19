@@ -58,6 +58,7 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/orders` — Order management (POST public for shop; subtotal recomputed server-side)
 - `/api/distributors` — Distributor management (GET is public)
 - `/api/distributor-agreement` — Distributor Agreement Form (POST public for registration; GET/PUT require auth with role checks)
+- `/api/distributor-import` — Bulk distributor import from CSV/Excel (POST, admin/director/gm role required)
 - `/api/notifications` — Notification system
 - `/api/stock-batches` — Stock batch management
 - `/api/stock-movements` — Warehouse inventory movements
@@ -97,7 +98,7 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 8. **Director** — Executive Dashboard, Branch Overview (all branches performance table), Distributor Network (stats, by-branch breakdown, recent list), Staff Services
 9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
 10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inv, Invoices, Valuation, Barcode, Reorder, Batch, Realtime
-11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search), Branches, System
+11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search, CSV/Excel bulk import with XLSX.js), Branches, System
 12. **Training** — Training Materials, Videos, Photos, Upload Content (trainers only), Schedule
 
 ## Role → Portal Access
@@ -116,6 +117,7 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
+- Distributors table has 12,500+ records (bulk imported from Excel); columns include `position`, `position_code`, `date_joined`, `sponsor_code`, `sex`, `level`
 - Products table seeded with 95 products
 - Branches seeded with 15 Namibian branches
 - Warehouse locations auto-seeded: country_stock, windhoek_warehouse, ondangwa_warehouse

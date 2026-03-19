@@ -3,7 +3,7 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
@@ -50,15 +50,74 @@ function NewMemberTab() {
   );
 }
 
+function escHtml(str) {
+  if (!str) return '-';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function printDistributorProfile(profile) {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Distributor Profile - ${escHtml(profile.distributor_code)}</title>
+<style>
+  @page { size: A5 landscape; margin: 15mm; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; background: white; }
+  .card { max-width: 600px; margin: 20px auto; border: 3px solid #c41e3a; border-radius: 12px; overflow: hidden; }
+  .header { background: linear-gradient(135deg, #c41e3a, #8b0000); color: white; padding: 20px; display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 16px; }
+  .header p { font-size: 11px; opacity: 0.85; }
+  .nb-box { background: #fff5f5; padding: 12px; text-align: center; border-bottom: 1px solid #f0d0d0; }
+  .nb-box span { font-size: 28px; font-weight: bold; color: #c41e3a; letter-spacing: 3px; }
+  .nb-box p { font-size: 10px; color: #999; }
+  .body { padding: 20px; }
+  .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #888; }
+  .value { font-weight: bold; color: #333; }
+  .footer { background: #f8f8f8; padding: 10px; text-align: center; font-size: 9px; color: #999; }
+</style></head><body>
+<div class="card">
+  <div class="header">
+    <div>
+      <h1>DYNAPHARM NAMIBIA</h1>
+      <p>Distributor Profile Card</p>
+    </div>
+  </div>
+  <div class="nb-box">
+    <p>Distributor ID Number</p>
+    <span>${escHtml(profile.distributor_code)}</span>
+  </div>
+  <div class="body">
+    <div class="row"><span class="label">Full Name</span><span class="value">${escHtml(profile.distributor_name)}</span></div>
+    <div class="row"><span class="label">Position</span><span class="value">${escHtml(profile.position || 'Distributor')}</span></div>
+    <div class="row"><span class="label">Date Joined</span><span class="value">${escHtml(profile.date_joined)}</span></div>
+    <div class="row"><span class="label">Sponsor</span><span class="value">${escHtml(profile.sponsor_code)}</span></div>
+    <div class="row"><span class="label">Mobile</span><span class="value">${escHtml(profile.mobile_no)}</span></div>
+    <div class="row"><span class="label">Location</span><span class="value">${escHtml(profile.location || profile.branch)}</span></div>
+    <div class="row"><span class="label">Status</span><span class="value" style="color:${profile.status === 'active' ? '#27ae60' : '#e67e22'}">${escHtml((profile.status || 'active').toUpperCase())}</span></div>
+  </div>
+  <div class="footer">Dynapharm International Namibia &mdash; Printed ${new Date().toLocaleDateString()}</div>
+</div>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=700,height=500');
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 400);
+}
+
 function DashboardTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.orders.list()
-      .then(data => {
-        const all = Array.isArray(data) ? data : data.orders || [];
+    const fetchAll = async () => {
+      try {
+        const [orderData] = await Promise.all([
+          api.orders.list().catch(() => ({ orders: [] })),
+        ]);
+        const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
         const mine = user?.username
           ? all.filter(o =>
               (o.customer_name || '').toLowerCase().includes(user.full_name?.toLowerCase() || '') ||
@@ -66,9 +125,20 @@ function DashboardTab() {
             )
           : [];
         setOrders(mine);
-      })
-      .catch(() => [])
-      .finally(() => setLoading(false));
+
+        if (user?.username) {
+          try {
+            const nbCode = user.username.toUpperCase();
+            const distData = await api.get(`/distributors?code=${encodeURIComponent(nbCode)}`);
+            if (distData && distData.distributor_code) {
+              setProfile(distData);
+            }
+          } catch {}
+        }
+      } catch {}
+      setLoading(false);
+    };
+    fetchAll();
   }, [user]);
 
   if (loading) return <LoadingSpinner />;
@@ -80,18 +150,33 @@ function DashboardTab() {
     return sum + items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
   }, 0);
 
+  const displayName = profile?.distributor_name || user?.full_name || 'Distributor';
+  const nbNumber = profile?.distributor_code || user?.username?.toUpperCase() || '';
+  const position = profile?.position || 'Distributor';
+  const dateJoined = profile?.date_joined || (user?.created_at ? formatDate(user.created_at) : 'N/A');
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-6 text-white">
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-            <User size={32} />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+              <User size={32} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold">{displayName}</h2>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{nbNumber}</span>
+                <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{position}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold">{user?.full_name || 'Distributor'}</h2>
-            <p className="text-white/80 text-sm">Distributor Portal</p>
-            {user?.username && <p className="text-white/60 text-xs mt-1">Username: {user.username}</p>}
-          </div>
+          {profile && (
+            <button onClick={() => printDistributorProfile(profile)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
+              <Printer size={14} /> Print Profile
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <div className="bg-white/15 rounded-xl p-4 text-center">
@@ -107,8 +192,8 @@ function DashboardTab() {
             <p className="text-2xl font-bold">{totalBV.toFixed(1)}</p>
           </div>
           <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Member Since</p>
-            <p className="text-lg font-bold">{user?.created_at ? formatDate(user.created_at) : 'N/A'}</p>
+            <p className="text-white/70 text-xs mb-1">Date Joined</p>
+            <p className="text-lg font-bold">{dateJoined}</p>
           </div>
         </div>
       </div>
@@ -122,23 +207,33 @@ function DashboardTab() {
             <div className="space-y-3">
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-500 text-sm">Full Name</span>
-                <span className="font-medium text-sm">{user?.full_name || '-'}</span>
+                <span className="font-medium text-sm">{displayName}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-500 text-sm">Username</span>
-                <span className="font-medium text-sm">{user?.username || '-'}</span>
+                <span className="text-gray-500 text-sm">NB Number</span>
+                <span className="font-bold text-sm text-primary">{nbNumber}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-500 text-sm">Role</span>
-                <Badge variant="info">{user?.role || 'distributor'}</Badge>
+                <span className="text-gray-500 text-sm">Position</span>
+                <Badge variant="info">{position}</Badge>
               </div>
+              <div className="flex justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm">Date Joined</span>
+                <span className="font-medium text-sm">{dateJoined}</span>
+              </div>
+              {profile?.sponsor_code && (
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-500 text-sm">Sponsor</span>
+                  <span className="font-medium text-sm">{profile.sponsor_code}</span>
+                </div>
+              )}
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-500 text-sm">Email</span>
-                <span className="font-medium text-sm">{user?.email || '-'}</span>
+                <span className="font-medium text-sm">{user?.email || profile?.email || '-'}</span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-gray-500 text-sm">Status</span>
-                <Badge variant={user?.is_active ? 'success' : 'warning'}>{user?.is_active ? 'Active' : 'Pending'}</Badge>
+                <Badge variant={(profile?.status || 'active') === 'active' ? 'success' : 'warning'}>{profile?.status || 'active'}</Badge>
               </div>
             </div>
           </CardBody>

@@ -242,6 +242,17 @@ export default async function handler(req, res) {
         } catch (e) {}
       }
 
+      if (limit) {
+        let totalCount = distributors.length;
+        if (!search) {
+          try {
+            const countResult = await getMany('SELECT COUNT(*)::int AS count FROM distributors', []);
+            totalCount = countResult[0]?.count || totalCount;
+          } catch (e) {}
+        }
+        return res.json({ distributors, total_count: totalCount });
+      }
+
       return res.json(distributors);
     }
 
