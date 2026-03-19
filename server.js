@@ -24,25 +24,19 @@ app.use((req, res, next) => {
   next();
 });
 
-const PUBLIC_API_ROUTES = new Set([
-  '/api/auth/login',
-  '/api/auth/logout',
-  '/api/auth/register',
-  '/api/auth/me',
-  '/api/distributor-login',
-  '/api/distributors/set-password',
-  '/api/distributors/forgot-password',
+const PUBLIC_ROUTE_PREFIXES = [
+  '/api/auth/',
   '/api/health',
-]);
-
-const PUBLIC_POST_ROUTES = new Set([
+  '/api/distributor-login',
+  '/api/distributors',
+  '/api/distributor-agreement',
+  '/api/distributor-import',
   '/api/orders',
   '/api/delivery',
   '/api/appointments',
   '/api/collect',
   '/api/realtime_publish',
   '/api/send-email',
-  '/api/distributor-agreement',
   '/api/reports',
   '/api/clients',
   '/api/employees',
@@ -50,88 +44,35 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/stock-batches',
   '/api/stock-requests',
   '/api/stock-movements',
-  '/api/branch/walkin-sales',
-  '/api/branch/cash-sessions',
-  '/api/branch/cash-movements',
-  '/api/branch/deposits',
-  '/api/branch/expenses',
-  '/api/branch/payments',
+  '/api/stock/transfers',
+  '/api/branch/',
   '/api/leave-requests',
   '/api/cash-requests',
-  '/api/mis/encoded-sales',
-  '/api/admin/approve-registration',
-  '/api/admin/reject-registration',
-  '/api/stock/transfers',
+  '/api/mis/',
+  '/api/admin/',
   '/api/upload',
   '/api/field_program_requests',
-  '/api/employees/leaves',
   '/api/campaigns',
-  '/api/distributor-import',
-]);
-
-const PUBLIC_GET_ROUTES = new Set([
   '/api/products',
   '/api/branches',
   '/api/product_images',
-  '/api/distributors',
   '/api/notifications',
   '/api/media',
-  '/api/stock-movements',
-  '/api/orders',
-  '/api/reports',
-  '/api/clients',
-  '/api/appointments',
-  '/api/employees',
-  '/api/users',
-  '/api/stock-batches',
-  '/api/stock-requests',
-  '/api/branch/walkin-sales',
-  '/api/branch/cash-sessions',
-  '/api/branch/cash-movements',
-  '/api/branch/deposits',
-  '/api/branch/expenses',
-  '/api/branch/payments',
-  '/api/branch/inventory',
-  '/api/leave-requests',
-  '/api/cash-requests',
-  '/api/mis/audit',
-  '/api/mis/branch-status',
-  '/api/mis/catalogs',
-  '/api/mis/drafts',
-  '/api/mis/encoded-sales',
-  '/api/mis/receipts',
-  '/api/mis/reconcile',
-  '/api/mis/stock',
-  '/api/admin/pending-registrations',
-  '/api/stock/transfers',
-  '/api/field_program_requests',
-  '/api/employees/leaves',
-  '/api/campaigns',
-  '/api/distributor-import',
-]);
+];
 
-const PUBLIC_PUT_ROUTES = new Set([
-  '/api/notifications',
-  '/api/reports',
-  '/api/clients',
-  '/api/appointments',
-  '/api/employees',
-  '/api/users',
-  '/api/orders',
-  '/api/stock/transfers',
-  '/api/branch/deposits',
-]);
+function isPublicRoute(routePath) {
+  return PUBLIC_ROUTE_PREFIXES.some(prefix =>
+    routePath === prefix ||
+    routePath.startsWith(prefix.endsWith('/') ? prefix : prefix + '/') ||
+    routePath.startsWith(prefix + '?')
+  );
+}
 
 app.use('/api', async (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
 
   const routePath = req.baseUrl + req.path.replace(/\/$/, '');
-  const isPublic = PUBLIC_API_ROUTES.has(routePath) ||
-    (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath)) ||
-    (req.method === 'POST' && PUBLIC_POST_ROUTES.has(routePath)) ||
-    (req.method === 'PUT' && PUBLIC_PUT_ROUTES.has(routePath)) ||
-    (req.method === 'PATCH' && PUBLIC_PUT_ROUTES.has(routePath)) ||
-    (req.method === 'DELETE' && PUBLIC_GET_ROUTES.has(routePath));
+  const isPublic = isPublicRoute(routePath);
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');
