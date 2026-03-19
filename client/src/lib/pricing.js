@@ -165,3 +165,251 @@ export function generateReceiptNumber() {
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `RCP-${date}-${time}-${rand}`;
 }
+
+export const PACKAGE_DATABASE = {
+  'Gastric Package': {
+    price: { dp: 2054, cp: 2432, bv: 381 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
+      { name: 'PRO-LSB TABLET 150\'s', quantity: 1, dp: 455, cp: 573, bv: 100 },
+      { name: 'INSTANT GINSENG HONEY GINGER 500g', quantity: 1, dp: 350, cp: 455, bv: 43 },
+      { name: 'GOAT\'S MILK TABLET 150\'s', quantity: 1, dp: 286, cp: 372, bv: 48 }
+    ]
+  },
+  'Womens Package': {
+    price: { dp: 2543, cp: 2950, bv: 481 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
+      { name: 'HERBA WARISAN MAHARANI 6 x 10g', quantity: 1, dp: 520, cp: 620, bv: 110 },
+      { name: 'INSTANT COFFEE MIX W/GANO, COLLAGEN & KACIP 15\'s', quantity: 1, dp: 260, cp: 320, bv: 38 },
+      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
+      { name: 'GAMAT FEMININE WASH (2)', quantity: 1, dp: 200, cp: 260, bv: 23 }
+    ]
+  },
+  'Mens Health Package': {
+    price: { dp: 2033, cp: 2362, bv: 388 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'GINALI CAPSULE 100\'s', quantity: 1, dp: 403, cp: 493, bv: 80 },
+      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
+      { name: 'DYNA SERENOA TABLET 100\'s', quantity: 1, dp: 520, cp: 620, bv: 115 },
+      { name: 'INSTANT COFFEE W/ TONGKAT ALI 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 }
+    ]
+  },
+  'Blood Circulation Pack': {
+    price: { dp: 3290, cp: 3854, bv: 657 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
+      { name: 'YEEGARLIC CAPSULE 90\'s', quantity: 1, dp: 300, cp: 390, bv: 64 },
+      { name: 'YEE YANG YEN TABLET 90\'s', quantity: 1, dp: 370, cp: 455, bv: 90 },
+      { name: 'GINSENG CAPSULE 9 x 10\'s', quantity: 1, dp: 546, cp: 655, bv: 115 },
+      { name: 'INSTANT COFFEE W/ TONGKAT ALI 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 },
+      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
+      { name: 'DYNA-RH CAPSULE 100\'s', quantity: 1, dp: 300, cp: 390, bv: 60 }
+    ]
+  },
+  'Cleansing And Detoxification Package': {
+    price: { dp: 2183, cp: 2596, bv: 447 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'YEEGARLIC CAPSULE 90\'s', quantity: 1, dp: 300, cp: 390, bv: 64 },
+      { name: 'YEEGANO CAPSULE 90\'s', quantity: 1, dp: 364, cp: 454, bv: 75 },
+      { name: 'DYNA \'S\' TABLET 120\'s', quantity: 1, dp: 290, cp: 360, bv: 43 },
+      { name: 'MILK THISTLE TABLET 120\'s', quantity: 1, dp: 500, cp: 592, bv: 125 },
+      { name: 'NONI PLUS TEA 30\'s x 3g', quantity: 1, dp: 299, cp: 360, bv: 65 }
+    ]
+  },
+  'Weight Management Pack': {
+    price: { dp: 2283, cp: 2680, bv: 448 },
+    products: [
+      { name: 'GREEN TEA EXTRACT CAPSULE 60\'s', quantity: 1, dp: 344, cp: 430, bv: 85 },
+      { name: 'NONI PLUS TEA 30\'s x 3g', quantity: 1, dp: 299, cp: 360, bv: 65 },
+      { name: 'DYNA \'S\' TABLET 120\'s', quantity: 1, dp: 290, cp: 360, bv: 65 },
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'HIGH FIBER NUTRION FOOD 30\'s x25g', quantity: 1, dp: 660, cp: 780, bv: 120 },
+      { name: 'INSTANT COFFEE MIX W/ GANO & GREEN TEA 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 }
+    ]
+  },
+  'Healthy Joints Package': {
+    price: { dp: 3538, cp: 4177, bv: 687.5 },
+    products: [
+      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
+      { name: 'DYNA RH CAPSULE 100\'s', quantity: 1, dp: 300, cp: 390, bv: 60 },
+      { name: 'NUTMEG OINTMENT 2 x 20g', quantity: 1, dp: 180, cp: 234, bv: 19.5 },
+      { name: 'NONI JUICE 1 LTR', quantity: 1, dp: 750, cp: 950, bv: 175 },
+      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
+      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
+      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
+      { name: 'D I INSTANT GOAT MILK POWDER PREMIX 20\'s x 21g', quantity: 1, dp: 325, cp: 400, bv: 43 }
+    ]
+  }
+};
+
+export const BODY_SYSTEMS_DATABASE = {
+  'Nervous System': {
+    symptoms: {
+      'Frequent headaches or migraines': 'Include omega-3 fatty acids (fish, flaxseed) in your diet and practice mindfulness meditation daily.',
+      'Difficulty concentrating or brain fog': 'Practice deep breathing exercises to improve focus and circulation.',
+      'Tingling or numbness in limbs': 'Ensure adequate B-vitamin intake through whole grains, eggs, and leafy greens.'
+    }
+  },
+  'Cardiovascular System': {
+    symptoms: {
+      'Palpitations or irregular heartbeat': 'Practice relaxation techniques to reduce stress-induced hypertension and engage in light aerobic exercise.',
+      'Shortness of breath': 'Engage in aerobic exercise (walking, swimming, cycling) for at least 30 minutes, 4\u20135 times weekly.',
+      'Cold hands and feet or fatigue': 'Eat a balanced diet rich in fruits, vegetables, and healthy fats (olive oil, avocados) to improve circulation.'
+    }
+  },
+  'Digestive System': {
+    symptoms: {
+      'Bloating and indigestion': 'Eat meals on time and chew slowly to aid digestion.',
+      'Constipation or diarrhea': 'Increase fiber and water intake; reduce processed foods.',
+      'Loss of appetite or heartburn': 'Avoid late-night eating and use probiotic-rich foods (yogurt, fermented vegetables) to maintain gut health.'
+    }
+  },
+  'Respiratory System': {
+    symptoms: {
+      'Frequent cough or shortness of breath': 'Practice deep breathing exercises and outdoor walks in clean air.',
+      'Chest tightness': 'Avoid smoking and dusty environments; keep indoor air fresh with plants or ventilation.',
+      'Low lung endurance': 'Strengthen lungs through light aerobic activity or yoga.'
+    }
+  },
+  'Immune System': {
+    symptoms: {
+      'Frequent colds or infections': 'Eat immune-boosting foods (citrus fruits, garlic, mushrooms) and sleep adequately.',
+      'Slow wound healing': 'Maintain personal hygiene, stay hydrated, and ensure adequate rest.',
+      'Allergic reactions or fatigue': 'Exercise moderately to stimulate immune response and avoid chronic stress.'
+    }
+  },
+  'Endocrine System': {
+    symptoms: {
+      'Weight fluctuations': 'Keep consistent sleep and meal times to stabilize hormones and engage in regular moderate exercise.',
+      'Mood swings or irritability': 'Reduce sugar, alcohol, and processed food intake to balance hormones.',
+      'Irregular menstruation or libido changes': 'Consume hormone-supportive foods like soy, flaxseed, and whole grains.'
+    }
+  },
+  'Musculoskeletal System': {
+    symptoms: {
+      'Muscle stiffness or pain': 'Stretch daily and maintain good posture throughout the day.',
+      'Joint aches': 'Engage in strength and flexibility training with adequate calcium, magnesium, and vitamin D intake.',
+      'Back or neck discomfort': 'Avoid prolonged sitting \u2014 stand or walk every hour and maintain proper posture.'
+    }
+  },
+  'Urinary System': {
+    symptoms: {
+      'Frequent urination or urgency': 'Limit salt and caffeine intake; avoid holding urine for long periods.',
+      'Lower back pain': 'Drink 1.5\u20132 liters of water daily to flush toxins and maintain kidney health.',
+      'Swelling in legs or feet': 'Limit salt intake, stay hydrated, and elevate legs when resting.'
+    }
+  },
+  'Reproductive System': {
+    symptoms: {
+      'Reduced sexual desire': 'Eat zinc- and vitamin E-rich foods (nuts, seeds, eggs) and manage stress through proper rest.',
+      'Irregular cycles or erectile issues': 'Exercise to improve circulation and avoid excessive alcohol, smoking, and processed fats.',
+      'Hormonal imbalances': 'Ensure proper rest, eat hormone-supportive foods, and maintain a regular exercise routine.'
+    }
+  },
+  'Integumentary System (Skin, Hair, Nails)': {
+    symptoms: {
+      'Dry or dull skin': 'Drink plenty of water and consume antioxidant-rich foods (berries, green tea).',
+      'Hair loss or brittleness': 'Get enough sleep to support skin and hair repair, and ensure adequate protein intake.',
+      'Acne or skin sensitivity': 'Keep the skin clean and moisturized; avoid excessive sun exposure and use natural skincare.'
+    }
+  },
+  'Lymphatic System': {
+    symptoms: {
+      'Swollen lymph nodes': 'Engage in light exercise and massage to improve lymph circulation.',
+      'Puffy face or limbs': 'Stay hydrated, avoid heavy oily foods, and include detoxifying foods like lemon and ginger.',
+      'Chronic fatigue': 'Maintain proper posture, avoid tight clothing that blocks flow, and get adequate rest.'
+    }
+  },
+  'Sensory System (Eyes, Ears, Nose)': {
+    symptoms: {
+      'Eye fatigue or blurred vision': 'Take screen breaks every 30\u201340 minutes and do simple eye relaxation exercises (palming, distant focusing).',
+      'Ringing in the ears (tinnitus)': 'Avoid loud noise exposure, maintain ear hygiene, and ensure adequate magnesium intake.',
+      'Sensitivity to light or sound': 'Maintain good lighting while working or reading and eat foods rich in vitamin A and lutein (carrots, spinach).'
+    }
+  }
+};
+
+export const RECOMMENDATION_DATABASE = {
+  symptoms: {
+    fatigue: ['Spirulina Tabs', 'Dyna Tonic 780ml', 'Bee Pollen Capsule 100\'s', 'Ginseng Capsule', 'Yeeginako Tabs'],
+    headache: ['Dyna C- 150\'s', 'Spirulina Tabs', 'Ginkgo & Ginseng - C', 'Nutmeg Ointment'],
+    nausea: ['Ginger capsule', 'Soybean & Ginger', 'Noni 1 Ltr', 'Spirulina Tabs'],
+    dizziness: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Bee Pollen Capsule 100\'s'],
+    shortness_breath: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Ginkgo & Ginseng - C'],
+    blurred_vision: ['Ginkgo & Ginseng - C', 'Dyna C- 150\'s', 'Spirulina Tabs'],
+    joint_pain: ['Healthy Joints Pack', 'Nutmeg Ointment', 'Dyna \'S\' Tablet 120\'s', 'Sea Cucumber 500ml'],
+    cough: ['Dyna Tonic 780ml', 'Noni 1 Ltr', 'Spirulina Tabs'],
+    digestive_issues: ['Spirulina Tabs', 'Pro LSB', 'Gastritus Package', 'High Fiber'],
+    loss_appetite: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Dyna Tonic 780ml'],
+    fever: ['Dyna C- 150\'s', 'Spirulina Tabs', 'Noni 1 Ltr'],
+    sore_throat: ['Ganoderma Toothpaste', 'Noni 1 Ltr', 'Dyna C- 150\'s'],
+    skin_rash: ['E. Vita Cream 50g', 'Spirulina Tabs', 'Dyna C- 150\'s'],
+    chest_pain: ['Ginkgo & Ginseng - C', 'Blood Circulation Package', 'Noni 1 Ltr'],
+    lower_back: ['Nutmeg Ointment', 'Healthy Joints Pack', 'Sea Cucumber 500ml'],
+    weight_changes: ['Diet & Weight Management Pack', 'Spirulina Tabs', 'High Fiber'],
+    insomnia: ['Gano & Green Tea - C', 'Spirulina Tabs', 'Maharani'],
+    confusion: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Bee Pollen Capsule 100\'s'],
+    foot_edema: ['Blood Circulation Package', 'Spirulina Tabs'],
+    swelling: ['Blood Circulation Package', 'Spirulina Tabs', 'Sea Cucumber 500ml']
+  },
+  medicalHistory: {
+    highBloodPressure: ['Blood Circulation Package', 'Spirulina Tabs', 'Ginkgo & Ginseng - C', 'Noni 1 Ltr'],
+    diabetes: ['Spirulina Tabs', 'Noni 1 Ltr', 'Bitter Gourd Tea', 'Balanced Body System Package'],
+    heartDisease: ['Blood Circulation Package', 'Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Noni 1 Ltr'],
+    asthma: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Noni 1 Ltr'],
+    digestiveDisorders: ['Gastritus Package', 'Spirulina Tabs', 'Pro LSB', 'High Fiber'],
+    thyroid: ['Spirulina Tabs', 'Balanced Body System Package', 'Sea Cucumber 500ml'],
+    kidneyLiver: ['Cleansing & Detoxification Package', 'Spirulina Tabs', 'Milk Thistle Tablet 120\'s'],
+    chronicFatigue: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Dyna Tonic 780ml', 'Ginseng Capsule'],
+    arthritis: ['Healthy Joints Pack', 'Nutmeg Ointment', 'Sea Cucumber 500ml', 'Spirulina Tabs'],
+    skinConditions: ['E. Vita Cream 50g', 'Spirulina Tabs', 'Dyna C- 150\'s', 'Cleansing & Detoxification Package'],
+    mentalHealth: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Gano & Green Tea - C'],
+    autoimmune: ['Spirulina Tabs', 'Balanced Body System Package', 'Noni 1 Ltr'],
+    cancer: ['Spirulina Tabs', 'Noni 1 Ltr', 'Total Health Pack']
+  },
+  gender: {
+    female: ['Women\'s Package', 'Kacip Fatimah', 'Collagen & Kacip- C', 'Maharani'],
+    male: ['Men\'s Package', 'Tongkat Ali & Maca - C', 'Dyna Serenoa Tablet 100\'s']
+  },
+  lifestyle: {
+    poorSleep: ['Gano & Green Tea - C', 'Maharani', 'Spirulina Tabs'],
+    highStress: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Gano & Green Tea - C'],
+    lowExercise: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Total Health Pack'],
+    poorWater: ['High Fiber', 'Spirulina Tabs']
+  },
+  age: {
+    elderly: ['Elderly Package (Female)', 'Elderly Package (Male)', 'Spirulina Tabs', 'Ginkgo & Ginseng - C']
+  },
+  general: ['Spirulina Tabs', 'Dyna C- 150\'s', 'Bee Pollen Capsule 100\'s']
+};
+
+export function calculatePrescriptionTotals(medicines, membershipStatus) {
+  const consultationFee = 150;
+  const totals = { total: { dp: consultationFee, cp: consultationFee, bv: 0 }, dispensed: { dp: 0, cp: 0, bv: 0 }, paid: { dp: 0, cp: 0, bv: 0 }, outstanding: { dp: 0, cp: 0, bv: 0 }, pending: { dp: 0, cp: 0, bv: 0 } };
+  if (!medicines || !medicines.length) return totals;
+  medicines.forEach(med => {
+    const isPackage = PACKAGE_DATABASE[med.name];
+    let dp = 0, cp = 0, bv = 0;
+    if (isPackage) {
+      dp = isPackage.price.dp; cp = isPackage.price.cp; bv = isPackage.price.bv;
+    } else {
+      const p = findProductPrice(med.name);
+      if (p) { dp = p.dp; cp = p.cp; bv = p.bv; }
+    }
+    totals.total.dp += dp; totals.total.cp += cp; totals.total.bv += bv;
+    if (med.dispensed) {
+      totals.dispensed.dp += dp; totals.dispensed.cp += cp; totals.dispensed.bv += bv;
+      if (med.paid) { totals.paid.dp += dp; totals.paid.cp += cp; totals.paid.bv += bv; }
+      else { totals.outstanding.dp += dp; totals.outstanding.cp += cp; totals.outstanding.bv += bv; }
+    } else {
+      totals.pending.dp += dp; totals.pending.cp += cp; totals.pending.bv += bv;
+    }
+  });
+  return totals;
+}

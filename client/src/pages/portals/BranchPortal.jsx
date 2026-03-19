@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
@@ -652,9 +652,7 @@ function PrescriptionsTab() {
   const { user } = useAuth();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dispensing, setDispensing] = useState(null);
   const [alert, setAlert] = useState(null);
-  const [dispensedReceipt, setDispensedReceipt] = useState(null);
   const [rxSearch, setRxSearch] = useState('');
   const [rxBranchFilter, setRxBranchFilter] = useState('');
   const [rxStatusFilter, setRxStatusFilter] = useState('all');
@@ -668,102 +666,11 @@ function PrescriptionsTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  const getPrescriptionItems = (report) => {
-    const prescriptions = report.prescriptions || report.prescription || [];
-    if (!Array.isArray(prescriptions)) return [];
-    return prescriptions.map(p => {
-      if (typeof p === 'string') {
-        const match = PRICE_LIST.find(pl => (pl.name || pl.description || '').toLowerCase().includes(p.toLowerCase()));
-        return { product_name: p, quantity: 1, unit_price: match?.cp || 0, line_total: match?.cp || 0, bv: match?.bv || 0 };
-      }
-      return {
-        product_name: p.product_name || p.name || p.product || '',
-        quantity: p.quantity || 1,
-        unit_price: p.unit_price || p.unitPrice || p.price || 0,
-        line_total: (p.quantity || 1) * (p.unit_price || p.unitPrice || p.price || 0),
-        bv: (p.bv || 0) * (p.quantity || 1),
-      };
-    });
-  };
-
-  const handleDispense = async (report) => {
-    setDispensing(report.id);
-    try {
-      await api.put(`/reports/${report.id}`, { dispensed: true, dispensed_at: new Date().toISOString() });
-      setReports(prev => prev.map(r => r.id === report.id ? { ...r, dispensed: true } : r));
-      const items = getPrescriptionItems(report);
-      const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
-      const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
-      setDispensedReceipt({
-        receipt_number: generateReceiptNumber(),
-        client_name: report.client_name || report.full_name || 'Patient',
-        nb_number: report.nb_number || report.distributor_code || null,
-        items,
-        totalAmount,
-        totalBV,
-        created_at: new Date().toISOString(),
-      });
-      setAlert({ type: 'success', message: `Prescription for ${report.client_name || 'patient'} dispensed successfully.` });
-    } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to dispense' });
-    } finally {
-      setDispensing(null);
-    }
-  };
-
-  const printPrescriptionReceipt = () => {
-    if (!dispensedReceipt) return;
-    const html = generateReceiptHTML({
-      receiptNumber: dispensedReceipt.receipt_number,
-      branch: user?.branch || '',
-      items: dispensedReceipt.items,
-      totalAmount: dispensedReceipt.totalAmount,
-      totalBV: dispensedReceipt.totalBV,
-      paymentMethod: 'Prescription',
-      customerType: 'non_member',
-      customerName: dispensedReceipt.client_name,
-      nbNumber: dispensedReceipt.nb_number,
-      cashier: user?.full_name || user?.username || null,
-      showBV: true,
-    });
-    printReceipt(html);
-  };
-
   if (loading) return <LoadingSpinner />;
 
   const clearRxFilters = () => {
-    setRxSearch('');
-    setRxBranchFilter('');
-    setRxStatusFilter('all');
-    setRxFromDate('');
-    setRxToDate('');
+    setRxSearch(''); setRxBranchFilter(''); setRxStatusFilter('all'); setRxFromDate(''); setRxToDate('');
   };
-
-  const filteredReports = reports.filter(r => {
-    if (rxSearch) {
-      const q = rxSearch.toLowerCase();
-      const match = (r.client_name || r.full_name || '').toLowerCase().includes(q)
-        || (r.id || '').toString().includes(q)
-        || (r.consultant || '').toLowerCase().includes(q);
-      if (!match) return false;
-    }
-    if (rxBranchFilter && (r.branch || '') !== rxBranchFilter) return false;
-    if (rxStatusFilter !== 'all') {
-      if (rxStatusFilter === 'dispensed' && !r.dispensed) return false;
-      if (rxStatusFilter === 'pending' && r.dispensed) return false;
-      if (rxStatusFilter === 'paid' && !r.paid) return false;
-      if (rxStatusFilter === 'outstanding' && (r.paid || r.dispensed)) return false;
-    }
-    if (rxFromDate) {
-      const d = (r.created_at || r.date || '').slice(0, 10);
-      if (d < rxFromDate) return false;
-    }
-    if (rxToDate) {
-      const d = (r.created_at || r.date || '').slice(0, 10);
-      if (d > rxToDate) return false;
-    }
-    return true;
-  });
 
   const refreshDispenserData = () => {
     setLoading(true);
@@ -773,32 +680,102 @@ function PrescriptionsTab() {
       .finally(() => setLoading(false));
   };
 
+  const getMedicines = (r) => {
+    if (r.medicines && Array.isArray(r.medicines) && r.medicines.length > 0) return r.medicines;
+    const prescriptions = r.prescriptions || r.prescription || [];
+    if (!Array.isArray(prescriptions)) return [];
+    return prescriptions.map(p => {
+      const name = typeof p === 'string' ? p : (p.product_name || p.name || p.product || '');
+      return { name, dispensed: false, paid: false };
+    });
+  };
+
+  const toggleDispense = (reportId, medIndex) => {
+    setReports(prev => prev.map(r => {
+      if (r.id !== reportId) return r;
+      const meds = [...getMedicines(r)];
+      meds[medIndex] = { ...meds[medIndex], dispensed: !meds[medIndex].dispensed };
+      return { ...r, medicines: meds };
+    }));
+  };
+
+  const togglePayment = (reportId, medIndex) => {
+    setReports(prev => prev.map(r => {
+      if (r.id !== reportId) return r;
+      const meds = [...getMedicines(r)];
+      meds[medIndex] = { ...meds[medIndex], paid: !meds[medIndex].paid };
+      return { ...r, medicines: meds };
+    }));
+  };
+
+  const getEffectivePrice = (medName) => {
+    const pkg = PACKAGE_DATABASE[medName];
+    if (pkg) return { dp: pkg.price.dp, cp: pkg.price.cp, bv: pkg.price.bv, isPackage: true, products: pkg.products };
+    const p = findProductPrice(medName);
+    if (p) return { dp: p.dp, cp: p.cp, bv: p.bv, isPackage: false };
+    return { dp: 0, cp: 0, bv: 0, isPackage: false };
+  };
+
+  const printPrescription = (report) => {
+    const meds = getMedicines(report);
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write(`<html><head><title>Prescription - ${report.client_name || ''}</title><style>body{font-family:Arial;padding:20px}h2{color:#c41e3a;text-align:center}.med{padding:6px 12px;border-bottom:1px solid #eee}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #ddd}th{background:#f8f9fa}</style></head><body>`);
+    w.document.write(`<h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2><h3 style="text-align:center">Prescription</h3>`);
+    w.document.write(`<p><strong>Patient:</strong> ${report.client_name || ''} | <strong>Report:</strong> ${report.id} | <strong>Date:</strong> ${new Date(report.created_at || report.date || Date.now()).toLocaleDateString()}</p>`);
+    w.document.write(`<table><tr><th>Medicine</th><th>Status</th><th>Price</th></tr>`);
+    meds.forEach(m => {
+      const price = getEffectivePrice(m.name);
+      w.document.write(`<tr><td>${m.name}</td><td>${m.dispensed ? 'Dispensed' : 'Pending'}</td><td>N$${price.cp}</td></tr>`);
+    });
+    w.document.write(`</table></body></html>`);
+    w.document.close();
+    w.print();
+  };
+
+  let filteredReports = reports.filter(r => {
+    const meds = getMedicines(r);
+    if (!meds || meds.length === 0) return false;
+    if (rxSearch) {
+      const q = rxSearch.toLowerCase();
+      const match = (r.client_name || r.full_name || '').toLowerCase().includes(q)
+        || (r.id || '').toString().includes(q)
+        || (r.consultant || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (rxBranchFilter && (r.branch || '') !== rxBranchFilter) return false;
+    if (rxStatusFilter !== 'all') {
+      if (rxStatusFilter === 'pending') return meds.some(m => !m.dispensed);
+      if (rxStatusFilter === 'dispensed') return meds.length > 0 && meds.every(m => m.dispensed);
+      if (rxStatusFilter === 'paid') return meds.filter(m => m.dispensed).every(m => m.paid);
+      if (rxStatusFilter === 'outstanding') return meds.some(m => m.dispensed && !m.paid);
+    }
+    if (rxFromDate) { const d = (r.created_at || r.date || '').slice(0, 10); if (d < rxFromDate) return false; }
+    if (rxToDate) { const d = (r.created_at || r.date || '').slice(0, 10); if (d > rxToDate) return false; }
+    return true;
+  });
+
+  filteredReports.sort((a, b) => new Date(b.created_at || b.date || 0) - new Date(a.created_at || a.date || 0));
+
   return (
     <div>
-      <div className="rounded-xl mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', color: 'white', padding: '20px 24px' }}>
+      <div style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', color: 'white', padding: '20px 24px', borderRadius: '12px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>💊 Prescription Dispensing</h3>
           <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Search, filter and dispense client prescriptions</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>📊 Daily Statement</button>
           <button onClick={refreshDispenserData} style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>🔄 Refresh</button>
         </div>
       </div>
 
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="flex gap-2.5 flex-wrap mb-3">
-          <input
-            type="text"
-            placeholder="Search by client name, report ID or consultant…"
-            value={rxSearch}
-            onChange={e => setRxSearch(e.target.value)}
-            style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.95rem' }}
-          />
-          <button style={{ padding: '10px 18px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>🔍 Search</button>
-          <button onClick={() => { setRxSearch(''); refreshDispenserData(); }} style={{ padding: '10px 18px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>💊 Show All</button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <input type="text" placeholder="Search by client name, report ID or consultant\u2026" value={rxSearch} onChange={e => setRxSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') refreshDispenserData(); }} style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.95rem' }} />
+          <button onClick={refreshDispenserData} style={{ padding: '10px 18px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>🔍 Search</button>
+          <button onClick={() => { setRxSearch(''); setRxStatusFilter('all'); refreshDispenserData(); }} style={{ padding: '10px 18px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>💊 Show All</button>
         </div>
-        <div className="flex gap-2.5 flex-wrap items-center">
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', fontSize: '0.9rem' }}>
             <option value="">All Branches</option>
             {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
@@ -817,131 +794,154 @@ function PrescriptionsTab() {
         </div>
       </div>
 
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
+      {alert && <div style={{ padding: '10px 16px', marginBottom: '12px', borderRadius: '8px', background: alert.type === 'success' ? '#dcfce7' : '#fee2e2', color: alert.type === 'success' ? '#166534' : '#991b1b' }}>{alert.message}</div>}
 
-      {dispensedReceipt && (
-        <Card className="mb-4">
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-green-700">Prescription Dispensed</h3>
-              <div className="flex gap-2">
-                <Button size="sm" variant="secondary" onClick={printPrescriptionReceipt}><Printer size={14} /> Print Receipt</Button>
-                <Button size="sm" variant="ghost" onClick={() => setDispensedReceipt(null)}>Close</Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardBody>
-            <div className="text-center mb-3">
-              <p className="text-2xl font-bold text-green-600">&#10003;</p>
-              <p className="text-sm text-gray-500">Receipt: {dispensedReceipt.receipt_number}</p>
-              <p className="text-sm font-medium">{dispensedReceipt.client_name}</p>
-              {dispensedReceipt.nb_number && <p className="text-xs text-gray-400">NB: {dispensedReceipt.nb_number}</p>}
-            </div>
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-3 py-2">
-                <p className="text-xs font-bold uppercase text-gray-500">Prescribed Items</p>
-              </div>
-              <div className="divide-y">
-                {dispensedReceipt.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div className="flex-1">
-                      <span className="font-medium">{item.product_name}</span>
-                      <span className="text-gray-400 ml-1">x{item.quantity}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatCurrency(item.line_total)}</span>
-                      {Number(item.bv || 0) > 0 && <span className="text-xs text-orange-500 ml-2">{Number(item.bv).toFixed(1)} BV</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t px-3 py-2 flex justify-between items-center bg-gray-50">
-                <div className="text-sm text-gray-500">BV: <strong className="text-orange-500">{dispensedReceipt.totalBV.toFixed(1)}</strong></div>
-                <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(dispensedReceipt.totalAmount)}</span></div>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      <div style={{ marginBottom: '20px' }}>
+      <div id="prescriptionList">
         {filteredReports.length === 0 ? (
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '40px', textAlign: 'center' }}>
-            <p style={{ color: '#94a3b8' }}>No prescriptions found matching the current filters.</p>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
+            <h3>💊 No prescriptions to dispense</h3>
+            <p>Prescriptions will appear here once consultants create reports.</p>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredReports.map(r => {
-              const items = getPrescriptionItems(r);
-              const prescriptions = r.prescriptions || r.prescription || [];
-              const prescList = Array.isArray(prescriptions) ? prescriptions.map(p => typeof p === 'string' ? p : p.product_name || p.name || p.product).filter(Boolean) : [];
-              return (
-                <div key={r.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                  <div className="flex items-start justify-between flex-wrap gap-2">
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>{r.client_name || r.full_name || 'Patient'}</h4>
-                      <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>Report #{r.id} | {formatDate(r.created_at || r.date)}</p>
-                      {prescList.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {prescList.map((p, i) => (
-                            <span key={i} style={{ display: 'inline-block', padding: '2px 10px', background: '#f1f5f9', borderRadius: '12px', fontSize: '0.8rem', color: '#475569' }}>{p}</span>
+        ) : filteredReports.map(report => {
+          const medicines = getMedicines(report);
+          const pending = medicines.filter(m => !m.dispensed).length;
+          const dispensed = medicines.filter(m => m.dispensed).length;
+          const total = medicines.length;
+          const clientMembershipStatus = report.membership_status || 'referred';
+          const consultationFee = 150;
+          const totals = calculatePrescriptionTotals(medicines, clientMembershipStatus);
+
+          return (
+            <div key={report.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+              <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #a0172e 100%)', padding: '16px', color: 'white' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>PRESCRIPTION</div>
+                    <h4 style={{ color: 'white', margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>{report.id}</h4>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>{new Date(report.created_at || report.date || Date.now()).toLocaleDateString()}</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginTop: '2px' }}>By: {report.consultant || 'Consultant'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>👤 {report.client_name || report.full_name || 'Patient'}</span>
+                  {clientMembershipStatus === 'member' && <span style={{ background: 'rgba(39,174,96,0.3)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>🏅 Member</span>}
+                  <span style={{ background: pending > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(39,174,96,0.3)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>
+                    {pending > 0 ? `⏳ ${pending} pending` : '✅ All dispensed'} ({dispensed}/{total})
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ padding: '16px' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '0.95rem', color: '#2c3e50' }}>Prescribed Items:</h4>
+                {medicines.map((med, i) => {
+                  const price = getEffectivePrice(med.name);
+                  return (
+                    <div key={i} style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                        <span style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', textDecoration: med.dispensed ? 'line-through' : 'none', color: med.dispensed ? '#27ae60' : '#1e293b' }}>
+                          {med.dispensed ? '✅ ' : ''}{med.name}
+                          {price.isPackage && <span style={{ marginLeft: '6px', fontSize: '0.75rem', background: '#e8f5e9', color: '#27ae60', padding: '2px 6px', borderRadius: '4px' }}>📦 Package</span>}
+                        </span>
+                      </div>
+                      {price.isPackage && price.products && (
+                        <div style={{ marginLeft: '28px', background: '#f8f9fa', padding: '8px', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
+                          {price.products.map((product, pi) => (
+                            <div key={pi} style={{ padding: '3px 0', fontSize: '0.8rem', color: '#555', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>{product.name}</span>
+                              <span>Qty: {product.quantity} | {clientMembershipStatus === 'member' ? `DP: N$${product.dp} | BV: ${product.bv}` : `CP: N$${product.cp}`}</span>
+                            </div>
                           ))}
                         </div>
                       )}
+                      <div style={{ fontSize: '0.9rem', color: '#666', marginLeft: '28px' }}>
+                        {clientMembershipStatus === 'member' ? (
+                          <><span style={{ marginRight: '15px' }}><strong>DP:</strong> N${price.dp}</span><span><strong>BV:</strong> {price.bv}</span></>
+                        ) : (
+                          <span><strong>CP:</strong> N${price.cp}</span>
+                        )}
+                      </div>
+                      {med.dispensed && (
+                        <div style={{ marginLeft: '28px', marginTop: '4px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!med.paid} onChange={() => togglePayment(report.id, i)} style={{ marginRight: '8px' }} />
+                            <span style={{ fontSize: '0.85rem', color: '#27ae60', fontWeight: 500 }}>💰 Payment Received</span>
+                          </label>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '4px 12px',
-                        borderRadius: '20px',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        background: r.dispensed ? '#dcfce7' : '#fef3c7',
-                        color: r.dispensed ? '#16a34a' : '#d97706',
-                      }}>
-                        {r.dispensed ? '✅ Dispensed' : '⏳ Pending'}
-                      </span>
-                      {!r.dispensed && (
-                        <button
-                          onClick={() => handleDispense(r)}
-                          disabled={dispensing === r.id}
-                          style={{ padding: '8px 16px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}
-                        >
-                          {dispensing === r.id ? 'Dispensing...' : 'Dispense'}
-                        </button>
-                      )}
-                      {r.dispensed && (
-                        <button
-                          onClick={() => {
-                            const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
-                            const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
-                            const html = generateReceiptHTML({
-                              receiptNumber: r.id || 'RX-' + Date.now(),
-                              branch: user?.branch || '',
-                              items,
-                              totalAmount,
-                              totalBV,
-                              paymentMethod: 'Prescription',
-                              customerType: 'non_member',
-                              customerName: r.client_name || r.full_name || 'Patient',
-                              nbNumber: r.nb_number || null,
-                              cashier: user?.full_name || user?.username || null,
-                              showBV: true,
-                            });
-                            printReceipt(html);
-                          }}
-                          style={{ padding: '6px 12px', background: '#f1f5f9', color: '#475569', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
-                        >
-                          🖨️ Print
-                        </button>
-                      )}
+                  );
+                })}
+
+                <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '20px', borderRadius: '8px', marginTop: '20px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
+                  <h4 style={{ color: 'white', marginBottom: '12px', textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>💰 Prescription Summary</h4>
+                  <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', marginBottom: '18px' }}>Includes N${consultationFee} consultation fee</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Total</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#c41e3a' }}>
+                        {clientMembershipStatus === 'member' ? (
+                          <><div>N${totals.total.dp}</div><div style={{ fontSize: '0.75rem', color: '#27ae60', marginTop: '4px' }}>BV: {totals.total.bv}</div></>
+                        ) : <div>N${totals.total.cp}</div>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #27ae60' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Dispensed</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#27ae60' }}>
+                        {clientMembershipStatus === 'member' ? (
+                          <><div>N${totals.dispensed.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.dispensed.bv}</div></>
+                        ) : <div>N${totals.dispensed.cp}</div>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #3498db' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Paid</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#3498db' }}>
+                        {clientMembershipStatus === 'member' ? (
+                          <><div>N${totals.paid.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.paid.bv}</div></>
+                        ) : <div>N${totals.paid.cp}</div>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #e74c3c' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Outstanding</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e74c3c' }}>
+                        {clientMembershipStatus === 'member' ? (
+                          <><div>N${totals.outstanding.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.outstanding.bv}</div></>
+                        ) : <div>N${totals.outstanding.cp}</div>}
+                      </div>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button onClick={() => printPrescription(report)} style={{ padding: '8px 16px', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>🖨️ Print Prescription</button>
+                  <button onClick={() => {
+                    const meds = getMedicines(report);
+                    const items = meds.map(m => {
+                      const p = getEffectivePrice(m.name);
+                      return { product_name: m.name, quantity: 1, unit_price: p.cp, line_total: p.cp, bv: p.bv };
+                    });
+                    const totalAmount = items.reduce((s, it) => s + it.line_total, 0);
+                    const totalBV = items.reduce((s, it) => s + it.bv, 0);
+                    const html = generateReceiptHTML({
+                      receiptNumber: report.id || 'RX-' + Date.now(),
+                      branch: user?.branch || '',
+                      items, totalAmount, totalBV,
+                      paymentMethod: 'Prescription',
+                      customerType: clientMembershipStatus === 'member' ? 'member' : 'non_member',
+                      customerName: report.client_name || report.full_name || 'Patient',
+                      nbNumber: report.nb_number || null,
+                      cashier: user?.full_name || user?.username || null,
+                      showBV: true,
+                    });
+                    printReceipt(html);
+                  }} style={{ padding: '8px 16px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>🧾 Print Receipt</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

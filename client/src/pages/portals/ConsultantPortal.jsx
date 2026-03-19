@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
-import { PRICE_LIST } from '../../lib/pricing';
+import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ConsultantPortal() {
   const [activeSection, setActiveSection] = useState('checkups');
@@ -71,7 +72,55 @@ function escHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function generateRecommendations(client) {
+  const recommendations = new Set();
+  const reasonsMap = new Map();
+  const addRec = (med, reason) => {
+    recommendations.add(med);
+    if (!reasonsMap.has(med)) reasonsMap.set(med, []);
+    reasonsMap.get(med).push(reason);
+  };
+  if (client.symptoms && client.symptoms.length > 0) {
+    client.symptoms.forEach(s => {
+      if (s !== 'none' && RECOMMENDATION_DATABASE.symptoms[s]) {
+        RECOMMENDATION_DATABASE.symptoms[s].forEach(m => addRec(m, `Symptom: ${s.replace(/_/g, ' ')}`));
+      }
+    });
+  }
+  if (client.medicalHistory && Array.isArray(client.medicalHistory)) {
+    client.medicalHistory.forEach(c => {
+      if (c !== 'na' && RECOMMENDATION_DATABASE.medicalHistory[c]) {
+        RECOMMENDATION_DATABASE.medicalHistory[c].forEach(m => addRec(m, `Medical History: ${c.replace(/([A-Z])/g, ' $1').trim()}`));
+      }
+    });
+  }
+  const gender = (client.gender || '').toLowerCase();
+  if (gender && RECOMMENDATION_DATABASE.gender[gender]) {
+    RECOMMENDATION_DATABASE.gender[gender].forEach(m => addRec(m, `Gender-specific (${gender})`));
+  }
+  if (client.sleepHours === '<5' || client.sleepHours === '5-6') {
+    RECOMMENDATION_DATABASE.lifestyle.poorSleep.forEach(m => addRec(m, 'Poor sleep quality'));
+  }
+  if (parseInt(client.stressLevel) >= 7) {
+    RECOMMENDATION_DATABASE.lifestyle.highStress.forEach(m => addRec(m, 'High stress level'));
+  }
+  if (client.exerciseFreq === 'never' || client.exerciseFreq === '1-2') {
+    RECOMMENDATION_DATABASE.lifestyle.lowExercise.forEach(m => addRec(m, 'Low physical activity'));
+  }
+  if (client.waterIntake === 'less1') {
+    RECOMMENDATION_DATABASE.lifestyle.poorWater.forEach(m => addRec(m, 'Low water intake'));
+  }
+  if (client.age && parseInt(client.age) >= 60) {
+    RECOMMENDATION_DATABASE.age.elderly.forEach(m => addRec(m, 'Age 60+'));
+  }
+  if (recommendations.size === 0) {
+    RECOMMENDATION_DATABASE.general.forEach(m => addRec(m, 'General wellness'));
+  }
+  return { recommendations, reasonsMap };
+}
+
 function CheckupsSection() {
+  const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('upcoming');
@@ -79,11 +128,15 @@ function CheckupsSection() {
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [detailCheckup, setDetailCheckup] = useState(null);
-  const [reportForm, setReportForm] = useState({ diagnosis: '', recommendations: '', follow_up_date: '', prescriptions: [] });
-  const [prescriptionProduct, setPrescriptionProduct] = useState('');
-  const [prescriptionQty, setPrescriptionQty] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [consultantNotes, setConsultantNotes] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpNotes, setFollowUpNotes] = useState('');
+  const [selectedMedicines, setSelectedMedicines] = useState(new Set());
+  const [selectedSystems, setSelectedSystems] = useState({});
+  const [selectedSymptomChecks, setSelectedSymptomChecks] = useState({});
+  const [currentRecommendations, setCurrentRecommendations] = useState(null);
 
   const loadCheckups = useCallback(() => {
     setLoading(true);
@@ -95,45 +148,122 @@ function CheckupsSection() {
 
   useEffect(() => { loadCheckups(); }, [loadCheckups]);
 
-  const addPrescription = () => {
-    if (!prescriptionProduct) return;
-    setReportForm(f => ({
-      ...f,
-      prescriptions: [...f.prescriptions, { product: prescriptionProduct, quantity: prescriptionQty }],
-    }));
-    setPrescriptionProduct('');
-    setPrescriptionQty(1);
+  const openReportModal = (apt) => {
+    setSelectedCheckup(apt);
+    setConsultantNotes('');
+    setFollowUpNotes('');
+    setSelectedMedicines(new Set());
+    setSelectedSystems({});
+    setSelectedSymptomChecks({});
+    setError('');
+    const fd = new Date();
+    fd.setDate(fd.getDate() + 14);
+    setFollowUpDate(fd.toISOString().split('T')[0]);
+    const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+    const client = {
+      symptoms: data.symptoms || [],
+      medicalHistory: data.medicalHistory || [],
+      gender: data.gender || apt.gender || '',
+      age: data.age || apt.age || '',
+      sleepHours: data.sleepHours || '',
+      stressLevel: data.stressLevel || '',
+      exerciseFreq: data.exerciseFreq || '',
+      waterIntake: data.waterIntake || '',
+    };
+    const recs = generateRecommendations(client);
+    setCurrentRecommendations(recs);
+    setShowReport(true);
   };
 
-  const removePrescription = (idx) => {
-    setReportForm(f => ({
-      ...f,
-      prescriptions: f.prescriptions.filter((_, i) => i !== idx),
-    }));
+  const toggleMedicine = (name) => {
+    setSelectedMedicines(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
   };
 
-  const handleCreateReport = async (e) => {
-    e.preventDefault();
-    if (!reportForm.diagnosis) { setError('Diagnosis is required'); return; }
+  const applyAllRecommendations = () => {
+    if (!currentRecommendations) return;
+    setSelectedMedicines(prev => {
+      const next = new Set(prev);
+      currentRecommendations.recommendations.forEach(m => next.add(m));
+      return next;
+    });
+  };
+
+  const selectRecommendedMedicine = (name) => {
+    setSelectedMedicines(prev => { const next = new Set(prev); next.add(name); return next; });
+  };
+
+  const toggleSystemSymptom = (systemId, symptom) => {
+    setSelectedSymptomChecks(prev => {
+      const key = `${systemId}__${symptom}`;
+      const next = { ...prev };
+      if (next[key]) delete next[key]; else next[key] = true;
+      return next;
+    });
+  };
+
+  const getLifestyleRecommendations = () => {
+    const items = [];
+    Object.entries(selectedSymptomChecks).forEach(([key]) => {
+      const [sysId, symptom] = key.split('__');
+      const systemName = Object.keys(BODY_SYSTEMS_DATABASE).find(n => n.replace(/[^a-zA-Z0-9]/g, '_') === sysId);
+      if (systemName) {
+        const rec = BODY_SYSTEMS_DATABASE[systemName].symptoms[symptom];
+        if (rec) items.push({ system: systemName, symptom, recommendation: rec });
+      }
+    });
+    return items;
+  };
+
+  const handleSaveReport = async () => {
+    if (selectedMedicines.size === 0) { alert('Please select at least one medicine!'); return; }
     setSubmitting(true);
     setError('');
+    const apt = selectedCheckup;
+    const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+    const selectedSymptoms = getLifestyleRecommendations();
+    const medicines = Array.from(selectedMedicines).map(name => ({ name, dispensed: false }));
     try {
       await api.reports.create({
-        client_name: selectedCheckup.full_name,
-        appointment_id: selectedCheckup.id,
-        diagnosis: reportForm.diagnosis,
-        prescriptions: reportForm.prescriptions,
-        recommendations: reportForm.recommendations,
-        follow_up_date: reportForm.follow_up_date,
+        client_name: apt.full_name || data.fullName || '',
+        appointment_id: apt.id,
+        diagnosis: consultantNotes,
+        prescriptions: medicines.map(m => ({ product: m.name, quantity: 1 })),
+        medicines,
+        recommendations: consultantNotes,
+        follow_up_date: followUpDate,
+        follow_up_notes: followUpNotes,
+        symptoms: selectedSymptoms,
+        consultant: user?.full_name || user?.username || '',
       });
       setShowReport(false);
-      setReportForm({ diagnosis: '', recommendations: '', follow_up_date: '', prescriptions: [] });
       setSelectedCheckup(null);
       loadCheckups();
     } catch (err) {
-      setError(err.message || 'Failed to create report');
+      setError(err.message || 'Failed to save report');
     }
     setSubmitting(false);
+  };
+
+  const printReport = () => {
+    const apt = selectedCheckup;
+    if (!apt) return;
+    const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+    const meds = Array.from(selectedMedicines);
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write(`<html><head><title>Report - ${apt.full_name || ''}</title><style>body{font-family:Arial;padding:20px}h2{color:#c41e3a;text-align:center}h3{color:#2c3e50;border-bottom:2px solid #c41e3a;padding-bottom:5px}.section{margin:15px 0;padding:10px;border:1px solid #ddd;border-radius:5px}.med{padding:4px 8px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px}</style></head><body>`);
+    w.document.write(`<h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2><h3>Summary Analysis Report Card</h3>`);
+    w.document.write(`<div class="section"><strong>Patient:</strong> ${apt.full_name || ''} | <strong>Phone:</strong> ${data.phone || apt.phone || ''} | <strong>Gender:</strong> ${data.gender || ''} | <strong>Date:</strong> ${new Date().toLocaleDateString()}</div>`);
+    if (consultantNotes) w.document.write(`<div class="section"><h3>Consultant Notes</h3><p>${consultantNotes}</p></div>`);
+    if (meds.length > 0) w.document.write(`<div class="section"><h3>Prescription</h3>${meds.map(m => `<span class="med">${m}</span>`).join('')}</div>`);
+    if (followUpDate) w.document.write(`<div class="section"><strong>Follow-up Date:</strong> ${new Date(followUpDate).toLocaleDateString('en-GB')}</div>`);
+    w.document.write(`<div class="section"><strong>Consultant:</strong> ${user?.full_name || user?.username || ''}</div>`);
+    w.document.write('</body></html>');
+    w.document.close();
+    w.print();
   };
 
   const updateStatus = async (apt, newStatus) => {
@@ -225,7 +355,7 @@ function CheckupsSection() {
                 {sl !== 'completed' && sl !== 'cancelled' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
-                    <button onClick={() => { setSelectedCheckup(apt); setShowReport(true); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Create Report</button>
+                    <button onClick={() => openReportModal(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Create Report</button>
                     {(sl === 'pending' || sl === 'walk-in') && <button onClick={() => updateStatus(apt, 'checked_in')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Check In</button>}
                     {sl === 'checked_in' && <button onClick={() => updateStatus(apt, 'in_progress')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Start Checkup</button>}
                     <button onClick={() => updateStatus(apt, 'completed')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Mark Complete</button>
@@ -254,46 +384,255 @@ function CheckupsSection() {
             </div>
             {(detailCheckup.status || '').toLowerCase() !== 'completed' && (detailCheckup.status || '').toLowerCase() !== 'cancelled' && (
               <div style={{ padding: '16px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => { setShowDetail(false); setSelectedCheckup(detailCheckup); setShowReport(true); }} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Create Report & Prescription</button>
+                <button onClick={() => { setShowDetail(false); openReportModal(detailCheckup); }} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Create Report & Prescription</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      <Modal open={showReport} onClose={() => setShowReport(false)} title={`Create Report - ${selectedCheckup?.full_name || ''}`} size="lg">
-        <form onSubmit={handleCreateReport} className="p-6 space-y-4">
-          {error && <Alert type="error">{error}</Alert>}
-          <Textarea label="Diagnosis" value={reportForm.diagnosis} onChange={e => setReportForm(f => ({ ...f, diagnosis: e.target.value }))} required />
-          <Textarea label="Recommendations" value={reportForm.recommendations} onChange={e => setReportForm(f => ({ ...f, recommendations: e.target.value }))} />
-          <Input label="Follow-up Date" type="date" value={reportForm.follow_up_date} onChange={e => setReportForm(f => ({ ...f, follow_up_date: e.target.value }))} />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Prescriptions</label>
-            <div className="flex gap-2 mb-2">
-              <select className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm" value={prescriptionProduct} onChange={e => setPrescriptionProduct(e.target.value)}>
-                <option value="">Select product...</option>
-                {PRICE_LIST.map((p, i) => <option key={i} value={p.description}>{p.description}</option>)}
-              </select>
-              <input type="number" min="1" value={prescriptionQty} onChange={e => setPrescriptionQty(Number(e.target.value))} className="w-20 px-3 py-2 rounded-lg border border-gray-300 text-sm" />
-              <Button type="button" variant="secondary" onClick={addPrescription}><Plus size={14} /> Add</Button>
-            </div>
-            {reportForm.prescriptions.length > 0 && (
-              <div className="space-y-1">
-                {reportForm.prescriptions.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded text-sm">
-                    <span>{p.product} x {p.quantity}</span>
-                    <button type="button" onClick={() => removePrescription(i)} className="text-red-500 hover:text-red-700 cursor-pointer"><Trash2 size={14} /></button>
-                  </div>
-                ))}
+      {showReport && selectedCheckup && (() => {
+        const apt = selectedCheckup;
+        const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+        const symptoms = (data.symptoms || []).filter(s => s !== 'none');
+        const lifestyleRecs = getLifestyleRecommendations();
+        return (
+          <div onClick={e => { if (e.target === e.currentTarget) setShowReport(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+            <div style={{ maxWidth: '1000px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowReport(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.8rem', cursor: 'pointer', color: '#666', zIndex: 10 }}>&times;</button>
               </div>
-            )}
+
+              <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #a01830 100%)', padding: '20px 30px', textAlign: 'center', color: 'white', borderRadius: '12px 12px 0 0' }}>
+                <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>DYNAPHARM INTERNATIONAL NAMIBIA</h2>
+                <p style={{ margin: '4px 0', opacity: 0.85, fontSize: '0.9rem' }}>Branch: {data.branch || user?.branch || ''}</p>
+                <h3 style={{ margin: '8px 0 0', fontSize: '1.1rem' }}>Summary Analysis Report Card</h3>
+              </div>
+
+              <div style={{ padding: '24px 30px' }}>
+                {error && <div style={{ background: '#fee', border: '1px solid #c00', color: '#c00', padding: '10px', borderRadius: '6px', marginBottom: '15px' }}>{error}</div>}
+
+                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  <div><strong>Reference:</strong> {apt.id || 'N/A'}</div>
+                  <div><strong>Name:</strong> {apt.full_name || data.fullName || ''}</div>
+                  <div><strong>Age:</strong> {data.age || apt.age || 'N/A'}</div>
+                  <div><strong>Gender:</strong> {data.gender || ''}</div>
+                  <div><strong>Phone:</strong> {data.phone || apt.phone || ''}</div>
+                  <div><strong>Date:</strong> {new Date().toLocaleDateString()}</div>
+                  <div><strong>Consultant:</strong> {user?.full_name || user?.username || ''}</div>
+                  <div><strong>Height:</strong> {data.height || 'N/A'}cm | <strong>Weight:</strong> {data.weight || 'N/A'}kg</div>
+                </div>
+
+                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Presenting Symptoms</h3>
+                  {symptoms.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {symptoms.map((s, i) => (
+                        <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 500 }}>{s.toUpperCase().replace(/_/g, ' ')}</span>
+                      ))}
+                    </div>
+                  ) : <p style={{ color: '#7f8c8d', fontStyle: 'italic', margin: 0 }}>No specific symptoms reported</p>}
+                </div>
+
+                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Health Assessment</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' }}>
+                    <div><strong>Primary Reason:</strong> {data.primaryReason || data.reason || 'N/A'}</div>
+                    <div><strong>Water Intake:</strong> {data.waterIntake || 'Not specified'}</div>
+                    <div><strong>Exercise:</strong> {data.exerciseFreq || 'Not specified'}</div>
+                    <div><strong>Sleep:</strong> {data.sleepHours || 'Not specified'}</div>
+                    <div><strong>Stress Level:</strong> {data.stressLevel || 'Not specified'}/10</div>
+                    <div><strong>Medical History:</strong> {Array.isArray(data.medicalHistory) ? data.medicalHistory.join(', ') : 'None'}</div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#e3f2fd', borderLeft: '5px solid #2196f3', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#2196f3', margin: '0 0 8px', fontSize: '1rem' }}>🩺 ABOUT THE PROBLEMS OF SUB-HEALTH TRENDS</h3>
+                  <p style={{ marginBottom: '15px', color: '#666', fontSize: '0.9rem' }}>Select the body system(s) and symptoms affecting the patient to view lifestyle recommendations:</p>
+                  <div style={{ display: 'grid', gap: '12px', marginBottom: '15px' }}>
+                    {Object.entries(BODY_SYSTEMS_DATABASE).map(([systemName, system]) => {
+                      const sysId = systemName.replace(/[^a-zA-Z0-9]/g, '_');
+                      const isOpen = selectedSystems[sysId];
+                      return (
+                        <div key={sysId} style={{ background: 'white', border: '2px solid #e0e0e0', borderRadius: '8px', padding: '12px', transition: 'all 0.3s' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedSystems(p => ({ ...p, [sysId]: !p[sysId] }))}>
+                            <input type="checkbox" checked={!!isOpen} readOnly style={{ width: '18px', height: '18px', marginRight: '10px', cursor: 'pointer' }} />
+                            <h4 style={{ color: '#2196f3', margin: 0, flex: 1, fontSize: '1rem' }}>{systemName}</h4>
+                            <span style={{ fontSize: '1.1rem', color: '#2196f3' }}>{isOpen ? '▲' : '▼'}</span>
+                          </div>
+                          {isOpen && (
+                            <div style={{ marginTop: '10px', paddingLeft: '28px' }}>
+                              <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '6px', fontWeight: 600 }}>Common Symptoms:</p>
+                              {Object.keys(system.symptoms).map((symptom, si) => {
+                                const key = `${sysId}__${symptom}`;
+                                return (
+                                  <label key={si} style={{ display: 'block', padding: '4px 0', cursor: 'pointer', fontSize: '0.9rem' }}>
+                                    <input type="checkbox" checked={!!selectedSymptomChecks[key]} onChange={() => toggleSystemSymptom(sysId, symptom)} style={{ marginRight: '8px' }} />
+                                    {symptom}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {lifestyleRecs.length > 0 && (
+                    <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '2px solid #2196f3' }}>
+                      <h4 style={{ color: '#2196f3', marginBottom: '15px', fontSize: '1.1rem' }}>📋 Healthy Lifestyle Recommendations</h4>
+                      <div style={{ display: 'grid', gap: '10px' }}>
+                        {lifestyleRecs.map((item, i) => (
+                          <div key={i} style={{ background: '#e3f2fd', padding: '10px 14px', borderRadius: '8px', borderLeft: '4px solid #2196f3' }}>
+                            <div style={{ display: 'flex', alignItems: 'start', gap: '8px' }}>
+                              <span style={{ fontSize: '1.1rem', color: '#2196f3' }}>✓</span>
+                              <div style={{ flex: 1 }}>
+                                <strong style={{ color: '#1976d2', fontSize: '0.9rem' }}>{item.symptom}</strong>
+                                <span style={{ color: '#666', fontSize: '0.8rem', marginLeft: '8px' }}>({item.system})</span>
+                                <p style={{ margin: '4px 0 0', color: '#555', lineHeight: 1.5, fontSize: '0.85rem' }}>{item.recommendation}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {currentRecommendations && (
+                  <div style={{ background: '#e8f5e9', borderLeft: '5px solid #27ae60', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                    <h3 style={{ color: '#27ae60', margin: '0 0 8px', fontSize: '1rem' }}>🎯 AI-Powered Product Recommendations</h3>
+                    <p style={{ marginBottom: '12px', color: '#666', fontSize: '0.9rem' }}>Based on symptoms and health conditions, here are suggested products:</p>
+                    <div style={{ background: 'white', padding: '12px', borderRadius: '8px', border: '2px solid #27ae60' }}>
+                      {Array.from(currentRecommendations.recommendations).map((medicine, i) => {
+                        const reasons = currentRecommendations.reasonsMap.get(medicine) || [];
+                        const uniqueReasons = [...new Set(reasons)];
+                        return (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: i < currentRecommendations.recommendations.size - 1 ? '1px solid #e0e0e0' : 'none' }}>
+                            <div style={{ flex: 1 }}>
+                              <strong style={{ color: '#27ae60', fontSize: '1rem' }}>✓ {medicine}</strong>
+                              <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#666' }}>
+                                {uniqueReasons.map((r, ri) => (
+                                  <span key={ri} style={{ background: '#fff', padding: '2px 8px', borderRadius: '10px', marginRight: '5px', display: 'inline-block', marginTop: '3px', border: '1px solid #ddd' }}>🎯 {r}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <button onClick={() => selectRecommendedMedicine(medicine)} style={{ padding: '5px 15px', fontSize: '0.85rem', background: selectedMedicines.has(medicine) ? '#2ecc71' : '#27ae60', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', marginLeft: '10px' }}>
+                              {selectedMedicines.has(medicine) ? '✓ Added' : 'Add'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button onClick={applyAllRecommendations} style={{ marginTop: '12px', width: '100%', padding: '10px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      ✅ Apply All Recommended Products
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Consultant's Notes & Diagnosis</h3>
+                  <textarea value={consultantNotes} onChange={e => setConsultantNotes(e.target.value)} rows={5} style={{ width: '100%', padding: '10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.95rem', resize: 'vertical', boxSizing: 'border-box' }} placeholder="Enter diagnosis and treatment notes..." />
+                  {consultantNotes && (
+                    <div style={{ marginTop: '8px', background: '#f8f9fa', padding: '10px', borderRadius: '6px' }}>
+                      <h4 style={{ margin: '0 0 5px', fontSize: '0.9rem', color: '#2c3e50' }}>Diagnosis & Treatment Notes:</h4>
+                      <div style={{ color: '#555', fontSize: '0.9rem' }}>{consultantNotes}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Follow-up Information</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'center' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', fontWeight: 500 }}>Recommended Follow-up Date:</label>
+                      <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} style={{ width: '100%', padding: '8px', border: '2px solid #e2e8f0', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', fontWeight: 500 }}>Follow-up Notes (Optional):</label>
+                      <input type="text" value={followUpNotes} onChange={e => setFollowUpNotes(e.target.value)} placeholder="e.g., Review progress, adjust dosage..." style={{ width: '100%', padding: '8px', border: '2px solid #e2e8f0', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Prescription & Medicine Selection</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px', maxHeight: '400px', overflowY: 'auto', marginBottom: '12px' }}>
+                    {Object.entries(PACKAGE_DATABASE).map(([pkgName, pkgInfo], idx) => (
+                      <div key={`pkg-${idx}`} style={{ background: '#e8f5e9', borderLeft: '4px solid #27ae60', padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px' }}>
+                        <input type="checkbox" checked={selectedMedicines.has(pkgName)} onChange={() => toggleMedicine(pkgName)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
+                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(pkgName)}>
+                          <span style={{ fontWeight: 'bold', color: '#27ae60' }}>📦 {pkgName}</span>
+                          <br /><small style={{ color: '#666' }}>Package ({pkgInfo.products.length} products) - DP: N${pkgInfo.price.dp} | CP: N${pkgInfo.price.cp} | BV: {pkgInfo.price.bv}</small>
+                          <br /><small style={{ fontSize: '0.75rem', color: '#888' }}>Contains: {pkgInfo.products.map(p => `${p.name} (Qty: ${p.quantity})`).join(', ')}</small>
+                        </label>
+                      </div>
+                    ))}
+                    {PRICE_LIST.map((product, idx) => (
+                      <div key={`prod-${idx}`} style={{ padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: '1px solid #f0f0f0' }}>
+                        <input type="checkbox" checked={selectedMedicines.has(product.description)} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
+                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(product.description)}>
+                          {product.description}
+                          <br /><small style={{ color: '#666', fontSize: '0.85rem' }}>DP: N${product.dp} | CP: N${product.cp} | BV: {product.bv}</small>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedMedicines.size > 0 && (
+                    <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #86efac' }}>
+                      <h4 style={{ margin: '0 0 8px', color: '#166534' }}>Prescribed Medicines:</h4>
+                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                        {Array.from(selectedMedicines).map((med, i) => <li key={i} style={{ padding: '2px 0', color: '#166534' }}>{med}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                      <div>
+                        <h4 style={{ margin: '0 0 4px', color: '#2c3e50' }}>Consultant Signature</h4>
+                        <div style={{ borderBottom: '2px solid #333', width: '200px', marginBottom: '4px' }}></div>
+                        <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>{user?.full_name || user?.username || ''}</p>
+                        <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px' }}>
+                          <p style={{ margin: 0 }}>Tel: {user?.phone || '061-300877'}</p>
+                          <p style={{ margin: 0 }}>Email: {user?.email || 'info@dynapharm.com.na'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 style={{ margin: '0 0 4px', color: '#2c3e50' }}>Follow-up Date</h4>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#c41e3a' }}>
+                          {followUpDate ? new Date(followUpDate).toLocaleDateString('en-GB') : '________________'}
+                        </div>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#666' }}>Next appointment recommended</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+                  <div></div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={handleSaveReport} disabled={submitting} style={{ padding: '10px 20px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.6 : 1 }}>
+                      {submitting ? '⏳ Saving...' : '💾 Save Report'}
+                    </button>
+                    <button onClick={handleSaveReport} disabled={submitting} style={{ padding: '10px 20px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.6 : 1 }}>
+                      ✅ Finalize & E-Sign
+                    </button>
+                    <button onClick={printReport} style={{ padding: '10px 20px', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+                      🖨️ Print
+                    </button>
+                    <button onClick={() => setShowReport(false)} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+                      📄 Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setShowReport(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Report'}</Button>
-          </div>
-        </form>
-      </Modal>
+        );
+      })()}
     </div>
   );
 }
