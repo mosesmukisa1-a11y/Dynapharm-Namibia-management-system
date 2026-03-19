@@ -6,6 +6,7 @@ import * as Icons from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
 import { LoginModal } from './LoginModal';
+import { DistributorLoginModal } from './DistributorLoginModal';
 
 function PortalIcon({ name, size = 18 }) {
   const Icon = Icons[name];
@@ -18,6 +19,7 @@ export function Layout() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [distributorLoginOpen, setDistributorLoginOpen] = useState(false);
 
   const accessiblePortals = getAccessiblePortals();
   const visiblePortals = PORTALS.filter(p => accessiblePortals.includes(p.id));
@@ -44,7 +46,10 @@ export function Layout() {
                 <button onClick={() => navigate('/')} className="text-sm text-gray-600 hover:text-primary cursor-pointer">Home</button>
                 <button onClick={() => navigate('/shop')} className="text-sm text-gray-600 hover:text-primary cursor-pointer">Shop</button>
                 <button onClick={() => navigate('/checkup')} className="text-sm text-gray-600 hover:text-primary cursor-pointer">Health Check</button>
-                <button onClick={() => setLoginOpen(true)} className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-colors cursor-pointer">
+                <button onClick={() => setDistributorLoginOpen(true)} className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-colors cursor-pointer">
+                  Distributor Login
+                </button>
+                <button onClick={() => setLoginOpen(true)} className="px-3 py-2 text-sm text-gray-600 hover:text-primary cursor-pointer">
                   Staff Login
                 </button>
               </div>
@@ -121,6 +126,7 @@ export function Layout() {
       </main>
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <DistributorLoginModal open={distributorLoginOpen} onClose={() => setDistributorLoginOpen(false)} />
     </div>
   );
 }

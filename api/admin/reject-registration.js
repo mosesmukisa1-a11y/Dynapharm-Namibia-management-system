@@ -24,14 +24,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    const STAFF_ROLES = ['frontdesk', 'consultant', 'dispenser', 'branch_manager', 'finance', 'hr_manager', 'gm', 'director', 'mis', 'stock', 'warehouse'];
     const user = await getOne('SELECT id, role, is_active FROM users WHERE id = $1', [userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!STAFF_ROLES.includes(user.role) || user.is_active === true) {
-      return res.status(400).json({ error: 'Only pending staff registrations can be rejected' });
+    if (user.is_active === true) {
+      return res.status(400).json({ error: 'Cannot reject an active account' });
     }
 
     await query('DELETE FROM users WHERE id = $1 AND is_active = FALSE', [userId]);

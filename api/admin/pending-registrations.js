@@ -18,9 +18,9 @@ export default async function handler(req, res) {
     }
 
     const rows = await getMany(
-      `SELECT id, username, full_name, role, email, phone, metadata, created_at
+      `SELECT id, username, full_name, role, email, phone, branch, metadata, created_at
        FROM users
-       WHERE is_active = FALSE AND role != 'distributor'
+       WHERE is_active = FALSE
        ORDER BY created_at DESC`,
       []
     );

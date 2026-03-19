@@ -5,6 +5,7 @@ const AuthContext = createContext(null);
 
 const ROLE_PORTAL_ACCESS = {
   admin: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'admin', 'training'],
+  distributor: ['distributor'],
   frontdesk: ['distributor', 'frontdesk'],
   consultant: ['consultant'],
   dispenser: ['distributor', 'frontdesk', 'branch'],

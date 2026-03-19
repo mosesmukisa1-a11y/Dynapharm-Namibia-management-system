@@ -124,7 +124,10 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 - JWT tokens in httpOnly cookies
 - Auth middleware in server.js for all /api/* routes
 - Public routes: login, logout, register, health, GET products/branches, POST orders/appointments
-- Staff registration requires admin approval
+- **Staff registration**: via LoginModal (Staff Access), requires admin approval
+- **Distributor registration**: via DistributorLoginModal (Distributor Access), uses NB number lookup to auto-fill name from distributors table, requires admin approval
+- Admin can approve/reject both staff and distributor registrations from the Admin Portal "Staff Approvals" tab (with All/Distributors/Staff filter)
+- Admin can reset passwords for any user from the "User Management" tab
 
 ## Environment Variables
 - `DATABASE_URL` — PostgreSQL connection string (required)

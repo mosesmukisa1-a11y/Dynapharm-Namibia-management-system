@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginModal } from '../components/LoginModal';
+import { DistributorLoginModal } from '../components/DistributorLoginModal';
 import { useState, useEffect } from 'react';
-import { Heart, Leaf, Globe, Users, ShieldCheck, Award, ChevronRight, LogIn, ShoppingCart, Stethoscope, MapPin, Phone } from 'lucide-react';
+import { Heart, Leaf, Globe, Users, ShieldCheck, Award, ChevronRight, LogIn, ShoppingCart, Stethoscope, MapPin, Phone, UserCircle } from 'lucide-react';
 import { BRANCH_DETAILS, COMPANY_INFO } from '../lib/constants';
 
 const HERO_SLIDES = [
@@ -15,6 +16,7 @@ export default function Landing() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [distributorLoginOpen, setDistributorLoginOpen] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
 
   useEffect(() => {
@@ -56,12 +58,20 @@ export default function Landing() {
               <Stethoscope size={18} /> Full Body Check Up
             </button>
             {!user && (
-              <button
-                onClick={() => setLoginOpen(true)}
-                className="px-8 py-3.5 bg-white/10 backdrop-blur text-white font-bold rounded-full border-2 border-white/30 hover:bg-white/20 transition-all cursor-pointer flex items-center gap-2"
-              >
-                <LogIn size={18} /> Distributor / Staff Login
-              </button>
+              <>
+                <button
+                  onClick={() => setDistributorLoginOpen(true)}
+                  className="px-8 py-3.5 bg-white/10 backdrop-blur text-white font-bold rounded-full border-2 border-white/30 hover:bg-white/20 transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <UserCircle size={18} /> Distributor Login
+                </button>
+                <button
+                  onClick={() => setLoginOpen(true)}
+                  className="px-7 py-3 bg-white/5 backdrop-blur text-white/80 font-medium rounded-full border border-white/20 hover:bg-white/10 transition-all cursor-pointer flex items-center gap-2 text-sm"
+                >
+                  <LogIn size={16} /> Staff Login
+                </button>
+              </>
             )}
           </div>
 
@@ -149,12 +159,20 @@ export default function Landing() {
               Browse Products <ChevronRight size={18} />
             </button>
             {!user && (
-              <button
-                onClick={() => setLoginOpen(true)}
-                className="px-8 py-3 border-2 border-white text-white font-bold rounded-full hover:bg-white/10 transition-all cursor-pointer flex items-center gap-2"
-              >
-                <LogIn size={18} /> Staff Login
-              </button>
+              <>
+                <button
+                  onClick={() => setDistributorLoginOpen(true)}
+                  className="px-8 py-3 border-2 border-white text-white font-bold rounded-full hover:bg-white/10 transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <UserCircle size={18} /> Distributor Login
+                </button>
+                <button
+                  onClick={() => setLoginOpen(true)}
+                  className="px-7 py-2.5 border border-white/50 text-white/80 font-medium rounded-full hover:bg-white/10 transition-all cursor-pointer flex items-center gap-2 text-sm"
+                >
+                  <LogIn size={16} /> Staff Login
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -179,6 +197,7 @@ export default function Landing() {
       </footer>
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <DistributorLoginModal open={distributorLoginOpen} onClose={() => setDistributorLoginOpen(false)} />
     </div>
   );
 }

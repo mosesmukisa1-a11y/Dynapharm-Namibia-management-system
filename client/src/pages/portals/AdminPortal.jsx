@@ -41,6 +41,7 @@ function RegistrationsTab() {
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [filter, setFilter] = useState('all');
 
   const loadPending = () => {
     setLoading(true);
@@ -74,39 +75,74 @@ function RegistrationsTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const distributorPending = pending.filter(u => u.role === 'distributor');
+  const staffPending = pending.filter(u => u.role !== 'distributor');
+  const filtered = filter === 'distributor' ? distributorPending : filter === 'staff' ? staffPending : pending;
+
   return (
-    <div>
+    <div className="space-y-4">
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <div className="flex gap-2">
+        <button onClick={() => setFilter('all')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${filter === 'all' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          All ({pending.length})
+        </button>
+        <button onClick={() => setFilter('distributor')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${filter === 'distributor' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Distributors ({distributorPending.length})
+        </button>
+        <button onClick={() => setFilter('staff')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${filter === 'staff' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Staff ({staffPending.length})
+        </button>
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Pending Staff Registrations</h3>
-            <Badge variant="warning">{pending.length} pending</Badge>
+            <h3 className="font-bold text-gray-800">Pending Registrations</h3>
+            <Badge variant="warning">{filtered.length} pending</Badge>
           </div>
         </CardHeader>
-        {pending.length === 0 ? (
+        {filtered.length === 0 ? (
           <CardBody>
-            <EmptyState icon={<UserCheck size={48} />} title="No Pending Registrations" description="All staff registrations have been processed." />
+            <EmptyState icon={<UserCheck size={48} />} title="No Pending Registrations" description="All registrations have been processed." />
           </CardBody>
         ) : (
           <div className="divide-y">
-            {pending.map(user => (
-              <div key={user.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-gray-800">{user.full_name}</p>
-                  <p className="text-sm text-gray-500">Username: <strong>{user.username || '-'}</strong> | Role: <Badge variant="info">{user.role}</Badge></p>
-                  <p className="text-xs text-gray-400">{formatDateTime(user.created_at)}</p>
+            {filtered.map(user => {
+              const isDistributor = user.role === 'distributor';
+              let meta = {};
+              try { meta = typeof user.metadata === 'string' ? JSON.parse(user.metadata || '{}') : (user.metadata || {}); } catch(e) {}
+              return (
+                <div key={user.id} className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-800">{user.full_name}</p>
+                      {isDistributor && <Badge variant="primary">Distributor</Badge>}
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      {isDistributor ? (
+                        <>NB Number: <strong>{(user.username || '').toUpperCase()}</strong> | Branch: {user.branch || meta.branch || '-'}</>
+                      ) : (
+                        <>Username: <strong>{user.username || '-'}</strong> | Role: <Badge variant="info">{user.role}</Badge></>
+                      )}
+                    </p>
+                    {user.email && <p className="text-xs text-gray-400">{user.email}</p>}
+                    <p className="text-xs text-gray-400">{formatDateTime(user.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="success" onClick={() => handleApprove(user.id, user.username || user.full_name.toLowerCase().replace(/\s+/g, '.'))}>
+                      <UserCheck size={14} /> Approve
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => handleReject(user.id)}>
+                      <UserX size={14} /> Reject
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="success" onClick={() => handleApprove(user.id, user.username || user.full_name.toLowerCase().replace(/\s+/g, '.'))}>
-                    <UserCheck size={14} /> Approve
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => handleReject(user.id)}>
-                    <UserX size={14} /> Reject
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

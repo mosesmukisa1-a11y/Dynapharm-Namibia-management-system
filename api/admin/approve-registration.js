@@ -24,14 +24,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    const STAFF_ROLES = ['frontdesk', 'consultant', 'dispenser', 'branch_manager', 'finance', 'hr_manager', 'gm', 'director', 'mis', 'stock', 'warehouse'];
+    const ALLOWED_ROLES = ['frontdesk', 'consultant', 'dispenser', 'branch_manager', 'finance', 'hr_manager', 'gm', 'director', 'mis', 'stock', 'warehouse', 'distributor', 'training'];
     const user = await getOne('SELECT id, is_active, role FROM users WHERE id = $1', [userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!STAFF_ROLES.includes(user.role)) {
-      return res.status(400).json({ error: 'Only staff registrations can be approved here' });
+    if (!ALLOWED_ROLES.includes(user.role)) {
+      return res.status(400).json({ error: 'This role cannot be approved through this interface' });
     }
 
     if (user.is_active) {
