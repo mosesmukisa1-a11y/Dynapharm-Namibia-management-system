@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
@@ -808,7 +808,7 @@ function PrescriptionsTab() {
           const dispensed = medicines.filter(m => m.dispensed).length;
           const total = medicines.length;
           const clientMembershipStatus = report.membership_status || 'referred';
-          const consultationFee = 150;
+          const consultFee = getConsultationFee(clientMembershipStatus);
           const totals = calculatePrescriptionTotals(medicines, clientMembershipStatus);
 
           return (
@@ -877,7 +877,11 @@ function PrescriptionsTab() {
 
                 <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '20px', borderRadius: '8px', marginTop: '20px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
                   <h4 style={{ color: 'white', marginBottom: '12px', textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>💰 Prescription Summary</h4>
-                  <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', marginBottom: '18px' }}>Includes N${consultationFee} consultation fee</p>
+                  <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', marginBottom: '18px' }}>
+                    <div style={{ marginBottom: '4px' }}>{consultFee.label}: N${consultFee.total}</div>
+                    <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>{consultFee.note}</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.75, marginTop: '2px' }}>Consultation fees not included in branch sales</div>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
                     <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                       <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Total</div>

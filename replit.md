@@ -34,7 +34,7 @@ The backend is an Express.js server responsible for serving the API and the Reac
 The system utilizes a PostgreSQL database with 40 fully migrated tables, including products, branches, users, distributors (12,500+ records), and various operational tables. Key data like products, branches, and warehouses are pre-seeded. A super admin user is auto-seeded for initial setup.
 
 ### Authentication
-Authentication is managed via JWT tokens stored in httpOnly cookies. All `/api/*` routes are protected by auth middleware, with exceptions for public endpoints. Both staff and distributor registrations require admin approval, which can be managed through the Admin Portal.
+Authentication is optional — all portals are accessible without login. JWT tokens stored in httpOnly cookies provide user identity when logged in, but the system functions without authentication. All API routes are public (GET, POST, PUT, PATCH, DELETE) — no auth middleware blocks access. The `useAuth` hook returns `{ user: null }` when not logged in, and all portal components handle this gracefully with optional chaining. Both staff and distributor registrations require admin approval, which can be managed through the Admin Portal.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for all system data.
@@ -55,3 +55,13 @@ The Consultant Portal (`/consultant`) provides comprehensive client management, 
 - **Staff Services**: Leave Management and Cash Support cards with Request/View modals; Leave form (type/dates/reason/urgent); Cash form (amount/purpose/urgent); Request history display with status badges
 - **API endpoints**: `/api/leave-requests` and `/api/cash-requests` (GET/POST) for staff service requests (in-memory storage)
 - **API fix**: `appointments.update` and `clients.update` now send `id` in request body (not URL path) to match backend handler expectations
+
+## Consultation Fees
+- **Non-members**: Pay N$200 total consultation fee (N$50 goes to referral distributor, N$150 credited to consultant)
+- **Members**: Pay N$150 consultation fee (all credited to consultant)
+- **Default referral** (non-member): Dynapharm Namibia NB005676
+- **Consultation fees do NOT count in branch sales** — they are separate from medicine/product totals
+- `getConsultationFee(membershipStatus)` in pricing.js returns full fee breakdown
+- `calculatePrescriptionTotals()` no longer includes consultation fee in medicine totals — fee is shown separately in the prescription summary
+- Reports saved via consultant portal include `consultation_fee`, `consultant_credit`, `referral_credit`, and `referral_distributor` fields
+- `api.reports.update(id, data)` now available for updating report dispensing state

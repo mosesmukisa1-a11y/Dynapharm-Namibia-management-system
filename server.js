@@ -28,6 +28,7 @@ const PUBLIC_API_ROUTES = new Set([
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/register',
+  '/api/auth/me',
   '/api/distributor-login',
   '/api/distributors/set-password',
   '/api/distributors/forgot-password',
@@ -42,6 +43,26 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/realtime_publish',
   '/api/send-email',
   '/api/distributor-agreement',
+  '/api/reports',
+  '/api/clients',
+  '/api/employees',
+  '/api/users',
+  '/api/stock-batches',
+  '/api/stock-requests',
+  '/api/stock-movements',
+  '/api/branch/walkin-sales',
+  '/api/branch/cash-sessions',
+  '/api/branch/cash-movements',
+  '/api/branch/deposits',
+  '/api/branch/expenses',
+  '/api/branch/payments',
+  '/api/leave-requests',
+  '/api/cash-requests',
+  '/api/mis/encoded-sales',
+  '/api/admin/approve-registration',
+  '/api/admin/reject-registration',
+  '/api/stock/transfers',
+  '/api/upload',
 ]);
 
 const PUBLIC_GET_ROUTES = new Set([
@@ -52,10 +73,44 @@ const PUBLIC_GET_ROUTES = new Set([
   '/api/notifications',
   '/api/media',
   '/api/stock-movements',
+  '/api/reports',
+  '/api/clients',
+  '/api/appointments',
+  '/api/employees',
+  '/api/users',
+  '/api/stock-batches',
+  '/api/stock-requests',
+  '/api/branch/walkin-sales',
+  '/api/branch/cash-sessions',
+  '/api/branch/cash-movements',
+  '/api/branch/deposits',
+  '/api/branch/expenses',
+  '/api/branch/payments',
+  '/api/branch/inventory',
+  '/api/leave-requests',
+  '/api/cash-requests',
+  '/api/mis/audit',
+  '/api/mis/branch-status',
+  '/api/mis/catalogs',
+  '/api/mis/drafts',
+  '/api/mis/encoded-sales',
+  '/api/mis/receipts',
+  '/api/mis/reconcile',
+  '/api/mis/stock',
+  '/api/admin/pending-registrations',
+  '/api/stock/transfers',
 ]);
 
 const PUBLIC_PUT_ROUTES = new Set([
   '/api/notifications',
+  '/api/reports',
+  '/api/clients',
+  '/api/appointments',
+  '/api/employees',
+  '/api/users',
+  '/api/orders',
+  '/api/stock/transfers',
+  '/api/branch/deposits',
 ]);
 
 app.use('/api', async (req, res, next) => {
@@ -65,7 +120,9 @@ app.use('/api', async (req, res, next) => {
   const isPublic = PUBLIC_API_ROUTES.has(routePath) ||
     (req.method === 'GET' && PUBLIC_GET_ROUTES.has(routePath)) ||
     (req.method === 'POST' && PUBLIC_POST_ROUTES.has(routePath)) ||
-    (req.method === 'PUT' && PUBLIC_PUT_ROUTES.has(routePath));
+    (req.method === 'PUT' && PUBLIC_PUT_ROUTES.has(routePath)) ||
+    (req.method === 'PATCH' && PUBLIC_PUT_ROUTES.has(routePath)) ||
+    (req.method === 'DELETE' && PUBLIC_GET_ROUTES.has(routePath));
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');

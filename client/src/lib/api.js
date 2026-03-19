@@ -129,6 +129,7 @@ export const api = {
   reports: {
     list: () => api.get('/reports'),
     create: (data) => api.post('/reports', data),
+    update: (id, data) => api.put('/reports', { ...data, id }),
   },
 
   admin: {

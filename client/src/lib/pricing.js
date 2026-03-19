@@ -389,9 +389,30 @@ export const RECOMMENDATION_DATABASE = {
   general: ['Spirulina Tabs', 'Dyna C- 150\'s', 'Bee Pollen Capsule 100\'s']
 };
 
+export function getConsultationFee(membershipStatus) {
+  const isMember = membershipStatus === 'member';
+  return {
+    total: isMember ? 150 : 200,
+    consultantCredit: 150,
+    referralCredit: isMember ? 0 : 50,
+    isMember,
+    label: isMember ? 'Member Consultation Fee' : 'Non-Member Consultation Fee',
+    note: isMember
+      ? 'N$150 credited to consultant'
+      : 'N$50 to referral distributor, N$150 credited to consultant',
+  };
+}
+
 export function calculatePrescriptionTotals(medicines, membershipStatus) {
-  const consultationFee = 150;
-  const totals = { total: { dp: consultationFee, cp: consultationFee, bv: 0 }, dispensed: { dp: 0, cp: 0, bv: 0 }, paid: { dp: 0, cp: 0, bv: 0 }, outstanding: { dp: 0, cp: 0, bv: 0 }, pending: { dp: 0, cp: 0, bv: 0 } };
+  const fee = getConsultationFee(membershipStatus);
+  const totals = {
+    total: { dp: 0, cp: 0, bv: 0 },
+    dispensed: { dp: 0, cp: 0, bv: 0 },
+    paid: { dp: 0, cp: 0, bv: 0 },
+    outstanding: { dp: 0, cp: 0, bv: 0 },
+    pending: { dp: 0, cp: 0, bv: 0 },
+    consultationFee: fee,
+  };
   if (!medicines || !medicines.length) return totals;
   medicines.forEach(med => {
     const isPackage = PACKAGE_DATABASE[med.name];

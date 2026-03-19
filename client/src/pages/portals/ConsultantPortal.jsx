@@ -219,13 +219,17 @@ function CheckupsSection() {
   };
 
   const handleSaveReport = async () => {
-    if (selectedMedicines.size === 0) { alert('Please select at least one medicine!'); return; }
     setSubmitting(true);
     setError('');
     const apt = selectedCheckup;
+    if (!apt) { setError('No checkup selected'); setSubmitting(false); return; }
     const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
     const selectedSymptoms = getLifestyleRecommendations();
     const medicines = Array.from(selectedMedicines).map(name => ({ name, dispensed: false }));
+    const membershipStatus = data.membershipStatus || data.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
+    const consultationFee = isMember ? 150 : 200;
+    const referralDistributor = isMember ? null : (data.referralDistributor || 'Dynapharm Namibia NB005676');
     try {
       await api.reports.create({
         client_name: apt.full_name || data.fullName || '',
@@ -237,10 +241,23 @@ function CheckupsSection() {
         follow_up_date: followUpDate,
         follow_up_notes: followUpNotes,
         symptoms: selectedSymptoms,
-        consultant: user?.full_name || user?.username || '',
+        consultant: user?.full_name || user?.username || 'Consultant',
+        membership_status: membershipStatus,
+        consultation_fee: consultationFee,
+        consultant_credit: 150,
+        referral_credit: isMember ? 0 : 50,
+        referral_distributor: referralDistributor,
       });
       setShowReport(false);
       setSelectedCheckup(null);
+      setSelectedMedicines(new Set());
+      setSelectedSystems({});
+      setSelectedSymptomChecks({});
+      setConsultantNotes('');
+      setFollowUpDate('');
+      setFollowUpNotes('');
+      setCurrentRecommendations(null);
+      setError('');
       loadCheckups();
     } catch (err) {
       setError(err.message || 'Failed to save report');
