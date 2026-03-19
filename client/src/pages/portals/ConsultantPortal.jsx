@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate } from '../../lib/constants';
 import { PRICE_LIST } from '../../lib/pricing';
+import { SYMPTOM_PRODUCT_MAP } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Stethoscope, Users, FileText, Bell, BarChart3, ClipboardList, Plus, Trash2 } from 'lucide-react';
+import { Stethoscope, Users, FileText, Bell, BarChart3, ClipboardList, Plus, Trash2, Activity } from 'lucide-react';
 
 export default function ConsultantPortal() {
   const [activeTab, setActiveTab] = useState('checkups');
   const tabs = [
     { id: 'checkups', label: 'Checkup Forms', icon: '📋' },
+    { id: 'symptoms', label: 'Symptom Checker', icon: '🩺' },
     { id: 'clients', label: 'Clients', icon: '👥' },
     { id: 'reports', label: 'Reports', icon: '📝' },
     { id: 'followups', label: 'Follow-ups', icon: '🔔' },
@@ -27,6 +29,7 @@ export default function ConsultantPortal() {
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'checkups' && <CheckupsTab />}
+        {activeTab === 'symptoms' && <SymptomCheckerTab />}
         {activeTab === 'clients' && <ClientsTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'followups' && <FollowupsTab />}
@@ -476,6 +479,119 @@ function AnalyticsTab() {
             </div>
           </CardBody>
         </Card>
+      )}
+    </div>
+  );
+}
+
+function SymptomCheckerTab() {
+  const [selectedSymptoms, setSelectedSymptoms] = useState([]);
+  const [clientName, setClientName] = useState('');
+  const allSymptoms = Object.keys(SYMPTOM_PRODUCT_MAP);
+
+  const toggleSymptom = (symptom) => {
+    setSelectedSymptoms(prev =>
+      prev.includes(symptom)
+        ? prev.filter(s => s !== symptom)
+        : [...prev, symptom]
+    );
+  };
+
+  const suggestedProducts = [...new Set(
+    selectedSymptoms.flatMap(s => SYMPTOM_PRODUCT_MAP[s] || [])
+  )];
+
+  const productFrequency = {};
+  selectedSymptoms.forEach(s => {
+    (SYMPTOM_PRODUCT_MAP[s] || []).forEach(p => {
+      productFrequency[p] = (productFrequency[p] || 0) + 1;
+    });
+  });
+
+  const sortedProducts = suggestedProducts.sort((a, b) => (productFrequency[b] || 0) - (productFrequency[a] || 0));
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <Activity size={18} className="text-primary" /> Symptom Checklist & Product Suggestions
+          </h3>
+        </CardHeader>
+        <CardBody>
+          <Input
+            label="Client Name (optional)"
+            value={clientName}
+            onChange={e => setClientName(e.target.value)}
+            placeholder="Enter client name..."
+            className="mb-4 max-w-md"
+          />
+          <p className="text-sm text-gray-600 mb-3">Select symptoms reported by the client:</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {allSymptoms.map(symptom => (
+              <button
+                key={symptom}
+                onClick={() => toggleSymptom(symptom)}
+                className={`p-3 rounded-lg text-sm text-left border transition-all cursor-pointer ${
+                  selectedSymptoms.includes(symptom)
+                    ? 'bg-primary/10 border-primary text-primary font-medium'
+                    : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <span className="mr-2">{selectedSymptoms.includes(symptom) ? '✓' : '○'}</span>
+                {symptom}
+              </button>
+            ))}
+          </div>
+          {selectedSymptoms.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <Badge variant="primary">{selectedSymptoms.length} symptom(s) selected</Badge>
+              <button onClick={() => setSelectedSymptoms([])} className="text-xs text-red-500 underline cursor-pointer">Clear all</button>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {sortedProducts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Suggested Products ({sortedProducts.length})</h3>
+          </CardHeader>
+          <CardBody>
+            <p className="text-sm text-gray-500 mb-3">Based on selected symptoms, the following products are recommended (sorted by relevance):</p>
+            <div className="space-y-2">
+              {sortedProducts.map((product, idx) => {
+                const matchCount = productFrequency[product] || 0;
+                const priceEntry = PRICE_LIST.find(p => p.description === product);
+                const matchedSymptoms = selectedSymptoms.filter(s => (SYMPTOM_PRODUCT_MAP[s] || []).includes(product));
+                return (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-800 text-sm">{product}</span>
+                        {matchCount >= 3 && <Badge variant="success">Highly Recommended</Badge>}
+                        {matchCount === 2 && <Badge variant="info">Recommended</Badge>}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Matches: {matchedSymptoms.join(', ')}</p>
+                    </div>
+                    <div className="text-right">
+                      {priceEntry && (
+                        <div>
+                          <p className="text-xs text-gray-500">DP: N$ {priceEntry.dp?.toFixed(2) || '-'}</p>
+                          <p className="text-xs text-gray-400">CP: N$ {priceEntry.cp?.toFixed(2) || '-'}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {selectedSymptoms.length > 0 && sortedProducts.length === 0 && (
+        <Alert type="info">No product suggestions found for the selected symptoms. Please consult the product catalog.</Alert>
       )}
     </div>
   );

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST } from '../../lib/pricing';
+import { generateReceiptHTML, printReceipt } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function BranchPortal() {
   const [activeTab, setActiveTab] = useState('walkIn');
@@ -46,6 +48,7 @@ export default function BranchPortal() {
 }
 
 function WalkInSalesTab() {
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +134,7 @@ function WalkInSalesTab() {
         total_bv: cartData.totalBV,
       };
       await api.branch.createWalkinSale(saleData);
-      setReceipt({ ...saleData, created_at: new Date().toISOString() });
+      setReceipt({ ...saleData, branch: user?.branch || '', created_at: new Date().toISOString() });
       setCart([]);
       setShowReview(false);
       const salesRes = await api.branch.walkinSales().catch(() => ({ sales: [] }));
@@ -146,15 +149,45 @@ function WalkInSalesTab() {
   if (loading) return <LoadingSpinner />;
 
   if (receipt) {
+    const receiptHTML = generateReceiptHTML({
+      receiptNumber: receipt.receipt_number,
+      branch: receipt.branch || user?.branch || '',
+      items: receipt.items,
+      totalAmount: receipt.total_amount,
+      totalBV: receipt.total_bv,
+      paymentMethod: receipt.payment_method,
+      customerType: receipt.customer_type,
+      customerName: receipt.distributor_name || null,
+      cashier: user?.full_name || user?.username || null,
+      showBV: receipt.customer_type === 'member',
+    });
+
     return (
       <div className="max-w-lg mx-auto">
         <Card>
-          <CardHeader><h3 className="font-bold text-green-700 text-center">Sale Complete</h3></CardHeader>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-green-700">Sale Complete</h3>
+              <Button size="sm" variant="secondary" onClick={() => printReceipt(receiptHTML)}>
+                <Printer size={14} /> Print Receipt
+              </Button>
+            </div>
+          </CardHeader>
           <CardBody>
             <div className="text-center mb-4">
+              <img src={COMPANY_INFO.logo} alt="Dynapharm" className="h-12 mx-auto mb-2" onError={e => { e.target.style.display = 'none'; }} />
+              <p className="text-xs text-gray-500 font-semibold">{COMPANY_INFO.name}</p>
+              <p className="text-xs text-gray-400">{COMPANY_INFO.tagline}</p>
+              {(user?.branch || receipt.branch) && (() => {
+                const bi = BRANCH_DETAILS.find(b => b.name === (user?.branch || receipt.branch));
+                return bi ? <p className="text-xs text-gray-400 mt-1">{bi.name} | {bi.phone}</p> : null;
+              })()}
+            </div>
+            <div className="text-center mb-3">
               <p className="text-2xl font-bold text-green-600">✓</p>
               <p className="text-sm text-gray-500">Receipt: {receipt.receipt_number}</p>
               <p className="text-sm text-gray-500">{formatDateTime(receipt.created_at)}</p>
+              {user?.full_name && <p className="text-xs text-gray-400">Cashier: {user.full_name}</p>}
             </div>
             <div className="border-t pt-3 space-y-1">
               {receipt.items.map((item, i) => (
@@ -168,9 +201,15 @@ function WalkInSalesTab() {
               <span>Total</span>
               <span>{formatCurrency(receipt.total_amount)}</span>
             </div>
-            <p className="text-sm text-gray-500 mt-1">BV: {receipt.total_bv} | Payment: {receipt.payment_method}</p>
+            {receipt.customer_type === 'member' && <p className="text-sm text-gray-500 mt-1">BV: {receipt.total_bv}</p>}
+            <p className="text-sm text-gray-500">Payment: {receipt.payment_method}</p>
             {receipt.distributor_name && <p className="text-sm text-gray-500">Member: {receipt.distributor_name}</p>}
-            <Button className="w-full mt-4" onClick={() => setReceipt(null)}>New Sale</Button>
+            <div className="flex gap-2 mt-4">
+              <Button className="flex-1" onClick={() => setReceipt(null)}>New Sale</Button>
+              <Button variant="secondary" onClick={() => printReceipt(receiptHTML)}>
+                <Printer size={14} /> Print
+              </Button>
+            </div>
           </CardBody>
         </Card>
       </div>

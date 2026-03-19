@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, WINDHOEK_BRANCHES, DELIVERY_FEE_RULES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Table, Alert, Select, Textarea } from '../../components/ui';
 import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus, Package, Eye, Send, Megaphone } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function FrontDeskPortal() {
   const [activeTab, setActiveTab] = useState('appointments');
@@ -518,16 +519,29 @@ function ClientLookupTab() {
 }
 
 function DeliveryTab() {
+  const { user } = useAuth();
   const [deliveries, setDeliveries] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ order_id: '', delivery_date: '', address: '', driver: '', notes: '' });
+  const [form, setForm] = useState({ order_id: '', delivery_date: '', address: '', driver: '', notes: '', destination_branch: '', proof_of_payment: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const deliveryFee = form.destination_branch
+    ? (DELIVERY_FEE_RULES.isWindhoek(form.destination_branch) ? DELIVERY_FEE_RULES.windhoekFee : DELIVERY_FEE_RULES.outsideWindhoekFee)
+    : null;
 
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.delivery_date || !form.address) {
       setError('Delivery date and address are required');
+      return;
+    }
+    if (!form.destination_branch) {
+      setError('Please select a destination branch');
+      return;
+    }
+    if (deliveryFee > 0 && !form.proof_of_payment) {
+      setError('Proof of payment is required for deliveries outside Windhoek (N$150 delivery fee)');
       return;
     }
     setSubmitting(true);
@@ -539,11 +553,14 @@ function DeliveryTab() {
         address: form.address,
         driver: form.driver,
         notes: form.notes,
+        destination_branch: form.destination_branch,
+        delivery_fee: deliveryFee,
+        proof_of_payment: form.proof_of_payment,
         status: 'scheduled',
       };
       setDeliveries(prev => [...prev, { ...delivery, id: Date.now(), created_at: new Date().toISOString() }]);
       setShowModal(false);
-      setForm({ order_id: '', delivery_date: '', address: '', driver: '', notes: '' });
+      setForm({ order_id: '', delivery_date: '', address: '', driver: '', notes: '', destination_branch: '', proof_of_payment: '' });
     } catch (err) {
       setError(err.message || 'Failed to schedule delivery');
     }
@@ -556,6 +573,11 @@ function DeliveryTab() {
 
   return (
     <div>
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4 text-sm">
+        <p className="font-medium text-blue-800">Delivery Fee Rules:</p>
+        <p className="text-blue-700">Windhoek (CBD, Hochlandpark, Khomasdal) = <strong>FREE</strong> | Outside Windhoek = <strong>N$ 150.00</strong></p>
+      </div>
+
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-gray-800">Delivery Management</h3>
         <Button size="sm" onClick={() => setShowModal(true)}><Plus size={14} /> Schedule Delivery</Button>
@@ -565,7 +587,9 @@ function DeliveryTab() {
           columns={[
             { header: 'Order ID', key: 'order_id' },
             { header: 'Date', render: r => formatDate(r.delivery_date) },
+            { header: 'Destination', key: 'destination_branch' },
             { header: 'Address', key: 'address' },
+            { header: 'Fee', render: r => <span className={r.delivery_fee > 0 ? 'text-orange-600 font-semibold' : 'text-green-600'}>{r.delivery_fee > 0 ? formatCurrency(r.delivery_fee) : 'FREE'}</span> },
             { header: 'Driver', key: 'driver' },
             { header: 'Status', render: r => (
               <Badge variant={r.status === 'delivered' ? 'success' : r.status === 'in_transit' ? 'info' : 'warning'}>
@@ -588,8 +612,28 @@ function DeliveryTab() {
         <form onSubmit={handleCreate} className="p-6 space-y-4">
           {error && <Alert type="error">{error}</Alert>}
           <Input label="Order ID" value={form.order_id} onChange={e => setForm(f => ({ ...f, order_id: e.target.value }))} />
+          <Select
+            label="Destination Branch"
+            value={form.destination_branch}
+            onChange={e => setForm(f => ({ ...f, destination_branch: e.target.value }))}
+            options={[{ value: '', label: 'Select Branch' }, ...BRANCHES.map(b => ({ value: b, label: b }))]}
+          />
+          {form.destination_branch && (
+            <div className={`p-3 rounded-lg text-sm ${deliveryFee > 0 ? 'bg-orange-50 border border-orange-200' : 'bg-green-50 border border-green-200'}`}>
+              <span className="font-medium">{deliveryFee > 0 ? `Delivery Fee: ${formatCurrency(deliveryFee)} (Outside Windhoek)` : 'Delivery Fee: FREE (Windhoek area)'}</span>
+            </div>
+          )}
           <Input label="Delivery Date" type="date" value={form.delivery_date} onChange={e => setForm(f => ({ ...f, delivery_date: e.target.value }))} required />
           <Input label="Delivery Address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} required />
+          {deliveryFee > 0 && (
+            <Input
+              label="Proof of Payment Reference *"
+              value={form.proof_of_payment}
+              onChange={e => setForm(f => ({ ...f, proof_of_payment: e.target.value }))}
+              placeholder="e.g. bank transfer ref, mobile payment ID"
+              required
+            />
+          )}
           <Input label="Driver" value={form.driver} onChange={e => setForm(f => ({ ...f, driver: e.target.value }))} />
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           <div className="flex justify-end gap-2 pt-2">

@@ -86,14 +86,14 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 - `COMPANY_INFO`: Company name, logo, social media links, default referral
 
 ## Portals (12 total, all with full business logic)
-1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, Full Body Check Up, Media/News, Testimonials
+1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, BV & Profit (monthly breakdown, accumulation guide), Communications (view announcements, compose messages to admin), Full Body Check Up, Media/News, Testimonials
 2. **Front Desk** — Orders (5 status sub-tabs), Appointments, Full Body Checkup, Client Registration, Payments, Client Lookup, Delivery, Visitors, CRM, Notifications, Staff Communication, Staff Services
 3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Reports, Follow-ups, Analytics, Staff Services
 4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation), Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Reg, Field Program
 5. **HR** — Employees, Leave management, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
 6. **Finance** — Dashboard (gradient KPIs, branch selector), Deposits, Bonus Workflow, Expenses, Communication, Staff Services
 7. **GM** — Dashboard (4 KPIs), Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services
-8. **Director** — Executive Dashboard, Staff Services
+8. **Director** — Executive Dashboard, Branch Overview (all branches performance table), Distributor Network (stats, by-branch breakdown, recent list), Staff Services
 9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
 10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inv, Invoices, Valuation, Barcode, Reorder, Batch, Realtime
 11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search), Branches, System

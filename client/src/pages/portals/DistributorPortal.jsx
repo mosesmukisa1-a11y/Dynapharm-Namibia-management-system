@@ -11,6 +11,8 @@ export default function DistributorPortal() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'shop', label: 'Shop', icon: '🛒' },
+    { id: 'bv', label: 'BV & Profit', icon: '💰' },
+    { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'media', label: 'Media & News', icon: '📰' },
     { id: 'testimonials', label: 'Testimonials', icon: '💬' },
@@ -22,6 +24,8 @@ export default function DistributorPortal() {
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'shop' && <ShopTab />}
+        {activeTab === 'bv' && <BVProfitTab />}
+        {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
@@ -381,6 +385,202 @@ function ShopTab() {
             </div>
           )}
         </div>
+      </Modal>
+    </div>
+  );
+}
+
+function BVProfitTab() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.orders.list()
+      .then(data => {
+        const all = Array.isArray(data) ? data : data.orders || [];
+        const mine = user?.username
+          ? all.filter(o =>
+              (o.customer_name || '').toLowerCase().includes(user.full_name?.toLowerCase() || '') ||
+              (o.notes || '').includes(user.username)
+            )
+          : [];
+        setOrders(mine);
+      })
+      .catch(() => [])
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const monthlyData = {};
+  orders.forEach(o => {
+    const month = (o.created_at || '').slice(0, 7);
+    if (!month) return;
+    if (!monthlyData[month]) monthlyData[month] = { orders: 0, amount: 0, bv: 0, profit: 0 };
+    monthlyData[month].orders += 1;
+    const amt = Number(o.total_amount || o.subtotal || 0);
+    monthlyData[month].amount += amt;
+    const items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
+    items.forEach(i => {
+      monthlyData[month].bv += Number(i.bv || 0) * Number(i.quantity || 1);
+      const dp = Number(i.unit_price || i.dp || 0);
+      const cp = Number(i.cp || dp * 1.3);
+      monthlyData[month].profit += (cp - dp) * Number(i.quantity || 1);
+    });
+  });
+
+  const months = Object.entries(monthlyData).sort((a, b) => b[0].localeCompare(a[0]));
+  const totalBV = months.reduce((s, [, d]) => s + d.bv, 0);
+  const totalProfit = months.reduce((s, [, d]) => s + d.profit, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard title="Total BV" value={totalBV.toFixed(1)} color="blue" />
+        <StatCard title="Est. Profit" value={formatCurrency(totalProfit)} color="green" />
+        <StatCard title="Total Orders" value={orders.length} color="purple" />
+        <StatCard title="Months Active" value={months.length} color="orange" />
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><BarChart3 size={18} /> Monthly BV & Profit Breakdown</h3></CardHeader>
+        <CardBody>
+          {months.length === 0 ? (
+            <EmptyState icon={<BarChart3 size={48} />} title="No Data Yet" description="Place orders to see BV and profit tracking here." />
+          ) : (
+            <div className="space-y-3">
+              {months.map(([month, data]) => (
+                <div key={month} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-semibold text-gray-800">{new Date(month + '-01').toLocaleDateString('en-ZA', { year: 'numeric', month: 'long' })}</p>
+                    <p className="text-xs text-gray-500">{data.orders} order(s) | Total: {formatCurrency(data.amount)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-blue-600">{data.bv.toFixed(1)} BV</p>
+                    <p className="text-sm font-bold text-green-600">{formatCurrency(data.profit)} profit</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">BV Accumulation Guide</h3></CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <p className="font-bold text-blue-800 mb-1">Personal BV</p>
+              <p className="text-blue-600">BV earned from your own purchases at Distributor Price (DP).</p>
+            </div>
+            <div className="p-4 bg-green-50 rounded-lg">
+              <p className="font-bold text-green-800 mb-1">Retail Profit</p>
+              <p className="text-green-600">Difference between Consumer Price (CP) and Distributor Price (DP) on retail sales.</p>
+            </div>
+            <div className="p-4 bg-purple-50 rounded-lg">
+              <p className="font-bold text-purple-800 mb-1">Group BV</p>
+              <p className="text-purple-600">Combined BV from your downline network for bonus qualification.</p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+function CommunicationsTab() {
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeForm, setComposeForm] = useState({ subject: '', message: '' });
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    const code = user?.distributor_code || user?.username || '';
+    api.get(`/notifications?recipient_id=${encodeURIComponent(code)}`)
+      .then(d => setNotifications(Array.isArray(d) ? d : d.notifications || []))
+      .catch(() => setNotifications([]))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const [sendError, setSendError] = useState('');
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!composeForm.subject || !composeForm.message) return;
+    setSendError('');
+    try {
+      await api.notifications.create({
+        title: composeForm.subject,
+        message: composeForm.message,
+        type: 'distributor_message',
+        recipient_type: 'admin',
+        recipient_id: 'ADMIN',
+        metadata: JSON.stringify({ sender: user?.full_name || user?.username || 'Distributor', sender_id: user?.distributor_code || user?.username }),
+      });
+      setSent(true);
+      setComposeForm({ subject: '', message: '' });
+      setComposeOpen(false);
+      setTimeout(() => setSent(false), 3000);
+    } catch (err) {
+      setSendError(err.message || 'Failed to send message. Please try again.');
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-6">
+      {sent && <Alert type="success">Message sent successfully!</Alert>}
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-gray-800">Messages & Announcements</h3>
+        <Button size="sm" onClick={() => setComposeOpen(true)}><Send size={14} /> Compose</Button>
+      </div>
+
+      {notifications.length === 0 ? (
+        <EmptyState icon={<MessageSquare size={48} />} title="No Messages" description="No announcements or messages at this time." />
+      ) : (
+        <div className="space-y-3">
+          {notifications.map((n, idx) => (
+            <Card key={n.id || idx}>
+              <CardBody>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">{n.title || 'Announcement'}</h4>
+                    <p className="text-sm text-gray-600 mt-1">{n.message || n.content}</p>
+                    {n.sender && <p className="text-xs text-gray-400 mt-2">From: {n.sender}</p>}
+                  </div>
+                  <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
+                    {n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Modal open={composeOpen} onClose={() => setComposeOpen(false)} title="Compose Message">
+        <form onSubmit={handleSend} className="p-6 space-y-4">
+          {sendError && <Alert type="error">{sendError}</Alert>}
+          <Input label="Subject" value={composeForm.subject} onChange={e => setComposeForm(f => ({ ...f, subject: e.target.value }))} required />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+            <textarea
+              value={composeForm.message}
+              onChange={e => setComposeForm(f => ({ ...f, message: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[120px] resize-y"
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => setComposeOpen(false)}>Cancel</Button>
+            <Button type="submit"><Send size={14} /> Send</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
