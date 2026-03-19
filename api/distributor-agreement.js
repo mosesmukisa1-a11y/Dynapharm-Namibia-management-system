@@ -52,27 +52,28 @@ async function ensureAgreementsTable() {
 
 let tableReady = false;
 
-async function generateNBNumber() {
-  const result = await getOne(
-    `SELECT nb_number FROM distributor_agreements 
-     WHERE nb_number LIKE 'NB%' 
-     ORDER BY nb_number DESC LIMIT 1`
-  );
+async function getNextNBNumber(client) {
+  const qry = client ? client.query.bind(client) : async (sql, p) => { const r = await query(sql, p); return r; };
 
+  const agrResult = await qry(
+    `SELECT nb_number FROM distributor_agreements 
+     WHERE nb_number ~ '^NB[0-9]+$' 
+     ORDER BY CAST(SUBSTRING(nb_number FROM 3) AS INTEGER) DESC LIMIT 1 FOR UPDATE`
+  );
   let nextNum = 1;
-  if (result && result.nb_number) {
-    const numPart = result.nb_number.replace(/^NB0*/, '');
-    nextNum = (parseInt(numPart, 10) || 0) + 1;
+  const agrRows = agrResult.rows || [agrResult].filter(Boolean);
+  if (agrRows.length > 0 && agrRows[0]?.nb_number) {
+    nextNum = parseInt(agrRows[0].nb_number.substring(2), 10) + 1;
   }
 
-  const existingMax = await getOne(
+  const distResult = await qry(
     `SELECT distributor_code FROM distributors 
-     WHERE distributor_code LIKE 'NB%' 
-     ORDER BY distributor_code DESC LIMIT 1`
+     WHERE distributor_code ~ '^NB[0-9]+$' 
+     ORDER BY CAST(SUBSTRING(distributor_code FROM 3) AS INTEGER) DESC LIMIT 1 FOR UPDATE`
   );
-  if (existingMax && existingMax.distributor_code) {
-    const numPart = existingMax.distributor_code.replace(/^NB0*/, '');
-    const existingNum = parseInt(numPart, 10) || 0;
+  const distRows = distResult.rows || [distResult].filter(Boolean);
+  if (distRows.length > 0 && distRows[0]?.distributor_code) {
+    const existingNum = parseInt(distRows[0].distributor_code.substring(2), 10);
     if (existingNum >= nextNum) nextNum = existingNum + 1;
   }
 
@@ -185,23 +186,14 @@ export default async function handler(req, res) {
       const agreementId = `AGR-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 
       const result = await withTransaction(async (client) => {
-        const nbResult = await client.query(
-          `SELECT nb_number FROM distributor_agreements WHERE nb_number LIKE 'NB%' ORDER BY nb_number DESC LIMIT 1 FOR UPDATE`
+        const nbNumber = await getNextNBNumber(client);
+
+        const dupCheck = await client.query(
+          `SELECT id FROM distributors WHERE distributor_code = $1`, [nbNumber]
         );
-        let nextNum = 1;
-        if (nbResult.rows.length > 0) {
-          const numPart = nbResult.rows[0].nb_number.replace(/^NB0*/, '');
-          nextNum = (parseInt(numPart, 10) || 0) + 1;
+        if (dupCheck.rows.length > 0) {
+          throw new Error(`NB number ${nbNumber} already exists. Please try again.`);
         }
-        const distResult = await client.query(
-          `SELECT distributor_code FROM distributors WHERE distributor_code LIKE 'NB%' ORDER BY distributor_code DESC LIMIT 1 FOR UPDATE`
-        );
-        if (distResult.rows.length > 0) {
-          const numPart = distResult.rows[0].distributor_code.replace(/^NB0*/, '');
-          const existingNum = parseInt(numPart, 10) || 0;
-          if (existingNum >= nextNum) nextNum = existingNum + 1;
-        }
-        const nbNumber = `NB${String(nextNum).padStart(6, '0')}`;
 
         const agreementData = {
           id: agreementId,
@@ -253,6 +245,7 @@ export default async function handler(req, res) {
 
         const distributorName = `${body.first_name.trim()} ${body.last_name.trim()}`;
         const distId = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const today = new Date().toISOString().slice(0, 10);
         const distData = {
           id: distId,
           distributor_code: nbNumber,
@@ -263,6 +256,11 @@ export default async function handler(req, res) {
           branch: body.processing_branch,
           location: body.mailing_address_town || body.mailing_address_street || null,
           entity_type: 'distributor',
+          position: 'Distributor',
+          position_code: 'DI',
+          date_joined: today,
+          sponsor_code: body.sponsor_id ? body.sponsor_id.toUpperCase() : (body.upline_id ? body.upline_id.toUpperCase() : null),
+          sex: body.sex || null,
           agreement_data: JSON.stringify({
             agreement_id: agreementId,
             kit_type: body.kit_type,
@@ -275,11 +273,13 @@ export default async function handler(req, res) {
         const distVals = Object.values(distData);
         const distPlaceholders = distCols.map((_, i) => `$${i + 1}`).join(', ');
         await client.query(
-          `INSERT INTO distributors (${distCols.join(', ')}) VALUES (${distPlaceholders})`,
+          `INSERT INTO distributors (${distCols.join(', ')}) VALUES (${distPlaceholders})
+           ON CONFLICT (distributor_code) DO NOTHING`,
           distVals
         );
 
         try {
+          await client.query('SAVEPOINT stock_movement');
           const kitProduct = body.kit_type === 'fertilizers'
             ? 'REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)'
             : 'REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)';
@@ -289,6 +289,7 @@ export default async function handler(req, res) {
             [wimId, kitProduct, kitProduct, 'sale', -1, agreementId, `Registration kit (${body.kit_type}) for new distributor ${nbNumber} at ${body.processing_branch}`, req.user?.username || 'system']
           );
         } catch (stockErr) {
+          await client.query('ROLLBACK TO SAVEPOINT stock_movement');
           console.error('Stock movement for registration kit (non-critical):', stockErr.message);
         }
 
