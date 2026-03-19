@@ -337,7 +337,7 @@ export default async function handler(req, res) {
         const requestData = {
           id: body.id || `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           request_number: body.request_number || body.requestNumber,
-          requesting_branch: body.requesting_branch || body.requestingBranch,
+          requesting_branch: body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager',
           request_type: body.request_type || body.requestType || null,
           status: body.status || 'pending',
           priority: body.priority || 'normal',

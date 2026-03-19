@@ -100,6 +100,7 @@ export const api = {
   stock: {
     batches: () => api.get('/stock-batches'),
     createBatch: (data) => api.post('/stock-batches', data),
+    updateBatch: (id, data) => api.put('/stock-batches', { ...data, id }),
     movements: () => api.get('/stock-movements'),
     createMovement: (data) => api.post('/stock-movements', data),
     transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`),

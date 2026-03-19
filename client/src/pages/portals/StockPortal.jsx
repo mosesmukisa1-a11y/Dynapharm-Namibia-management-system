@@ -4,7 +4,51 @@ import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag } from 'lucide-react';
+
+function printDocument(title, bodyHtml, landscape = false) {
+  const w = window.open('', '_blank', 'width=900,height=700');
+  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    @media print { @page { size: ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; } }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 16px; }
+    h2 { font-size: 16px; margin: 0 0 4px; color: #8b0000; }
+    .meta { font-size: 11px; color: #555; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { background: #8b0000; color: white; padding: 6px 8px; text-align: left; font-size: 11px; }
+    td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    .footer { margin-top: 16px; font-size: 10px; color: #888; border-top: 1px solid #ddd; padding-top: 6px; }
+    .label-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .label { border: 1px solid #333; padding: 8px; width: 160px; text-align: center; font-size: 10px; }
+    .label .code { font-family: monospace; font-size: 13px; font-weight: bold; letter-spacing: 1px; }
+    .label .bars { display: flex; gap: 1px; justify-content: center; margin: 4px 0; height: 40px; align-items: flex-end; }
+    .label .bar { background: #000; }
+    .label .product { font-size: 9px; margin-top: 4px; }
+    .label .price { font-size: 11px; font-weight: bold; color: #8b0000; }
+    no-print { display: none !important; }
+    @media print { .no-print { display: none !important; } }
+  </style></head><body>
+    <h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2>
+    <div class="meta">${title} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-NA')}</div>
+    ${bodyHtml}
+    <div class="footer">Dynapharm International Namibia &mdash; Confidential</div>
+    <div class="no-print" style="margin-top:16px;text-align:center">
+      <button onclick="window.print()" style="padding:8px 24px;background:#8b0000;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px">Print / Save PDF</button>
+    </div>
+  </body></html>`);
+  w.document.close();
+}
+
+function barsForCode(code) {
+  return code.split('').map((c, i) => {
+    const w = ((c.charCodeAt(0) * 7 + i * 13) % 3) + 1;
+    const h = 30 + ((c.charCodeAt(0) + i) % 10) * 2;
+    return `<div class="bar" style="width:${w}px;height:${h}px"></div>`;
+  }).join('') + Array.from({ length: 15 }, (_, i) => {
+    const w = ((i * 7 + 3) % 3) + 1;
+    return `<div class="bar" style="width:${w}px;height:${25 + (i % 8) * 2}px"></div>`;
+  }).join('');
+}
 
 export default function StockPortal() {
   const { user } = useAuth();
@@ -254,9 +298,15 @@ function SupplierImportTab() {
 
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Supplier Import Shipments</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Import Shipment</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = imports.slice(0, 50).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.batch_number||''}</td><td>${r.expiry_date?formatDate(r.expiry_date):'-'}</td><td>${r.quantity||''}</td><td>${formatCurrency(Number(r.unit_price||0))}</td><td>${formatCurrency(Number(r.quantity||0)*Number(r.unit_price||0))}</td></tr>`).join('');
+                printDocument('Supplier Import Shipments', `<table><thead><tr><th>Date</th><th>Product</th><th>Batch #</th><th>Expiry</th><th>Qty</th><th>CIF Price</th><th>CIF Total</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Import Shipment</Button>
+            </div>
           </div>
         </CardHeader>
         <Table
@@ -402,14 +452,20 @@ function CountryStockTab() {
 
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
               <h3 className="font-bold text-gray-800">Country Stock — Product Summary</h3>
               <p className="text-xs text-gray-500 mt-0.5">Inventory received via Supplier Import. Use the Supplier Import tab to add new shipments.</p>
             </div>
-            <Button size="sm" variant="secondary" onClick={() => setShowDetail(v => !v)}>
-              {showDetail ? 'Show Summary' : 'Show Batch Detail'}
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setShowDetail(v => !v)}>
+                {showDetail ? 'Show Summary' : 'Show Batch Detail'}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = productRows.map(r => `<tr><td>${r.product_name||''}</td><td>${r.batch_count||0}</td><td>${r.total_qty||0}</td><td>${r.earliest_expiry?formatDate(r.earliest_expiry):'—'}</td><td>${formatCurrency(r.total_value||0)}</td></tr>`).join('');
+                printDocument('Country Stock — Product Summary', `<table><thead><tr><th>Product</th><th>Batches</th><th>Total Qty</th><th>Earliest Expiry</th><th>CIF Value</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+            </div>
           </div>
         </CardHeader>
         {!showDetail ? (
@@ -732,7 +788,15 @@ function DistributionTab() {
       </Card>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Recent Distribution Transfers</h3></CardHeader>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Recent Distribution Transfers</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const rows = recentTransfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.from_location||''}</td><td>${r.to_location||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
+              printDocument('Distribution Transfers', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }}><Printer size={14} /> Print Report</Button>
+          </div>
+        </CardHeader>
         {loading ? <LoadingSpinner /> : (
           <Table
             columns={[
@@ -742,6 +806,11 @@ function DistributionTab() {
               { header: 'Product', key: 'product_name' },
               { header: 'Qty', key: 'quantity' },
               { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
+              { header: '', render: r => (
+                <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${r.from_location||''}</td></tr><tr><td>To</td><td>${r.to_location||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
+                  <Printer size={12} />
+                </Button>
+              )},
             ]}
             data={recentTransfers}
             emptyMessage="No distribution transfers"
@@ -820,9 +889,15 @@ function TransfersTab() {
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Stock Transfers</h3>
-            <Button size="sm" onClick={() => setShowNew(true)}><Plus size={16} /> New Transfer</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = transfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.from_location||''}</td><td>${r.to_location||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
+                printDocument('Stock Transfers Report', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print Report</Button>
+              <Button size="sm" onClick={() => setShowNew(true)}><Plus size={16} /> New Transfer</Button>
+            </div>
           </div>
         </CardHeader>
         <Table
@@ -844,6 +919,7 @@ function TransfersTab() {
                 {(r.status === 'dispatched' || r.status === 'in_transit') && (
                   <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')}>Delivered</Button>
                 )}
+                <Button size="sm" variant="ghost" title="Print dispatch note" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td><b>Transfer ID</b></td><td>${r.id||''}</td></tr><tr><td><b>Date</b></td><td>${formatDateTime(r.created_at)}</td></tr><tr><td><b>From</b></td><td>${r.from_location||''}</td></tr><tr><td><b>To</b></td><td>${r.to_location||''}</td></tr><tr><td><b>Product</b></td><td>${r.product_name||''}</td></tr><tr><td><b>Quantity</b></td><td>${r.quantity||''}</td></tr><tr><td><b>Status</b></td><td>${r.status||'Pending'}</td></tr><tr><td><b>Notes</b></td><td>${r.notes||'-'}</td></tr></tbody></table>`)}><Printer size={12} /></Button>
               </div>
             )},
           ]}
@@ -1440,6 +1516,10 @@ function CountryInventoryTab() {
                 />
               </div>
               <Button size="sm" variant="secondary" onClick={exportCSV}><Download size={16} /> Export CSV</Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = aggregatedList.map(r => `<tr><td>${r.product_name||''}</td><td>${r.location||''}</td><td>${r.total_quantity||0}</td><td>${formatCurrency(r.total_value||0)}</td><td>${r.batch_count||0}</td></tr>`).join('');
+                printDocument('Full Inventory Report', `<table><thead><tr><th>Product</th><th>Location</th><th>Total Qty</th><th>Value</th><th>Batches</th></tr></thead><tbody>${rows}</tbody></table>`, true);
+              }}><Printer size={14} /> Print</Button>
             </div>
           </div>
         </CardHeader>
@@ -1514,7 +1594,16 @@ function ValuationTab() {
       </div>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Stock Valuation Breakdown (DP Prices)</h3></CardHeader>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Stock Valuation Breakdown (DP Prices)</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const rows = breakdown.map(r => `<tr><td>${r.product_name||''}</td><td>${r.location||''}</td><td>${r.quantity||0}</td><td>${formatCurrency(r.unit_price||0)}</td><td>${formatCurrency(r.total_value||0)}</td></tr>`).join('');
+              const total = `<tr style="font-weight:bold;background:#f0fdf4"><td colspan="4">Grand Total</td><td>${formatCurrency(grandTotal)}</td></tr>`;
+              printDocument('Stock Valuation Report (DP Prices)', `<table><thead><tr><th>Product</th><th>Location</th><th>Qty</th><th>Unit Price (DP)</th><th>Total Value</th></tr></thead><tbody>${rows}${total}</tbody></table>`, true);
+            }}><Printer size={14} /> Print Report</Button>
+          </div>
+        </CardHeader>
         <Table
           columns={[
             { header: 'Product', key: 'product_name' },
@@ -1546,90 +1635,310 @@ function ValuationTab() {
   );
 }
 
+function BarcodeLabelDisplay({ code, name, dp }) {
+  return (
+    <div className="border border-gray-300 rounded p-3 text-center bg-white w-48 flex-shrink-0">
+      <p className="text-[9px] font-bold text-primary uppercase tracking-wide mb-1">Dynapharm Namibia</p>
+      <p className="text-[10px] font-semibold text-gray-800 leading-tight mb-2 h-8 overflow-hidden">{name}</p>
+      <div className="flex gap-[1px] justify-center mb-1 h-10 items-end mx-auto w-36">
+        {code.split('').map((c, i) => (
+          <div key={i} className="bg-black" style={{ width: ((c.charCodeAt(0) * 7 + i * 13) % 3) + 1 + 'px', height: 25 + ((c.charCodeAt(0) + i) % 10) * 2 + 'px' }} />
+        ))}
+        {Array.from({ length: 12 }, (_, i) => (
+          <div key={`p${i}`} className="bg-black" style={{ width: ((i * 7 + 3) % 3) + 1 + 'px', height: 22 + (i % 6) * 3 + 'px' }} />
+        ))}
+      </div>
+      <p className="text-[11px] font-mono font-bold text-gray-700 tracking-wider">{code}</p>
+      {dp > 0 && <p className="text-[11px] font-bold text-primary mt-1">NAD {formatCurrency(dp)}</p>}
+    </div>
+  );
+}
+
 function BarcodeTab() {
+  const [subTab, setSubTab] = useState('lookup');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
-
-  const results = searchTerm.length >= 2
-    ? PRICE_LIST.map((p, idx) => ({ ...p, idx })).filter(p => p.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    : [];
+  const [batches, setBatches] = useState([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [assignSearch, setAssignSearch] = useState('');
+  const [assigningId, setAssigningId] = useState(null);
+  const [assignCode, setAssignCode] = useState('');
+  const [assignAlert, setAssignAlert] = useState(null);
+  const [printSelected, setPrintSelected] = useState({});
+  const [printQty, setPrintQty] = useState({});
 
   const generateBarcode = (idx) => `DYN-${String(idx).padStart(4, '0')}`;
 
+  const indexedProducts = PRICE_LIST.map((p, idx) => ({ ...p, idx, code: generateBarcode(idx) }));
+
+  const lookupResults = searchTerm.length >= 2
+    ? indexedProducts.filter(p => p.description.toLowerCase().includes(searchTerm.toLowerCase()) || p.code.toLowerCase().includes(searchTerm.toLowerCase()))
+    : [];
+
+  const loadBatches = () => {
+    setBatchLoading(true);
+    api.stock.batches()
+      .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
+      .catch(() => {})
+      .finally(() => setBatchLoading(false));
+  };
+
+  const handleAssignCode = async (batchId) => {
+    if (!assignCode.trim()) return;
+    try {
+      await api.stock.updateBatch(batchId, { barcode: assignCode.trim() });
+      setAssignAlert({ type: 'success', msg: 'Barcode assigned successfully' });
+      setAssigningId(null);
+      setAssignCode('');
+      loadBatches();
+    } catch {
+      setAssignAlert({ type: 'error', msg: 'Failed to assign barcode' });
+    }
+  };
+
+  const printLabels = () => {
+    const toPrint = indexedProducts.filter(p => printSelected[p.idx] && Number(printQty[p.idx] || 1) > 0);
+    if (!toPrint.length) return;
+    const labels = toPrint.flatMap(p => Array.from({ length: Number(printQty[p.idx] || 1) }, () => `
+      <div class="label">
+        <div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div>
+        <div class="product" style="min-height:24px;overflow:hidden">${p.description}</div>
+        <div class="bars">${barsForCode(p.code)}</div>
+        <div class="code">${p.code}</div>
+        <div class="price">NAD ${formatCurrency(p.dp)}</div>
+      </div>`)).join('');
+    printDocument('Barcode Labels', `<div class="label-grid">${labels}</div>`, false);
+  };
+
+  const filteredBatches = batches.filter(b =>
+    !assignSearch || (b.product_name || '').toLowerCase().includes(assignSearch.toLowerCase()) || (b.barcode || '').toLowerCase().includes(assignSearch.toLowerCase())
+  );
+
+  const subTabs = [
+    { id: 'lookup', label: 'Lookup & Print' },
+    { id: 'assign', label: 'Assign Codes' },
+    { id: 'printlabels', label: 'Print Labels' },
+  ];
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Barcode Lookup</h3></CardHeader>
-        <CardBody>
-          <div className="relative max-w-lg">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              placeholder="Search by product name or code..."
-              value={searchTerm}
-              onChange={e => { setSearchTerm(e.target.value); setSelectedProduct(null); }}
-            />
-          </div>
-        </CardBody>
-      </Card>
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b border-gray-200">
+        {subTabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setSubTab(t.id); if (t.id === 'assign') loadBatches(); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${subTab === t.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      {selectedProduct && (
-        <Card className="border-primary/30">
-          <CardBody>
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="flex-1 space-y-3">
-                <h3 className="text-lg font-bold text-gray-800">{selectedProduct.description}</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-3 rounded-lg text-center">
-                    <p className="text-xs text-blue-600">DP Price</p>
-                    <p className="text-lg font-bold text-blue-800">{formatCurrency(selectedProduct.dp)}</p>
+      {subTab === 'lookup' && (
+        <div className="space-y-4">
+          <Card>
+            <CardBody>
+              <div className="relative max-w-lg">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                  placeholder="Search by product name or code (e.g. DYN-0001)..."
+                  value={searchTerm}
+                  onChange={e => { setSearchTerm(e.target.value); setSelectedProduct(null); }}
+                />
+              </div>
+            </CardBody>
+          </Card>
+
+          {selectedProduct && (
+            <Card className="border-primary/30">
+              <CardBody>
+                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <h3 className="text-lg font-bold text-gray-800">{selectedProduct.description}</h3>
+                      <Button size="sm" variant="secondary" onClick={() => {
+                        printDocument(`Label — ${selectedProduct.description}`, `<div class="label-grid"><div class="label"><div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div><div class="product">${selectedProduct.description}</div><div class="bars">${barsForCode(selectedProduct.code)}</div><div class="code">${selectedProduct.code}</div><div class="price">NAD ${formatCurrency(selectedProduct.dp)}</div></div></div>`);
+                      }}><Printer size={14} /> Print Label</Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="bg-blue-50 p-3 rounded-lg text-center">
+                        <p className="text-xs text-blue-600">DP Price</p>
+                        <p className="text-lg font-bold text-blue-800">{formatCurrency(selectedProduct.dp)}</p>
+                      </div>
+                      <div className="bg-green-50 p-3 rounded-lg text-center">
+                        <p className="text-xs text-green-600">CP Price</p>
+                        <p className="text-lg font-bold text-green-800">{formatCurrency(selectedProduct.cp)}</p>
+                      </div>
+                      <div className="bg-purple-50 p-3 rounded-lg text-center">
+                        <p className="text-xs text-purple-600">BV</p>
+                        <p className="text-lg font-bold text-purple-800">{selectedProduct.bv}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="bg-green-50 p-3 rounded-lg text-center">
-                    <p className="text-xs text-green-600">CP Price</p>
-                    <p className="text-lg font-bold text-green-800">{formatCurrency(selectedProduct.cp)}</p>
-                  </div>
-                  <div className="bg-purple-50 p-3 rounded-lg text-center">
-                    <p className="text-xs text-purple-600">BV</p>
-                    <p className="text-lg font-bold text-purple-800">{selectedProduct.bv}</p>
+                  <div className="flex flex-col items-center justify-center">
+                    <BarcodeLabelDisplay code={selectedProduct.code} name={selectedProduct.description} dp={selectedProduct.dp} />
                   </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-center justify-center bg-gray-50 p-6 rounded-lg min-w-[200px]">
-                <div className="flex gap-[2px] mb-2">
-                  {generateBarcode(selectedProduct.idx).split('').map((c, i) => (
-                    <div key={i} className="bg-black" style={{ width: (c.charCodeAt(0) % 3) + 1 + 'px', height: '60px' }} />
-                  ))}
-                  {Array.from({ length: 20 }).map((_, i) => (
-                    <div key={`b${i}`} className="bg-black" style={{ width: ((i * 7 + 3) % 3) + 1 + 'px', height: '60px', marginLeft: ((i * 3) % 2) + 1 + 'px' }} />
-                  ))}
-                </div>
-                <p className="text-sm font-mono font-bold text-gray-700">{generateBarcode(selectedProduct.idx)}</p>
-              </div>
+              </CardBody>
+            </Card>
+          )}
+
+          {lookupResults.length > 0 && !selectedProduct && (
+            <Card>
+              <CardHeader><h3 className="font-bold text-gray-800">Results ({lookupResults.length})</h3></CardHeader>
+              <Table
+                columns={[
+                  { header: 'Code', render: r => <span className="font-mono text-xs font-bold text-gray-700">{r.code}</span> },
+                  { header: 'Product', key: 'description' },
+                  { header: 'DP', render: r => formatCurrency(r.dp) },
+                  { header: 'CP', render: r => formatCurrency(r.cp) },
+                  { header: 'BV', key: 'bv' },
+                  { header: 'Actions', render: r => (
+                    <div className="flex gap-1">
+                      <Button size="sm" onClick={() => setSelectedProduct(r)}>View</Button>
+                      <Button size="sm" variant="secondary" onClick={() => {
+                        printDocument(`Label — ${r.description}`, `<div class="label-grid"><div class="label"><div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div><div class="product">${r.description}</div><div class="bars">${barsForCode(r.code)}</div><div class="code">${r.code}</div><div class="price">NAD ${formatCurrency(r.dp)}</div></div></div>`);
+                      }}><Printer size={12} /></Button>
+                    </div>
+                  )},
+                ]}
+                data={lookupResults}
+                emptyMessage="No products found"
+              />
+            </Card>
+          )}
+
+          {searchTerm.length >= 2 && lookupResults.length === 0 && (
+            <EmptyState icon={<Search size={48} />} title="No products found" description={`No products matching "${searchTerm}"`} />
+          )}
+          {searchTerm.length < 2 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {indexedProducts.slice(0, 12).map(p => (
+                <button key={p.idx} onClick={() => setSelectedProduct(p)} className="text-left hover:shadow-md transition-shadow">
+                  <BarcodeLabelDisplay code={p.code} name={p.description} dp={p.dp} />
+                </button>
+              ))}
             </div>
-          </CardBody>
-        </Card>
+          )}
+        </div>
       )}
 
-      {results.length > 0 && !selectedProduct && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Search Results ({results.length})</h3></CardHeader>
-          <Table
-            columns={[
-              { header: 'Code', render: r => <span className="font-mono text-xs">{generateBarcode(r.idx)}</span> },
-              { header: 'Product', key: 'description' },
-              { header: 'DP', render: r => formatCurrency(r.dp) },
-              { header: 'CP', render: r => formatCurrency(r.cp) },
-              { header: 'BV', key: 'bv' },
-              { header: 'Action', render: r => <Button size="sm" onClick={() => setSelectedProduct(r)}>View</Button> },
-            ]}
-            data={results}
-            emptyMessage="No products found"
-          />
-        </Card>
+      {subTab === 'assign' && (
+        <div className="space-y-4">
+          {assignAlert && <Alert type={assignAlert.type} className="mb-2">{assignAlert.msg}</Alert>}
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <h3 className="font-bold text-gray-800">Assign Barcodes to Batches</h3>
+                <Button size="sm" variant="secondary" onClick={loadBatches}>{batchLoading ? 'Loading...' : 'Refresh'}</Button>
+              </div>
+            </CardHeader>
+            <CardBody className="pb-2">
+              <p className="text-sm text-gray-500 mb-3">Each batch record from stock imports can have a specific barcode assigned. You can override or assign a custom code below.</p>
+              <div className="relative max-w-md mb-4">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" placeholder="Filter by product or barcode..." value={assignSearch} onChange={e => setAssignSearch(e.target.value)} />
+              </div>
+            </CardBody>
+            {batchLoading ? <LoadingSpinner /> : (
+              <Table
+                columns={[
+                  { header: 'Batch #', render: r => <span className="font-mono text-xs">{r.batch_number || r.id || '-'}</span> },
+                  { header: 'Product', key: 'product_name' },
+                  { header: 'Location', key: 'location' },
+                  { header: 'Qty', key: 'quantity' },
+                  { header: 'Current Code', render: r => (
+                    <span className={`font-mono text-xs ${r.barcode ? 'text-green-700 font-bold' : 'text-gray-400'}`}>{r.barcode || 'Not assigned'}</span>
+                  )},
+                  { header: 'Assign', render: r => assigningId === r.id ? (
+                    <div className="flex gap-1 items-center">
+                      <input
+                        className="px-2 py-1 rounded border border-gray-300 text-xs w-28 focus:outline-none focus:ring-1 focus:border-primary"
+                        value={assignCode}
+                        onChange={e => setAssignCode(e.target.value)}
+                        placeholder="e.g. DYN-0001"
+                        autoFocus
+                      />
+                      <Button size="sm" variant="success" onClick={() => handleAssignCode(r.id)}>Save</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setAssigningId(null)}>✕</Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => { setAssigningId(r.id); setAssignCode(r.barcode || generateBarcode(indexedProducts.findIndex(p => p.description === r.product_name))); }}><Tag size={12} /> {r.barcode ? 'Change' : 'Assign'}</Button>
+                  )},
+                ]}
+                data={filteredBatches}
+                emptyMessage={batchLoading ? '' : 'No batches found — import stock first'}
+              />
+            )}
+          </Card>
+        </div>
       )}
 
-      {searchTerm.length >= 2 && results.length === 0 && (
-        <EmptyState icon={<Search size={48} />} title="No products found" description={`No products matching "${searchTerm}"`} />
+      {subTab === 'printlabels' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <h3 className="font-bold text-gray-800">Print Label Sheet</h3>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    const allSelected = {};
+                    const allQty = {};
+                    indexedProducts.forEach(p => { allSelected[p.idx] = true; allQty[p.idx] = 1; });
+                    setPrintSelected(allSelected);
+                    setPrintQty(allQty);
+                  }}>Select All</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setPrintSelected({}); setPrintQty({}); }}>Clear</Button>
+                  <Button size="sm" onClick={printLabels} disabled={Object.keys(printSelected).filter(k => printSelected[k]).length === 0}>
+                    <Printer size={14} /> Print {Object.keys(printSelected).filter(k => printSelected[k]).length > 0 ? `(${Object.keys(printSelected).filter(k => printSelected[k]).length})` : ''} Labels
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <p className="text-sm text-gray-500 mb-4">Select products and set how many copies of each label to print.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {indexedProducts.map(p => (
+                  <label key={p.idx} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${printSelected[p.idx] ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input type="checkbox" checked={!!printSelected[p.idx]} onChange={e => setPrintSelected(prev => ({ ...prev, [p.idx]: e.target.checked }))} className="accent-primary" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 truncate">{p.description}</p>
+                      <p className="text-xs font-mono text-gray-500">{p.code}</p>
+                    </div>
+                    {printSelected[p.idx] && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-500">×</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={printQty[p.idx] || 1}
+                          onChange={e => setPrintQty(prev => ({ ...prev, [p.idx]: e.target.value }))}
+                          onClick={e => e.preventDefault()}
+                          className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:border-primary text-center"
+                        />
+                      </div>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+
+          {Object.keys(printSelected).some(k => printSelected[k]) && (
+            <Card>
+              <CardHeader><h3 className="font-bold text-gray-800">Preview</h3></CardHeader>
+              <CardBody>
+                <div className="flex flex-wrap gap-3">
+                  {indexedProducts.filter(p => printSelected[p.idx]).map(p => (
+                    <BarcodeLabelDisplay key={p.idx} code={p.code} name={p.description} dp={p.dp} />
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1788,9 +2097,15 @@ function BatchTab() {
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Batch Tracking</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Batch</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = allBatches.map(r => `<tr><td>${r.batch_number||''}</td><td>${r.product_name||''}</td><td>${r.quantity||0}</td><td>${r.expiry_date?formatDate(r.expiry_date):'-'}</td><td>${r.location||''}</td></tr>`).join('');
+                printDocument('Batch Tracking Report', `<table><thead><tr><th>Batch #</th><th>Product</th><th>Qty</th><th>Expiry</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Batch</Button>
+            </div>
           </div>
         </CardHeader>
         <Table
