@@ -6,6 +6,7 @@ import { generateReceiptHTML, printReceipt } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
 export default function BranchPortal() {
   const [activeTab, setActiveTab] = useState('walkIn');
@@ -862,86 +863,8 @@ function StaffTab() {
 }
 
 function DistributorRegTab() {
-  const [submitting, setSubmitting] = useState(false);
-  const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({
-    full_name: '', id_number: '', phone: '', email: '',
-    nb_number: '', sponsor_name: '', sponsor_nb: '',
-    physical_address: '', town: '', registration_type: 'new',
-  });
-
-  const handleSubmit = async () => {
-    if (!form.full_name.trim() || !form.phone.trim()) {
-      setAlert({ type: 'error', message: 'Name and phone are required' });
-      return;
-    }
-    setSubmitting(true);
-    setAlert(null);
-    try {
-      await api.distributors.create({
-        name: form.full_name.trim(),
-        full_name: form.full_name.trim(),
-        id_number: form.id_number.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        nb_number: form.nb_number.trim(),
-        sponsor_name: form.sponsor_name.trim(),
-        sponsor_nb: form.sponsor_nb.trim(),
-        physical_address: form.physical_address.trim(),
-        town: form.town.trim(),
-        registration_type: form.registration_type,
-      });
-      setAlert({ type: 'success', message: `Distributor ${form.full_name} registered successfully!` });
-      setForm({ full_name: '', id_number: '', phone: '', email: '', nb_number: '', sponsor_name: '', sponsor_nb: '', physical_address: '', town: '', registration_type: 'new' });
-    } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Registration failed' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto">
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Register New Distributor</h3></CardHeader>
-        <CardBody>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Full Name *" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} />
-              <Input label="ID Number" value={form.id_number} onChange={e => setForm({ ...form, id_number: e.target.value })} />
-              <Input label="Phone *" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-              <Input label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-              <Input label="NB Number" value={form.nb_number} onChange={e => setForm({ ...form, nb_number: e.target.value })} placeholder="Assigned NB number" />
-              <Input label="Town" value={form.town} onChange={e => setForm({ ...form, town: e.target.value })} />
-            </div>
-            <Input label="Physical Address" value={form.physical_address} onChange={e => setForm({ ...form, physical_address: e.target.value })} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Sponsor Name" value={form.sponsor_name} onChange={e => setForm({ ...form, sponsor_name: e.target.value })} />
-              <Input label="Sponsor NB Number" value={form.sponsor_nb} onChange={e => setForm({ ...form, sponsor_nb: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Registration Type</label>
-              <div className="flex gap-3">
-                {['new', 'transfer', 'renewal'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setForm({ ...form, registration_type: t })}
-                    className={`px-4 py-2 text-sm rounded-lg border transition-colors cursor-pointer capitalize ${form.registration_type === t ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-primary'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <Button className="w-full" variant="success" onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Registering...' : 'Register Distributor'}
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-    </div>
-  );
+  const { user } = useAuth();
+  return <MembershipAgreementForm mode="branch" userBranch={user?.branch} />;
 }
 
 function FieldProgramTab() {

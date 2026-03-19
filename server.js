@@ -42,6 +42,7 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/realtime_publish',
   '/api/field_program_requests',
   '/api/send-email',
+  '/api/distributor-agreement',
 ]);
 
 const PUBLIC_GET_ROUTES = new Set([

@@ -3,14 +3,16 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
 export default function DistributorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'shop', label: 'Shop', icon: '🛒' },
+    { id: 'register', label: 'New Member', icon: '📝' },
     { id: 'bv', label: 'BV & Profit', icon: '💰' },
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
@@ -24,12 +26,26 @@ export default function DistributorPortal() {
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'shop' && <ShopTab />}
+        {activeTab === 'register' && <NewMemberTab />}
         {activeTab === 'bv' && <BVProfitTab />}
         {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
+    </div>
+  );
+}
+
+function NewMemberTab() {
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2">
+        <UserPlus size={20} className="text-primary" />
+        <h3 className="font-bold text-gray-800">Register a New Distributor</h3>
+      </div>
+      <p className="text-sm text-gray-500 mb-6">Fill in the Distributor Agreement Form below. The new member must indicate the branch where they will process their registration and payment.</p>
+      <MembershipAgreementForm mode="standalone" />
     </div>
   );
 }

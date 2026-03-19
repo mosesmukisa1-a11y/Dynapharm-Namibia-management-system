@@ -57,6 +57,7 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/branches` — CRUD for branches (GET is public)
 - `/api/orders` — Order management (POST public for shop; subtotal recomputed server-side)
 - `/api/distributors` — Distributor management (GET is public)
+- `/api/distributor-agreement` — Distributor Agreement Form (POST public for registration; GET/PUT require auth with role checks)
 - `/api/notifications` — Notification system
 - `/api/stock-batches` — Stock batch management
 - `/api/stock-movements` — Warehouse inventory movements
@@ -86,10 +87,10 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 - `COMPANY_INFO`: Company name, logo, social media links, default referral
 
 ## Portals (12 total, all with full business logic)
-1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, BV & Profit (monthly breakdown, accumulation guide), Communications (view announcements, compose messages to admin), Full Body Check Up, Media/News, Testimonials
+1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, New Member Registration (Distributor Agreement Form for recruiting downlines), BV & Profit (monthly breakdown, accumulation guide), Communications (view announcements, compose messages to admin), Full Body Check Up, Media/News, Testimonials
 2. **Front Desk** — Orders (5 status sub-tabs), Appointments, Full Body Checkup, Client Registration, Payments, Client Lookup, Delivery, Visitors, CRM, Notifications, Staff Communication, Staff Services
 3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Reports, Follow-ups, Analytics, Staff Services
-4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation), Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Reg, Field Program
+4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation), Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Reg (Membership Agreement Form with auto NB generation, upline/sponsor search, kit selection, PDF print/share), Field Program
 5. **HR** — Employees, Leave management, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
 6. **Finance** — Dashboard (gradient KPIs, branch selector), Deposits, Bonus Workflow, Expenses, Communication, Staff Services
 7. **GM** — Dashboard (4 KPIs), Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services

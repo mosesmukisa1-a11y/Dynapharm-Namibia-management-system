@@ -3,7 +3,8 @@ import { api } from '../lib/api';
 import { formatCurrency, BRANCHES, COMPANY_INFO, DELIVERY_FEE_RULES } from '../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../lib/pricing';
 import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert, Select } from '../components/ui';
-import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store } from 'lucide-react';
+import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store, UserPlus } from 'lucide-react';
+import { MembershipAgreementForm } from '../components/MembershipAgreementForm';
 
 const DEFAULT_REFERRAL_NAME = COMPANY_INFO.defaultReferralName;
 const DEFAULT_REFERRAL_NB = COMPANY_INFO.defaultReferralNB;
@@ -166,6 +167,14 @@ export default function Shop() {
               <li>Default referral: {DEFAULT_REFERRAL_NAME}</li>
             </ul>
           </button>
+        </div>
+
+        <div className="mt-10 border-t pt-8">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Become a Dynapharm Distributor</h2>
+            <p className="text-gray-500 text-sm mt-1">Join our network and earn with Dynapharm products. Registration kit starts at N$ 1,200.00</p>
+          </div>
+          <BecomeDistributorSection />
         </div>
       </div>
     );
@@ -510,6 +519,46 @@ export default function Shop() {
           </Button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function BecomeDistributorSection() {
+  const [showForm, setShowForm] = useState(false);
+
+  if (!showForm) {
+    return (
+      <div className="bg-gradient-to-r from-[#c41e3a]/5 to-[#8b0000]/5 border-2 border-[#c41e3a]/20 rounded-2xl p-8 text-center">
+        <div className="w-16 h-16 bg-[#c41e3a]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <UserPlus size={32} className="text-[#c41e3a]" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Want to join Dynapharm?</h3>
+        <p className="text-sm text-gray-500 mb-2 max-w-lg mx-auto">
+          Fill in the official Distributor Agreement Form to get your NB number and registration kit.
+          Choose between Supplements or Fertilizers kit — both at N$ 1,200.00.
+        </p>
+        <ul className="text-xs text-gray-400 space-y-1 mb-6 max-w-md mx-auto">
+          <li>Automatic NB number assignment</li>
+          <li>Access to Distributor Prices (DP)</li>
+          <li>Earn BV points on every purchase</li>
+          <li>Build your own network and earn commissions</li>
+        </ul>
+        <Button onClick={() => setShowForm(true)} className="px-8 py-3">
+          <UserPlus size={18} /> Fill Distributor Agreement Form
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-gray-800">Distributor Agreement Form</h3>
+        <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 hover:text-primary cursor-pointer underline">
+          Back to Shop
+        </button>
+      </div>
+      <MembershipAgreementForm mode="standalone" />
     </div>
   );
 }
