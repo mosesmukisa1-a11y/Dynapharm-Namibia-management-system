@@ -66,23 +66,23 @@ function WalkInSalesTab() {
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [cart, setCart] = useState([]);
-  const [search, setSearch] = useState('');
-  const [customerType, setCustomerType] = useState(null);
-  const [isMember, setIsMember] = useState(false);
-  const [distributorSearch, setDistributorSearch] = useState('');
-  const [selectedDistributor, setSelectedDistributor] = useState(null);
-  const [distributorResults, setDistributorResults] = useState([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [customerType, setCustomerType] = useState('registered');
+  const [regSearch, setRegSearch] = useState('');
+  const [regResults, setRegResults] = useState([]);
+  const [selectedReg, setSelectedReg] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [referralSearch, setReferralSearch] = useState('');
-  const [selectedReferral, setSelectedReferral] = useState(null);
   const [referralResults, setReferralResults] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [showReview, setShowReview] = useState(false);
+  const [selectedReferral, setSelectedReferral] = useState(null);
+  const [noReferral, setNoReferral] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
-  const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState('');
-  const [receiptSearch, setReceiptSearch] = useState('');
-  const [foundReceipt, setFoundReceipt] = useState(null);
 
   const loadSales = () => {
     return api.branch.walkinSales().then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
@@ -98,7 +98,68 @@ function WalkInSalesTab() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const filtered = products.filter(p => !search || (p.name || p.description || '').toLowerCase().includes(search.toLowerCase()));
+  const normalizeDistributor = (d) => ({
+    ...d,
+    name: d.name || d.distributor_name || d.full_name || '',
+    nb_number: d.nb_number || d.distributor_code || '',
+    phone: d.phone || d.mobile_no || '',
+  });
+
+  const searchRegistered = async (q) => {
+    setRegSearch(q);
+    if (q.length < 2) { setRegResults([]); return; }
+    try {
+      const res = await api.distributors.search(q);
+      setRegResults(Array.isArray(res) ? res : res.distributors || []);
+    } catch { setRegResults([]); }
+  };
+
+  const selectRegistered = (d) => {
+    const norm = normalizeDistributor(d);
+    setSelectedReg(norm);
+    setRegResults([]);
+    setRegSearch('');
+  };
+
+  const clearRegistered = () => {
+    setSelectedReg(null);
+    setRegSearch('');
+  };
+
+  const searchReferrals = async (q) => {
+    setReferralSearch(q);
+    if (q.length < 2) { setReferralResults([]); return; }
+    try {
+      const res = await api.distributors.search(q);
+      setReferralResults(Array.isArray(res) ? res : res.distributors || []);
+    } catch { setReferralResults([]); }
+  };
+
+  const selectReferral = (d) => {
+    const norm = normalizeDistributor(d);
+    setSelectedReferral(norm);
+    setReferralResults([]);
+    setReferralSearch('');
+  };
+
+  const clearReferral = () => {
+    setSelectedReferral(null);
+    setReferralSearch('');
+  };
+
+  const toggleNoReferral = (checked) => {
+    setNoReferral(checked);
+    if (checked) {
+      setSelectedReferral(DEFAULT_REFERRAL);
+      setReferralSearch('');
+      setReferralResults([]);
+    } else {
+      setSelectedReferral(null);
+    }
+  };
+
+  const isMember = customerType === 'registered';
+  const filteredProducts = products.filter(p => !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase()));
 
   const addToCart = (product) => {
     setCart(prev => {
@@ -118,96 +179,73 @@ function WalkInSalesTab() {
 
   const cartData = calculateCartTotals(cart, isMember);
 
-  const searchDistributors = async (q) => {
-    setDistributorSearch(q);
-    if (q.length < 2) { setDistributorResults([]); return; }
-    try {
-      const res = await api.distributors.search(q);
-      setDistributorResults(Array.isArray(res) ? res : res.distributors || []);
-    } catch { setDistributorResults([]); }
-  };
-
-  const normalizeDistributor = (d) => ({
-    ...d,
-    name: d.name || d.distributor_name || d.full_name || '',
-    nb_number: d.nb_number || d.distributor_code || '',
-    phone: d.phone || d.mobile_no || '',
-  });
-
-  const selectDistributor = (d) => {
-    const norm = normalizeDistributor(d);
-    setSelectedDistributor(norm);
-    setIsMember(true);
-    setDistributorResults([]);
-    setDistributorSearch(norm.name);
-  };
-
-  const searchReferrals = async (q) => {
-    setReferralSearch(q);
-    if (q.length < 2) { setReferralResults([]); return; }
-    try {
-      const res = await api.distributors.search(q);
-      setReferralResults(Array.isArray(res) ? res : res.distributors || []);
-    } catch { setReferralResults([]); }
-  };
-
-  const selectReferral = (d) => {
-    const norm = normalizeDistributor(d);
-    setSelectedReferral(norm);
+  const openModal = () => {
+    setCustomerType('registered');
+    setRegSearch('');
+    setRegResults([]);
+    setSelectedReg(null);
+    setNewName('');
+    setNewPhone('');
+    setReferralSearch('');
     setReferralResults([]);
-    setReferralSearch(norm.name);
+    setSelectedReferral(null);
+    setNoReferral(false);
+    setCart([]);
+    setProductSearch('');
+    setPaymentMethod('cash');
+    setError('');
+    setShowModal(true);
   };
 
-  const selectCustomerType = (type) => {
+  const closeModal = () => {
+    setShowModal(false);
+  };
+
+  const wiSetCustomerType = (type) => {
     setCustomerType(type);
-    if (type === 'member') {
-      setIsMember(true);
-      setSelectedReferral(null);
+    if (type === 'registered') {
+      setNewName('');
+      setNewPhone('');
       setReferralSearch('');
+      setReferralResults([]);
+      setSelectedReferral(null);
+      setNoReferral(false);
     } else {
-      setIsMember(false);
-      setSelectedDistributor(null);
-      setDistributorSearch('');
-      setSelectedReferral(DEFAULT_REFERRAL);
-      setReferralSearch(DEFAULT_REFERRAL.name);
+      setSelectedReg(null);
+      setRegSearch('');
+      setRegResults([]);
     }
   };
 
-  const resetSale = () => {
-    setCustomerType(null);
-    setIsMember(false);
-    setSelectedDistributor(null);
-    setDistributorSearch('');
-    setSelectedReferral(null);
-    setReferralSearch('');
-    setCart([]);
-    setPaymentMethod('Cash');
-    setReceipt(null);
+  const wiReviewSale = () => {
+    if (cart.length === 0) { setError('Please add products to cart'); return; }
+    if (isMember && !selectedReg) { setError('Please select a registered client'); return; }
+    if (!isMember && !newName.trim()) { setError('Please enter customer name'); return; }
+    if (!isMember && !noReferral && !selectedReferral) { setError('Please select a referral distributor or tick "no referral"'); return; }
     setError('');
+    setShowConfirmModal(true);
   };
-
-  const canCompleteSale = cart.length > 0 && (!isMember || selectedDistributor);
 
   const completeSale = async () => {
-    if (cart.length === 0) return;
-    if (isMember && !selectedDistributor) {
-      setError('Please select a distributor before completing a member sale.');
-      return;
-    }
     setSubmitting(true);
     setError('');
     try {
       const receiptNumber = generateReceiptNumber();
-      const referral = isMember ? selectedDistributor : (selectedReferral || DEFAULT_REFERRAL);
+      const referral = isMember ? selectedReg : (selectedReferral || DEFAULT_REFERRAL);
+      const custName = isMember ? (selectedReg?.name || '') : newName;
+      const custPhone = isMember ? (selectedReg?.phone || '') : newPhone;
       const saleData = {
         receipt_number: receiptNumber,
         branch: user?.branch || '',
         branchId: user?.branch || '',
         customer_type: isMember ? 'member' : 'non_member',
         customerType: isMember ? 'member' : 'non_member',
-        distributor_id: isMember ? (selectedDistributor?.id || null) : null,
-        distributor_name: isMember ? (selectedDistributor?.name || selectedDistributor?.full_name || null) : null,
-        distributor_nb: isMember ? (selectedDistributor?.nb_number || null) : null,
+        customer_name: custName,
+        customerName: custName,
+        customerPhone: custPhone,
+        distributor_id: isMember ? (selectedReg?.id || null) : null,
+        distributor_name: isMember ? custName : null,
+        distributor_nb: isMember ? (selectedReg?.nb_number || null) : null,
         referral_id: referral?.id || DEFAULT_REFERRAL.id,
         referral_name: referral?.name || referral?.full_name || DEFAULT_REFERRAL.name,
         referral_nb: referral?.nb_number || DEFAULT_REFERRAL.nb_number,
@@ -242,9 +280,24 @@ function WalkInSalesTab() {
         },
       };
       await api.branch.createWalkinSale(saleData);
-      setReceipt({ ...saleData, branch: user?.branch || '', created_at: new Date().toISOString() });
-      setCart([]);
-      setShowReview(false);
+      const receiptHTML = generateReceiptHTML({
+        receiptNumber,
+        branch: user?.branch || '',
+        items: saleData.items,
+        totalAmount: saleData.total_amount,
+        totalBV: saleData.total_bv || 0,
+        paymentMethod: saleData.payment_method,
+        customerType: saleData.customer_type,
+        customerName: isMember ? custName : (custName || 'Walk-in Customer'),
+        nbNumber: isMember ? (selectedReg?.nb_number || null) : null,
+        referralName: !isMember ? (referral?.name || DEFAULT_REFERRAL.name) : null,
+        referralNB: !isMember ? (referral?.nb_number || DEFAULT_REFERRAL.nb_number) : null,
+        cashier: user?.full_name || user?.username || null,
+        showBV: true,
+      });
+      printReceipt(receiptHTML);
+      setShowConfirmModal(false);
+      setShowModal(false);
       const salesRes = await api.branch.walkinSales().catch(() => ({ sales: [] }));
       setSales(Array.isArray(salesRes) ? salesRes : salesRes.sales || []);
     } catch (err) {
@@ -254,476 +307,343 @@ function WalkInSalesTab() {
     }
   };
 
-  const searchReceipt = async () => {
-    if (!receiptSearch.trim()) return;
-    const all = sales.length > 0 ? sales : [];
-    const found = all.find(s => (s.receipt_number || s.saleNumber || s.id || '').toLowerCase().includes(receiptSearch.toLowerCase())
-      || (s.customer_name || s.distributor_name || '').toLowerCase().includes(receiptSearch.toLowerCase()));
-    setFoundReceipt(found || null);
-  };
+  const paymentIcons = { cash: '💵', card: '💳', mobile: '📱', bank: '🏦' };
 
   if (loading) return <LoadingSpinner />;
 
-  if (receipt) {
-    const isM = receipt.customer_type === 'member';
-    const receiptHTML = generateReceiptHTML({
-      receiptNumber: receipt.receipt_number,
-      branch: receipt.branch || user?.branch || '',
-      items: receipt.items,
-      totalAmount: receipt.total_amount,
-      totalBV: receipt.total_bv || 0,
-      paymentMethod: receipt.payment_method,
-      customerType: receipt.customer_type,
-      customerName: isM ? receipt.distributor_name : (receipt.customer_name || 'Walk-in Customer'),
-      nbNumber: isM ? receipt.distributor_nb : null,
-      referralName: !isM ? (receipt.referral_name || DEFAULT_REFERRAL.name) : null,
-      referralNB: !isM ? (receipt.referral_nb || DEFAULT_REFERRAL.nb_number) : null,
-      cashier: user?.full_name || user?.username || null,
-      showBV: true,
-    });
-
-    return (
-      <div className="max-w-lg mx-auto">
-        <Card className="overflow-hidden">
-          <div className="p-5 flex justify-between items-center" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>
-            <div>
-              <h3 className="text-white text-lg font-bold m-0">✓ Sale Complete</h3>
-              <p className="text-white/80 text-sm mt-1 m-0">Transaction recorded successfully</p>
-            </div>
-            <button onClick={() => printReceipt(receiptHTML)} className="px-4 py-2 bg-white/20 text-white border border-white/40 rounded-lg text-sm font-semibold cursor-pointer hover:bg-white/30 transition-all">
-              <span className="inline-flex items-center gap-1"><Printer size={14} /> Print Receipt</span>
-            </button>
-          </div>
-          <CardBody>
-            <div className="text-center mb-4">
-              <img src={COMPANY_INFO.logo} alt="Dynapharm" className="h-12 mx-auto mb-2" onError={e => { e.target.style.display = 'none'; }} />
-              <p className="text-xs text-gray-500 font-semibold">{COMPANY_INFO.name}</p>
-              <p className="text-xs text-gray-400">{COMPANY_INFO.tagline}</p>
-              {(user?.branch || receipt.branch) && (() => {
-                const bi = BRANCH_DETAILS.find(b => b.name === (user?.branch || receipt.branch));
-                return bi ? <p className="text-xs text-gray-400 mt-1">{bi.name} | {bi.phone}</p> : null;
-              })()}
-            </div>
-            <div className="text-center mb-3">
-              <p className="text-sm text-gray-500">Receipt: <strong>{receipt.receipt_number}</strong></p>
-              <p className="text-sm text-gray-500">{formatDateTime(receipt.created_at)}</p>
-              {user?.full_name && <p className="text-xs text-gray-400">Cashier: {user.full_name}</p>}
-            </div>
-            <div className="border rounded-lg overflow-hidden mt-2">
-              <div className="bg-gray-50 px-3 py-2">
-                <p className="text-xs font-bold uppercase text-gray-500">Products</p>
-              </div>
-              <div className="divide-y">
-                {receipt.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div className="flex-1">
-                      <span className="font-medium">{item.product_name}</span>
-                      <span className="text-gray-400 ml-1">x{item.quantity}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatCurrency(item.line_total)}</span>
-                      {Number(item.bv || 0) > 0 && <span className="text-xs text-orange-500 ml-2">{Number(item.bv).toFixed(1)} BV</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t px-3 py-2 flex justify-between items-center bg-gray-50">
-                <div className="text-sm text-gray-500">BV earned: <strong className="text-orange-500">{Number(receipt.total_bv || 0).toFixed(1)}</strong></div>
-                <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(receipt.total_amount)}</span></div>
-              </div>
-            </div>
-            <p className="text-sm text-gray-500 mt-2">Payment: {receipt.payment_method}</p>
-            {isM && receipt.distributor_name && (
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mt-2 text-sm">
-                <p className="text-xs font-bold uppercase text-gray-500 mb-1">Member Details</p>
-                <div className="grid grid-cols-2 gap-1 text-sm">
-                  <p><span className="text-gray-400">Name:</span> <strong>{receipt.distributor_name}</strong></p>
-                  <p><span className="text-gray-400">NB#:</span> <strong>{receipt.distributor_nb || '—'}</strong></p>
-                </div>
-                <p className="text-blue-600 text-xs mt-1">DP Price Applied | BV: {Number(receipt.total_bv || 0).toFixed(1)}</p>
-              </div>
-            )}
-            {!isM && (
-              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mt-2 text-sm">
-                <p className="text-xs font-bold uppercase text-gray-500 mb-1">Non-Member Sale (CP)</p>
-                <div className="grid grid-cols-2 gap-1 text-sm">
-                  <p><span className="text-gray-400">Referral:</span> <strong className="text-orange-600">{receipt.referral_name || DEFAULT_REFERRAL.name}</strong></p>
-                  <p><span className="text-gray-400">NB#:</span> <strong>{receipt.referral_nb || DEFAULT_REFERRAL.nb_number}</strong></p>
-                </div>
-                <p className="text-yellow-600 text-xs mt-1">BV & profit assigned to referral distributor</p>
-              </div>
-            )}
-            <div className="flex gap-2 mt-4">
-              <Button className="flex-1" onClick={resetSale}>New Sale</Button>
-              <Button variant="secondary" onClick={() => printReceipt(receiptHTML)}>
-                <Printer size={14} /> Print
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!customerType) {
-    return (
-      <div>
-        <div className="rounded-xl p-6 mb-5 flex justify-between items-center flex-wrap gap-4" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-          <div>
-            <h3 className="text-white text-xl font-bold m-0">🛒 Walk-in Sales</h3>
-            <p className="text-white/75 text-sm mt-1 m-0">Process walk-in purchases for registered clients and new customers</p>
-          </div>
-          <button
-            onClick={() => selectCustomerType('non-member')}
-            className="px-7 py-3.5 text-white border-none rounded-xl text-base font-bold cursor-pointer"
-            style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', boxShadow: '0 3px 8px rgba(0,0,0,0.2)' }}
-          >
-            ➕ New Walk-in Sale
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
-          <div className="rounded-xl p-4 cursor-pointer transition-all hover:shadow-md" style={{ background: '#ebf5fb', border: '2px solid #3498db' }} onClick={() => selectCustomerType('member')}>
-            <div className="text-lg font-bold mb-1.5" style={{ color: '#1a5276' }}>🪪 Registered Client</div>
-            <ul className="m-0 pl-5 text-sm leading-7" style={{ color: '#2c3e50' }}>
-              <li>Has an NB number in the system</li>
-              <li>Pays at <strong>DP price</strong> (distributor price)</li>
-              <li>Earns <strong>BV points</strong> on their account</li>
-              <li>No referral required</li>
-            </ul>
-          </div>
-          <div className="rounded-xl p-4 cursor-pointer transition-all hover:shadow-md" style={{ background: '#fef9e7', border: '2px solid #f39c12' }} onClick={() => selectCustomerType('non-member')}>
-            <div className="text-lg font-bold mb-1.5" style={{ color: '#784212' }}>👤 New Customer</div>
-            <ul className="m-0 pl-5 text-sm leading-7" style={{ color: '#2c3e50' }}>
-              <li>Walk-in, not yet registered</li>
-              <li>Pays at <strong>CP price</strong> (retail price)</li>
-              <li>Referring distributor gets <strong>BVs &amp; commission</strong></li>
-              <li>Referral distributor required (or tick "no referral")</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl overflow-hidden" style={{ border: '1px solid #e2e8f0' }}>
-          <div className="flex justify-between items-center px-4 py-3" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-            <h4 className="m-0 text-base font-semibold" style={{ color: '#1e293b' }}>📋 Recent Walk-in Sales</h4>
-            <div className="flex gap-2 items-center">
-              {sales.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <Input placeholder="Receipt # or customer name..." value={receiptSearch} onChange={e => setReceiptSearch(e.target.value)} className="text-sm" style={{ minWidth: 180 }} />
-                  <Button size="sm" variant="secondary" onClick={searchReceipt}><Search size={14} /></Button>
-                </div>
-              )}
-              <button onClick={loadSales} className="px-3 py-1.5 rounded-md bg-white cursor-pointer text-xs" style={{ border: '1px solid #cbd5e1', color: '#64748b' }}>🔄 Refresh</button>
-            </div>
-          </div>
-          <div className="min-h-[80px] py-1.5 px-0">
-            {foundReceipt && (
-              <div className="mx-4 mt-2 p-3 bg-gray-50 rounded-lg text-sm">
-                <p className="font-medium">{foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id}</p>
-                <p className="text-gray-500">{foundReceipt.distributor_name || foundReceipt.customer_name || foundReceipt.customerName || 'Walk-in'}</p>
-                <p className="text-gray-500">{formatCurrency(foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount)} | {formatDateTime(foundReceipt.created_at || foundReceipt.timestamp)}</p>
-                <Button size="sm" variant="secondary" className="mt-2" onClick={() => {
-                  const fIsM = (foundReceipt.customerType || foundReceipt.customer_type) === 'member';
-                  const html = generateReceiptHTML({
-                    receiptNumber: foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id,
-                    branch: foundReceipt.branch || user?.branch || '',
-                    items: foundReceipt.products || foundReceipt.items || [],
-                    totalAmount: foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount || 0,
-                    totalBV: foundReceipt.totalBV || foundReceipt.total_bv || 0,
-                    paymentMethod: foundReceipt.paymentMethod || foundReceipt.payment_method || '',
-                    customerType: foundReceipt.customerType || foundReceipt.customer_type || 'non_member',
-                    customerName: foundReceipt.distributor_name || foundReceipt.customerName || foundReceipt.customer_name || (fIsM ? null : 'Walk-in Customer'),
-                    nbNumber: fIsM ? (foundReceipt.distributor_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
-                    referralName: !fIsM ? (foundReceipt.referral_name || foundReceipt.distributorReferral?.name || null) : null,
-                    referralNB: !fIsM ? (foundReceipt.referral_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
-                    cashier: foundReceipt.soldBy || '',
-                    showBV: true,
-                  });
-                  printReceipt(html);
-                }}><Printer size={14} /> Reprint</Button>
-              </div>
-            )}
-            {sales.length === 0 && !foundReceipt && (
-              <p className="text-center py-6" style={{ color: '#94a3b8' }}>No walk-in sales recorded yet</p>
-            )}
-            {sales.length > 0 && !foundReceipt && (
-              <div className="divide-y">
-                {sales.slice(0, 10).map((s, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50">
-                    <div>
-                      <span className="font-medium">{s.receipt_number || s.saleNumber || `#${s.id}`}</span>
-                      <span className="text-gray-400 mx-2">|</span>
-                      <span className="text-gray-500">{s.distributor_name || s.customer_name || s.customerName || 'Walk-in'}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold">{formatCurrency(s.total || s.totalAmount || s.total_amount || 0)}</span>
-                      <span className="text-xs text-gray-400">{formatDate(s.created_at || s.timestamp)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
-      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+      <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#2980b9)', borderRadius: '14px', padding: '24px 28px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
         <div>
-          <h3 className="text-white text-lg font-bold m-0">🛒 Walk-in Sales</h3>
-          <p className="text-white/75 text-xs mt-1 m-0">Processing {isMember ? 'Registered Client (DP)' : 'New Customer (CP)'} sale</p>
+          <h3 style={{ margin: 0, color: '#fff', fontSize: '1.4rem' }}>🛒 Walk-in Sales</h3>
+          <p style={{ margin: '5px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: '0.88rem' }}>Process walk-in purchases for registered clients and new customers</p>
         </div>
-        <button onClick={resetSale} className="px-4 py-2 bg-white/20 text-white border border-white/40 rounded-lg text-sm font-semibold cursor-pointer hover:bg-white/30 transition-all">✕ Cancel Sale</button>
+        <button onClick={openModal} style={{ padding: '14px 28px', background: 'linear-gradient(135deg,#27ae60,#1e8449)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 8px rgba(0,0,0,0.2)' }}>
+          ➕ New Walk-in Sale
+        </button>
       </div>
-      {error && <Alert type="error" className="mb-4">{error}</Alert>}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <div className="flex items-center gap-2 bg-white border rounded-lg p-2">
-              <button
-                onClick={() => selectCustomerType('non-member')}
-                className="px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer"
-                style={!isMember ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600 } : { color: '#64748b' }}
-              >
-                Non-Member (CP)
-              </button>
-              <button
-                onClick={() => selectCustomerType('member')}
-                className="px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer"
-                style={isMember ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600 } : { color: '#64748b' }}
-              >
-                Member (DP)
-              </button>
-            </div>
-            {isMember && (
-              <div className="relative flex-1 min-w-[200px]">
-                <Input
-                  placeholder="Search distributor by name or NB#..."
-                  value={distributorSearch}
-                  onChange={e => searchDistributors(e.target.value)}
-                />
-                {distributorResults.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
-                    {distributorResults.map(d => (
-                      <button
-                        key={d.id}
-                        onClick={() => selectDistributor(d)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b cursor-pointer"
-                      >
-                        <span className="font-medium">{d.name || d.distributor_name || d.full_name}</span>
-                        <span className="text-gray-400 ml-2">#{d.nb_number || d.distributor_code}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedDistributor && (
-                  <Badge variant="success" className="mt-1">Selected: {selectedDistributor.name || selectedDistributor.full_name} ({selectedDistributor.nb_number})</Badge>
-                )}
-              </div>
-            )}
-            {!isMember && (
-              <div className="relative flex-1 min-w-[200px]">
-                <Input
-                  placeholder="Search referral distributor (or leave default)..."
-                  value={referralSearch}
-                  onChange={e => searchReferrals(e.target.value)}
-                />
-                {referralResults.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
-                    {referralResults.map(d => (
-                      <button
-                        key={d.id}
-                        onClick={() => selectReferral(d)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b cursor-pointer"
-                      >
-                        <span className="font-medium">{d.name || d.distributor_name || d.full_name}</span>
-                        <span className="text-gray-400 ml-2">#{d.nb_number || d.distributor_code}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Badge variant="info" className="mt-1">
-                  Referral: {selectedReferral?.name || selectedReferral?.full_name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || DEFAULT_REFERRAL.nb_number})
-                </Badge>
-              </div>
-            )}
-            <Button variant="ghost" size="sm" onClick={resetSale}><RotateCcw size={14} /> Reset</Button>
-          </div>
-          <div className="mb-4">
-            <Input placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {filtered.slice(0, 30).map(p => (
-              <button key={p.id} onClick={() => addToCart(p)} className="p-3 bg-white border border-gray-200 rounded-lg text-left hover:border-primary hover:shadow-sm transition-all cursor-pointer">
-                <p className="text-sm font-medium text-gray-800 line-clamp-2">{p.name || p.description}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="text-sm font-bold text-primary">{formatCurrency(isMember ? (p.dp || p.price) : (p.cp || p.price))}</p>
-                  {p.bv > 0 && <span className="text-xs text-gray-400">BV: {p.bv}</span>}
-                </div>
-              </button>
-            ))}
-          </div>
 
-          {sales.length > 0 && (
-            <Card className="mt-6">
-              <CardHeader><h3 className="font-bold text-gray-800">Recent Sales</h3></CardHeader>
-              <Table
-                columns={[
-                  { header: 'Receipt', render: r => r.receipt_number || r.saleNumber || r.id || '-' },
-                  { header: 'Customer', render: r => r.distributor_name || r.customerName || r.customer_name || r.customer_type || '-' },
-                  { header: 'Total', render: r => <span className="font-bold">{formatCurrency(r.total_amount || r.total || r.totalAmount)}</span> },
-                  { header: 'Payment', render: r => r.payment_method || r.paymentMethod || '-' },
-                  { header: 'Date', render: r => formatDateTime(r.created_at || r.timestamp) },
-                  { header: '', render: r => {
-                    const rIsM = (r.customerType || r.customer_type) === 'member';
-                    return (
-                    <Button size="sm" variant="ghost" onClick={() => {
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+        <div style={{ background: '#ebf5fb', border: '2px solid #3498db', borderRadius: '12px', padding: '16px' }}>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a5276', marginBottom: '6px' }}>🪪 Registered Client</div>
+          <ul style={{ margin: 0, paddingLeft: '18px', color: '#2c3e50', fontSize: '0.85rem', lineHeight: 1.7 }}>
+            <li>Has an NB number in the system</li>
+            <li>Pays at <strong>DP price</strong> (distributor price)</li>
+            <li>Earns <strong>BV points</strong> on their account</li>
+            <li>No referral required</li>
+          </ul>
+        </div>
+        <div style={{ background: '#fef9e7', border: '2px solid #f39c12', borderRadius: '12px', padding: '16px' }}>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#784212', marginBottom: '6px' }}>👤 New Customer</div>
+          <ul style={{ margin: 0, paddingLeft: '18px', color: '#2c3e50', fontSize: '0.85rem', lineHeight: 1.7 }}>
+            <li>Walk-in, not yet registered</li>
+            <li>Pays at <strong>CP price</strong> (retail price)</li>
+            <li>Referring distributor gets <strong>BVs &amp; commission</strong></li>
+            <li>Referral distributor required (or tick "no referral")</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>📋 Recent Walk-in Sales</h4>
+          <button onClick={loadSales} style={{ padding: '5px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff', cursor: 'pointer', fontSize: '0.8rem', color: '#64748b' }}>🔄 Refresh</button>
+        </div>
+        <div style={{ minHeight: '80px', padding: '6px 0' }}>
+          {sales.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No walk-in sales recorded yet</p>
+          ) : (
+            <div className="divide-y">
+              {sales.slice(0, 10).map((s, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50">
+                  <div>
+                    <span className="font-medium">{s.receipt_number || s.saleNumber || `#${s.id}`}</span>
+                    <span className="text-gray-400 mx-2">|</span>
+                    <span className="text-gray-500">{s.distributor_name || s.customer_name || s.customerName || 'Walk-in'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold">{formatCurrency(s.total || s.totalAmount || s.total_amount || 0)}</span>
+                    <span className="text-xs text-gray-400">{formatDate(s.created_at || s.timestamp)}</span>
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      const sIsM = (s.customerType || s.customer_type) === 'member';
                       const html = generateReceiptHTML({
-                        receiptNumber: r.receipt_number || r.saleNumber || r.id,
-                        branch: r.branch || user?.branch || '',
-                        items: r.products || r.items || [],
-                        totalAmount: r.total || r.totalAmount || r.total_amount || 0,
-                        totalBV: r.totalBV || r.total_bv || 0,
-                        paymentMethod: r.paymentMethod || r.payment_method || '',
-                        customerType: r.customerType || r.customer_type || 'non_member',
-                        customerName: r.distributor_name || r.customerName || r.customer_name || (rIsM ? null : 'Walk-in Customer'),
-                        nbNumber: rIsM ? (r.distributor_nb || r.distributorReferral?.nb_number || null) : null,
-                        referralName: !rIsM ? (r.referral_name || r.distributorReferral?.name || null) : null,
-                        referralNB: !rIsM ? (r.referral_nb || r.distributorReferral?.nb_number || null) : null,
-                        cashier: r.soldBy || '',
+                        receiptNumber: s.receipt_number || s.saleNumber || s.id,
+                        branch: s.branch || user?.branch || '',
+                        items: s.products || s.items || [],
+                        totalAmount: s.total || s.totalAmount || s.total_amount || 0,
+                        totalBV: s.totalBV || s.total_bv || 0,
+                        paymentMethod: s.paymentMethod || s.payment_method || '',
+                        customerType: s.customerType || s.customer_type || 'non_member',
+                        customerName: s.distributor_name || s.customerName || s.customer_name || (sIsM ? null : 'Walk-in Customer'),
+                        nbNumber: sIsM ? (s.distributor_nb || s.distributorReferral?.nb_number || null) : null,
+                        referralName: !sIsM ? (s.referral_name || s.distributorReferral?.name || null) : null,
+                        referralNB: !sIsM ? (s.referral_nb || s.distributorReferral?.nb_number || null) : null,
+                        cashier: s.soldBy || '',
                         showBV: true,
                       });
                       printReceipt(html);
-                    }}><Printer size={12} /></Button>
-                    );
-                  }},
-                ]}
-                data={sales.slice(0, 20)}
-                emptyMessage="No recent sales"
-              />
-            </Card>
-          )}
-        </div>
-        <div>
-          <Card className="sticky top-20 overflow-hidden">
-            <div className="px-5 py-3" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-              <h3 className="font-bold text-white m-0 text-sm">🛒 Current Sale</h3>
-            </div>
-            <CardBody>
-              {cart.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">Add items to start a sale</p>
-              ) : (
-                <div className="space-y-2">
-                  {cartData.items.map(item => (
-                    <div key={item.id} className="flex items-center justify-between text-sm">
-                      <span className="flex-1 truncate">{item.name || item.description}</span>
-                      <div className="flex items-center gap-1 mx-2">
-                        <button onClick={() => updateQty(item.id, -1)} className="w-6 h-6 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer">−</button>
-                        <span className="w-6 text-center">{item.qty}</span>
-                        <button onClick={() => updateQty(item.id, 1)} className="w-6 h-6 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer">+</button>
-                      </div>
-                      <span className="font-semibold w-20 text-right">{formatCurrency(item.lineTotal)}</span>
-                      <button onClick={() => removeFromCart(item.id)} className="ml-2 text-red-400 hover:text-red-600 cursor-pointer">×</button>
-                    </div>
-                  ))}
-                  <div className="border-t pt-2 space-y-1">
-                    <div className="flex justify-between font-bold text-lg">
-                      <span>Total</span>
-                      <span className="text-primary">{formatCurrency(cartData.totalAmount)}</span>
-                    </div>
-                    {isMember && (
-                      <div className="flex justify-between text-sm text-gray-500">
-                        <span>Total BV</span>
-                        <span>{cartData.totalBV.toFixed(1)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['Cash', 'Card', 'Mobile', 'Bank'].map(m => (
-                        <button
-                          key={m}
-                          onClick={() => setPaymentMethod(m)}
-                          className={`px-3 py-2 text-sm rounded-lg border transition-colors cursor-pointer ${paymentMethod === m ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-primary'}`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <Button className="flex-1" variant="success" onClick={() => setShowReview(true)} disabled={!canCompleteSale}>Review Sale</Button>
-                    <Button variant="ghost" onClick={() => setCart([])}>Clear</Button>
-                  </div>
-                  {isMember && !selectedDistributor && cart.length > 0 && (
-                    <p className="text-xs text-red-500 mt-1">Select a distributor to continue</p>
-                  )}
-                </div>
-              )}
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-
-      <Modal open={showReview} onClose={() => setShowReview(false)} title="Confirm Sale" size="md">
-        <div className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <p className="text-xs font-bold uppercase text-gray-500 mb-2">Customer</p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-gray-400">Name:</span> <strong>{isMember ? (selectedDistributor?.name || selectedDistributor?.full_name || 'Not selected') : 'Walk-in Customer'}</strong></div>
-              <div><span className="text-gray-400">Type:</span> <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${isMember ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>{isMember ? 'Member (DP)' : 'Non-Member (CP)'}</span></div>
-              <div><span className="text-gray-400">NB#:</span> <span>{isMember ? (selectedDistributor?.nb_number || selectedDistributor?.distributor_code || '—') : '—'}</span></div>
-              <div><span className="text-gray-400">Phone:</span> <span>{isMember ? (selectedDistributor?.phone || selectedDistributor?.mobile_no || '—') : '—'}</span></div>
-              {!isMember && (
-                <div className="col-span-2"><span className="text-gray-400">Referral:</span> <span className="text-orange-600 font-semibold">{selectedReferral?.name || selectedReferral?.full_name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || selectedReferral?.distributor_code || DEFAULT_REFERRAL.nb_number})</span></div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <p className="text-xs font-bold uppercase text-gray-500 mb-2">Products</p>
-            <div className="divide-y max-h-48 overflow-y-auto">
-              {cartData.items.map((item, i) => (
-                <div key={i} className="flex items-center justify-between py-2 text-sm">
-                  <div className="flex-1">
-                    <span className="font-medium">{item.name || item.description}</span>
-                    <span className="text-gray-400 ml-1">x{item.qty}</span>
-                  </div>
-                  <div className="text-right flex items-center gap-3">
-                    <span className="font-semibold">{formatCurrency(item.lineTotal)}</span>
-                    {Number(item.lineBV || 0) > 0 && <span className="text-xs text-orange-500 font-medium">{Number(item.lineBV).toFixed(1)} BV</span>}
+                    }} style={{ padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '0.75rem', color: '#64748b' }}>🖨️</button>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="border-t mt-2 pt-2 flex justify-between items-center">
-              <div className="text-sm text-gray-500">BV earned: <strong className="text-orange-500">{cartData.totalBV.toFixed(1)}</strong></div>
-              <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(cartData.totalAmount)}</span></div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <p className="text-xs font-bold uppercase text-gray-500 mb-1">Payment</p>
-            <p className="text-base font-semibold text-gray-800">{paymentMethod}</p>
-          </div>
-
-          {!isMember && (
-            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-xs text-yellow-700">
-              BV and profit from this sale will be assigned to referral: {selectedReferral?.name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || DEFAULT_REFERRAL.nb_number})
-            </div>
           )}
-          <div className="flex gap-3 pt-2">
-            <Button variant="ghost" onClick={() => setShowReview(false)}>Edit</Button>
-            <Button className="flex-1" variant="success" onClick={completeSale} disabled={submitting}>
-              {submitting ? 'Processing...' : 'Complete Sale'}
-            </Button>
+        </div>
+      </div>
+
+      {showModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={{ maxWidth: '960px', width: '100%', padding: 0, borderRadius: '12px', overflow: 'hidden', background: '#fff', maxHeight: '95vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#2980b9)', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem' }}>🛒 New Walk-in Sale</h2>
+                <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem', marginTop: '3px' }}>Branch/Dispenser Point of Sale</div>
+              </div>
+              <span onClick={closeModal} style={{ color: '#fff', fontSize: '26px', cursor: 'pointer', lineHeight: 1, opacity: 0.8 }}>&times;</span>
+            </div>
+
+            <div style={{ padding: '20px', background: '#f8fafc', overflowY: 'auto', flex: 1 }}>
+              {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '0.88rem' }}>{error}</div>}
+
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Step 1 — Customer Type</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button type="button" onClick={() => wiSetCustomerType('registered')}
+                    style={{ padding: '14px', border: customerType === 'registered' ? '2px solid #3498db' : '2px solid #ddd', borderRadius: '10px', background: customerType === 'registered' ? '#ebf5fb' : '#fff', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600, color: customerType === 'registered' ? '#1a5276' : '#444', transition: 'all .15s', textAlign: 'left' }}>
+                    🪪 Registered Client<br /><span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#555' }}>Has an NB number — pays DP price, earns BVs</span>
+                  </button>
+                  <button type="button" onClick={() => wiSetCustomerType('new')}
+                    style={{ padding: '14px', border: customerType === 'new' ? '2px solid #f39c12' : '2px solid #ddd', borderRadius: '10px', background: customerType === 'new' ? '#fef9e7' : '#fff', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600, color: customerType === 'new' ? '#784212' : '#444', transition: 'all .15s', textAlign: 'left' }}>
+                    👤 New Customer<br /><span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#555' }}>No NB number — needs a referral distributor</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Step 2 — Customer Details</div>
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px' }}>
+                  {customerType === 'registered' ? (
+                    <div>
+                      <label style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Search by Name or NB Number</label>
+                      <div style={{ position: 'relative', marginTop: '6px' }}>
+                        <input type="text" value={regSearch} placeholder="Type name or NB number…"
+                          onChange={e => searchRegistered(e.target.value)}
+                          style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                        {regResults.length > 0 && (
+                          <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.12)', top: 'calc(100% + 4px)', left: 0 }}>
+                            {regResults.map(d => (
+                              <button key={d.id} onClick={() => selectRegistered(d)}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid #f1f1f1', background: 'none', cursor: 'pointer', fontSize: '0.88rem' }}>
+                                <strong>{d.name || d.distributor_name || d.full_name}</strong>
+                                <span style={{ color: '#888', marginLeft: '8px' }}>#{d.nb_number || d.distributor_code}</span>
+                                {(d.phone || d.mobile_no) && <span style={{ color: '#aaa', marginLeft: '8px' }}>{d.phone || d.mobile_no}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {selectedReg && (
+                        <div style={{ marginTop: '10px', padding: '10px', background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: '8px', fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <strong>{selectedReg.name}</strong><br />
+                            <span style={{ color: '#555' }}>NB: <span style={{ fontWeight: 600, color: '#27ae60' }}>{selectedReg.nb_number}</span> &nbsp;|&nbsp; Phone: <span>{selectedReg.phone || '—'}</span></span>
+                          </div>
+                          <button type="button" onClick={clearRegistered} style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Customer Name *</label>
+                          <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name"
+                            style={{ width: '100%', marginTop: '4px', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Phone (optional)</label>
+                          <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="0812345678"
+                            style={{ width: '100%', marginTop: '4px', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Referring Distributor * <span style={{ color: '#e74c3c' }}>(required)</span></label>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 6px' }}>The distributor who referred this customer earns the BVs and commission</div>
+                        <div style={{ position: 'relative' }}>
+                          <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search distributor by name or NB…"
+                            disabled={noReferral}
+                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #f39c12', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box', opacity: noReferral ? 0.5 : 1 }} />
+                          {referralResults.length > 0 && !noReferral && (
+                            <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', maxHeight: '180px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.12)', top: 'calc(100% + 4px)', left: 0 }}>
+                              {referralResults.map(d => (
+                                <button key={d.id} onClick={() => selectReferral(d)}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid #f1f1f1', background: 'none', cursor: 'pointer', fontSize: '0.88rem' }}>
+                                  <strong>{d.name || d.distributor_name || d.full_name}</strong>
+                                  <span style={{ color: '#888', marginLeft: '8px' }}>#{d.nb_number || d.distributor_code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {selectedReferral && !noReferral && (
+                          <div style={{ marginTop: '8px', padding: '10px', background: '#fff3cd', border: '1px solid #f39c12', borderRadius: '8px', fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <strong>{selectedReferral.name}</strong><br />
+                              <span style={{ color: '#555' }}>NB: <span style={{ fontWeight: 600, color: '#e67e22' }}>{selectedReferral.nb_number}</span></span>
+                            </div>
+                            <button type="button" onClick={clearReferral} style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+                          </div>
+                        )}
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '0.85rem', cursor: 'pointer', color: '#666' }}>
+                          <input type="checkbox" checked={noReferral} onChange={e => toggleNoReferral(e.target.checked)} style={{ width: '16px', height: '16px' }} />
+                          Customer has no referral (walk-in only)
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Step 3 — Select Products</div>
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'center' }}>
+                    <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…"
+                      style={{ flex: 1, padding: '9px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.88rem' }} />
+                    <span style={{ fontSize: '0.78rem', padding: '5px 10px', background: isMember ? '#e8f5e9' : '#fff3cd', borderRadius: '20px', color: isMember ? '#27ae60' : '#e67e22', fontWeight: 600, whiteSpace: 'nowrap' }}>{isMember ? 'DP Prices' : 'CP Prices'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: '8px', maxHeight: '260px', overflowY: 'auto', padding: '2px' }}>
+                    {filteredProducts.length === 0 ? (
+                      <p style={{ color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: '20px' }}>No products found</p>
+                    ) : filteredProducts.slice(0, 50).map(p => {
+                      const price = isMember ? (p.dp || p.price) : (p.cp || p.price);
+                      const inCart = cart.find(c => c.id === p.id);
+                      return (
+                        <button key={p.id} onClick={() => addToCart(p)} type="button"
+                          style={{ padding: '10px', border: inCart ? '2px solid #27ae60' : '1px solid #e2e8f0', borderRadius: '8px', background: inCart ? '#f0fdf4' : '#fff', cursor: 'pointer', textAlign: 'left', fontSize: '0.82rem', transition: 'all .15s' }}>
+                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px', lineHeight: 1.3 }}>{p.name || p.description}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 700, color: '#27ae60' }}>{formatCurrency(price)}</span>
+                            {p.bv > 0 && <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{p.bv} BV</span>}
+                          </div>
+                          {inCart && <div style={{ fontSize: '0.72rem', color: '#27ae60', marginTop: '2px' }}>In cart: {inCart.qty}</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Step 4 — Cart</div>
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                  <div style={{ minHeight: '60px', maxHeight: '220px', overflowY: 'auto', padding: '10px 12px' }}>
+                    {cart.length === 0 ? (
+                      <p style={{ color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>Cart is empty — add products above</p>
+                    ) : (
+                      <div>
+                        {cartData.items.map(item => (
+                          <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.88rem' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.name || item.description}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px' }}>
+                              <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                              <span style={{ width: '24px', textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
+                              <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                              <span style={{ fontWeight: 700, color: '#1e293b', minWidth: '70px', textAlign: 'right' }}>{formatCurrency(item.lineTotal)}</span>
+                              <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, marginLeft: '4px' }}>×</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ background: '#1e3a5f', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ color: '#fff', fontSize: '0.85rem' }}>Total BV: <strong style={{ color: '#f39c12' }}>{cartData.totalBV.toFixed(2)}</strong></div>
+                    <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>Total: <span style={{ color: '#2ecc71' }}>N$ {cartData.totalAmount.toFixed(2)}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Step 5 — Payment Method</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px' }}>
+                  {['cash', 'card', 'mobile', 'bank'].map(m => (
+                    <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                      style={{ padding: '12px 6px', border: paymentMethod === m ? '2px solid #27ae60' : '2px solid #ddd', borderRadius: '8px', background: paymentMethod === m ? '#e8f5e9' : '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                      {paymentIcons[m]} {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 20px', background: '#fff', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
+              <button type="button" onClick={closeModal} style={{ padding: '10px 22px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fff', cursor: 'pointer', color: '#64748b', fontSize: '0.9rem' }}>Cancel</button>
+              <button type="button" onClick={wiReviewSale}
+                style={{ padding: '10px 28px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg,#27ae60,#1e8449)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                📋 Review &amp; Confirm
+              </button>
+            </div>
           </div>
         </div>
-      </Modal>
+      )}
+
+      {showConfirmModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ maxWidth: '640px', width: '100%', borderRadius: '12px', overflow: 'hidden', padding: 0, background: '#fff' }}>
+            <div style={{ background: 'linear-gradient(135deg,#27ae60,#1e8449)', padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>✅ Confirm Sale</h2>
+              <span onClick={() => setShowConfirmModal(false)} style={{ color: '#fff', fontSize: '24px', cursor: 'pointer', opacity: 0.8 }}>&times;</span>
+            </div>
+            <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', background: '#f8fafc' }}>
+              {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '0.88rem' }}>{error}</div>}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: '8px' }}>Customer</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.88rem' }}>
+                  <div><span style={{ color: '#94a3b8' }}>Name:</span> <strong>{isMember ? selectedReg?.name : newName}</strong></div>
+                  <div><span style={{ color: '#94a3b8' }}>Type:</span> <span>{isMember ? 'Registered (DP)' : 'New Customer (CP)'}</span></div>
+                  <div><span style={{ color: '#94a3b8' }}>NB#:</span> <span>{isMember ? (selectedReg?.nb_number || '—') : '—'}</span></div>
+                  <div><span style={{ color: '#94a3b8' }}>Phone:</span> <span>{isMember ? (selectedReg?.phone || '—') : (newPhone || '—')}</span></div>
+                  {!isMember && (selectedReferral || noReferral) && (
+                    <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#94a3b8' }}>Referral:</span> <span style={{ color: '#e67e22', fontWeight: 600 }}>{selectedReferral?.name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || DEFAULT_REFERRAL.nb_number})</span></div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: '8px' }}>Products</div>
+                <div style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '0.88rem' }}>
+                  {cartData.items.map((item, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
+                      <span>{item.name || item.description} <span style={{ color: '#94a3b8' }}>x{item.qty}</span></span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(item.lineTotal)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>BV earned: <strong style={{ color: '#e67e22' }}>{cartData.totalBV.toFixed(2)}</strong></div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>Total: <span style={{ color: '#27ae60' }}>{formatCurrency(cartData.totalAmount)}</span></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: '6px' }}>Payment</div>
+                <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e3a5f' }}>{paymentIcons[paymentMethod]} {paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}</div>
+              </div>
+            </div>
+            <div style={{ padding: '14px 20px', background: '#fff', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowConfirmModal(false)} style={{ padding: '10px 20px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fff', cursor: 'pointer', color: '#64748b' }}>← Edit</button>
+              <button type="button" onClick={completeSale} disabled={submitting}
+                style={{ padding: '10px 28px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg,#27ae60,#1e8449)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem', opacity: submitting ? 0.7 : 1 }}>
+                {submitting ? 'Processing…' : '✅ Complete Sale'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
