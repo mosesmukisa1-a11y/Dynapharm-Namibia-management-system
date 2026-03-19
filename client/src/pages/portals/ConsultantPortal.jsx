@@ -1,46 +1,67 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatDateTime, formatDate } from '../../lib/constants';
+import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
 import { PRICE_LIST } from '../../lib/pricing';
-import { SYMPTOM_PRODUCT_MAP } from '../../lib/receipt';
-import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Stethoscope, Users, FileText, Bell, BarChart3, ClipboardList, Plus, Trash2, Activity } from 'lucide-react';
+import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
+import { FileText, Plus, Trash2 } from 'lucide-react';
 
 export default function ConsultantPortal() {
-  const [activeTab, setActiveTab] = useState('checkups');
-  const tabs = [
-    { id: 'checkups', label: 'Checkup Forms', icon: '📋' },
-    { id: 'symptoms', label: 'Symptom Checker', icon: '🩺' },
-    { id: 'clients', label: 'Clients', icon: '👥' },
-    { id: 'reports', label: 'Reports', icon: '📝' },
-    { id: 'followups', label: 'Follow-ups', icon: '🔔' },
-    { id: 'analytics', label: 'Analytics', icon: '📊' },
-    { id: 'staff', label: 'Staff Services', icon: '👤' },
+  const [activeSection, setActiveSection] = useState('checkups');
+  const navItems = [
+    { id: 'checkups', label: 'Checkup Forms' },
+    { id: 'clients', label: 'Clients' },
+    { id: 'reports', label: 'Reports' },
+    { id: 'followups', label: 'Follow-ups' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'staff', label: 'Staff Services' },
   ];
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Stethoscope size={24} className="text-primary" /> Consultant Portal
-        </h1>
-        <p className="text-sm text-gray-500">Review checkups, manage clients, and create health reports</p>
+      <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #a01830 100%)', borderRadius: '16px', padding: '28px 32px', marginBottom: '28px', color: '#fff', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+        <img src={COMPANY_INFO.logo} alt="Dynapharm" style={{ height: '52px', background: '#fff', borderRadius: '10px', padding: '6px' }} onError={e => { e.target.style.display = 'none'; }} />
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>Consultant Portal</h2>
+          <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.95rem' }}>Client management, checkup forms & reports</p>
+        </div>
+        <button style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', padding: '8px 18px', fontSize: '0.9rem', cursor: 'pointer' }}>Refresh Data</button>
       </div>
-      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
-      <div className="mt-6">
-        {activeTab === 'checkups' && <CheckupsTab />}
-        {activeTab === 'symptoms' && <SymptomCheckerTab />}
-        {activeTab === 'clients' && <ClientsTab />}
-        {activeTab === 'reports' && <ReportsTab />}
-        {activeTab === 'followups' && <FollowupsTab />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
-        {activeTab === 'staff' && <StaffTab />}
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px', borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
+        {navItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => setActiveSection(item.id)}
+            style={{
+              padding: '10px 20px',
+              fontSize: '0.95rem',
+              fontWeight: 600,
+              border: 'none',
+              background: 'none',
+              color: activeSection === item.id ? '#c41e3a' : '#64748b',
+              borderBottom: activeSection === item.id ? '3px solid #c41e3a' : '3px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        {activeSection === 'checkups' && <CheckupsSection />}
+        {activeSection === 'clients' && <ClientsSection />}
+        {activeSection === 'reports' && <ReportsSection />}
+        {activeSection === 'followups' && <FollowupsSection />}
+        {activeSection === 'analytics' && <AnalyticsSection />}
+        {activeSection === 'staff' && <StaffServicesSection />}
       </div>
     </div>
   );
 }
 
-function CheckupsTab() {
+function CheckupsSection() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('upcoming');
@@ -52,12 +73,15 @@ function CheckupsTab() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadCheckups = () => {
+    setLoading(true);
     api.appointments.list('type=Check')
       .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadCheckups(); }, []);
 
   const addPrescription = () => {
     if (!prescriptionProduct) return;
@@ -78,10 +102,7 @@ function CheckupsTab() {
 
   const handleCreateReport = async (e) => {
     e.preventDefault();
-    if (!reportForm.diagnosis) {
-      setError('Diagnosis is required');
-      return;
-    }
+    if (!reportForm.diagnosis) { setError('Diagnosis is required'); return; }
     setSubmitting(true);
     setError('');
     try {
@@ -102,41 +123,46 @@ function CheckupsTab() {
     setSubmitting(false);
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  const filtered = appointments.filter(a => {
-    if (filter === 'upcoming') return a.status !== 'completed';
-    return a.status === 'completed';
-  });
+  const filtered = appointments.filter(a => filter === 'upcoming' ? a.status !== 'completed' : a.status === 'completed');
 
   return (
-    <div>
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setFilter('upcoming')} className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer ${filter === 'upcoming' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}>Upcoming</button>
-        <button onClick={() => setFilter('completed')} className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer ${filter === 'completed' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}>Completed</button>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b' }}>Checkup Forms</h3>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>Forms submitted by clients to your branch</p>
+        </div>
+        <button onClick={loadCheckups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer' }}>Refresh</button>
       </div>
-      {filtered.length === 0 ? (
-        <EmptyState icon={<Stethoscope size={48} />} title="No checkup forms" description={`No ${filter} checkups found.`} />
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
+        <button
+          onClick={() => setFilter('upcoming')}
+          style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: filter === 'upcoming' ? '#c41e3a' : '#f1f5f9', color: filter === 'upcoming' ? '#fff' : '#64748b', transition: 'all 0.2s' }}
+        >Upcoming</button>
+        <button
+          onClick={() => setFilter('completed')}
+          style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: filter === 'completed' ? '#c41e3a' : '#f1f5f9', color: filter === 'completed' ? '#fff' : '#64748b', transition: 'all 0.2s' }}
+        >Completed</button>
+      </div>
+
+      {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No {filter} checkup forms found.</p>
       ) : (
-        <div className="grid gap-3">
+        <div className="space-y-3">
           {filtered.map(apt => (
-            <Card key={apt.id} className="hover:shadow-md transition-shadow">
-              <CardBody>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-semibold text-gray-800">{apt.full_name}</h4>
-                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(apt.date || apt.created_at)}</p>
-                    <p className="text-xs text-gray-400">{apt.branch}</p>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <Badge variant={apt.status === 'completed' ? 'success' : 'warning'}>{apt.status || 'Pending'}</Badge>
-                    <Button size="sm" onClick={() => { setSelectedCheckup(apt); setShowReport(true); }}>
-                      <FileText size={14} /> Create Report
-                    </Button>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
+            <div key={apt.id} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b', fontWeight: 600 }}>{apt.full_name}</h4>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{formatDateTime(apt.date || apt.created_at)}</p>
+                {apt.branch && <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{apt.branch}</p>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Badge variant={apt.status === 'completed' ? 'success' : 'warning'}>{apt.status || 'Pending'}</Badge>
+                <Button size="sm" onClick={() => { setSelectedCheckup(apt); setShowReport(true); }}>
+                  <FileText size={14} /> Create Report
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -147,27 +173,14 @@ function CheckupsTab() {
           <Textarea label="Diagnosis" value={reportForm.diagnosis} onChange={e => setReportForm(f => ({ ...f, diagnosis: e.target.value }))} required />
           <Textarea label="Recommendations" value={reportForm.recommendations} onChange={e => setReportForm(f => ({ ...f, recommendations: e.target.value }))} />
           <Input label="Follow-up Date" type="date" value={reportForm.follow_up_date} onChange={e => setReportForm(f => ({ ...f, follow_up_date: e.target.value }))} />
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Prescriptions</label>
             <div className="flex gap-2 mb-2">
-              <select
-                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm"
-                value={prescriptionProduct}
-                onChange={e => setPrescriptionProduct(e.target.value)}
-              >
+              <select className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm" value={prescriptionProduct} onChange={e => setPrescriptionProduct(e.target.value)}>
                 <option value="">Select product...</option>
-                {PRICE_LIST.map((p, i) => (
-                  <option key={i} value={p.description}>{p.description}</option>
-                ))}
+                {PRICE_LIST.map((p, i) => <option key={i} value={p.description}>{p.description}</option>)}
               </select>
-              <input
-                type="number"
-                min="1"
-                value={prescriptionQty}
-                onChange={e => setPrescriptionQty(Number(e.target.value))}
-                className="w-20 px-3 py-2 rounded-lg border border-gray-300 text-sm"
-              />
+              <input type="number" min="1" value={prescriptionQty} onChange={e => setPrescriptionQty(Number(e.target.value))} className="w-20 px-3 py-2 rounded-lg border border-gray-300 text-sm" />
               <Button type="button" variant="secondary" onClick={addPrescription}><Plus size={14} /> Add</Button>
             </div>
             {reportForm.prescriptions.length > 0 && (
@@ -175,15 +188,12 @@ function CheckupsTab() {
                 {reportForm.prescriptions.map((p, i) => (
                   <div key={i} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded text-sm">
                     <span>{p.product} x {p.quantity}</span>
-                    <button type="button" onClick={() => removePrescription(i)} className="text-red-500 hover:text-red-700 cursor-pointer">
-                      <Trash2 size={14} />
-                    </button>
+                    <button type="button" onClick={() => removePrescription(i)} className="text-red-500 hover:text-red-700 cursor-pointer"><Trash2 size={14} /></button>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowReport(false)}>Cancel</Button>
             <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Report'}</Button>
@@ -194,9 +204,11 @@ function CheckupsTab() {
   );
 }
 
-function ClientsTab() {
+function ClientsSection() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
 
   useEffect(() => {
     api.clients.list()
@@ -205,66 +217,119 @@ function ClientsTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <LoadingSpinner />;
+  const searchClients = () => {};
+  const showAllClients = () => { setSearch(''); setBranchFilter(''); };
+
+  const filtered = clients.filter(c => {
+    if (search) {
+      const q = search.toLowerCase();
+      const match = (c.full_name || c.name || '').toLowerCase().includes(q)
+        || (c.phone || '').includes(q)
+        || (c.reference || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (branchFilter && (c.branch || '') !== branchFilter) return false;
+    return true;
+  });
 
   return (
-    <Card>
-      <Table
-        columns={[
-          { header: 'Name', key: 'full_name' },
-          { header: 'Phone', key: 'phone' },
-          { header: 'Email', key: 'email' },
-          { header: 'Created', render: (r) => formatDate(r.created_at) },
-        ]}
-        data={clients}
-        emptyMessage="No clients found"
-      />
-    </Card>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>Client Search</h3>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+        <input
+          type="text"
+          placeholder="Search by name, phone, or reference..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
+        />
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} style={{ padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}>
+          <option value="">All Branches</option>
+          {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <button onClick={searchClients} style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600 }}>Search</button>
+        <button onClick={showAllClients} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
+      </div>
+      {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No clients found.</p>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(c => (
+            <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{c.full_name || c.name}</span>
+                {c.phone && <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '12px' }}>{c.phone}</span>}
+              </div>
+              {c.branch && <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{c.branch}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
-function ReportsTab() {
+function ReportsSection() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
 
-  useEffect(() => {
+  const loadReports = () => {
+    setLoading(true);
     api.reports.list()
       .then(data => setReports(Array.isArray(data) ? data : data.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  if (loading) return <LoadingSpinner />;
+  useEffect(() => { loadReports(); }, []);
+
+  const filtered = reports.filter(r => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (r.client_name || '').toLowerCase().includes(q) || (r.id || '').toString().includes(q);
+  });
 
   return (
-    <div>
-      {reports.length === 0 ? (
-        <EmptyState icon={<FileText size={48} />} title="No Reports" description="Create reports from checkup forms." />
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>My Created Reports</h3>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+        <input
+          type="text"
+          placeholder="Search by client name or report ID..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
+        />
+        <button style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600 }}>Search</button>
+        <button onClick={() => setSearch('')} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
+        <button onClick={loadReports} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
+      </div>
+      {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No reports found.</p>
       ) : (
         <div className="space-y-3">
-          {reports.map(r => (
-            <Card key={r.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedReport(r)}>
-              <CardBody>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-semibold text-gray-800">{r.client_name || r.title || 'Report'}</h4>
-                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(r.created_at)}</p>
-                    {r.diagnosis && <p className="text-sm text-gray-600 mt-2">{r.diagnosis}</p>}
-                  </div>
-                  {r.follow_up_date && (
-                    <Badge variant="info">Follow-up: {formatDate(r.follow_up_date)}</Badge>
-                  )}
+          {filtered.map(r => (
+            <div key={r.id} onClick={() => setSelectedReport(r)} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', cursor: 'pointer', transition: 'box-shadow 0.2s' }}>
+              <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || r.title || 'Report'}</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{formatDateTime(r.created_at)}</p>
+                  {r.diagnosis && <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#475569' }}>{r.diagnosis}</p>}
                 </div>
-                {r.prescriptions && Array.isArray(r.prescriptions) && r.prescriptions.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {r.prescriptions.map((p, i) => (
-                      <Badge key={i} variant="default">{typeof p === 'string' ? p : `${p.product} x${p.quantity}`}</Badge>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
+                {r.follow_up_date && <Badge variant="info">Follow-up: {formatDate(r.follow_up_date)}</Badge>}
+              </div>
+              {r.prescriptions && Array.isArray(r.prescriptions) && r.prescriptions.length > 0 && (
+                <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {r.prescriptions.map((p, i) => (
+                    <span key={i} style={{ display: 'inline-block', padding: '2px 10px', background: '#f1f5f9', borderRadius: '12px', fontSize: '0.8rem', color: '#475569' }}>
+                      {typeof p === 'string' ? p : `${p.product} x${p.quantity}`}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -320,11 +385,13 @@ function ReportsTab() {
   );
 }
 
-function FollowupsTab() {
+function FollowupsSection() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState('');
 
-  useEffect(() => {
+  const loadFollowups = () => {
+    setLoading(true);
     api.reports.list()
       .then(data => {
         const all = Array.isArray(data) ? data : data.reports || [];
@@ -332,7 +399,9 @@ function FollowupsTab() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadFollowups(); }, []);
 
   const handleAction = (id, action) => {
     if (action === 'complete') {
@@ -340,75 +409,53 @@ function FollowupsTab() {
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  if (reports.length === 0) {
-    return <EmptyState icon={<Bell size={48} />} title="No Follow-ups" description="No upcoming follow-ups scheduled." />;
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = reports.filter(r => r.follow_up_date >= today);
-  const past = reports.filter(r => r.follow_up_date < today);
+  const filtered = dateFilter ? reports.filter(r => (r.follow_up_date || '').slice(0, 10) === dateFilter) : reports;
 
   return (
-    <div className="space-y-6">
-      {upcoming.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-gray-800 mb-3">Upcoming Follow-ups</h3>
-          <div className="space-y-2">
-            {upcoming.map(r => (
-              <Card key={r.id}>
-                <CardBody>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-semibold text-gray-800">{r.client_name || 'Patient'}</h4>
-                      <p className="text-xs text-gray-500">Due: {formatDate(r.follow_up_date)}</p>
-                      {r.diagnosis && <p className="text-xs text-gray-400 mt-1">{r.diagnosis}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="success" onClick={() => handleAction(r.id, 'complete')}>Complete</Button>
-                      <Button size="sm" variant="secondary">Reschedule</Button>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-      {past.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-gray-800 mb-3">Overdue Follow-ups</h3>
-          <div className="space-y-2">
-            {past.map(r => (
-              <Card key={r.id} className="border-red-200">
-                <CardBody>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-semibold text-gray-800">{r.client_name || 'Patient'}</h4>
-                      <p className="text-xs text-red-500">Was due: {formatDate(r.follow_up_date)}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="success" onClick={() => handleAction(r.id, 'complete')}>Complete</Button>
-                      <Button size="sm" variant="secondary">Reschedule</Button>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>Upcoming Follow-ups</h3>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{ padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }} />
+        <button onClick={() => setDateFilter('')} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
+        <button onClick={loadFollowups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
+      </div>
+      {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No follow-ups found.</p>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(r => {
+            const today = new Date().toISOString().slice(0, 10);
+            const isOverdue = r.follow_up_date < today;
+            return (
+              <div key={r.id} style={{ border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || 'Patient'}</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: isOverdue ? '#dc2626' : '#64748b' }}>
+                    {isOverdue ? 'Was due: ' : 'Due: '}{formatDate(r.follow_up_date)}
+                  </p>
+                  {r.diagnosis && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{r.diagnosis}</p>}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button size="sm" variant="success" onClick={() => handleAction(r.id, 'complete')}>Complete</Button>
+                  <Button size="sm" variant="secondary">Reschedule</Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function AnalyticsTab() {
+function AnalyticsSection() {
   const [reports, setReports] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [timeframe, setTimeframe] = useState('month');
 
-  useEffect(() => {
+  const loadAnalytics = () => {
+    setLoading(true);
     Promise.all([
       api.reports.list().then(d => Array.isArray(d) ? d : d.reports || []).catch(() => []),
       api.appointments.list().then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
@@ -416,9 +463,9 @@ function AnalyticsTab() {
       setReports(r);
       setAppointments(a);
     }).finally(() => setLoading(false));
-  }, []);
+  };
 
-  if (loading) return <LoadingSpinner />;
+  useEffect(() => { loadAnalytics(); }, []);
 
   const totalConsultations = appointments.length;
   const completedConsultations = appointments.filter(a => a.status === 'completed').length;
@@ -432,209 +479,84 @@ function AnalyticsTab() {
       diagnosisCounts[key] = (diagnosisCounts[key] || 0) + 1;
     }
   });
-  const topDiagnoses = Object.entries(diagnosisCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+  const topDiagnoses = Object.entries(diagnosisCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-2xl font-bold text-primary">{totalConsultations}</p>
-            <p className="text-xs text-gray-500">Total Consultations</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-2xl font-bold text-green-600">{completedConsultations}</p>
-            <p className="text-xs text-gray-500">Completed</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-2xl font-bold text-blue-600">{totalReports}</p>
-            <p className="text-xs text-gray-500">Reports Created</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-2xl font-bold text-orange-600">{withFollowUp}</p>
-            <p className="text-xs text-gray-500">Pending Follow-ups</p>
-          </CardBody>
-        </Card>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>Performance Analytics</h3>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+        <select value={timeframe} onChange={e => setTimeframe(e.target.value)} style={{ padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="all">All Time</option>
+        </select>
+        <button onClick={loadAnalytics} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
+        <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Print Report</button>
       </div>
-
-      {topDiagnoses.length > 0 && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Common Diagnoses</h3></CardHeader>
-          <CardBody>
-            <div className="space-y-2">
-              {topDiagnoses.map(([diagnosis, count], i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">{diagnosis}</span>
-                  <Badge variant="primary">{count}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardBody>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function SymptomCheckerTab() {
-  const [selectedSymptoms, setSelectedSymptoms] = useState([]);
-  const [clientName, setClientName] = useState('');
-  const allSymptoms = Object.keys(SYMPTOM_PRODUCT_MAP);
-
-  const toggleSymptom = (symptom) => {
-    setSelectedSymptoms(prev =>
-      prev.includes(symptom)
-        ? prev.filter(s => s !== symptom)
-        : [...prev, symptom]
-    );
-  };
-
-  const suggestedProducts = [...new Set(
-    selectedSymptoms.flatMap(s => SYMPTOM_PRODUCT_MAP[s] || [])
-  )];
-
-  const productFrequency = {};
-  selectedSymptoms.forEach(s => {
-    (SYMPTOM_PRODUCT_MAP[s] || []).forEach(p => {
-      productFrequency[p] = (productFrequency[p] || 0) + 1;
-    });
-  });
-
-  const sortedProducts = suggestedProducts.sort((a, b) => (productFrequency[b] || 0) - (productFrequency[a] || 0));
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Activity size={18} className="text-primary" /> Symptom Checklist & Product Suggestions
-          </h3>
-        </CardHeader>
-        <CardBody>
-          <Input
-            label="Client Name (optional)"
-            value={clientName}
-            onChange={e => setClientName(e.target.value)}
-            placeholder="Enter client name..."
-            className="mb-4 max-w-md"
-          />
-          <p className="text-sm text-gray-600 mb-3">Select symptoms reported by the client:</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {allSymptoms.map(symptom => (
-              <button
-                key={symptom}
-                onClick={() => toggleSymptom(symptom)}
-                className={`p-3 rounded-lg text-sm text-left border transition-all cursor-pointer ${
-                  selectedSymptoms.includes(symptom)
-                    ? 'bg-primary/10 border-primary text-primary font-medium'
-                    : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span className="mr-2">{selectedSymptoms.includes(symptom) ? '✓' : '○'}</span>
-                {symptom}
-              </button>
+      {loading ? <LoadingSpinner /> : (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+            {[
+              { label: 'Total Consultations', value: totalConsultations, color: '#c41e3a' },
+              { label: 'Completed', value: completedConsultations, color: '#16a34a' },
+              { label: 'Reports Created', value: totalReports, color: '#2563eb' },
+              { label: 'Pending Follow-ups', value: withFollowUp, color: '#ea580c' },
+            ].map((stat, i) => (
+              <div key={i} style={{ textAlign: 'center', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '10px' }}>
+                <p style={{ fontSize: '1.8rem', fontWeight: 700, color: stat.color, margin: 0 }}>{stat.value}</p>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>{stat.label}</p>
+              </div>
             ))}
           </div>
-          {selectedSymptoms.length > 0 && (
-            <div className="mt-2 flex items-center gap-2">
-              <Badge variant="primary">{selectedSymptoms.length} symptom(s) selected</Badge>
-              <button onClick={() => setSelectedSymptoms([])} className="text-xs text-red-500 underline cursor-pointer">Clear all</button>
+          {topDiagnoses.length > 0 && (
+            <div>
+              <h4 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#1e293b' }}>Common Diagnoses</h4>
+              <div className="space-y-2">
+                {topDiagnoses.map(([diagnosis, count], i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '0.9rem', color: '#374151' }}>{diagnosis}</span>
+                    <Badge variant="primary">{count}</Badge>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-        </CardBody>
-      </Card>
-
-      {sortedProducts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <h3 className="font-bold text-gray-800">Suggested Products ({sortedProducts.length})</h3>
-          </CardHeader>
-          <CardBody>
-            <p className="text-sm text-gray-500 mb-3">Based on selected symptoms, the following products are recommended (sorted by relevance):</p>
-            <div className="space-y-2">
-              {sortedProducts.map((product, idx) => {
-                const matchCount = productFrequency[product] || 0;
-                const priceEntry = PRICE_LIST.find(p => p.description === product);
-                const matchedSymptoms = selectedSymptoms.filter(s => (SYMPTOM_PRODUCT_MAP[s] || []).includes(product));
-                return (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-800 text-sm">{product}</span>
-                        {matchCount >= 3 && <Badge variant="success">Highly Recommended</Badge>}
-                        {matchCount === 2 && <Badge variant="info">Recommended</Badge>}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">Matches: {matchedSymptoms.join(', ')}</p>
-                    </div>
-                    <div className="text-right">
-                      {priceEntry && (
-                        <div>
-                          <p className="text-xs text-gray-500">DP: N$ {priceEntry.dp?.toFixed(2) || '-'}</p>
-                          <p className="text-xs text-gray-400">CP: N$ {priceEntry.cp?.toFixed(2) || '-'}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {selectedSymptoms.length > 0 && sortedProducts.length === 0 && (
-        <Alert type="info">No product suggestions found for the selected symptoms. Please consult the product catalog.</Alert>
+        </div>
       )}
     </div>
   );
 }
 
-function StaffTab() {
-  const [form, setForm] = useState({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setSubmitted(true);
-    setForm({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-    setTimeout(() => setSubmitted(false), 3000);
-  };
-
+function StaffServicesSection() {
   return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Leave Request</h3></CardHeader>
-      <CardBody>
-        {submitted && <Alert type="success" className="mb-4">Leave request submitted successfully!</Alert>}
-        <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
-          <Select
-            label="Leave Type"
-            value={form.leave_type}
-            onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))}
-            options={[
-              { value: 'Annual', label: 'Annual Leave' },
-              { value: 'Sick', label: 'Sick Leave' },
-              { value: 'Personal', label: 'Personal Leave' },
-            ]}
-          />
-          <div />
-          <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} required />
-          <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} required />
-          <div className="md:col-span-2">
-            <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ width: '40px', height: '40px', background: '#f0fdf4', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📅</div>
+          <div>
+            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Leave Management</h4>
+            <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Book time off and check approval status</p>
           </div>
-          <div className="md:col-span-2 flex justify-end">
-            <Button type="submit">Submit Leave Request</Button>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 500 }}>Request Leave</button>
+          <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
+        </div>
+      </div>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ width: '40px', height: '40px', background: '#eff6ff', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>💵</div>
+          <div>
+            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Cash Support</h4>
+            <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Request petty cash or reimbursements</p>
           </div>
-        </form>
-      </CardBody>
-    </Card>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 500 }}>Request Cash</button>
+          <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
+        </div>
+      </div>
+    </div>
   );
 }

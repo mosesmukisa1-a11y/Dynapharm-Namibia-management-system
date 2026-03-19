@@ -735,6 +735,11 @@ function PrescriptionsTab() {
   const [dispensing, setDispensing] = useState(null);
   const [alert, setAlert] = useState(null);
   const [dispensedReceipt, setDispensedReceipt] = useState(null);
+  const [rxSearch, setRxSearch] = useState('');
+  const [rxBranchFilter, setRxBranchFilter] = useState('');
+  const [rxStatusFilter, setRxStatusFilter] = useState('all');
+  const [rxFromDate, setRxFromDate] = useState('');
+  const [rxToDate, setRxToDate] = useState('');
 
   useEffect(() => {
     api.reports.list()
@@ -806,12 +811,89 @@ function PrescriptionsTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const clearRxFilters = () => {
+    setRxSearch('');
+    setRxBranchFilter('');
+    setRxStatusFilter('all');
+    setRxFromDate('');
+    setRxToDate('');
+  };
+
+  const filteredReports = reports.filter(r => {
+    if (rxSearch) {
+      const q = rxSearch.toLowerCase();
+      const match = (r.client_name || r.full_name || '').toLowerCase().includes(q)
+        || (r.id || '').toString().includes(q)
+        || (r.consultant || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (rxBranchFilter && (r.branch || '') !== rxBranchFilter) return false;
+    if (rxStatusFilter !== 'all') {
+      if (rxStatusFilter === 'dispensed' && !r.dispensed) return false;
+      if (rxStatusFilter === 'pending' && r.dispensed) return false;
+      if (rxStatusFilter === 'paid' && !r.paid) return false;
+      if (rxStatusFilter === 'outstanding' && (r.paid || r.dispensed)) return false;
+    }
+    if (rxFromDate) {
+      const d = (r.created_at || r.date || '').slice(0, 10);
+      if (d < rxFromDate) return false;
+    }
+    if (rxToDate) {
+      const d = (r.created_at || r.date || '').slice(0, 10);
+      if (d > rxToDate) return false;
+    }
+    return true;
+  });
+
+  const refreshDispenserData = () => {
+    setLoading(true);
+    api.reports.list()
+      .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
   return (
     <div>
-      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>
+      <div className="rounded-xl mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', color: 'white', padding: '20px 24px' }}>
         <div>
-          <h3 className="text-white text-lg font-bold m-0">💊 Prescription Dispensing</h3>
-          <p className="text-white/85 text-sm mt-1 m-0">Search, filter and dispense client prescriptions</p>
+          <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>💊 Prescription Dispensing</h3>
+          <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Search, filter and dispense client prescriptions</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>📊 Daily Statement</button>
+          <button onClick={refreshDispenserData} style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        <div className="flex gap-2.5 flex-wrap mb-3">
+          <input
+            type="text"
+            placeholder="Search by client name, report ID or consultant…"
+            value={rxSearch}
+            onChange={e => setRxSearch(e.target.value)}
+            style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.95rem' }}
+          />
+          <button style={{ padding: '10px 18px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>🔍 Search</button>
+          <button onClick={() => { setRxSearch(''); refreshDispenserData(); }} style={{ padding: '10px 18px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>💊 Show All</button>
+        </div>
+        <div className="flex gap-2.5 flex-wrap items-center">
+          <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', fontSize: '0.9rem' }}>
+            <option value="">All Branches</option>
+            {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select value={rxStatusFilter} onChange={e => setRxStatusFilter(e.target.value)} style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', fontSize: '0.9rem' }}>
+            <option value="all">All Status</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="dispensed">✅ Dispensed</option>
+            <option value="paid">💰 Paid</option>
+            <option value="outstanding">⚠️ Outstanding</option>
+          </select>
+          <input type="date" value={rxFromDate} onChange={e => setRxFromDate(e.target.value)} title="From date" style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem' }} />
+          <input type="date" value={rxToDate} onChange={e => setRxToDate(e.target.value)} title="To date" style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem' }} />
+          <button onClick={clearRxFilters} style={{ padding: '9px 14px', background: '#f1f5f9', color: '#64748b', border: '2px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}>♻️ Clear</button>
+          <button style={{ padding: '9px 14px', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>💰 Update Pricing</button>
         </div>
       </div>
 
@@ -862,57 +944,85 @@ function PrescriptionsTab() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Prescriptions from Consultant Reports</h3></CardHeader>
-        {reports.length === 0 ? (
-          <CardBody><EmptyState icon={<FileText size={48} />} title="No Prescriptions" description="No consultant reports with prescriptions found." /></CardBody>
+      <div style={{ marginBottom: '20px' }}>
+        {filteredReports.length === 0 ? (
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '40px', textAlign: 'center' }}>
+            <p style={{ color: '#94a3b8' }}>No prescriptions found matching the current filters.</p>
+          </div>
         ) : (
-          <Table
-            columns={[
-              { header: 'Client', render: r => r.client_name || r.full_name || '-' },
-              { header: 'Date', render: r => formatDate(r.created_at || r.date) },
-              { header: 'Prescriptions', render: r => {
-                const prescriptions = r.prescriptions || r.prescription || [];
-                if (Array.isArray(prescriptions)) return prescriptions.map(p => typeof p === 'string' ? p : p.product_name || p.name || p.product).join(', ') || '-';
-                return String(prescriptions) || '-';
-              }},
-              { header: 'Status', render: r => <Badge variant={r.dispensed ? 'success' : 'warning'}>{r.dispensed ? 'Dispensed' : 'Pending'}</Badge> },
-              { header: 'Action', render: r => (
-                <div className="flex gap-1">
-                  {!r.dispensed && (
-                    <Button size="sm" variant="success" onClick={() => handleDispense(r)} disabled={dispensing === r.id}>
-                      {dispensing === r.id ? 'Dispensing...' : 'Dispense'}
-                    </Button>
-                  )}
-                  {r.dispensed && (
-                    <Button size="sm" variant="ghost" onClick={() => {
-                      const items = getPrescriptionItems(r);
-                      const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
-                      const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
-                      const html = generateReceiptHTML({
-                        receiptNumber: r.id || 'RX-' + Date.now(),
-                        branch: user?.branch || '',
-                        items,
-                        totalAmount,
-                        totalBV,
-                        paymentMethod: 'Prescription',
-                        customerType: 'non_member',
-                        customerName: r.client_name || r.full_name || 'Patient',
-                        nbNumber: r.nb_number || null,
-                        cashier: user?.full_name || user?.username || null,
-                        showBV: true,
-                      });
-                      printReceipt(html);
-                    }}><Printer size={12} /></Button>
-                  )}
+          <div className="space-y-3">
+            {filteredReports.map(r => {
+              const items = getPrescriptionItems(r);
+              const prescriptions = r.prescriptions || r.prescription || [];
+              const prescList = Array.isArray(prescriptions) ? prescriptions.map(p => typeof p === 'string' ? p : p.product_name || p.name || p.product).filter(Boolean) : [];
+              return (
+                <div key={r.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>{r.client_name || r.full_name || 'Patient'}</h4>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>Report #{r.id} | {formatDate(r.created_at || r.date)}</p>
+                      {prescList.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {prescList.map((p, i) => (
+                            <span key={i} style={{ display: 'inline-block', padding: '2px 10px', background: '#f1f5f9', borderRadius: '12px', fontSize: '0.8rem', color: '#475569' }}>{p}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '4px 12px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        background: r.dispensed ? '#dcfce7' : '#fef3c7',
+                        color: r.dispensed ? '#16a34a' : '#d97706',
+                      }}>
+                        {r.dispensed ? '✅ Dispensed' : '⏳ Pending'}
+                      </span>
+                      {!r.dispensed && (
+                        <button
+                          onClick={() => handleDispense(r)}
+                          disabled={dispensing === r.id}
+                          style={{ padding: '8px 16px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}
+                        >
+                          {dispensing === r.id ? 'Dispensing...' : 'Dispense'}
+                        </button>
+                      )}
+                      {r.dispensed && (
+                        <button
+                          onClick={() => {
+                            const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
+                            const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
+                            const html = generateReceiptHTML({
+                              receiptNumber: r.id || 'RX-' + Date.now(),
+                              branch: user?.branch || '',
+                              items,
+                              totalAmount,
+                              totalBV,
+                              paymentMethod: 'Prescription',
+                              customerType: 'non_member',
+                              customerName: r.client_name || r.full_name || 'Patient',
+                              nbNumber: r.nb_number || null,
+                              cashier: user?.full_name || user?.username || null,
+                              showBV: true,
+                            });
+                            printReceipt(html);
+                          }}
+                          style={{ padding: '6px 12px', background: '#f1f5f9', color: '#475569', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                        >
+                          🖨️ Print
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )},
-            ]}
-            data={reports}
-            emptyMessage="No prescriptions"
-          />
+              );
+            })}
+          </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 }
