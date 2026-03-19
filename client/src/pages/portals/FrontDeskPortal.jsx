@@ -76,9 +76,10 @@ function AppointmentsTab() {
     setError('');
     try {
       await api.appointments.create({
-        patient_name: form.full_name,
-        appointment_date: `${form.date}T${form.time}`,
-        branch_id: form.branch,
+        full_name: form.full_name,
+        date: form.date,
+        time: form.time,
+        branch: form.branch,
         type: form.type,
         status: 'pending',
       });
@@ -100,17 +101,17 @@ function AppointmentsTab() {
 
   const today = new Date().toISOString().slice(0, 10);
   const filtered = filter === 'today'
-    ? appointments.filter(a => (a.appointment_date || a.created_at || '').slice(0, 10) === today)
+    ? appointments.filter(a => (a.date || a.created_at || '').slice(0, 10) === today)
     : appointments;
 
   if (loading) return <LoadingSpinner />;
 
   const columns = [
-    { header: 'Patient', key: 'patient_name' },
+    { header: 'Patient', key: 'full_name' },
     { header: 'Type', render: (row) => <Badge variant="info">{row.type || 'General'}</Badge> },
-    { header: 'Date', render: (row) => formatDateTime(row.appointment_date || row.created_at) },
+    { header: 'Date', render: (row) => formatDateTime(row.date || row.created_at) },
     { header: 'Status', render: (row) => <Badge variant={row.status === 'completed' ? 'success' : row.status === 'cancelled' ? 'danger' : 'warning'}>{row.status || 'Pending'}</Badge> },
-    { header: 'Branch', key: 'branch_id' },
+    { header: 'Branch', key: 'branch' },
     { header: 'Actions', render: (row) => (
       <div className="flex gap-1">
         {row.status !== 'completed' && (
@@ -182,10 +183,10 @@ function CheckupTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.appointments.list('type=Checkup')
+    api.appointments.list()
       .then(data => {
         const all = Array.isArray(data) ? data : data.appointments || [];
-        setRecentCheckups(all.filter(a => a.type === 'Checkup').slice(0, 20));
+        setRecentCheckups(all.filter(a => (a.type || '').toLowerCase().includes('check')).slice(0, 20));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -209,9 +210,9 @@ function CheckupTab() {
         {loading ? <LoadingSpinner /> : (
           <Table
             columns={[
-              { header: 'Patient', key: 'patient_name' },
-              { header: 'Date', render: r => formatDateTime(r.appointment_date || r.created_at) },
-              { header: 'Branch', key: 'branch_id' },
+              { header: 'Patient', key: 'full_name' },
+              { header: 'Date', render: r => formatDateTime(r.date || r.created_at) },
+              { header: 'Branch', key: 'branch' },
               { header: 'Status', render: r => <Badge variant={r.status === 'completed' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
             ]}
             data={recentCheckups}

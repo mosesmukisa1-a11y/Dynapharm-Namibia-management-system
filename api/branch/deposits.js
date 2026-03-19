@@ -43,17 +43,23 @@ function normalizeDeposit(row) {
       : typeof row.slip_file === 'string'
       ? JSON.parse(row.slip_file)
       : null;
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
   return {
     id: row.id,
     branchId: row.branch_id,
-    date: row.date ? row.date.toISOString().slice(0, 10) : null,
+    branch_id: row.branch_id,
+    branch: row.branch_id,
+    date: row.date ? (row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)) : null,
     amount: row.amount !== null ? Number(row.amount) : 0,
     slipNumber: row.slip_number || '',
+    slip_number: row.slip_number || '',
     bankName: row.bank_name || '',
+    bank_name: row.bank_name || '',
     bankBranch: row.bank_branch || '',
     accountNumber: row.account_number || '',
     accountType: row.account_type || '',
     depositedBy: row.deposited_by || '',
+    deposited_by: row.deposited_by || '',
     notes: row.notes || '',
     slipFile,
     status: row.status || 'pending',
@@ -61,7 +67,10 @@ function normalizeDeposit(row) {
     reviewedBy: row.reviewed_by || '',
     reviewedAt: row.reviewed_at instanceof Date ? row.reviewed_at.toISOString() : row.reviewed_at,
     createdBy: row.created_by || '',
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    created_by: row.created_by || '',
+    createdAt,
+    created_at: createdAt,
+    reference: row.slip_number || '',
   };
 }
 

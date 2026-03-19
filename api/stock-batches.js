@@ -6,8 +6,8 @@ function normalizeInboundPayload(payload) {
     id: payload.id || payload.batchId || null,
     barcode: payload.barcode || null,
     cartonNo: payload.cartonNo || payload.carton_no || null,
-    description: payload.description || payload.product || payload.productName || '',
-    batchNo: payload.batchNo || payload.batch_no || null,
+    description: payload.description || payload.product_name || payload.product || payload.productName || '',
+    batchNo: payload.batchNo || payload.batch_no || payload.batch_number || null,
     expiryDate: payload.expiryDate || payload.expiry_date || null,
     quantity: payload.quantity ?? payload.totalQuantity ?? payload.remainingQuantity ?? 0,
     totalCtns: payload.totalCtns ?? payload.total_ctns ?? payload.totalQuantity ?? payload.quantity ?? 0,
@@ -17,7 +17,9 @@ function normalizeInboundPayload(payload) {
     status: payload.status || 'available',
     productId: payload.productId || payload.product_id || null,
     warehouseId: payload.warehouseId || payload.warehouse_id || payload.sourceWarehouseId || null,
-    metadata: payload.metadata || null
+    metadata: payload.metadata || null,
+    unitPrice: payload.unit_price ?? payload.unitPrice ?? null,
+    notes: payload.notes || null
   };
 }
 
@@ -82,22 +84,37 @@ function generateId(prefix) {
 
 function normalizeBatch(row) {
   if (!row) return null;
+  const expiryDate = row.expiry_date
+    ? (typeof row.expiry_date === 'string' ? row.expiry_date.slice(0, 10) : row.expiry_date.toISOString().slice(0, 10))
+    : null;
+  const importDate = row.import_date
+    ? (typeof row.import_date === 'string' ? row.import_date : row.import_date.toISOString())
+    : null;
+  const createdAt = row.created_at
+    ? (typeof row.created_at === 'string' ? row.created_at : row.created_at.toISOString())
+    : importDate;
   return {
     id: row.id,
     barcode: row.barcode,
     cartonNo: row.carton_no,
     description: row.description,
+    product_name: row.description,
     batchNo: row.batch_no,
-    expiryDate: row.expiry_date ? row.expiry_date.toISOString().slice(0, 10) : null,
+    batch_number: row.batch_no,
+    expiryDate: expiryDate,
+    expiry_date: expiryDate,
     quantity: row.quantity,
     totalCtns: row.total_ctns,
-    importDate: row.import_date ? row.import_date.toISOString() : null,
+    importDate: importDate,
+    created_at: createdAt,
     location: row.location,
     status: row.status,
     dispatchedQuantity: row.dispatched_quantity,
     remainingQuantity: row.remaining_quantity,
     productId: row.product_id,
-    warehouseId: row.warehouse_id
+    warehouseId: row.warehouse_id,
+    unit_price: row.unit_price || 0,
+    notes: row.notes || null
   };
 }
 
@@ -108,16 +125,20 @@ async function upsertBatch(batch) {
   const remaining =
     batch.remainingQuantity !== undefined ? Number.parseInt(batch.remainingQuantity, 10) : quantity;
 
+  const unitPrice = batch.unitPrice ?? batch.unit_price ?? 0;
+
   const result = await query(
     `
     INSERT INTO stock_batches (
       id, barcode, carton_no, description, batch_no, expiry_date,
       quantity, total_ctns, import_date, location, status,
-      dispatched_quantity, remaining_quantity, product_id, warehouse_id
+      dispatched_quantity, remaining_quantity, product_id, warehouse_id,
+      unit_price, notes
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
       $7, $8, COALESCE($9, NOW()), $10, COALESCE($11, 'available'),
-      COALESCE($12, 0), $13, $14, $15
+      COALESCE($12, 0), $13, $14, $15,
+      COALESCE($16, 0), $17
     )
     ON CONFLICT (barcode) DO UPDATE SET
       carton_no = EXCLUDED.carton_no,
@@ -133,6 +154,8 @@ async function upsertBatch(batch) {
       remaining_quantity = EXCLUDED.remaining_quantity,
       product_id = EXCLUDED.product_id,
       warehouse_id = EXCLUDED.warehouse_id,
+      unit_price = EXCLUDED.unit_price,
+      notes = EXCLUDED.notes,
       updated_at = NOW()
     RETURNING *
   `,
@@ -151,7 +174,9 @@ async function upsertBatch(batch) {
       batch.dispatchedQuantity || batch.dispatched_quantity || 0,
       Number.isFinite(remaining) && remaining >= 0 ? remaining : quantity || 0,
       batch.productId || batch.product_id || null,
-      batch.warehouseId || batch.warehouse_id || batch.sourceWarehouseId || null
+      batch.warehouseId || batch.warehouse_id || batch.sourceWarehouseId || null,
+      Number(unitPrice) || 0,
+      batch.notes || null
     ]
   );
 

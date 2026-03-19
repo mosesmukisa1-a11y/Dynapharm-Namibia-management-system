@@ -46,15 +46,19 @@ function normalizeReportRow(row) {
         })()
       : row.data || {};
 
+  const createdAtVal = row.created_at || payload.createdAt || payload.timestamp || null;
   return {
     id: row.id || payload.id || `RPT-${Date.now()}`,
     clientId: row.client_id || payload.clientId || null,
+    client_id: row.client_id || payload.clientId || null,
     consultant: row.consultant || payload.consultant || null,
     branch: row.branch || payload.branch || payload.consultantInfo?.branch || null,
     reportType: row.report_type || payload.reportType || payload.type || null,
-    createdAt: row.created_at || payload.createdAt || payload.timestamp || null,
+    createdAt: createdAtVal,
+    created_at: createdAtVal,
     updatedAt: row.updated_at || payload.updatedAt || payload.lastModified || null,
-    ...payload
+    ...payload,
+    date: payload.date || (createdAtVal ? createdAtVal : null),
   };
 }
 

@@ -50,8 +50,8 @@ export default async function handler(req, res) {
         params.push(status);
       }
       if (type) {
-        conditions.push('type = $' + (params.length + 1));
-        params.push(type);
+        conditions.push('type ILIKE $' + (params.length + 1));
+        params.push('%' + type + '%');
       }
       
       if (conditions.length > 0) {

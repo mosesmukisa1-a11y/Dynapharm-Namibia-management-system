@@ -60,7 +60,7 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/distributor-agreement` — Distributor Agreement Form (POST public for registration; GET/PUT require auth with role checks)
 - `/api/distributor-import` — Bulk distributor import from CSV/Excel (POST, admin/director/gm role required)
 - `/api/notifications` — Notification system
-- `/api/stock-batches` — Stock batch management
+- `/api/stock-batches` — Stock batch management (returns dual field names: camelCase + snake_case aliases for frontend compatibility)
 - `/api/stock-movements` — Warehouse inventory movements
 - `/api/stock/transfers` — Stock transfer management
 - `/api/branch/*` — Branch operations (sales, payments, deposits, expenses, inventory)
@@ -118,6 +118,12 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 - mis: mis
 - stock: stock
 - training: training, distributor
+
+## API Field Naming Convention
+- All API normalizers return **dual field names** (both camelCase and snake_case aliases) for frontend compatibility
+- Example: stock-batches returns both `description` and `product_name`, both `batchNo` and `batch_number`, both `importDate` and `created_at`
+- Appointments API uses ILIKE for type filtering (case-insensitive partial match)
+- Frontend portals consume snake_case field names (`full_name`, `created_at`, `branch`, `unit_price`)
 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more

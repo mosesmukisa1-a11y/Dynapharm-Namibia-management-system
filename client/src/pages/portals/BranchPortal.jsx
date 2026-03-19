@@ -426,7 +426,7 @@ function PrescriptionsTab() {
         ) : (
           <Table
             columns={[
-              { header: 'Client', render: r => r.client_name || r.patient_name || '-' },
+              { header: 'Client', render: r => r.client_name || r.full_name || '-' },
               { header: 'Date', render: r => formatDate(r.created_at || r.date) },
               { header: 'Prescriptions', render: r => {
                 const prescriptions = r.prescriptions || r.prescription || [];

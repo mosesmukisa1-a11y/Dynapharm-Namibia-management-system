@@ -53,7 +53,7 @@ function CheckupsTab() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.appointments.list('type=checkup')
+    api.appointments.list('type=Check')
       .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -86,7 +86,7 @@ function CheckupsTab() {
     setError('');
     try {
       await api.reports.create({
-        client_name: selectedCheckup.patient_name,
+        client_name: selectedCheckup.full_name,
         appointment_id: selectedCheckup.id,
         diagnosis: reportForm.diagnosis,
         prescriptions: reportForm.prescriptions,
@@ -124,9 +124,9 @@ function CheckupsTab() {
               <CardBody>
                 <div className="flex items-start justify-between">
                   <div>
-                    <h4 className="font-semibold text-gray-800">{apt.patient_name}</h4>
-                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(apt.appointment_date || apt.created_at)}</p>
-                    <p className="text-xs text-gray-400">{apt.branch_id}</p>
+                    <h4 className="font-semibold text-gray-800">{apt.full_name}</h4>
+                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(apt.date || apt.created_at)}</p>
+                    <p className="text-xs text-gray-400">{apt.branch}</p>
                   </div>
                   <div className="flex gap-2 items-center">
                     <Badge variant={apt.status === 'completed' ? 'success' : 'warning'}>{apt.status || 'Pending'}</Badge>
@@ -141,7 +141,7 @@ function CheckupsTab() {
         </div>
       )}
 
-      <Modal open={showReport} onClose={() => setShowReport(false)} title={`Create Report - ${selectedCheckup?.patient_name || ''}`} size="lg">
+      <Modal open={showReport} onClose={() => setShowReport(false)} title={`Create Report - ${selectedCheckup?.full_name || ''}`} size="lg">
         <form onSubmit={handleCreateReport} className="p-6 space-y-4">
           {error && <Alert type="error">{error}</Alert>}
           <Textarea label="Diagnosis" value={reportForm.diagnosis} onChange={e => setReportForm(f => ({ ...f, diagnosis: e.target.value }))} required />

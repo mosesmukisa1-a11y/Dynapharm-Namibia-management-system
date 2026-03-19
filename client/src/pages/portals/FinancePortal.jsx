@@ -144,7 +144,7 @@ function DashboardTab() {
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Type', render: r => <Badge variant="info">{r.type || 'Sale'}</Badge> },
             { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount || r.total)}</span> },
-            { header: 'Branch', key: 'branch_id' },
+            { header: 'Branch', render: r => r.branch || r.branch_id || '-' },
           ]}
           data={[...filteredSales, ...filteredDeposits].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20)}
           emptyMessage="No recent transactions"
@@ -237,7 +237,7 @@ function DepositsTab() {
               <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggleSelect(r.id)} className="w-4 h-4 cursor-pointer" />
             )}] : []),
             { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Branch', key: 'branch_id' },
+            { header: 'Branch', render: r => r.branch || r.branch_id || '-' },
             { header: 'Deposited By', render: r => r.deposited_by || r.created_by || '-' },
             { header: 'Bank', key: 'bank_name' },
             { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.amount)}</span> },

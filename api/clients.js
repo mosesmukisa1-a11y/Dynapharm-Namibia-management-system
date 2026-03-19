@@ -49,7 +49,9 @@ function normalizeClient(row) {
   return {
     id: row.id || payload.id || row.reference_number || payload.referenceNumber || `CLT-${Date.now()}`,
     referenceNumber: row.reference_number || payload.referenceNumber || row.id,
+    reference_number: row.reference_number || payload.referenceNumber || row.id,
     fullName: row.full_name || payload.fullName || '',
+    full_name: row.full_name || payload.fullName || '',
     phone: row.phone || payload.phone || '',
     email: row.email || payload.email || '',
     gender: row.gender || payload.gender || null,
@@ -58,6 +60,7 @@ function normalizeClient(row) {
     city: row.city || payload.city || '',
     branch: row.branch || payload.branch || null,
     createdAt: row.created_at || payload.createdAt || new Date().toISOString(),
+    created_at: row.created_at || payload.createdAt || new Date().toISOString(),
     updatedAt: row.updated_at || payload.updatedAt || null,
     data: payload
   };

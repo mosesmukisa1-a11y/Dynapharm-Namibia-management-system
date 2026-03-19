@@ -61,31 +61,39 @@ function normalizeSaleRow(row) {
   const tax = Number(row.tax ?? data.tax ?? 0);
   const discount = Number(row.discount ?? data.discount ?? 0);
 
+  const createdAtVal = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at || data.createdAt || null;
+  const timestampVal = saleDate ? new Date(saleDate).toISOString() : new Date().toISOString();
+  const branchVal = row.branch_id || data.branch || data.branchId || null;
+
   const base = {
     id: row.id || data.id || generateSaleId(),
     saleNumber: row.sale_number || data.saleNumber || row.id || data.id,
-    timestamp: saleDate ? new Date(saleDate).toISOString() : new Date().toISOString(),
-    branch: row.branch_id || data.branch || data.branchId || null,
-    branchId: row.branch_id || data.branch || data.branchId || null,
+    timestamp: timestampVal,
+    branch: branchVal,
+    branchId: branchVal,
+    branch_id: branchVal,
     customerName: row.customer_name || data.customerName || '',
+    customer_name: row.customer_name || data.customerName || '',
     phone: row.customer_phone || data.phone || data.customerPhone || '',
     email: row.customer_email || data.email || data.customerEmail || '',
     customerType: row.customer_type || data.customerType || 'customer',
     paymentMethod: row.payment_method || data.paymentMethod || 'cash',
+    payment_method: row.payment_method || data.paymentMethod || 'cash',
     subtotal,
     discount,
     tax,
     total,
     totalAmount: total,
     totalBV,
+    bv: totalBV,
     status: row.status || data.status || 'completed',
     products: Array.isArray(items) ? items : [],
     distributorReferral: data.distributorReferral || metadata?.distributorReferral || null,
     clientId: data.clientId || data.client_id || null,
     clientReferenceNumber: data.clientReferenceNumber || data.client_reference_number || null,
     soldBy: data.soldBy || row.created_by || null,
-    createdAt:
-      row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at || data.createdAt || null,
+    createdAt: createdAtVal,
+    created_at: createdAtVal,
     updatedAt:
       row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || data.updatedAt || null,
     metadata: metadata || null,

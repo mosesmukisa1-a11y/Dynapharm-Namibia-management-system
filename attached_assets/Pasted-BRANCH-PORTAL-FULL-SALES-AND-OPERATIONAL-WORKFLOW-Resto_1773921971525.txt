@@ -1,0 +1,144 @@
+BRANCH PORTAL – FULL SALES AND OPERATIONAL WORKFLOW
+
+Restore full branch workflow. The walk-in sale must be in the correct branch portal workflow and not misplaced.
+
+Sales start logic
+
+Every branch sale must start by selecting customer type:
+
+If customer is a member
+
+Search distributor from saved distributor list.
+
+Select distributor name.
+
+Select NB number.
+
+Apply DP price.
+
+If customer is a non-member
+
+Ask for referral.
+
+Search referral NB and name from distributor list.
+
+If none provided, default referral:
+Dynapharm Namibia – NB005676
+
+Assign profit and BVs to the selected referral NB and distributor name.
+
+Then select payment method and confirm sale.
+
+After each sale automatically do:
+
+Deduct stock
+
+Increase sales amount
+
+Update distributor-related records
+
+Push relevant information to:
+
+Distributor portal
+
+Stock Management portal
+
+Finance portal
+
+MIS portal
+
+GM portal
+
+Director portal
+
+Enable:
+
+thermal receipt print
+
+PDF print
+
+Receipts
+For non-members
+
+Receipt must show:
+
+reference number
+
+products bought
+
+amount
+
+CP paid
+
+For distributors
+
+Receipt must show:
+
+DP price
+
+BV
+
+profit
+
+Referral sale note
+
+Where referral is involved, generate two receipts where required by business logic.
+This rule applies to branch portal sales.
+
+Branch stock functions
+
+Add and ensure functionality for:
+
+request stock
+
+transfer stock
+
+write off stock
+
+low stock alerts
+
+expiry alerts
+
+auto notify stock management
+
+stock movement reports
+
+search and print customer purchase receipt and information
+
+Branch payments
+
+Create payment records with full details.
+
+Send for finance processing.
+
+Finance processing must wait GM approval where required.
+
+This must affect cash at hand correctly.
+
+Branch handling of online orders
+
+Only online orders directed to that branch should appear there.
+
+Branch should process them as sales.
+
+When marked paid and received:
+
+income increases
+
+stock reduces
+
+This must trigger normal downstream reporting.
+
+Distributor registration at branch
+
+Upline and sponsor must come from saved distributor list.
+
+New distributors registered must also be added automatically to distributor list.
+
+Field program
+
+Add product request list for field use.
+
+Mark items when returned.
+
+Require stock approval.
