@@ -63,6 +63,10 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/admin/reject-registration',
   '/api/stock/transfers',
   '/api/upload',
+  '/api/field_program_requests',
+  '/api/employees/leaves',
+  '/api/campaigns',
+  '/api/distributor-import',
 ]);
 
 const PUBLIC_GET_ROUTES = new Set([
@@ -73,6 +77,7 @@ const PUBLIC_GET_ROUTES = new Set([
   '/api/notifications',
   '/api/media',
   '/api/stock-movements',
+  '/api/orders',
   '/api/reports',
   '/api/clients',
   '/api/appointments',
@@ -99,6 +104,10 @@ const PUBLIC_GET_ROUTES = new Set([
   '/api/mis/stock',
   '/api/admin/pending-registrations',
   '/api/stock/transfers',
+  '/api/field_program_requests',
+  '/api/employees/leaves',
+  '/api/campaigns',
+  '/api/distributor-import',
 ]);
 
 const PUBLIC_PUT_ROUTES = new Set([
