@@ -61,7 +61,8 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/distributor-import` — Bulk distributor import from CSV/Excel (POST, admin/director/gm role required)
 - `/api/notifications` — Notification system
 - `/api/stock-batches` — Stock batch management (returns dual field names: camelCase + snake_case aliases for frontend compatibility)
-- `/api/stock-movements` — Warehouse inventory movements
+- `/api/stock-movements` — Warehouse + branch stock movements (combined from warehouse_inventory_movements and stock_movements tables)
+- `/api/field_program_requests` — Field program activities (CRUD, requires auth)
 - `/api/stock/transfers` — Stock transfer management
 - `/api/branch/*` — Branch operations (sales, payments, deposits, expenses, inventory)
 - `/api/mis/*` — Management information system (audit, reconcile, branch-status, etc.)
@@ -95,7 +96,7 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, New Member Registration (Distributor Agreement Form for recruiting downlines), BV & Profit (monthly breakdown, accumulation guide), Communications (view announcements, compose messages to admin), Full Body Check Up, Media/News, Testimonials
 2. **Front Desk** — Orders (5 status sub-tabs), Appointments, Full Body Checkup, Client Registration, Payments, Client Lookup, Delivery, Visitors, CRM, Notifications, Staff Communication, Staff Services
 3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Reports, Follow-ups, Analytics, Staff Services
-4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation), Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Reg (Membership Agreement Form with auto NB generation, upline/sponsor search, kit selection, PDF print/share), Field Program
+4. **Branch** — Walk-in Sales POS (member/non-member flow: member=distributor search+DP pricing+BV tracking, non-member=referral search with default Dynapharm Namibia NB005676+CP pricing+BV assigned to referral; auto stock deduction FIFO by expiry; receipt reprint/search), Prescriptions (dispense from consultant reports), Stock (inventory with branch scoping, request stock from warehouse, transfer between branches, write-off with reason, low stock <10 alerts, expiry <30d alerts, movement reports), Banking (deposits), Payments (records sent to Finance), Online Orders (filtered by branch, process/ship/deliver workflow), Bonus (payout records), Communication (announcements), Staff (employee list), Distributor Reg (Membership Agreement Form), Field Program (schedule activities, product requests requiring stock approval, mark items returned)
 5. **HR** — Employees, Leave management, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
 6. **Finance** — Dashboard (gradient KPIs, branch selector), Deposits, Bonus Workflow, Expenses, Communication, Staff Services
 7. **GM** — Dashboard (4 KPIs), Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services

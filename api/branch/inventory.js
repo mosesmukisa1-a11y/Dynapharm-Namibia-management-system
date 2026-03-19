@@ -52,20 +52,26 @@ async function parseJsonBody(req) {
 
 function normalizeInventoryRow(row) {
   if (!row) return null;
+  const expiryDate = row.expiry_date ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString().slice(0, 10) : String(row.expiry_date).slice(0, 10)) : null;
+  const qty = parseNumber(row.quantity);
+  const uPrice = row.unit_price !== null ? Number(row.unit_price) : null;
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
+  const updatedAt = row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at;
   return {
     id: row.id,
-    branchId: row.branch_id,
-    productName: row.product_name,
-    productCode: row.product_code,
-    batchNo: row.batch_no,
-    expiryDate: row.expiry_date ? row.expiry_date.toISOString().slice(0, 10) : null,
-    quantity: parseNumber(row.quantity),
+    branchId: row.branch_id, branch_id: row.branch_id,
+    productName: row.product_name, product_name: row.product_name,
+    productCode: row.product_code, product_code: row.product_code,
+    batchNo: row.batch_no, batch_no: row.batch_no, batch_number: row.batch_no,
+    expiryDate, expiry_date: expiryDate,
+    quantity: qty,
     unit: row.unit || 'units',
-    unitPrice: row.unit_price !== null ? Number(row.unit_price) : null,
-    status: row.status || (parseNumber(row.quantity) > 0 ? 'in_stock' : 'out_of_stock'),
+    unitPrice: uPrice, unit_price: uPrice,
+    description: row.description || row.product_name,
+    status: row.status || (qty > 0 ? 'in_stock' : 'out_of_stock'),
     metadata: typeof row.metadata === 'object' ? row.metadata : null,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    createdAt, created_at: createdAt,
+    updatedAt, updated_at: updatedAt,
   };
 }
 
@@ -435,7 +441,8 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const branchId = searchParams.get('branch');
       if (!branchId) {
-        return res.status(400).json({ success: false, error: 'branch parameter is required' });
+        const allRows = await getMany('SELECT * FROM branch_inventory_batches ORDER BY product_name ASC, expiry_date ASC NULLS LAST LIMIT 500');
+        return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
       const inventory = await getInventoryByBranch(branchId);

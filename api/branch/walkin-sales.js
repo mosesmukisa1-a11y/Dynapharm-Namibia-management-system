@@ -261,6 +261,45 @@ export default async function handler(req, res) {
         values,
       );
 
+      const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
+      const branchId = record.branch_id;
+      for (const item of saleItems) {
+        const productName = item.product_name || item.name || item.description || '';
+        const qty = Number(item.quantity || item.qty || 0);
+        if (qty > 0 && branchId) {
+          try {
+            await query(
+              `UPDATE branch_inventory_batches SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
+               WHERE id = (
+                 SELECT id FROM branch_inventory_batches
+                 WHERE branch_id = $2 AND product_name ILIKE $3 AND quantity > 0
+                 ORDER BY expiry_date ASC NULLS LAST LIMIT 1
+               )`,
+              [qty, branchId, '%' + productName + '%']
+            );
+          } catch (stockErr) {
+            console.error('Stock deduction warning:', stockErr.message);
+          }
+        }
+      }
+
+      try {
+        await query(
+          `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
+           VALUES ($1, $2, $3, 'sale', $4, 'customer', $5, $6, NOW())`,
+          [
+            'MOV-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+            saleItems.map(i => i.product_name || i.name || '').join(', '),
+            saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0),
+            branchId,
+            result.rows[0].id,
+            'Walk-in sale: ' + (record.customer_type || 'customer')
+          ]
+        );
+      } catch (movErr) {
+        console.error('Movement record warning:', movErr.message);
+      }
+
       return res.status(201).json({
         success: true,
         sale: normalizeSaleRow(result.rows[0]),

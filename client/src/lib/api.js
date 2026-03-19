@@ -55,7 +55,7 @@ export const api = {
   orders: {
     list: () => api.get('/orders'),
     create: (data) => api.post('/orders', data),
-    update: (id, data) => api.put(`/orders/${id}`, data),
+    update: (id, data) => api.put('/orders', { ...data, id }),
   },
 
   distributors: {

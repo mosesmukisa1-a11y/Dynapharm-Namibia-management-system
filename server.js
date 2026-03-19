@@ -40,7 +40,6 @@ const PUBLIC_POST_ROUTES = new Set([
   '/api/appointments',
   '/api/collect',
   '/api/realtime_publish',
-  '/api/field_program_requests',
   '/api/send-email',
   '/api/distributor-agreement',
 ]);
