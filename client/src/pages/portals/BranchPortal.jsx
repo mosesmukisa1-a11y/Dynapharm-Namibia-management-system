@@ -1283,6 +1283,18 @@ function BankingTab() {
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">🏦 Banking Operations</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Manage deposits, cash drawer, and expenses</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+        <button onClick={() => setShowForm(true)} className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>💰 Make Deposit</button>
+        <button className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>💵 Cash Drawer</button>
+        <button className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #f39c12, #d68910)' }}>💸 Record Expense</button>
+        <button className="p-5 rounded-lg text-gray-700 text-base font-semibold cursor-pointer border-none bg-gray-100 hover:bg-gray-200">📋 Banking History</button>
+      </div>
+
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="New Bank Deposit">
         <div className="p-6 space-y-4">
@@ -1303,7 +1315,6 @@ function BankingTab() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Bank Deposits</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}>New Deposit</Button>
           </div>
         </CardHeader>
         <Table
@@ -1330,6 +1341,7 @@ function BranchPaymentsTab() {
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [form, setForm] = useState({ client_name: '', amount: '', payment_method: 'Cash', reference: '', notes: '' });
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     api.branch.payments()
@@ -1361,10 +1373,27 @@ function BranchPaymentsTab() {
     } finally { setSubmitting(false); }
   };
 
+  const filteredPayments = payments.filter(p => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (p.client_name || '').toLowerCase().includes(q) || (p.reference || '').toLowerCase().includes(q) || (p.invoice_number || '').toLowerCase().includes(q);
+  });
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">💳 Payment Management</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Record and track payments</p>
+      </div>
+
+      <div className="flex gap-3 items-center mb-4 flex-wrap" style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+        <input type="text" placeholder="Search by client name or invoice number..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <button onClick={() => setShowForm(true)} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>➕ Record Payment</button>
+        <button onClick={async () => { setLoading(true); const res = await api.branch.payments().catch(() => ({ payments: [] })); setPayments(Array.isArray(res) ? res : res.payments || []); setLoading(false); }} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>🔄 Refresh</button>
+      </div>
+
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment">
         <div className="p-6 space-y-4">
@@ -1391,7 +1420,6 @@ function BranchPaymentsTab() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Payment Records</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}>Record Payment</Button>
           </div>
         </CardHeader>
         <Table
@@ -1403,7 +1431,7 @@ function BranchPaymentsTab() {
             { header: 'Reference', render: r => r.reference || '-' },
             { header: 'Status', render: r => <Badge variant={r.status === 'processed' ? 'success' : r.status === 'approved' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
           ]}
-          data={payments}
+          data={filteredPayments}
           emptyMessage="No payment records"
         />
       </Card>
@@ -1457,45 +1485,66 @@ function OnlineOrdersTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const receivingOrders = orders.filter(o => ['pending', 'processing'].includes(o.status));
+  const dispensingOrders = orders.filter(o => ['shipped', 'delivered', 'completed'].includes(o.status));
+
   return (
     <div>
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Online Orders{user?.branch ? ` - ${user.branch}` : ''}</h3>
-            <Badge variant="info">{orders.length} orders</Badge>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <div className="flex justify-between items-center flex-wrap gap-2">
+          <div>
+            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` - ${user.branch}` : ''}</h3>
+            <p className="text-white/75 text-sm mt-1 m-0">Receive and dispense online orders assigned to this branch.</p>
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Order #', render: r => r.order_number || r.id },
-            { header: 'Customer', render: r => r.customer_name || r.distributor_name || '-' },
-            { header: 'Items', render: r => {
-              const items = Array.isArray(r.items) ? r.items : [];
-              return items.length > 0 ? items.map(i => i.name || i.product_name).join(', ') : '-';
-            }},
-            { header: 'Total', render: r => <span className="font-bold">{formatCurrency(r.total_amount || r.total || 0)}</span> },
-            { header: 'Status', render: r => statusBadge(r.status) },
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Actions', render: r => (
-              <div className="flex gap-1 flex-wrap">
-                {(!r.status || r.status === 'pending') && (
-                  <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'processing')} disabled={updating === r.id}>Process</Button>
-                )}
-                {r.status === 'processing' && (
-                  <Button size="sm" variant="primary" onClick={() => updateStatus(r.id, 'shipped')} disabled={updating === r.id}>Ship</Button>
-                )}
-                {r.status === 'shipped' && (
-                  <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')} disabled={updating === r.id}>Delivered</Button>
-                )}
+          <button onClick={async () => { setLoading(true); try { const d = await api.orders.list(); const all = Array.isArray(d) ? d : d.orders || []; setOrders(user?.branch ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === user.branch.toLowerCase() || (o.branch_name || '').toLowerCase().includes(user.branch.toLowerCase())) : all); } catch {} setLoading(false); }} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
+        </div>
+      </div>
+
+      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <h4 className="text-gray-800 font-bold m-0 mb-3">📥 Receiving</h4>
+          <div className="max-h-[420px] overflow-auto">
+            {receivingOrders.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-4">No orders to receive</p>
+            ) : receivingOrders.map(r => (
+              <div key={r.id} className="p-3 mb-2 rounded-lg border border-gray-100 bg-gray-50">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="font-semibold text-sm">{r.order_number || r.id}</span>
+                  {statusBadge(r.status)}
+                </div>
+                <p className="text-xs text-gray-600 m-0">{r.customer_name || r.distributor_name || '-'}</p>
+                <p className="text-xs text-gray-500 m-0">{formatDateTime(r.created_at)}</p>
+                <div className="flex gap-1 mt-2">
+                  {(!r.status || r.status === 'pending') && <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'processing')} disabled={updating === r.id}>Process</Button>}
+                  {r.status === 'processing' && <Button size="sm" variant="primary" onClick={() => updateStatus(r.id, 'shipped')} disabled={updating === r.id}>Ship</Button>}
+                </div>
               </div>
-            )},
-          ]}
-          data={orders}
-          emptyMessage="No online orders for this branch"
-        />
-      </Card>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <h4 className="text-gray-800 font-bold m-0 mb-3">📦 Dispensing</h4>
+          <div className="max-h-[420px] overflow-auto">
+            {dispensingOrders.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-4">No orders to dispense</p>
+            ) : dispensingOrders.map(r => (
+              <div key={r.id} className="p-3 mb-2 rounded-lg border border-gray-100 bg-gray-50">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="font-semibold text-sm">{r.order_number || r.id}</span>
+                  {statusBadge(r.status)}
+                </div>
+                <p className="text-xs text-gray-600 m-0">{r.customer_name || r.distributor_name || '-'}</p>
+                <p className="text-xs font-bold m-0">{formatCurrency(r.total_amount || r.total || 0)}</p>
+                <div className="flex gap-1 mt-2">
+                  {r.status === 'shipped' && <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')} disabled={updating === r.id}>Delivered</Button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1507,13 +1556,18 @@ function BonusTab() {
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [form, setForm] = useState({ distributor_name: '', nb_number: '', amount: '', bv_amount: '', period: '', notes: '' });
+  const [bonusMonth, setBonusMonth] = useState('');
+  const [bonusSearch, setBonusSearch] = useState('');
 
-  useEffect(() => {
+  const loadBonuses = () => {
+    setLoading(true);
     api.get('/branch/payments?type=bonus')
       .then(d => setBonuses(Array.isArray(d) ? d : d.payments || d.bonuses || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadBonuses(); }, []);
 
   const handleSubmit = async () => {
     if (!form.distributor_name.trim() || !form.amount || Number(form.amount) <= 0) return;
@@ -1532,6 +1586,7 @@ function BonusTab() {
       setAlert({ type: 'success', message: 'Bonus payout recorded' });
       setForm({ distributor_name: '', nb_number: '', amount: '', bv_amount: '', period: '', notes: '' });
       setShowForm(false);
+      loadBonuses();
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record bonus' });
     } finally {
@@ -1539,10 +1594,37 @@ function BonusTab() {
     }
   };
 
+  const filteredBonuses = bonuses.filter(b => {
+    let match = true;
+    if (bonusSearch.trim()) {
+      const q = bonusSearch.toLowerCase();
+      match = (b.client_name || b.distributor_name || '').toLowerCase().includes(q) || (b.nb_number || '').toLowerCase().includes(q);
+    }
+    if (bonusMonth && b.period) {
+      match = match && b.period.toLowerCase().includes(bonusMonth.toLowerCase());
+    }
+    return match;
+  });
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">🎁 Bonus Payouts</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Manage distributor bonus payments</p>
+      </div>
+
+      <div className="flex gap-3 items-center mb-4 flex-wrap" style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+        <input type="month" value={bonusMonth} onChange={e => setBonusMonth(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" style={{ maxWidth: '200px' }} />
+        <input type="text" placeholder="Search NB or Name..." value={bonusSearch} onChange={e => setBonusSearch(e.target.value)} className="flex-1 min-w-[240px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <button onClick={loadBonuses} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
+      </div>
+
+      <div className="mb-3 text-sm" style={{ color: '#2c3e50' }}>
+        {filteredBonuses.length} bonus record{filteredBonuses.length !== 1 ? 's' : ''} found
+      </div>
+
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Bonus Payout">
         <div className="p-6 space-y-4">
@@ -1560,25 +1642,25 @@ function BonusTab() {
           </div>
         </div>
       </Modal>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Bonus Payments</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}>Record Payout</Button>
-          </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Distributor', render: r => r.client_name || r.distributor_name || '-' },
-            { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
-            { header: 'Period', key: 'period' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'paid' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
-          ]}
-          data={bonuses}
-          emptyMessage="No bonus records"
-        />
-      </Card>
+
+      <div style={{ maxHeight: '460px', overflowY: 'auto', background: 'white', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
+        {filteredBonuses.length === 0 ? (
+          <p className="text-center py-5" style={{ color: '#7f8c8d' }}>No pending bonuses</p>
+        ) : (
+          <Table
+            columns={[
+              { header: 'Distributor', render: r => r.client_name || r.distributor_name || '-' },
+              { header: 'NB Number', render: r => r.nb_number || '-' },
+              { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
+              { header: 'Period', key: 'period' },
+              { header: 'Status', render: r => <Badge variant={r.status === 'paid' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
+              { header: 'Date', render: r => formatDateTime(r.created_at) },
+            ]}
+            data={filteredBonuses}
+            emptyMessage="No bonus records"
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -1588,7 +1670,9 @@ function CommunicationTab() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ title: '', message: '' });
+  const [commFilter, setCommFilter] = useState('all');
+  const [recipients, setRecipients] = useState({ hr: false, gm: false, director: false, finance: false, frontdesk: false, mis: false });
+  const [commMessage, setCommMessage] = useState('');
 
   useEffect(() => {
     api.notifications.list()
@@ -1597,99 +1681,150 @@ function CommunicationTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleSubmit = async () => {
-    if (!form.title.trim() || !form.message.trim()) return;
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
+    const selectedRecipients = Object.entries(recipients).filter(([,v]) => v).map(([k]) => k);
+    if (!commMessage.trim() || selectedRecipients.length === 0) return;
     setSubmitting(true);
     try {
       await api.notifications.create({
-        title: form.title.trim(),
-        message: form.message.trim(),
-        type: 'announcement',
+        title: 'Staff Communication',
+        message: commMessage.trim(),
+        type: 'communication',
         target: 'branch',
+        recipients: selectedRecipients,
       });
-      setAlert({ type: 'success', message: 'Announcement posted' });
-      setForm({ title: '', message: '' });
+      setAlert({ type: 'success', message: 'Communication sent successfully' });
+      setCommMessage('');
+      setRecipients({ hr: false, gm: false, director: false, finance: false, frontdesk: false, mis: false });
       const res = await api.notifications.list().catch(() => ({ notifications: [] }));
       setAnnouncements(Array.isArray(res) ? res : res.notifications || []);
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to post announcement' });
+      setAlert({ type: 'error', message: err.message || 'Failed to send communication' });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const filterTabs = [
+    { key: 'all', label: 'All' },
+    { key: 'hr', label: '👥 HR' },
+    { key: 'gm', label: '👔 GM' },
+    { key: 'director', label: '🎯 Director' },
+    { key: 'finance', label: '💰 Finance' },
+    { key: 'frontdesk', label: '🖥️ Front Desk' },
+    { key: 'mis', label: '📊 MIS' },
+  ];
+
+  const filteredAnnouncements = commFilter === 'all'
+    ? announcements
+    : announcements.filter(a => (a.target || a.type || '').toLowerCase().includes(commFilter));
+
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
-      {alert && <Alert type={alert.type}>{alert.message}</Alert>}
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Post Announcement</h3></CardHeader>
-        <CardBody>
-          <div className="space-y-3">
-            <Input label="Title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Announcement title" />
-            <Textarea label="Message" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} placeholder="Write your announcement..." />
-            <Button onClick={handleSubmit} disabled={submitting}>{submitting ? 'Posting...' : 'Post Announcement'}</Button>
-          </div>
-        </CardBody>
-      </Card>
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Announcements</h3></CardHeader>
-        {announcements.length === 0 ? (
-          <CardBody><p className="text-sm text-gray-400 text-center py-4">No announcements</p></CardBody>
+    <div>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">💬 Staff Communications</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Review messages from HR, GM, Director, Finance, Front Desk and MIS, then send updates back to them.</p>
+      </div>
+
+      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
+
+      <div className="flex gap-2 mb-4 flex-wrap" style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+        {filterTabs.map(t => (
+          <button key={t.key} onClick={() => setCommFilter(t.key)} className="px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer border-none transition-colors" style={commFilter === t.key ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white' } : { background: '#e2e8f0', color: '#4a5568' }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{ maxHeight: '300px', overflowY: 'auto', background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
+        {filteredAnnouncements.length === 0 ? (
+          <p className="text-center py-5" style={{ color: '#7f8c8d' }}>No messages</p>
         ) : (
-          <CardBody>
-            <div className="space-y-3">
-              {announcements.map((a, i) => (
-                <div key={a.id || i} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-semibold text-gray-800">{a.title}</h4>
-                    <span className="text-xs text-gray-400">{formatDateTime(a.created_at)}</span>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">{a.message}</p>
+          <div className="space-y-3">
+            {filteredAnnouncements.map((a, i) => (
+              <div key={a.id || i} className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex justify-between items-start">
+                  <h4 className="font-semibold text-gray-800 text-sm">{a.title}</h4>
+                  <span className="text-xs text-gray-400">{formatDateTime(a.created_at)}</span>
                 </div>
-              ))}
-            </div>
-          </CardBody>
+                <p className="text-sm text-gray-600 mt-1">{a.message}</p>
+              </div>
+            ))}
+          </div>
         )}
-      </Card>
+      </div>
+
+      <form onSubmit={handleSubmit} style={{ background: 'white', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2" style={{ color: '#c41e3a' }}>Choose recipients</label>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {[
+              { key: 'hr', label: '👥 HR' },
+              { key: 'gm', label: '👔 GM' },
+              { key: 'director', label: '🎯 Director' },
+              { key: 'finance', label: '💰 Finance' },
+              { key: 'frontdesk', label: '🖥️ Front Desk' },
+              { key: 'mis', label: '📊 MIS' },
+            ].map(r => (
+              <label key={r.key} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
+                <input type="checkbox" checked={recipients[r.key]} onChange={e => setRecipients({ ...recipients, [r.key]: e.target.checked })} className="w-4 h-4" />
+                {r.label}
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button type="button" onClick={() => setRecipients({ hr: true, gm: true, director: true, finance: true, frontdesk: true, mis: true })} className="px-3 py-1 rounded text-xs font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)', color: 'white' }}>Select All</button>
+            <button type="button" onClick={() => setRecipients({ hr: false, gm: false, director: false, finance: false, frontdesk: false, mis: false })} className="px-3 py-1 rounded text-xs font-semibold cursor-pointer border-none bg-gray-200 text-gray-600">Clear</button>
+          </div>
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2" style={{ color: '#c41e3a' }}>Message</label>
+          <textarea value={commMessage} onChange={e => setCommMessage(e.target.value)} rows={4} placeholder="Type your update or request..." required className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 resize-vertical" />
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <button type="submit" disabled={submitting} className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>{submitting ? 'Sending...' : 'Send Communication'}</button>
+          <button type="button" onClick={() => { setCommMessage(''); setRecipients({ hr: false, gm: false, director: false, finance: false, frontdesk: false, mis: false }); }} className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer border-none bg-gray-200 text-gray-600">Clear</button>
+        </div>
+      </form>
     </div>
   );
 }
 
 function StaffTab() {
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingSpinner />;
+  const [alert, setAlert] = useState(null);
+  const [leaveStatus, setLeaveStatus] = useState('');
+  const [cashStatus, setCashStatus] = useState('');
 
   return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Branch Staff</h3></CardHeader>
-      {employees.length === 0 ? (
-        <CardBody><EmptyState icon={<Users size={48} />} title="No Staff Records" description="No employees found for this branch." /></CardBody>
-      ) : (
-        <Table
-          columns={[
-            { header: 'Name', render: r => r.full_name || r.name || '-' },
-            { header: 'Position', key: 'position' },
-            { header: 'Department', key: 'department' },
-            { header: 'Phone', key: 'phone' },
-            { header: 'Email', key: 'email' },
-            { header: 'Status', render: r => <Badge variant={r.is_active !== false ? 'success' : 'danger'}>{r.is_active !== false ? 'Active' : 'Inactive'}</Badge> },
-          ]}
-          data={employees}
-          emptyMessage="No staff records"
-        />
-      )}
-    </Card>
+    <div>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">👤 Staff Services</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Leave management and cash requests</p>
+      </div>
+
+      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '8px', border: '2px solid #4caf50' }}>
+          <h4 style={{ color: '#2e7d32', marginBottom: '15px', marginTop: 0 }}>📅 Leave Management</h4>
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={() => setAlert({ type: 'info', message: 'Leave request form coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>Request Leave</button>
+            <button onClick={() => setAlert({ type: 'info', message: 'Leave history coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>My Leave Requests</button>
+          </div>
+          {leaveStatus && <div className="mt-4 text-sm" style={{ color: '#2e7d32' }}>{leaveStatus}</div>}
+        </div>
+
+        <div style={{ background: '#e3f2fd', padding: '20px', borderRadius: '8px', border: '2px solid #2196f3' }}>
+          <h4 style={{ color: '#1565c0', marginBottom: '15px', marginTop: 0 }}>💵 Cash Requests</h4>
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={() => setAlert({ type: 'info', message: 'Cash request form coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>Request Cash</button>
+            <button onClick={() => setAlert({ type: 'info', message: 'Cash request history coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>My Cash Requests</button>
+          </div>
+          {cashStatus && <div className="mt-4 text-sm" style={{ color: '#1565c0' }}>{cashStatus}</div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1703,14 +1838,17 @@ function FieldProgramTab() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [showProductRequest, setShowProductRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({
-    activity_type: 'health_screening', location: '', date: '', time: '',
-    coordinator: '', target_audience: '', notes: '',
-  });
-  const [productRequestForm, setProductRequestForm] = useState({ items: '', activity_id: '', notes: '' });
+  const [distributorSearch, setDistributorSearch] = useState('');
+  const [distributorResults, setDistributorResults] = useState([]);
+  const [selectedDistributor, setSelectedDistributor] = useState(null);
+  const [productRows, setProductRows] = useState([{ product: '', quantity: '', unit: '' }]);
+  const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10));
+  const [requestBranch, setRequestBranch] = useState(user?.branch || '');
+  const [requestNotes, setRequestNotes] = useState('');
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [signature, setSignature] = useState('');
 
   useEffect(() => {
     api.get('/field_program_requests')
@@ -1720,157 +1858,198 @@ function FieldProgramTab() {
   }, []);
 
   const loadActivities = async () => {
+    setLoading(true);
     const res = await api.get('/field_program_requests').catch(() => []);
     setActivities(Array.isArray(res) ? res : res.activities || res.requests || []);
+    setLoading(false);
   };
 
-  const handleSubmit = async () => {
-    if (!form.location.trim() || !form.date) return;
+  const searchDistributor = async (val) => {
+    setDistributorSearch(val);
+    if (val.length < 2) { setDistributorResults([]); return; }
+    try {
+      const res = await api.distributors.search(val);
+      const list = Array.isArray(res) ? res : res.distributors || [];
+      setDistributorResults(list.slice(0, 8));
+    } catch { setDistributorResults([]); }
+  };
+
+  const selectDistributor = (d) => {
+    setSelectedDistributor(d);
+    setDistributorSearch(d.distributor_name || d.name || '');
+    setDistributorResults([]);
+  };
+
+  const addProductRow = () => setProductRows([...productRows, { product: '', quantity: '', unit: '' }]);
+  const removeProductRow = (idx) => setProductRows(productRows.filter((_, i) => i !== idx));
+  const updateProductRow = (idx, field, val) => {
+    const rows = [...productRows];
+    rows[idx][field] = val;
+    setProductRows(rows);
+  };
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
+    if (!selectedDistributor || !agreeTerms || !signature.trim()) return;
+    const validProducts = productRows.filter(r => r.product.trim() && r.quantity);
+    if (validProducts.length === 0) return;
     setSubmitting(true);
     try {
       await api.post('/field_program_requests', {
         id: `FP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        activity_type: form.activity_type,
-        location: form.location.trim(),
-        date: form.date,
-        time: form.time,
-        coordinator: form.coordinator.trim(),
-        target_audience: form.target_audience.trim(),
-        notes: form.notes.trim(),
-        status: 'scheduled',
-        branch: user?.branch || '',
+        distributor_id: selectedDistributor.id,
+        distributor_name: selectedDistributor.distributor_name || selectedDistributor.name,
+        distributor_code: selectedDistributor.distributor_code || selectedDistributor.nb_number,
+        date: requestDate,
+        branch: requestBranch,
+        products: validProducts.map(r => ({ product_name: r.product, quantity: Number(r.quantity), unit: r.unit })),
+        notes: requestNotes.trim(),
+        signature: signature.trim(),
+        status: 'pending',
         created_by: user?.full_name || user?.username || '',
       });
-      setAlert({ type: 'success', message: 'Field activity scheduled' });
-      setForm({ activity_type: 'health_screening', location: '', date: '', time: '', coordinator: '', target_audience: '', notes: '' });
+      setAlert({ type: 'success', message: 'Stock request submitted successfully' });
       setShowForm(false);
+      setSelectedDistributor(null);
+      setDistributorSearch('');
+      setProductRows([{ product: '', quantity: '', unit: '' }]);
+      setRequestNotes('');
+      setAgreeTerms(false);
+      setSignature('');
       loadActivities();
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to schedule activity' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleProductRequest = async () => {
-    if (!productRequestForm.items.trim()) return;
-    setSubmitting(true);
-    try {
-      const items = productRequestForm.items.split('\n').filter(l => l.trim()).map(line => {
-        const parts = line.split(/[,\-–]/).map(s => s.trim());
-        return { product_name: parts[0] || line.trim(), quantity: Number(parts[1]) || 1 };
-      });
-      await api.stock.createRequest({
-        requesting_branch: user?.branch || '',
-        request_type: 'field_program',
-        items: JSON.stringify(items),
-        notes: `Field program: ${productRequestForm.activity_id || 'General'}\n${productRequestForm.notes}`,
-        priority: 'normal',
-        created_by: user?.full_name || user?.username || '',
-      });
-      setAlert({ type: 'success', message: 'Product request submitted. Awaiting stock approval.' });
-      setProductRequestForm({ items: '', activity_id: '', notes: '' });
-      setShowProductRequest(false);
-    } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to submit product request' });
+      setAlert({ type: 'error', message: err.message || 'Failed to submit request' });
     } finally { setSubmitting(false); }
-  };
-
-  const markReturned = async (activity) => {
-    try {
-      await api.put('/field_program_requests', {
-        id: activity.id,
-        status: 'items_returned',
-        returned_items: activity.products || [],
-      });
-      setAlert({ type: 'success', message: 'Items marked as returned' });
-      loadActivities();
-    } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to update' });
-    }
   };
 
   if (loading) return <LoadingSpinner />;
 
   return (
     <div>
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <div className="flex gap-2 mb-4">
-        <Button size="sm" onClick={() => setShowForm(true)}>Schedule Activity</Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowProductRequest(true)}>Request Products</Button>
+      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">🚐 Field Program - Stock Requests</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Manage stock requests from distributors for field program activities. All requests require distributor verification and FEFO compliance.</p>
       </div>
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Schedule Field Activity">
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
-            <select
-              value={form.activity_type}
-              onChange={e => setForm({ ...form, activity_type: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-            >
-              <option value="health_screening">Health Screening</option>
-              <option value="product_demo">Product Demo</option>
-              <option value="community_outreach">Community Outreach</option>
-              <option value="training">Training Session</option>
-              <option value="recruitment">Recruitment Drive</option>
-            </select>
-          </div>
-          <Input label="Location *" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Date *" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-            <Input label="Time" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
-          </div>
-          <Input label="Coordinator" value={form.coordinator} onChange={e => setForm({ ...form, coordinator: e.target.value })} />
-          <Input label="Target Audience" value={form.target_audience} onChange={e => setForm({ ...form, target_audience: e.target.value })} placeholder="e.g. Community members, distributors" />
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-          <div className="flex gap-3">
-            <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Scheduling...' : 'Schedule Activity'}
-            </Button>
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
+      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
 
-      <Modal open={showProductRequest} onClose={() => setShowProductRequest(false)} title="Request Products for Field Use">
-        <div className="p-6 space-y-4">
-          <Textarea label="Products (one per line: Product, Qty)" value={productRequestForm.items} onChange={e => setProductRequestForm({ ...productRequestForm, items: e.target.value })} placeholder="e.g. Spirulina 500 Tablets, 10&#10;Ginseng Coffee, 20" rows={5} />
-          <Input label="For Activity (optional)" value={productRequestForm.activity_id} onChange={e => setProductRequestForm({ ...productRequestForm, activity_id: e.target.value })} placeholder="Activity location or ID" />
-          <Textarea label="Notes" value={productRequestForm.notes} onChange={e => setProductRequestForm({ ...productRequestForm, notes: e.target.value })} />
-          <p className="text-xs text-gray-400">This request requires approval from Stock Management before products are issued.</p>
-          <div className="flex gap-3">
-            <Button className="flex-1" variant="success" onClick={handleProductRequest} disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Request'}</Button>
-            <Button variant="ghost" onClick={() => setShowProductRequest(false)}>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
+      <div className="flex gap-4 mb-5 flex-wrap">
+        <button onClick={() => setShowForm(true)} className="px-6 py-3 rounded-lg text-white font-semibold cursor-pointer border-none" style={{ background: '#c41e3a' }}>➕ New Stock Request</button>
+        <button onClick={loadActivities} className="px-6 py-3 rounded-lg text-white font-semibold cursor-pointer border-none" style={{ background: '#6c757d' }}>🔄 Refresh</button>
+      </div>
 
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Field Program Activities</h3></CardHeader>
+      <div style={{ background: 'white', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
         {activities.length === 0 ? (
-          <CardBody><EmptyState icon={<Map size={48} />} title="No Field Activities" description="No field program activities scheduled." /></CardBody>
+          <p className="text-center py-5" style={{ color: '#7f8c8d' }}>No field program requests</p>
         ) : (
           <Table
             columns={[
-              { header: 'Type', render: r => <Badge variant="info">{(r.activity_type || '').replace(/_/g, ' ')}</Badge> },
-              { header: 'Location', key: 'location' },
+              { header: 'ID', render: r => <span className="text-xs font-mono">{r.id}</span> },
+              { header: 'Distributor', render: r => r.distributor_name || r.coordinator || '-' },
               { header: 'Date', render: r => formatDate(r.date) },
-              { header: 'Coordinator', key: 'coordinator' },
-              { header: 'Status', render: r => <Badge variant={r.status === 'completed' ? 'success' : r.status === 'cancelled' ? 'danger' : r.status === 'items_returned' ? 'info' : 'warning'}>{(r.status || 'Scheduled').replace(/_/g, ' ')}</Badge> },
-              { header: 'Actions', render: r => (
-                <div className="flex gap-1">
-                  {r.status === 'completed' && r.status !== 'items_returned' && (
-                    <Button size="sm" variant="secondary" onClick={() => markReturned(r)}>Mark Returned</Button>
-                  )}
-                </div>
-              )},
+              { header: 'Products', render: r => {
+                const prods = Array.isArray(r.products) ? r.products : [];
+                return prods.length > 0 ? prods.map(p => `${p.product_name} x${p.quantity}`).join(', ') : '-';
+              }},
+              { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{(r.status || 'Pending').replace(/_/g, ' ')}</Badge> },
             ]}
             data={activities}
-            emptyMessage="No activities"
+            emptyMessage="No requests"
           />
         )}
-      </Card>
+      </div>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="🚐 Field Program Stock Request Form">
+        <div className="p-6" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+          <div style={{ background: '#fff3cd', border: '2px solid #ffc107', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+            <h4 style={{ marginTop: 0, color: '#856404' }}>Distributor Verification *</h4>
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Search Distributor by NB Number or Name *</label>
+              <input type="text" value={distributorSearch} onChange={e => searchDistributor(e.target.value)} placeholder="Type NB number (e.g., NB001544) or name" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm" autoComplete="off" />
+              {distributorResults.length > 0 && (
+                <div className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-full mt-1 max-h-[200px] overflow-auto">
+                  {distributorResults.map((d, i) => (
+                    <div key={d.id || i} onClick={() => selectDistributor(d)} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100">
+                      <span className="font-semibold">{d.distributor_name || d.name}</span> <span className="text-gray-500">({d.distributor_code || d.nb_number})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {selectedDistributor && (
+                <div style={{ marginTop: '10px', padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
+                  <p className="text-sm m-0"><strong>Selected:</strong> {selectedDistributor.distributor_name || selectedDistributor.name}</p>
+                  <p className="text-sm m-0"><strong>NB Number:</strong> {selectedDistributor.distributor_code || selectedDistributor.nb_number}</p>
+                  <p className="text-sm m-0"><strong>Mobile:</strong> {selectedDistributor.mobile_no || selectedDistributor.phone || '-'}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Request Date *</label>
+              <input type="date" value={requestDate} onChange={e => setRequestDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
+              <input type="text" value={requestBranch} onChange={e => setRequestBranch(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm" />
+            </div>
+          </div>
+
+          <h4 style={{ color: '#2c3e50', marginBottom: '15px' }}>Requested Products *</h4>
+          {productRows.map((row, idx) => (
+            <div key={idx} className="grid gap-3 mb-3 items-end" style={{ gridTemplateColumns: '2fr 1fr 1fr auto' }}>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Product *</label>
+                <input type="text" value={row.product} onChange={e => updateProductRow(idx, 'product', e.target.value)} placeholder="Product name" className="w-full px-2 py-2 rounded border border-gray-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Qty *</label>
+                <input type="number" value={row.quantity} onChange={e => updateProductRow(idx, 'quantity', e.target.value)} min="1" className="w-full px-2 py-2 rounded border border-gray-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Unit</label>
+                <input type="text" value={row.unit} onChange={e => updateProductRow(idx, 'unit', e.target.value)} placeholder="boxes" className="w-full px-2 py-2 rounded border border-gray-300 text-sm" />
+              </div>
+              <button type="button" onClick={() => removeProductRow(idx)} className="px-3 py-2 rounded text-white text-xs font-semibold cursor-pointer border-none bg-red-500" disabled={productRows.length === 1}>Remove</button>
+            </div>
+          ))}
+          <button type="button" onClick={addProductRow} className="px-4 py-2 rounded-lg text-sm cursor-pointer border-none bg-gray-200 text-gray-700 mb-4">➕ Add Product</button>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Purpose/Notes</label>
+            <textarea value={requestNotes} onChange={e => setRequestNotes(e.target.value)} rows={3} placeholder="Brief description of field program activity or purpose" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm resize-vertical" />
+          </div>
+
+          <div style={{ background: '#f8f9fa', border: '2px solid #c41e3a', borderRadius: '8px', padding: '15px', marginBottom: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+            <h4 style={{ marginTop: 0, color: '#c41e3a' }}>Terms and Conditions of Stock Handling Commitment</h4>
+            <ol className="text-sm" style={{ lineHeight: 1.6 }}>
+              <li><strong>Stock Accountability:</strong> The distributor is fully responsible for all stock received and must account for every item.</li>
+              <li><strong>FEFO Compliance:</strong> Stock will be issued following First Expired First Out (FEFO) principles.</li>
+              <li><strong>Storage Requirements:</strong> Stock must be stored in appropriate conditions as per product specifications.</li>
+              <li><strong>Damage/Loss Reporting:</strong> Any damaged or lost stock must be reported immediately to the branch manager.</li>
+              <li><strong>Return Policy:</strong> Unused stock may be returned within 30 days if in original condition and packaging.</li>
+              <li><strong>Sales Records:</strong> Complete sales records must be maintained and submitted as required.</li>
+              <li><strong>Payment Terms:</strong> Payment for stock must be made according to agreed terms.</li>
+              <li><strong>Compliance:</strong> All stock must be used/sold in compliance with Dynapharm policies and local regulations.</li>
+            </ol>
+            <label className="flex items-center gap-2 cursor-pointer mt-3">
+              <input type="checkbox" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} className="w-[18px] h-[18px]" />
+              <span className="text-sm">I have read and agree to the Terms and Conditions of Stock Handling Commitment *</span>
+            </label>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Distributor Signature (Type Full Name) *</label>
+            <input type="text" value={signature} onChange={e => setSignature(e.target.value)} placeholder="Full name as signature" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm" required />
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={handleSubmit} disabled={submitting || !agreeTerms || !selectedDistributor || !signature.trim()} className="flex-1 px-5 py-3 rounded-lg text-white font-semibold cursor-pointer border-none disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>{submitting ? 'Submitting...' : 'Submit Request'}</button>
+            <button onClick={() => setShowForm(false)} className="px-5 py-3 rounded-lg text-sm font-semibold cursor-pointer border-none bg-gray-200 text-gray-600">Cancel</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
