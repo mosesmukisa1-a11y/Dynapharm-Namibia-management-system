@@ -1,154 +1,57 @@
 # Dynapharm Namibia Health Management System
 
 ## Overview
-Cloud-based health management system for Dynapharm International Namibia. React + Vite frontend with Node.js/Express backend and PostgreSQL database.
+This project is a cloud-based health management system designed for Dynapharm International Namibia. It aims to streamline operations across various departments, including sales, inventory, human resources, finance, and customer relations. The system provides a comprehensive platform for managing products, distributors, branches, orders, and staff, with a focus on improving efficiency, data accuracy, and business insights. Key capabilities include a multi-portal architecture for different user roles, a robust e-commerce shop, detailed pricing and profit analysis, and extensive reporting features. The business vision is to digitize and optimize Dynapharm's operations, enhance customer and distributor engagement, and provide management with real-time data for informed decision-making, ultimately leading to market expansion and increased profitability within Namibia.
 
-## Architecture
+## User Preferences
+I prefer clear and concise communication.
+I value an iterative development approach, with regular updates and opportunities for feedback.
+Please ask for confirmation before implementing any major changes or architectural decisions.
+Ensure that explanations are detailed enough for me to understand the implications of changes.
+Do not make changes to the folder `assets/`.
+Do not make changes to the file `dynapharm-complete-system.html`.
 
-### Frontend (React + Vite)
-- **client/** — React SPA source code
-- **client/src/App.jsx** — Main routing (all 11 portals + public pages)
-- **client/src/components/** — Shared UI components (ui.jsx, Layout.jsx, LoginModal.jsx, ProtectedRoute.jsx)
-- **client/src/contexts/AuthContext.jsx** — Auth state, role-based portal access (ROLE_PORTAL_ACCESS)
-- **client/src/lib/api.js** — API client for all backend endpoints
-- **client/src/lib/constants.js** — Portal definitions, branches, currency formatting
-- **client/src/pages/** — Page components (Landing, Shop, HealthCheckup)
-- **client/src/pages/portals/** — All 11 portal components
-- **client/src/index.css** — Tailwind CSS v4 with Dynapharm theme colors
-- **vite.config.js** — Vite config at project root (root: ./client, outDir: ../dist)
-- **dist/** — Production build output (served by Express in production)
+## System Architecture
 
-### Backend (Express)
-- **server.js** — Express server, serves API + React build in production
-- **api/** — API route handlers (file-based routing, each .js file = one endpoint)
-- **api/_lib/auth.js** — JWT authentication library (cookie-based sessions)
-- **api/db.js** — PostgreSQL connection pool and query helpers
+### Frontend
+The frontend is built using React with Vite, forming a Single Page Application (SPA). It features a modular structure with shared UI components, context-based authentication (`AuthContext.jsx`) for role-based access to 11 distinct portals and public pages, and an API client (`api.js`) for backend communication. Styling is managed with Tailwind CSS v4, incorporating Dynapharm's corporate theme colors (primary red, secondary, and accent colors). Vite is used for development and bundling, with production output served by the Express backend.
 
-### Development
-- **Backend API workflow**: `PORT=3001 node server.js` (port 3001)
-- **Start application workflow**: `npx vite` (port 5000, proxies /api to port 3001)
-- Vite dev server provides hot module reload for React components
+### Backend
+The backend is an Express.js server responsible for serving the API and the React frontend in production. It employs file-based routing for API endpoints, a JWT-based authentication system with cookie-based sessions (`auth.js`), and a PostgreSQL connection pool with query helpers (`db.js`). All API routes utilize middleware for authentication, with specific public routes defined for non-authenticated access.
 
-### Production / Deployment
-- Build: `npx vite build` (outputs to dist/)
-- Run: `node server.js` (port 5000, serves dist/ + API)
-- Deployment target: Autoscale
+### Core Features
+- **Multi-Portal System**: 12 distinct portals (Distributor, Front Desk, Consultant, Branch, HR, Finance, GM, Director, MIS, Stock, Admin, Training) each with dedicated functionalities and UI/UX.
+- **Role-Based Access Control**: Granular access control based on user roles, determining portal visibility and feature permissions.
+- **E-commerce Shop**: Supports both member (Distributor Price + BV tracking) and non-member (Consumer Price) purchasing flows with various payment and delivery options. Server-side validation recalculates subtotals to ensure accuracy.
+- **Pricing Engine**: Comprehensive `PRICE_LIST` for 91 products, including Distributor Price (DP), Consumer Price (CP), Business Volume (BV), and Cost Insurance Freight (CIF). Features fuzzy product lookup, profit calculation, and cart total calculation with DP/CP switching. CIF pricing and profit data are restricted to specific high-level roles.
+- **Stock Management**: Detailed tracking of stock batches, movements between warehouses and branches, supplier imports, and stock transfers. Includes FEFO compliance for field program stock requests.
+- **Distributor Management**: Functionality for distributor registration (with NB number lookup), bulk import, and agreement form management.
+- **Staff and User Management**: Tools for employee management, staff registration with admin approval workflows, and user administration (e.g., password reset).
+- **Reporting and Analytics**: Various dashboards and reports across portals (e.g., GM, Director, Finance) providing insights into sales, profits, branch performance, and KPIs, often leveraging real CIF costs.
+- **UI/UX Design**: Consistent use of Dynapharm branding with specific color schemes and gradient headers for different portals, clear navigation, and modal-based workflows (e.g., POS system) for enhanced user experience. Dual field naming (camelCase and snake_case) is supported by the API for frontend compatibility.
 
-## Theme Colors
-- Primary: #c41e3a (Dynapharm red)
-- Primary Dark: #8b0000
-- Secondary: #2c3e50
-- Accent Blue: #3498db
-- Accent Green: #27ae60
+### Database
+The system utilizes a PostgreSQL database with 40 fully migrated tables, including products, branches, users, distributors (12,500+ records), and various operational tables. Key data like products, branches, and warehouses are pre-seeded. A super admin user is auto-seeded for initial setup.
 
-## Shop Flow
-- **Member/Non-Member Selection**: Landing page asks customer type before showing products
-- **Member (DP)**: Must select NB number from distributor list; gets Distributor Price + BV tracking
-- **Non-Member (CP)**: Optional referral field, defaults to "Dynapharm Namibia (NB005676)"; gets Consumer Price
-- **Checkout**: Name + phone required; delivery method (pickup/delivery); payment method (cash/card/mobile/bank)
-- **Orders API**: Only customer_name + items[] required; delivery_method defaults to 'pickup'; subtotal recomputed server-side from items
+### Authentication
+Authentication is managed via JWT tokens stored in httpOnly cookies. All `/api/*` routes are protected by auth middleware, with exceptions for public endpoints. Both staff and distributor registrations require admin approval, which can be managed through the Admin Portal.
 
-## Key API Routes
-- `/api/auth/login` — POST, user login
-- `/api/auth/logout` — POST, clear session
-- `/api/auth/me` — GET, current user profile
-- `/api/auth/register` — POST, staff registration (pending approval)
-- `/api/products` — CRUD for products (GET is public)
-- `/api/branches` — CRUD for branches (GET is public)
-- `/api/orders` — Order management (POST public for shop; subtotal recomputed server-side)
-- `/api/distributors` — Distributor management (GET is public)
-- `/api/distributor-agreement` — Distributor Agreement Form (POST public for registration; GET/PUT require auth with role checks)
-- `/api/distributor-import` — Bulk distributor import from CSV/Excel (POST, admin/director/gm role required)
-- `/api/notifications` — Notification system
-- `/api/stock-batches` — Stock batch management (returns dual field names: camelCase + snake_case aliases for frontend compatibility)
-- `/api/stock-movements` — Warehouse + branch stock movements (combined from warehouse_inventory_movements and stock_movements tables)
-- `/api/field_program_requests` — Field program activities (CRUD, requires auth)
-- `/api/stock/transfers` — Stock transfer management
-- `/api/branch/*` — Branch operations (sales, payments, deposits, expenses, inventory)
-- `/api/mis/*` — Management information system (audit, reconcile, branch-status, etc.)
-- `/api/admin/*` — Admin operations (pending-registrations, approve/reject)
-- `/api/users` — User management (admin only)
-- `/api/employees` — Employee management
-- `/api/clients` — Client management
-- `/api/appointments` — Appointment management
-- `/api/reports` — Report management
-- `/api/health` — System health check
+## External Dependencies
+- **PostgreSQL**: Primary database for all system data.
+- **Tailwind CSS v4**: CSS framework for styling the frontend.
+- **XLSX.js**: Used for bulk distributor import from CSV/Excel files in the Admin portal.
+- **Vite**: Frontend build tool.
+- **Node.js/Express.js**: Backend runtime and web framework.
 
-## Pricing Engine
-- **client/src/lib/pricing.js** — Complete PRICE_LIST (91 products) with DP (Distributor Price), CP (Consumer Price), BV (Business Volume), CIF (Cost Insurance Freight from Malaysia) values
-- `findProductPrice(name)` — Fuzzy product lookup (exact match → partial match → 60% word match)
-- `getCIFPrice(productName)` — Get CIF import price for a product
-- `getProductProfit(productName, campaignPrice?)` — Calculate profit: selling price - CIF, with margin %
-- `enrichProductsWithPricing(products)` — Merge API products with PRICE_LIST pricing data (includes CIF)
-- `calculateCartTotals(cart, isMember)` — Cart calculation with DP/CP switching + BV tracking
-- `generateReceiptNumber()` — Receipt number generation (RCP-YYYYMMDD-HHMM-XXXX)
-- **CIF pricing**: ~42.5% of DP price; represents import cost from Dynapharm International Malaysia
-- **Profit visibility**: CIF prices and profit data restricted to admin/gm/director roles only
-
-## Official Branches (15 outlets)
-Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo, Eenhana, Ondangwa, Rundu, Walvis Bay, Hochlandpark, Khomasdal, Katima Mulilo
-- Full details (addresses + phone) in `BRANCH_DETAILS` constant
-- `WINDHOEK_BRANCHES` = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal']
-- `DELIVERY_FEE_RULES`: Windhoek = free, outside = N$150
-- `COMPANY_INFO`: Company name, logo, social media links, default referral
-
-## Portals (12 total, all with full business logic)
-1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, New Member Registration (Distributor Agreement Form for recruiting downlines), BV & Profit (monthly breakdown, accumulation guide), Communications (view announcements, compose messages to admin), Full Body Check Up, Media/News, Testimonials
-2. **Front Desk** — Orders (5 status sub-tabs), Appointments, Full Body Checkup, Client Registration, Payments, Client Lookup, Delivery, Visitors, CRM, Notifications, Staff Communication, Staff Services
-3. **Consultant** — Red gradient header (#c41e3a→#a01830) with logo + "Consultant Portal" title + "Refresh Data" ghost button. Custom nav tabs with red active underline (Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services). Checkups: white card with "Upcoming"/"Completed" pill buttons (red active) + Refresh button + report creation modal (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups). Clients: search input + branch filter dropdown + red Search/Show All buttons. Reports: search + Search/Show All/Refresh buttons. Follow-ups: date picker + Show All/Refresh buttons. Analytics: timeframe select (Today/Week/Month/All) + Refresh/Print Report buttons + stat cards + common diagnoses. Staff Services: 2-card grid (📅 Leave Management with green "Request Leave" + "My Requests" buttons, 💵 Cash Support with blue "Request Cash" + "My Requests" buttons)
-4. **Branch** — Full reference-system branding across ALL 11 tabs. Common elements: "🏬 Branch Portal" centered title, blue gradient active tabs (linear-gradient #3498db→#2980b9) with red bottom border (3px #c41e3a). Every tab has blue gradient header banner (linear-gradient #1e3a5f→#2980b9). Walk-in Sales: landing page with blue gradient header, green "➕ New Walk-in Sale" button, customer type info cards (blue #ebf5fb for Registered Client, yellow #fef9e7 for New Customer), Recent Sales list with reprint buttons. POS is a 5-step MODAL (max-width 960px): Step 1 Customer Type (Registered/New buttons), Step 2 Customer Details (registered=NB search with green selected card; new=name+phone+referral search with orange border+no-referral checkbox), Step 3 Products (search+DP/CP badge+product grid), Step 4 Cart (items+dark #1e3a5f footer with BV+Total), Step 5 Payment (cash/card/mobile/bank 4-column grid). Modal footer: Cancel + green "📋 Review & Confirm". Confirmation modal (640px): green header "✅ Confirm Sale", customer/products/payment summary cards, "← Edit" + "✅ Complete Sale" buttons. Receipt auto-prints on completion. Prescriptions: green gradient header (#27ae60→#1e8449) with "📊 Daily Statement" + "🔄 Refresh" ghost buttons; Search & Filter card with search input, branch dropdown, status filter (All/⏳Pending/✅Dispensed/💰Paid/⚠️Outstanding), from/to date pickers, "♻️ Clear" + "💰 Update Pricing" buttons; prescription cards with status badges + Dispense/Print actions. Stock: purple/blue hero header with gradient action buttons. Banking: "🏦 Banking Operations" banner + 4 big action buttons grid (Make Deposit green, Cash Drawer blue, Record Expense orange, Banking History gray). Payments: "💳 Payment Management" banner + search bar + "➕ Record Payment" green + "🔄 Refresh" blue buttons. Online Orders: "🛍️ Online Orders" banner + two-column layout (📥 Receiving + 📦 Dispensing panels). Bonus: "🎁 Bonus Payouts" banner + month picker + NB/Name search + Refresh. Communication: "💬 Staff Communications" banner + filter tabs (All/HR/GM/Director/Finance/Front Desk/MIS) + inbox + send form with recipient checkboxes + Select All/Clear. Staff: "👤 Staff Services" banner + two service cards (📅 Leave Management green card, 💵 Cash Requests blue card). Distributor Registration: MembershipAgreementForm component. Field Program: "🚐 Field Program - Stock Requests" banner + "➕ New Stock Request" red button + request list + modal with distributor verification, product rows, T&C with FEFO compliance, signature
-5. **HR** — Employees, Leave management, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
-6. **Finance** — Dashboard (real CIF cost KPIs, branch selector), Remittance (supplier payment tracking with "No Remittance Due" status), Deposit Inbox (batch verify), Bonus Workflow, Expenses, Communication, Staff Services
-7. **GM** — Dashboard (Total Sales, CIF Cost of Sales, Gross Profit, Remittance Due — real CIF via findProductPrice), P&L Summary, Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services
-8. **Director** — Executive Dashboard (real CIF/profit/remittance KPIs), P&L Overview (Revenue/CIF/Profit/Deposits/Remittance), Branch Performance (with profit column), Branch Overview, Distributor Network, Staff Services
-9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
-10. **Stock** — Overview, Supplier Import (mandatory fields: product, carton_no, expiry_date, qty, batch_number with red validation), Country Stock (with CIF pricing), Windhoek/Ondangwa Warehouses, Distribution (stock release rules: cash received OR field program approved; barcode scan support), Transfers, Inventory, Orders, Monthly Sales (aggregated by month), Profit Analysis (CIF vs DP, GM/Director/Admin only), Country Inv, Valuation, Barcode, Reorder, Batch, Realtime
-11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search, CSV/Excel bulk import with XLSX.js), Branches, System
-12. **Training** — Training Materials, Videos, Photos, Upload Content (trainers only), Schedule
-
-## Role → Portal Access
-- admin: all portals (including training)
-- frontdesk: distributor, frontdesk
-- consultant: consultant
-- dispenser: distributor, frontdesk, branch
-- branch_manager: distributor, frontdesk, branch
-- hr_manager: hr
-- finance: finance
-- gm: distributor, frontdesk, consultant, branch, hr, finance, gm, stock
-- director: distributor, frontdesk, consultant, branch, hr, finance, gm, director, stock
-- mis: mis
-- stock: stock
-- training: training, distributor
-
-## API Field Naming Convention
-- All API normalizers return **dual field names** (both camelCase and snake_case aliases) for frontend compatibility
-- Example: stock-batches returns both `description` and `product_name`, both `batchNo` and `batch_number`, both `importDate` and `created_at`
-- Appointments API uses ILIKE for type filtering (case-insensitive partial match)
-- Frontend portals consume snake_case field names (`full_name`, `created_at`, `branch`, `unit_price`)
-
-## Database
-- **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
-- Distributors table has 12,500+ records (bulk imported from Excel); columns include `position`, `position_code`, `date_joined`, `sponsor_code`, `sex`, `level`
-- Products table seeded with 95 products
-- Branches seeded with 15 Namibian branches
-- Warehouse locations auto-seeded: country_stock, windhoek_warehouse, ondangwa_warehouse
-- Super Admin auto-seeded (username: admin, password: Admin@2024)
-
-## Authentication
-- JWT tokens in httpOnly cookies
-- Auth middleware in server.js for all /api/* routes
-- Public routes: login, logout, register, health, GET products/branches, POST orders/appointments
-- **Staff registration**: via LoginModal (Staff Access), requires admin approval
-- **Distributor registration**: via DistributorLoginModal (Distributor Access), uses NB number lookup to auto-fill name from distributors table, requires admin approval
-- Admin can approve/reject both staff and distributor registrations from the Admin Portal "Staff Approvals" tab (with All/Distributors/Staff filter)
-- Admin can reset passwords for any user from the "User Management" tab
-
-## Environment Variables
-- `DATABASE_URL` — PostgreSQL connection string (required)
-- `AUTH_SECRET` — JWT signing secret (required)
-- `PORT` — Server port (default 5000)
-- `REALTIME_GATEWAY_URL` — WebSocket gateway URL (optional)
-
-## Legacy Files (preserved)
-- `dynapharm-complete-system.html` — Original monolithic SPA (preserved for reference)
-- `assets/` — Static CSS, JS, images (still served for legacy pages)
+## Consultant Portal
+The Consultant Portal (`/consultant`) provides comprehensive client management, checkup forms, reports, follow-ups, analytics, and staff services. It matches the reference system (`dynapharm-complete-system.html`) with:
+- **Red gradient header** (#c41e3a → #a01830) with logo, title, and Refresh Data button
+- **6 navigation tabs** with red active underline: Checkup Forms, Clients, Reports, Follow-ups, Analytics, Staff Services
+- **Checkup Forms**: Lists appointments with status badges (color-coded), Upcoming/Completed toggle pills, View Details overlay (700px modal), status update buttons (Check In, Start Checkup, Mark Complete), Create Report action
+- **Clients**: Rich client cards with membership badges (Member/Referred), branch badges, personal info grid, View Details/Edit/Print actions; Client detail modal with personal info, member/referral info, health info, symptoms, registration details; Edit form with full field set
+- **Reports**: Searchable list with prescription badges, report detail modal with diagnosis/recommendations/prescriptions/follow-up date
+- **Follow-ups**: Color-coded cards (overdue=red, due today=yellow, upcoming=blue) with Complete/Reschedule actions
+- **Analytics**: 4 metric cards (Total Clients/Reports Created/Follow-ups Due/Member Conversion) with colored left borders matching reference; Client Distribution and Follow-up Compliance sections with progress bars
+- **Staff Services**: Leave Management and Cash Support cards with Request/View modals; Leave form (type/dates/reason/urgent); Cash form (amount/purpose/urgent); Request history display with status badges
+- **API endpoints**: `/api/leave-requests` and `/api/cash-requests` (GET/POST) for staff service requests (in-memory storage)
+- **API fix**: `appointments.update` and `clients.update` now send `id` in request body (not URL path) to match backend handler expectations

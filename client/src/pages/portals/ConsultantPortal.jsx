@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
 import { PRICE_LIST } from '../../lib/pricing';
@@ -7,6 +7,7 @@ import { FileText, Plus, Trash2 } from 'lucide-react';
 
 export default function ConsultantPortal() {
   const [activeSection, setActiveSection] = useState('checkups');
+  const [refreshKey, setRefreshKey] = useState(0);
   const navItems = [
     { id: 'checkups', label: 'Checkup Forms' },
     { id: 'clients', label: 'Clients' },
@@ -16,6 +17,10 @@ export default function ConsultantPortal() {
     { id: 'staff', label: 'Staff Services' },
   ];
 
+  const handleRefreshData = () => {
+    setRefreshKey(k => k + 1);
+  };
+
   return (
     <div>
       <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #a01830 100%)', borderRadius: '16px', padding: '28px 32px', marginBottom: '28px', color: '#fff', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
@@ -24,7 +29,7 @@ export default function ConsultantPortal() {
           <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>Consultant Portal</h2>
           <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.95rem' }}>Client management, checkup forms & reports</p>
         </div>
-        <button style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', padding: '8px 18px', fontSize: '0.9rem', cursor: 'pointer' }}>Refresh Data</button>
+        <button onClick={handleRefreshData} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', padding: '8px 18px', fontSize: '0.9rem', cursor: 'pointer' }}>Refresh Data</button>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px', borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
@@ -50,15 +55,20 @@ export default function ConsultantPortal() {
       </div>
 
       <div>
-        {activeSection === 'checkups' && <CheckupsSection />}
-        {activeSection === 'clients' && <ClientsSection />}
-        {activeSection === 'reports' && <ReportsSection />}
-        {activeSection === 'followups' && <FollowupsSection />}
-        {activeSection === 'analytics' && <AnalyticsSection />}
-        {activeSection === 'staff' && <StaffServicesSection />}
+        {activeSection === 'checkups' && <CheckupsSection key={`chk-${refreshKey}`} />}
+        {activeSection === 'clients' && <ClientsSection key={`cli-${refreshKey}`} />}
+        {activeSection === 'reports' && <ReportsSection key={`rep-${refreshKey}`} />}
+        {activeSection === 'followups' && <FollowupsSection key={`fol-${refreshKey}`} />}
+        {activeSection === 'analytics' && <AnalyticsSection key={`ana-${refreshKey}`} />}
+        {activeSection === 'staff' && <StaffServicesSection key={`stf-${refreshKey}`} />}
       </div>
     </div>
   );
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function CheckupsSection() {
@@ -67,21 +77,23 @@ function CheckupsSection() {
   const [filter, setFilter] = useState('upcoming');
   const [showReport, setShowReport] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailCheckup, setDetailCheckup] = useState(null);
   const [reportForm, setReportForm] = useState({ diagnosis: '', recommendations: '', follow_up_date: '', prescriptions: [] });
   const [prescriptionProduct, setPrescriptionProduct] = useState('');
   const [prescriptionQty, setPrescriptionQty] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const loadCheckups = () => {
+  const loadCheckups = useCallback(() => {
     setLoading(true);
     api.appointments.list('type=Check')
       .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(() => { loadCheckups(); }, []);
+  useEffect(() => { loadCheckups(); }, [loadCheckups]);
 
   const addPrescription = () => {
     if (!prescriptionProduct) return;
@@ -117,13 +129,44 @@ function CheckupsSection() {
       setShowReport(false);
       setReportForm({ diagnosis: '', recommendations: '', follow_up_date: '', prescriptions: [] });
       setSelectedCheckup(null);
+      loadCheckups();
     } catch (err) {
       setError(err.message || 'Failed to create report');
     }
     setSubmitting(false);
   };
 
-  const filtered = appointments.filter(a => filter === 'upcoming' ? a.status !== 'completed' : a.status === 'completed');
+  const updateStatus = async (apt, newStatus) => {
+    try {
+      await api.appointments.update(apt.id, { status: newStatus });
+      loadCheckups();
+    } catch (err) {
+      alert('Failed to update status: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const viewDetail = (apt) => {
+    setDetailCheckup(apt);
+    setShowDetail(true);
+  };
+
+  const getStatusColor = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'completed') return '#22c55e';
+    if (s === 'walk-in') return '#f59e0b';
+    if (s === 'checked_in' || s === 'in_progress') return '#8b5cf6';
+    return '#3b82f6';
+  };
+
+  const upcoming = appointments.filter(a => (a.status || '').toLowerCase() !== 'completed' && (a.status || '').toLowerCase() !== 'cancelled');
+  const completed = appointments.filter(a => (a.status || '').toLowerCase() === 'completed');
+  const filtered = filter === 'completed' ? completed : upcoming;
+
+  const parseData = (apt) => {
+    try {
+      return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {});
+    } catch { return {}; }
+  };
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
@@ -145,25 +188,76 @@ function CheckupsSection() {
         >Completed</button>
       </div>
 
-      {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No {filter} checkup forms found.</p>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>Loading checkup forms...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
+          <p style={{ fontSize: '1.1rem' }}>{filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your branch.'}</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map(apt => (
-            <div key={apt.id} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b', fontWeight: 600 }}>{apt.full_name}</h4>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{formatDateTime(apt.date || apt.created_at)}</p>
-                {apt.branch && <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{apt.branch}</p>}
+        <div>
+          {filtered.map(apt => {
+            const data = parseData(apt);
+            const statusColor = getStatusColor(apt.status);
+            const statusLabel = apt.status || 'pending';
+            const sl = statusLabel.toLowerCase();
+            const dateStr = apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '';
+            const timeStr = apt.time ? apt.time.slice(0, 5) : '';
+
+            return (
+              <div key={apt.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderLeft: `4px solid ${statusColor}`, borderRadius: '10px', padding: '16px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#1f2937', marginBottom: '4px' }}>{apt.full_name || 'Unknown'}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                      {apt.phone || ''}{apt.email ? ` • ${apt.email}` : ''}
+                    </div>
+                    {data.concern && <div style={{ fontSize: '0.85rem', color: '#374151', marginTop: '4px' }}><strong>Concern:</strong> {data.concern}</div>}
+                    {data.distributorName && <div style={{ fontSize: '0.85rem', color: '#374151' }}><strong>Referred by:</strong> {data.distributorName} ({data.distributorNB || ''})</div>}
+                    {data.conditions && data.conditions !== 'None' && <div style={{ fontSize: '0.85rem', color: '#374151' }}><strong>Conditions:</strong> {data.conditions}</div>}
+                    {data.acknowledgedBy && <div style={{ fontSize: '0.82rem', color: '#059669', marginTop: '4px' }}>Acknowledged by: <strong>{data.acknowledgedBy}</strong> ({data.acknowledgedInitials || ''}) on {data.acknowledgedDate || ''}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', minWidth: '120px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>{dateStr}{timeStr ? ` at ${timeStr}` : ''}</div>
+                    <span style={{ display: 'inline-block', marginTop: '4px', padding: '3px 10px', background: `${statusColor}20`, color: statusColor, borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, textTransform: 'capitalize' }}>{statusLabel}</span>
+                  </div>
+                </div>
+                {sl !== 'completed' && sl !== 'cancelled' && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
+                    <button onClick={() => { setSelectedCheckup(apt); setShowReport(true); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Create Report</button>
+                    {(sl === 'pending' || sl === 'walk-in') && <button onClick={() => updateStatus(apt, 'checked_in')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Check In</button>}
+                    {sl === 'checked_in' && <button onClick={() => updateStatus(apt, 'in_progress')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Start Checkup</button>}
+                    <button onClick={() => updateStatus(apt, 'completed')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Mark Complete</button>
+                  </div>
+                )}
+                {sl === 'completed' && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Badge variant={apt.status === 'completed' ? 'success' : 'warning'}>{apt.status || 'Pending'}</Badge>
-                <Button size="sm" onClick={() => { setSelectedCheckup(apt); setShowReport(true); }}>
-                  <FileText size={14} /> Create Report
-                </Button>
-              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showDetail && detailCheckup && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowDetail(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+          <div style={{ maxWidth: '700px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>Checkup Form Details</h3>
+              <button onClick={() => setShowDetail(false)} style={{ padding: '8px 16px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>Close</button>
             </div>
-          ))}
+            <div style={{ padding: '24px' }}>
+              <CheckupDetailContent apt={detailCheckup} />
+            </div>
+            {(detailCheckup.status || '').toLowerCase() !== 'completed' && (detailCheckup.status || '').toLowerCase() !== 'cancelled' && (
+              <div style={{ padding: '16px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => { setShowDetail(false); setSelectedCheckup(detailCheckup); setShowReport(true); }} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Create Report & Prescription</button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -204,11 +298,70 @@ function CheckupsSection() {
   );
 }
 
+function CheckupDetailContent({ apt }) {
+  const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+  const visitType = (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment';
+  const dateStr = apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '';
+  const timeStr = apt.time ? apt.time.slice(0, 5) : '';
+  const clientType = data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor';
+
+  const fieldStyle = { marginBottom: '8px', fontSize: '0.9rem', color: '#374151' };
+  const labelStyle = { fontWeight: 600, color: '#1e293b' };
+  const sectionStyle = { marginBottom: '20px' };
+  const sectionTitleStyle = { fontSize: '1rem', fontWeight: 700, color: '#c41e3a', marginBottom: '12px', paddingBottom: '6px', borderBottom: '2px solid #fee2e2' };
+
+  return (
+    <div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Visit Information</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <div style={fieldStyle}><span style={labelStyle}>Visit Type:</span> {visitType}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Branch:</span> {apt.branch || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Date:</span> {dateStr || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Time:</span> {timeStr || 'N/A'}</div>
+        </div>
+      </div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Personal Information</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <div style={fieldStyle}><span style={labelStyle}>Full Name:</span> {apt.full_name || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Phone:</span> {apt.phone || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Email:</span> {apt.email || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Gender:</span> {data.gender || 'N/A'}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Date of Birth:</span> {data.dob || 'N/A'}</div>
+        </div>
+      </div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Client Type</h4>
+        <div style={fieldStyle}><span style={labelStyle}>Type:</span> {clientType}</div>
+        {data.distributorName && <div style={fieldStyle}><span style={labelStyle}>Referral:</span> {data.distributorName} ({data.distributorNB || ''})</div>}
+      </div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Health Information</h4>
+        <div style={fieldStyle}><span style={labelStyle}>Health Concern:</span> {data.concern || 'N/A'}</div>
+        <div style={fieldStyle}><span style={labelStyle}>Medical Conditions:</span> {data.conditions || 'None'}</div>
+        <div style={fieldStyle}><span style={labelStyle}>Current Medications:</span> {data.medications || 'None'}</div>
+        {data.additionalNotes && <div style={fieldStyle}><span style={labelStyle}>Additional Notes:</span> {data.additionalNotes}</div>}
+      </div>
+      {data.acknowledgedBy && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', marginTop: '12px' }}>
+          <div style={{ fontSize: '0.85rem', color: '#059669' }}>
+            <strong>Acknowledged by:</strong> {data.acknowledgedBy} ({data.acknowledgedInitials || ''}) on {data.acknowledgedDate || ''}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientsSection() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({});
 
   useEffect(() => {
     api.clients.list()
@@ -217,20 +370,59 @@ function ClientsSection() {
       .finally(() => setLoading(false));
   }, []);
 
-  const searchClients = () => {};
   const showAllClients = () => { setSearch(''); setBranchFilter(''); };
 
   const filtered = clients.filter(c => {
     if (search) {
       const q = search.toLowerCase();
-      const match = (c.full_name || c.name || '').toLowerCase().includes(q)
+      const match = (c.full_name || c.fullName || c.name || '').toLowerCase().includes(q)
         || (c.phone || '').includes(q)
-        || (c.reference || '').toLowerCase().includes(q);
+        || (c.reference || c.referenceNumber || '').toLowerCase().includes(q);
       if (!match) return false;
     }
     if (branchFilter && (c.branch || '') !== branchFilter) return false;
     return true;
-  });
+  }).sort((a, b) => new Date(b.timestamp || b.created_at || 0) - new Date(a.timestamp || a.created_at || 0));
+
+  const openClientDetails = (client, edit = false) => {
+    setSelectedClient(client);
+    setEditMode(edit);
+    if (edit) {
+      setEditForm({ ...client });
+    }
+  };
+
+  const handleSaveClient = async () => {
+    try {
+      await api.clients.update(selectedClient.id, editForm);
+      setClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, ...editForm } : c));
+      setEditMode(false);
+      setSelectedClient({ ...selectedClient, ...editForm });
+    } catch (err) {
+      alert('Failed to save: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const printClientDetails = (client) => {
+    const w = window.open('', '_blank', 'width=800,height=600');
+    if (!w) return;
+    const name = client.full_name || client.fullName || client.name || '';
+    w.document.write(`<html><head><title>Client Details - ${escHtml(name)}</title><style>body{font-family:Arial,sans-serif;padding:20px;} h2{color:#c41e3a;} .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;} .field{margin-bottom:6px;font-size:14px;} .label{font-weight:bold;}</style></head><body>`);
+    w.document.write(`<h2>Client Details</h2>`);
+    w.document.write(`<div class="grid">`);
+    w.document.write(`<div class="field"><span class="label">Name:</span> ${escHtml(name)}</div>`);
+    w.document.write(`<div class="field"><span class="label">Phone:</span> ${escHtml(client.phone || '')}</div>`);
+    w.document.write(`<div class="field"><span class="label">Reference:</span> ${escHtml(client.reference || client.referenceNumber || '')}</div>`);
+    w.document.write(`<div class="field"><span class="label">Branch:</span> ${escHtml(client.branch || '')}</div>`);
+    w.document.write(`<div class="field"><span class="label">DOB:</span> ${escHtml(client.dob || 'Not provided')}</div>`);
+    w.document.write(`<div class="field"><span class="label">Gender:</span> ${escHtml(client.gender || 'Not provided')}</div>`);
+    w.document.write(`<div class="field"><span class="label">Email:</span> ${escHtml(client.email || 'Not provided')}</div>`);
+    w.document.write(`<div class="field"><span class="label">Membership:</span> ${escHtml(client.membershipStatus === 'member' ? 'Registered Member' : 'Referred')}</div>`);
+    w.document.write(`</div>`);
+    w.document.write(`</body></html>`);
+    w.document.close();
+    w.print();
+  };
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
@@ -247,24 +439,221 @@ function ClientsSection() {
           <option value="">All Branches</option>
           {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <button onClick={searchClients} style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600 }}>Search</button>
+        <button onClick={() => {}} style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Search</button>
         <button onClick={showAllClients} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
       </div>
       {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No clients found.</p>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
+          <h3>📋 No clients found</h3>
+          <p>{branchFilter ? 'No clients registered for the selected branch.' : 'Clients will appear here once they register through the client portal.'}</p>
+        </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(c => (
-            <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{c.full_name || c.name}</span>
-                {c.phone && <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '12px' }}>{c.phone}</span>}
+        <div>
+          {filtered.map(c => {
+            const name = c.full_name || c.fullName || c.name || 'Unknown';
+            const ref = c.reference || c.referenceNumber || '';
+            const memberStatus = c.membershipStatus || c.membership_status || 'referred';
+            return (
+              <div key={c.id} className="client-card" style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px', marginBottom: '12px', background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '15px' }}>
+                  <div>
+                    <h4 style={{ color: '#c41e3a', marginBottom: '5px', margin: 0, fontSize: '1rem', fontWeight: 600 }}>{name}</h4>
+                    <p style={{ color: '#7f8c8d', fontSize: '0.9rem', margin: '2px 0 0' }}>Reference: {ref}</p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ background: memberStatus === 'member' ? '#e8f5e9' : '#fff3cd', color: memberStatus === 'member' ? '#27ae60' : '#f39c12', padding: '4px 8px', borderRadius: '3px', fontSize: '0.8rem' }}>
+                      {memberStatus === 'member' ? '👤 Member' : '🤝 Referred'}
+                    </span>
+                    {c.branch && <span style={{ background: '#e8f5e9', color: '#27ae60', padding: '4px 8px', borderRadius: '3px', fontSize: '0.8rem', marginLeft: '5px' }}>{c.branch}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '15px' }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: '#374151' }}><strong>📞 Phone:</strong> {c.phone || 'N/A'}</p>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: '#374151' }}><strong>🎂 DOB:</strong> {c.dob || 'Not provided'}</p>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: '#374151' }}><strong>⚧ Gender:</strong> {c.gender || 'Not provided'}</p>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: '#374151' }}><strong>📧 Email:</strong> {c.email || 'Not provided'}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => openClientDetails(c, false)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>👁️ View Details</button>
+                  <button onClick={() => openClientDetails(c, true)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✏️ Edit</button>
+                  <button onClick={() => printClientDetails(c)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>🖨️ Print</button>
+                </div>
               </div>
-              {c.branch && <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{c.branch}</span>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {selectedClient && (
+        <div onClick={e => { if (e.target === e.currentTarget) { setSelectedClient(null); setEditMode(false); } }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+          <div style={{ maxWidth: '900px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>{editMode ? 'Edit Client Details' : 'Client Details'} - {selectedClient.reference || selectedClient.referenceNumber || ''}</h3>
+              <button onClick={() => { setSelectedClient(null); setEditMode(false); }} style={{ padding: '8px 16px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              {editMode ? (
+                <ClientEditForm form={editForm} setForm={setEditForm} />
+              ) : (
+                <ClientViewDetails client={selectedClient} />
+              )}
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {editMode ? (
+                <>
+                  <button onClick={handleSaveClient} style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>💾 Save Changes</button>
+                  <button onClick={() => setEditMode(false)} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>❌ Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { setEditForm({ ...selectedClient }); setEditMode(true); }} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>✏️ Edit Details</button>
+                  <button onClick={() => printClientDetails(selectedClient)} style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🖨️ Print Details</button>
+                  <button onClick={() => { setSelectedClient(null); setEditMode(false); }} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Close</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClientViewDetails({ client }) {
+  const name = client.full_name || client.fullName || client.name || '';
+  const memberStatus = client.membershipStatus || client.membership_status || 'referred';
+  const symptoms = Array.isArray(client.symptoms) ? client.symptoms : [];
+
+  const sectionStyle = { marginBottom: '20px', background: '#f8f9fa', padding: '16px', borderRadius: '8px' };
+  const sectionTitleStyle = { fontSize: '1rem', fontWeight: 600, color: '#2c3e50', marginBottom: '12px' };
+  const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' };
+  const fieldStyle = { fontSize: '0.9rem', color: '#374151', margin: 0 };
+
+  return (
+    <div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Personal Information</h4>
+        <div style={gridStyle}>
+          <div style={fieldStyle}><strong>Full Name:</strong> {name}</div>
+          <div style={fieldStyle}><strong>Namibian ID:</strong> {client.nbNumber || client.nb_number || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Date of Birth:</strong> {client.dob || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Age:</strong> {client.age || 'Not provided'} years</div>
+          <div style={fieldStyle}><strong>Gender:</strong> {client.gender || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Phone:</strong> {client.phone || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Email:</strong> {client.email || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Height:</strong> {client.height || 'Not provided'} cm</div>
+          <div style={fieldStyle}><strong>Weight:</strong> {client.weight || 'Not provided'} kg</div>
+        </div>
+      </div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Member/Referral Information</h4>
+        <div style={gridStyle}>
+          <div style={fieldStyle}><strong>Membership Status:</strong> {memberStatus === 'member' ? 'Registered Member' : 'Referred by Member'}</div>
+          {memberStatus === 'member' ? (
+            <>
+              <div style={fieldStyle}><strong>Member ID:</strong> {client.memberId || client.member_id || 'Not provided'}</div>
+              <div style={fieldStyle}><strong>Member Since:</strong> {client.memberSince || client.member_since || 'Not provided'}</div>
+            </>
+          ) : (
+            <>
+              <div style={fieldStyle}><strong>Referred by:</strong> {client.referralName || client.referral_name || 'Not provided'}</div>
+              <div style={fieldStyle}><strong>Referral NB:</strong> {client.referralNbNumber || client.referral_nb || 'Not provided'}</div>
+            </>
+          )}
+        </div>
+      </div>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Health Information</h4>
+        <div style={gridStyle}>
+          <div style={fieldStyle}><strong>Primary Reason:</strong> {client.primaryReason || client.primary_reason || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Current Medications:</strong> {client.currentMedications || client.medications || 'None'}</div>
+          <div style={fieldStyle}><strong>Allergies:</strong> {client.allergies || 'None'}</div>
+          <div style={fieldStyle}><strong>Medical History:</strong> {Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history || 'None')}</div>
+        </div>
+      </div>
+      {symptoms.length > 0 && (
+        <div style={sectionStyle}>
+          <h4 style={sectionTitleStyle}>Symptoms</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {symptoms.map((s, i) => (
+              <span key={i} style={{ display: 'inline-block', padding: '4px 12px', background: '#fee2e2', color: '#c41e3a', borderRadius: '16px', fontSize: '0.85rem' }}>{s}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>Registration Details</h4>
+        <div style={gridStyle}>
+          <div style={fieldStyle}><strong>Registration Date:</strong> {client.timestamp ? new Date(client.timestamp).toLocaleDateString('en-GB') : (client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : 'N/A')}</div>
+          <div style={fieldStyle}><strong>Branch:</strong> {client.branch || 'N/A'}</div>
+          <div style={fieldStyle}><strong>Signature:</strong> {client.signature || 'Not signed'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientEditForm({ form, setForm }) {
+  const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
+  const inputStyle = { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' };
+  const labelStyle = { display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: '4px' };
+  const groupStyle = { marginBottom: '12px' };
+
+  return (
+    <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px' }}>
+      <h4 style={{ color: '#2c3e50', marginBottom: '16px' }}>Personal Information</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Full Name *</label>
+          <input style={inputStyle} value={form.full_name || form.fullName || form.name || ''} onChange={e => update('full_name', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Namibian ID Number *</label>
+          <input style={inputStyle} value={form.nbNumber || form.nb_number || ''} onChange={e => update('nbNumber', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Date of Birth *</label>
+          <input type="date" style={inputStyle} value={form.dob || ''} onChange={e => update('dob', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Gender *</label>
+          <select style={inputStyle} value={form.gender || ''} onChange={e => update('gender', e.target.value)}>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Phone *</label>
+          <input style={inputStyle} value={form.phone || ''} onChange={e => update('phone', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Email</label>
+          <input style={inputStyle} value={form.email || ''} onChange={e => update('email', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Height (cm)</label>
+          <input style={inputStyle} value={form.height || ''} onChange={e => update('height', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Weight (kg)</label>
+          <input style={inputStyle} value={form.weight || ''} onChange={e => update('weight', e.target.value)} />
+        </div>
+      </div>
+      <h4 style={{ color: '#2c3e50', marginBottom: '16px' }}>Health Information</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Primary Reason</label>
+          <input style={inputStyle} value={form.primaryReason || form.primary_reason || ''} onChange={e => update('primaryReason', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Current Medications</label>
+          <input style={inputStyle} value={form.currentMedications || form.medications || ''} onChange={e => update('currentMedications', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Allergies</label>
+          <input style={inputStyle} value={form.allergies || ''} onChange={e => update('allergies', e.target.value)} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -275,15 +664,15 @@ function ReportsSection() {
   const [search, setSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
 
-  const loadReports = () => {
+  const loadReports = useCallback(() => {
     setLoading(true);
     api.reports.list()
       .then(data => setReports(Array.isArray(data) ? data : data.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(() => { loadReports(); }, []);
+  useEffect(() => { loadReports(); }, [loadReports]);
 
   const filtered = reports.filter(r => {
     if (!search) return true;
@@ -302,16 +691,22 @@ function ReportsSection() {
           onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
         />
-        <button style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600 }}>Search</button>
+        <button onClick={() => {}} style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Search</button>
         <button onClick={() => setSearch('')} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
         <button onClick={loadReports} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
       </div>
       {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No reports found.</p>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
+          <h3>🔍 No reports found</h3>
+          <p>Try a different search term.</p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div>
           {filtered.map(r => (
-            <div key={r.id} onClick={() => setSelectedReport(r)} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', cursor: 'pointer', transition: 'box-shadow 0.2s' }}>
+            <div key={r.id} onClick={() => setSelectedReport(r)} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', cursor: 'pointer', transition: 'box-shadow 0.2s', marginBottom: '10px' }}
+              onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
+              onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}
+            >
               <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between' }}>
                 <div>
                   <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || r.title || 'Report'}</h4>
@@ -390,7 +785,7 @@ function FollowupsSection() {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState('');
 
-  const loadFollowups = () => {
+  const loadFollowups = useCallback(() => {
     setLoading(true);
     api.reports.list()
       .then(data => {
@@ -399,11 +794,11 @@ function FollowupsSection() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(() => { loadFollowups(); }, []);
+  useEffect(() => { loadFollowups(); }, [loadFollowups]);
 
-  const handleAction = (id, action) => {
+  const handleAction = async (id, action) => {
     if (action === 'complete') {
       setReports(prev => prev.filter(r => r.id !== id));
     }
@@ -420,24 +815,28 @@ function FollowupsSection() {
         <button onClick={loadFollowups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
       </div>
       {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0' }}>No follow-ups found.</p>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
+          <h3>📅 No follow-ups found</h3>
+          <p>Follow-ups from reports will appear here.</p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div>
           {filtered.map(r => {
             const today = new Date().toISOString().slice(0, 10);
             const isOverdue = r.follow_up_date < today;
+            const isDueToday = (r.follow_up_date || '').slice(0, 10) === today;
             return (
-              <div key={r.id} style={{ border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                <div>
+              <div key={r.id} className="follow-up-card" style={{ border: `1px solid ${isOverdue ? '#fecaca' : isDueToday ? '#fde68a' : '#e5e7eb'}`, borderLeft: `4px solid ${isOverdue ? '#dc2626' : isDueToday ? '#f59e0b' : '#3b82f6'}`, borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', background: isOverdue ? '#fef2f2' : isDueToday ? '#fffbeb' : '#fff' }}>
+                <div className="follow-up-details">
                   <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || 'Patient'}</h4>
                   <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: isOverdue ? '#dc2626' : '#64748b' }}>
-                    {isOverdue ? 'Was due: ' : 'Due: '}{formatDate(r.follow_up_date)}
+                    {isOverdue ? '⚠️ Overdue: ' : isDueToday ? '📍 Due Today: ' : '📅 Due: '}{formatDate(r.follow_up_date)}
                   </p>
                   {r.diagnosis && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{r.diagnosis}</p>}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <Button size="sm" variant="success" onClick={() => handleAction(r.id, 'complete')}>Complete</Button>
-                  <Button size="sm" variant="secondary">Reschedule</Button>
+                  <button onClick={() => handleAction(r.id, 'complete')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✅ Complete</button>
+                  <button style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>🔄 Reschedule</button>
                 </div>
               </div>
             );
@@ -449,37 +848,54 @@ function FollowupsSection() {
 }
 
 function AnalyticsSection() {
+  const [clients, setClients] = useState([]);
   const [reports, setReports] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState('month');
 
-  const loadAnalytics = () => {
+  const loadAnalytics = useCallback(() => {
     setLoading(true);
     Promise.all([
+      api.clients.list().then(d => Array.isArray(d) ? d : d.clients || []).catch(() => []),
       api.reports.list().then(d => Array.isArray(d) ? d : d.reports || []).catch(() => []),
       api.appointments.list().then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
-    ]).then(([r, a]) => {
+    ]).then(([c, r, a]) => {
+      setClients(c);
       setReports(r);
       setAppointments(a);
     }).finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(() => { loadAnalytics(); }, []);
+  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
 
-  const totalConsultations = appointments.length;
-  const completedConsultations = appointments.filter(a => a.status === 'completed').length;
+  const totalClients = clients.length;
   const totalReports = reports.length;
-  const withFollowUp = reports.filter(r => r.follow_up_date).length;
+  const followUpsDue = reports.filter(r => r.follow_up_date && r.follow_up_date >= new Date().toISOString().slice(0, 10)).length;
+  const memberClients = clients.filter(c => (c.membershipStatus || c.membership_status) === 'member').length;
+  const referredClients = totalClients - memberClients;
+  const conversionRate = totalClients > 0 ? Math.round((memberClients / totalClients) * 100) : 0;
+  const memberPercentage = totalClients > 0 ? Math.round((memberClients / totalClients) * 100) : 0;
+  const referredPercentage = totalClients > 0 ? Math.round((referredClients / totalClients) * 100) : 0;
 
-  const diagnosisCounts = {};
-  reports.forEach(r => {
-    if (r.diagnosis) {
-      const key = r.diagnosis.slice(0, 50);
-      diagnosisCounts[key] = (diagnosisCounts[key] || 0) + 1;
-    }
-  });
-  const topDiagnoses = Object.entries(diagnosisCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const completedFollowUps = reports.filter(r => r.follow_up_date && r.status === 'completed').length;
+  const totalFollowUps = reports.filter(r => r.follow_up_date).length;
+  const followUpCompleteRate = totalFollowUps > 0 ? Math.round((completedFollowUps / totalFollowUps) * 100) : 0;
+  const pendingFollowUps = totalFollowUps - completedFollowUps;
+
+  const printAnalytics = () => {
+    const w = window.open('', '_blank', 'width=800,height=600');
+    if (!w) return;
+    w.document.write(`<html><head><title>Performance Analytics</title><style>body{font-family:Arial,sans-serif;padding:20px;} h2{color:#c41e3a;} .metric{display:inline-block;margin:10px;padding:20px;border:1px solid #ddd;border-radius:8px;text-align:center;min-width:150px;} .metric h3{margin:0;font-size:28px;} .metric p{margin:4px 0 0;color:#666;}</style></head><body>`);
+    w.document.write(`<h2>Consultant Performance Analytics</h2><p>Timeframe: ${timeframe}</p>`);
+    w.document.write(`<div class="metric"><h3 style="color:#3498db;">${totalClients}</h3><p>Total Clients</p></div>`);
+    w.document.write(`<div class="metric"><h3 style="color:#27ae60;">${totalReports}</h3><p>Reports Created</p></div>`);
+    w.document.write(`<div class="metric"><h3 style="color:#e74c3c;">${followUpsDue}</h3><p>Follow-ups Due</p></div>`);
+    w.document.write(`<div class="metric"><h3 style="color:#f39c12;">${conversionRate}%</h3><p>Member Conversion</p></div>`);
+    w.document.write(`</body></html>`);
+    w.document.close();
+    w.print();
+  };
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
@@ -492,36 +908,74 @@ function AnalyticsSection() {
           <option value="all">All Time</option>
         </select>
         <button onClick={loadAnalytics} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
-        <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Print Report</button>
+        <button onClick={printAnalytics} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Print Report</button>
       </div>
       {loading ? <LoadingSpinner /> : (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            {[
-              { label: 'Total Consultations', value: totalConsultations, color: '#c41e3a' },
-              { label: 'Completed', value: completedConsultations, color: '#16a34a' },
-              { label: 'Reports Created', value: totalReports, color: '#2563eb' },
-              { label: 'Pending Follow-ups', value: withFollowUp, color: '#ea580c' },
-            ].map((stat, i) => (
-              <div key={i} style={{ textAlign: 'center', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '10px' }}>
-                <p style={{ fontSize: '1.8rem', fontWeight: 700, color: stat.color, margin: 0 }}>{stat.value}</p>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>{stat.label}</p>
-              </div>
-            ))}
+        <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '20px' }}>
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3498db', textAlign: 'center' }}>
+              <h3 style={{ color: '#3498db', fontSize: '28pt', marginBottom: '5px', margin: 0 }}>{totalClients}</h3>
+              <p style={{ color: '#666', fontSize: '0.9rem', margin: '4px 0 0' }}>Total Clients</p>
+            </div>
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #27ae60', textAlign: 'center' }}>
+              <h3 style={{ color: '#27ae60', fontSize: '28pt', marginBottom: '5px', margin: 0 }}>{totalReports}</h3>
+              <p style={{ color: '#666', fontSize: '0.9rem', margin: '4px 0 0' }}>Reports Created</p>
+            </div>
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #e74c3c', textAlign: 'center' }}>
+              <h3 style={{ color: '#e74c3c', fontSize: '28pt', marginBottom: '5px', margin: 0 }}>{followUpsDue}</h3>
+              <p style={{ color: '#666', fontSize: '0.9rem', margin: '4px 0 0' }}>Follow-ups Due</p>
+            </div>
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #f39c12', textAlign: 'center' }}>
+              <h3 style={{ color: '#f39c12', fontSize: '28pt', marginBottom: '5px', margin: 0 }}>{conversionRate}%</h3>
+              <p style={{ color: '#666', fontSize: '0.9rem', margin: '4px 0 0' }}>Member Conversion</p>
+            </div>
           </div>
-          {topDiagnoses.length > 0 && (
-            <div>
-              <h4 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#1e293b' }}>Common Diagnoses</h4>
-              <div className="space-y-2">
-                {topDiagnoses.map(([diagnosis, count], i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px' }}>
-                    <span style={{ fontSize: '0.9rem', color: '#374151' }}>{diagnosis}</span>
-                    <Badge variant="primary">{count}</Badge>
-                  </div>
-                ))}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '2px solid #ddd' }}>
+              <h4 style={{ color: '#2c3e50', marginBottom: '15px', margin: '0 0 15px' }}>👥 Client Distribution</h4>
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <span>Registered Members:</span>
+                  <strong style={{ color: '#27ae60' }}>{memberClients}</strong>
+                </div>
+                <div style={{ background: '#e8f5e9', height: '10px', borderRadius: '5px' }}>
+                  <div style={{ background: '#27ae60', height: '100%', width: `${memberPercentage}%`, borderRadius: '5px' }}></div>
+                </div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <span>Referred Clients:</span>
+                  <strong style={{ color: '#f39c12' }}>{referredClients}</strong>
+                </div>
+                <div style={{ background: '#fff3cd', height: '10px', borderRadius: '5px' }}>
+                  <div style={{ background: '#f39c12', height: '100%', width: `${referredPercentage}%`, borderRadius: '5px' }}></div>
+                </div>
               </div>
             </div>
-          )}
+
+            <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '2px solid #ddd' }}>
+              <h4 style={{ color: '#2c3e50', marginBottom: '15px', margin: '0 0 15px' }}>📅 Follow-up Compliance</h4>
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <span>Completed Follow-ups:</span>
+                  <strong style={{ color: '#27ae60' }}>{completedFollowUps}</strong>
+                </div>
+                <div style={{ background: '#e8f5e9', height: '10px', borderRadius: '5px' }}>
+                  <div style={{ background: '#27ae60', height: '100%', width: `${followUpCompleteRate}%`, borderRadius: '5px' }}></div>
+                </div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <span>Pending Follow-ups:</span>
+                  <strong style={{ color: '#e74c3c' }}>{pendingFollowUps}</strong>
+                </div>
+                <div style={{ background: '#fee2e2', height: '10px', borderRadius: '5px' }}>
+                  <div style={{ background: '#e74c3c', height: '100%', width: `${totalFollowUps > 0 ? Math.round((pendingFollowUps / totalFollowUps) * 100) : 0}%`, borderRadius: '5px' }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -529,34 +983,243 @@ function AnalyticsSection() {
 }
 
 function StaffServicesSection() {
+  const [leaveModal, setLeaveModal] = useState(false);
+  const [cashModal, setCashModal] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({ type: '', startDate: '', endDate: '', reason: '', urgent: false });
+  const [cashForm, setCashForm] = useState({ amount: '', purpose: '', urgent: false });
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [cashRequests, setCashRequests] = useState([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [cashLoading, setCashLoading] = useState(false);
+
+  const loadLeaveRequests = useCallback(async () => {
+    setLeaveLoading(true);
+    try {
+      const res = await fetch('/api/leave-requests', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setLeaveRequests(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+    setLeaveLoading(false);
+  }, []);
+
+  const loadCashRequests = useCallback(async () => {
+    setCashLoading(true);
+    try {
+      const res = await fetch('/api/cash-requests', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setCashRequests(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+    setCashLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadLeaveRequests();
+    loadCashRequests();
+  }, [loadLeaveRequests, loadCashRequests]);
+
+  const submitLeave = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/leave-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(leaveForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Server error');
+      }
+      setLeaveModal(false);
+      setLeaveForm({ type: '', startDate: '', endDate: '', reason: '', urgent: false });
+      alert('Leave request submitted successfully!');
+      loadLeaveRequests();
+    } catch (err) {
+      alert('Failed to submit leave request: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const submitCash = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/cash-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(cashForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Server error');
+      }
+      setCashModal(false);
+      setCashForm({ amount: '', purpose: '', urgent: false });
+      alert('Cash request submitted successfully!');
+      loadCashRequests();
+    } catch (err) {
+      alert('Failed to submit cash request: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const getStatusBadgeColor = (status) => {
+    if (status === 'Approved') return '#27ae60';
+    if (status === 'Rejected') return '#e74c3c';
+    return '#f39c12';
+  };
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-          <div style={{ width: '40px', height: '40px', background: '#f0fdf4', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📅</div>
-          <div>
-            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Leave Management</h4>
-            <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Book time off and check approval status</p>
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ width: '40px', height: '40px', background: '#f0fdf4', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📅</div>
+            <div>
+              <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Leave Management</h4>
+              <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Book time off and check approval status</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={() => setLeaveModal(true)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Request Leave</button>
+            <button onClick={loadLeaveRequests} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
+          </div>
+          <div style={{ marginTop: '15px' }}>
+            {leaveLoading ? <p style={{ color: '#64748b' }}>Loading leave requests...</p> : leaveRequests.length === 0 ? (
+              <p style={{ color: '#666' }}>No leave requests yet.</p>
+            ) : (
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {leaveRequests.map((req, i) => {
+                  const status = req.status || 'Pending';
+                  const badge = getStatusBadgeColor(status);
+                  return (
+                    <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>{req.type || 'Leave'}</strong>
+                        <span style={{ padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, background: `${badge}20`, color: badge }}>{status}</span>
+                      </div>
+                      <p style={{ margin: '2px 0', fontSize: '0.8rem', color: '#6b7280' }}>{req.startDate || ''} → {req.endDate || ''}</p>
+                      {req.reason && <p style={{ margin: '2px 0', fontSize: '0.8rem', color: '#94a3b8' }}>{req.reason}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 500 }}>Request Leave</button>
-          <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
-        </div>
-      </div>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-          <div style={{ width: '40px', height: '40px', background: '#eff6ff', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>💵</div>
-          <div>
-            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Cash Support</h4>
-            <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Request petty cash or reimbursements</p>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ width: '40px', height: '40px', background: '#eff6ff', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>💵</div>
+            <div>
+              <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1rem' }}>Cash Support</h4>
+              <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.8rem' }}>Request petty cash or reimbursements</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={() => setCashModal(true)} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Request Cash</button>
+            <button onClick={loadCashRequests} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
+          </div>
+          <div style={{ marginTop: '15px' }}>
+            {cashLoading ? <p style={{ color: '#64748b' }}>Loading cash requests...</p> : cashRequests.length === 0 ? (
+              <p style={{ color: '#666' }}>No cash requests yet.</p>
+            ) : (
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {cashRequests.map((req, i) => {
+                  const status = req.status || 'Pending';
+                  const badge = getStatusBadgeColor(status);
+                  return (
+                    <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>N$ {req.amount || '0'}</strong>
+                        <span style={{ padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, background: `${badge}20`, color: badge }}>{status}</span>
+                      </div>
+                      {req.purpose && <p style={{ margin: '2px 0', fontSize: '0.8rem', color: '#6b7280' }}>{req.purpose}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontWeight: 500 }}>Request Cash</button>
-          <button style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>My Requests</button>
-        </div>
       </div>
+
+      {leaveModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) setLeaveModal(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', maxWidth: '500px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: '#1f2937' }}>📅 Request Leave</h3>
+              <button onClick={() => setLeaveModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <form onSubmit={submitLeave} style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Leave Type</label>
+                <select required value={leaveForm.type} onChange={e => setLeaveForm(f => ({ ...f, type: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}>
+                  <option value="">Select Leave Type</option>
+                  <option value="vacation">Vacation</option>
+                  <option value="sick">Sick Leave</option>
+                  <option value="personal">Personal</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Start Date</label>
+                <input type="date" required value={leaveForm.startDate} onChange={e => setLeaveForm(f => ({ ...f, startDate: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>End Date</label>
+                <input type="date" required value={leaveForm.endDate} onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Reason</label>
+                <textarea required value={leaveForm.reason} onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))} rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#374151', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={leaveForm.urgent} onChange={e => setLeaveForm(f => ({ ...f, urgent: e.target.checked }))} />
+                  Mark as urgent
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="submit" style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>📅 Submit Request</button>
+                <button type="button" onClick={() => setLeaveModal(false)} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {cashModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) setCashModal(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', maxWidth: '500px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: '#1f2937' }}>💵 Request Cash</h3>
+              <button onClick={() => setCashModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <form onSubmit={submitCash} style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Amount Needed (N$)</label>
+                <input type="number" step="0.01" min="1" required value={cashForm.amount} onChange={e => setCashForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Purpose</label>
+                <textarea required value={cashForm.purpose} onChange={e => setCashForm(f => ({ ...f, purpose: e.target.value }))} rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#374151', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={cashForm.urgent} onChange={e => setCashForm(f => ({ ...f, urgent: e.target.checked }))} />
+                  Mark as urgent
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="submit" style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Submit Request</button>
+                <button type="button" onClick={() => setCashModal(false)} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

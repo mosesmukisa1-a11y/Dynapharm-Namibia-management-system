@@ -149,6 +149,61 @@ app.options('/api/*', async (req, res) => {
   res.status(200).end();
 });
 
+const _leaveRequests = [];
+const _cashRequests = [];
+
+app.get('/api/leave-requests', (req, res) => {
+  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+  const mine = _leaveRequests.filter(r => (r.staff || '').toLowerCase() === username);
+  res.json(mine);
+});
+
+app.post('/api/leave-requests', (req, res) => {
+  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+  const { type, startDate, endDate, reason, urgent } = req.body;
+  if (!type || !startDate || !endDate || !reason) {
+    return res.status(400).json({ success: false, error: 'Missing required fields' });
+  }
+  _leaveRequests.push({
+    id: Date.now(),
+    staff: username,
+    staffName: req.user?.name || username,
+    type,
+    startDate,
+    endDate,
+    reason,
+    urgent: !!urgent,
+    status: 'Pending',
+    submittedAt: new Date().toISOString(),
+  });
+  res.json({ success: true });
+});
+
+app.get('/api/cash-requests', (req, res) => {
+  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+  const mine = _cashRequests.filter(r => (r.staff || '').toLowerCase() === username);
+  res.json(mine);
+});
+
+app.post('/api/cash-requests', (req, res) => {
+  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+  const { amount, purpose, urgent } = req.body;
+  if (!amount || !purpose) {
+    return res.status(400).json({ success: false, error: 'Missing required fields' });
+  }
+  _cashRequests.push({
+    id: Date.now(),
+    staff: username,
+    staffName: req.user?.name || username,
+    amount: String(amount),
+    purpose,
+    urgent: !!urgent,
+    status: 'Pending',
+    submittedAt: new Date().toISOString(),
+  });
+  res.json({ success: true });
+});
+
 app.all('/api/*', async (req, res) => {
   try {
     const handler = await getHandler(req.path);

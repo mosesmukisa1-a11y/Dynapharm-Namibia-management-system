@@ -68,13 +68,13 @@ export const api = {
   appointments: {
     list: (params = '') => api.get(`/appointments${params ? '?' + params : ''}`),
     create: (data) => api.post('/appointments', data),
-    update: (id, data) => api.put(`/appointments/${id}`, data),
+    update: (id, data) => api.put('/appointments', { ...data, id }),
   },
 
   clients: {
     list: () => api.get('/clients'),
     create: (data) => api.post('/clients', data),
-    update: (id, data) => api.put(`/clients/${id}`, data),
+    update: (id, data) => api.put('/clients', { ...data, id }),
   },
 
   employees: {
