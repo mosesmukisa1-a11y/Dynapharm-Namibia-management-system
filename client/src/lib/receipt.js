@@ -1,20 +1,32 @@
 import { COMPANY_INFO, BRANCH_DETAILS, formatCurrency } from './constants';
 
-export function generateReceiptHTML({ receiptNumber, branch, items, totalAmount, totalBV, paymentMethod, customerType, customerName, cashier, showBV = true }) {
+export function generateReceiptHTML({ receiptNumber, branch, items, totalAmount, totalBV, paymentMethod, customerType, customerName, nbNumber, referralName, referralNB, cashier, showBV = true }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const isMember = customerType === 'member';
 
-  const itemRows = items.map(item => `
+  const itemRows = items.map(item => {
+    const rawBV = Number(item.bv || item.lineBV || 0);
+    const bvVal = isNaN(rawBV) ? 0 : rawBV;
+    const bvDisplay = bvVal.toFixed(1);
+    return `
     <tr>
       <td style="padding:4px 8px;text-align:left;border-bottom:1px solid #eee;font-size:12px;">${item.product_name || item.name || item.description}</td>
       <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #eee;font-size:12px;">${item.quantity || item.qty}</td>
       <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${formatCurrency(item.unit_price || item.unitPrice)}</td>
       <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${formatCurrency(item.line_total || item.lineTotal)}</td>
-      ${showBV ? `<td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${(item.bv || item.lineBV || 0).toFixed ? (item.bv || item.lineBV || 0).toFixed(1) : (item.bv || item.lineBV || 0)}</td>` : ''}
-    </tr>
-  `).join('');
+      ${showBV ? `<td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${bvDisplay}</td>` : ''}
+    </tr>`;
+  }).join('');
+
+  const referralRow = (!isMember && referralName)
+    ? `<tr><td style="color:#888;">Referral:</td><td style="text-align:right;color:#e67e22;font-weight:bold;">${referralName}${referralNB ? ` (${referralNB})` : ''}</td></tr>`
+    : '';
+  const nbRow = nbNumber
+    ? `<tr><td style="color:#888;">NB#:</td><td style="text-align:right;font-weight:bold;">${nbNumber}</td></tr>`
+    : '';
 
   return `
     <div style="max-width:400px;margin:0 auto;font-family:Arial,sans-serif;color:#333;">
@@ -32,7 +44,9 @@ export function generateReceiptHTML({ receiptNumber, branch, items, totalAmount,
           <tr><td style="color:#888;">Date:</td><td style="text-align:right;">${dateStr}</td></tr>
           <tr><td style="color:#888;">Time:</td><td style="text-align:right;">${timeStr}</td></tr>
           ${customerName ? `<tr><td style="color:#888;">Customer:</td><td style="text-align:right;">${customerName}</td></tr>` : ''}
-          <tr><td style="color:#888;">Type:</td><td style="text-align:right;">${customerType === 'member' ? 'Member (DP)' : 'Non-Member (CP)'}</td></tr>
+          ${nbRow}
+          <tr><td style="color:#888;">Type:</td><td style="text-align:right;">${isMember ? 'Member (DP)' : 'Non-Member (CP)'}</td></tr>
+          ${referralRow}
           <tr><td style="color:#888;">Payment:</td><td style="text-align:right;">${paymentMethod}</td></tr>
           ${cashier ? `<tr><td style="color:#888;">Cashier:</td><td style="text-align:right;">${cashier}</td></tr>` : ''}
         </table>
@@ -56,7 +70,7 @@ export function generateReceiptHTML({ receiptNumber, branch, items, totalAmount,
           <span>TOTAL</span>
           <span style="color:#c41e3a;">${formatCurrency(totalAmount)}</span>
         </div>
-        ${showBV && totalBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-top:4px;"><span>Total BV</span><span>${typeof totalBV === 'number' ? totalBV.toFixed(1) : totalBV}</span></div>` : ''}
+        ${showBV && totalBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;margin-top:4px;font-weight:bold;"><span>Total BV</span><span>${(isNaN(Number(totalBV)) ? 0 : Number(totalBV)).toFixed(1)}</span></div>` : ''}
       </div>
       <div style="text-align:center;padding:16px 0;border-top:1px dashed #ccc;font-size:10px;color:#999;">
         <p style="margin:0;">Thank you for shopping with Dynapharm!</p>

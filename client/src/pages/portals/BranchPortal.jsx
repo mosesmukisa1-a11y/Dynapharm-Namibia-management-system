@@ -112,11 +112,19 @@ function WalkInSalesTab() {
     } catch { setDistributorResults([]); }
   };
 
+  const normalizeDistributor = (d) => ({
+    ...d,
+    name: d.name || d.distributor_name || d.full_name || '',
+    nb_number: d.nb_number || d.distributor_code || '',
+    phone: d.phone || d.mobile_no || '',
+  });
+
   const selectDistributor = (d) => {
-    setSelectedDistributor(d);
+    const norm = normalizeDistributor(d);
+    setSelectedDistributor(norm);
     setIsMember(true);
     setDistributorResults([]);
-    setDistributorSearch(d.name || d.full_name || '');
+    setDistributorSearch(norm.name);
   };
 
   const searchReferrals = async (q) => {
@@ -129,9 +137,10 @@ function WalkInSalesTab() {
   };
 
   const selectReferral = (d) => {
-    setSelectedReferral(d);
+    const norm = normalizeDistributor(d);
+    setSelectedReferral(norm);
     setReferralResults([]);
-    setReferralSearch(d.name || d.full_name || '');
+    setReferralSearch(norm.name);
   };
 
   const selectCustomerType = (type) => {
@@ -162,8 +171,14 @@ function WalkInSalesTab() {
     setError('');
   };
 
+  const canCompleteSale = cart.length > 0 && (!isMember || selectedDistributor);
+
   const completeSale = async () => {
     if (cart.length === 0) return;
+    if (isMember && !selectedDistributor) {
+      setError('Please select a distributor before completing a member sale.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -241,12 +256,15 @@ function WalkInSalesTab() {
       branch: receipt.branch || user?.branch || '',
       items: receipt.items,
       totalAmount: receipt.total_amount,
-      totalBV: isM ? receipt.total_bv : 0,
+      totalBV: receipt.total_bv || 0,
       paymentMethod: receipt.payment_method,
       customerType: receipt.customer_type,
-      customerName: isM ? receipt.distributor_name : null,
+      customerName: isM ? receipt.distributor_name : (receipt.customer_name || 'Walk-in Customer'),
+      nbNumber: isM ? receipt.distributor_nb : null,
+      referralName: !isM ? (receipt.referral_name || DEFAULT_REFERRAL.name) : null,
+      referralNB: !isM ? (receipt.referral_nb || DEFAULT_REFERRAL.nb_number) : null,
       cashier: user?.full_name || user?.username || null,
-      showBV: isM,
+      showBV: true,
     });
 
     return (
@@ -276,32 +294,48 @@ function WalkInSalesTab() {
               <p className="text-sm text-gray-500">{formatDateTime(receipt.created_at)}</p>
               {user?.full_name && <p className="text-xs text-gray-400">Cashier: {user.full_name}</p>}
             </div>
-            <div className="border-t pt-3 space-y-1">
-              {receipt.items.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span>{item.product_name} x{item.quantity}</span>
-                  <span>{formatCurrency(item.line_total)}</span>
-                </div>
-              ))}
+            <div className="border rounded-lg overflow-hidden mt-2">
+              <div className="bg-gray-50 px-3 py-2">
+                <p className="text-xs font-bold uppercase text-gray-500">Products</p>
+              </div>
+              <div className="divide-y">
+                {receipt.items.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div className="flex-1">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="text-gray-400 ml-1">x{item.quantity}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-semibold">{formatCurrency(item.line_total)}</span>
+                      {Number(item.bv || 0) > 0 && <span className="text-xs text-orange-500 ml-2">{Number(item.bv).toFixed(1)} BV</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t px-3 py-2 flex justify-between items-center bg-gray-50">
+                <div className="text-sm text-gray-500">BV earned: <strong className="text-orange-500">{Number(receipt.total_bv || 0).toFixed(1)}</strong></div>
+                <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(receipt.total_amount)}</span></div>
+              </div>
             </div>
-            <div className="border-t mt-3 pt-3 flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span>{formatCurrency(receipt.total_amount)}</span>
-            </div>
-            {isM && <p className="text-sm text-gray-500 mt-1">BV: {receipt.total_bv}</p>}
-            <p className="text-sm text-gray-500">Payment: {receipt.payment_method}</p>
+            <p className="text-sm text-gray-500 mt-2">Payment: {receipt.payment_method}</p>
             {isM && receipt.distributor_name && (
-              <div className="bg-blue-50 p-2 rounded mt-2 text-sm">
-                <p className="font-medium text-blue-800">Member: {receipt.distributor_name}</p>
-                {receipt.distributor_nb && <p className="text-blue-600 text-xs">NB: {receipt.distributor_nb}</p>}
-                <p className="text-blue-600 text-xs">DP Price Applied | BV: {receipt.total_bv}</p>
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mt-2 text-sm">
+                <p className="text-xs font-bold uppercase text-gray-500 mb-1">Member Details</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <p><span className="text-gray-400">Name:</span> <strong>{receipt.distributor_name}</strong></p>
+                  <p><span className="text-gray-400">NB#:</span> <strong>{receipt.distributor_nb || '—'}</strong></p>
+                </div>
+                <p className="text-blue-600 text-xs mt-1">DP Price Applied | BV: {Number(receipt.total_bv || 0).toFixed(1)}</p>
               </div>
             )}
             {!isM && (
-              <div className="bg-yellow-50 p-2 rounded mt-2 text-sm">
-                <p className="font-medium text-yellow-800">Non-Member Sale (CP)</p>
-                <p className="text-yellow-600 text-xs">Referral: {receipt.referral_name || DEFAULT_REFERRAL.name} ({receipt.referral_nb || DEFAULT_REFERRAL.nb_number})</p>
-                <p className="text-yellow-600 text-xs">BV & profit assigned to referral distributor</p>
+              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mt-2 text-sm">
+                <p className="text-xs font-bold uppercase text-gray-500 mb-1">Non-Member Sale (CP)</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <p><span className="text-gray-400">Referral:</span> <strong className="text-orange-600">{receipt.referral_name || DEFAULT_REFERRAL.name}</strong></p>
+                  <p><span className="text-gray-400">NB#:</span> <strong>{receipt.referral_nb || DEFAULT_REFERRAL.nb_number}</strong></p>
+                </div>
+                <p className="text-yellow-600 text-xs mt-1">BV & profit assigned to referral distributor</p>
               </div>
             )}
             <div className="flex gap-2 mt-4">
@@ -357,6 +391,7 @@ function WalkInSalesTab() {
                     <p className="text-gray-500">{foundReceipt.distributor_name || foundReceipt.customer_name || foundReceipt.customerName || 'Walk-in'}</p>
                     <p className="text-gray-500">{formatCurrency(foundReceipt.total || foundReceipt.totalAmount || foundReceipt.total_amount)} | {formatDateTime(foundReceipt.created_at || foundReceipt.timestamp)}</p>
                     <Button size="sm" variant="secondary" className="mt-2" onClick={() => {
+                      const fIsM = (foundReceipt.customerType || foundReceipt.customer_type) === 'member';
                       const html = generateReceiptHTML({
                         receiptNumber: foundReceipt.receipt_number || foundReceipt.saleNumber || foundReceipt.id,
                         branch: foundReceipt.branch || user?.branch || '',
@@ -365,9 +400,12 @@ function WalkInSalesTab() {
                         totalBV: foundReceipt.totalBV || foundReceipt.total_bv || 0,
                         paymentMethod: foundReceipt.paymentMethod || foundReceipt.payment_method || '',
                         customerType: foundReceipt.customerType || foundReceipt.customer_type || 'non_member',
-                        customerName: foundReceipt.distributor_name || foundReceipt.customerName || null,
+                        customerName: foundReceipt.distributor_name || foundReceipt.customerName || foundReceipt.customer_name || (fIsM ? null : 'Walk-in Customer'),
+                        nbNumber: fIsM ? (foundReceipt.distributor_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
+                        referralName: !fIsM ? (foundReceipt.referral_name || foundReceipt.distributorReferral?.name || null) : null,
+                        referralNB: !fIsM ? (foundReceipt.referral_nb || foundReceipt.distributorReferral?.nb_number || null) : null,
                         cashier: foundReceipt.soldBy || '',
-                        showBV: foundReceipt.customerType === 'member' || foundReceipt.customer_type === 'member',
+                        showBV: true,
                       });
                       printReceipt(html);
                     }}><Printer size={14} /> Reprint</Button>
@@ -416,8 +454,8 @@ function WalkInSalesTab() {
                         onClick={() => selectDistributor(d)}
                         className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b cursor-pointer"
                       >
-                        <span className="font-medium">{d.name || d.full_name}</span>
-                        {d.nb_number && <span className="text-gray-400 ml-2">#{d.nb_number}</span>}
+                        <span className="font-medium">{d.name || d.distributor_name || d.full_name}</span>
+                        <span className="text-gray-400 ml-2">#{d.nb_number || d.distributor_code}</span>
                       </button>
                     ))}
                   </div>
@@ -442,8 +480,8 @@ function WalkInSalesTab() {
                         onClick={() => selectReferral(d)}
                         className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b cursor-pointer"
                       >
-                        <span className="font-medium">{d.name || d.full_name}</span>
-                        {d.nb_number && <span className="text-gray-400 ml-2">#{d.nb_number}</span>}
+                        <span className="font-medium">{d.name || d.distributor_name || d.full_name}</span>
+                        <span className="text-gray-400 ml-2">#{d.nb_number || d.distributor_code}</span>
                       </button>
                     ))}
                   </div>
@@ -480,7 +518,9 @@ function WalkInSalesTab() {
                   { header: 'Total', render: r => <span className="font-bold">{formatCurrency(r.total_amount || r.total || r.totalAmount)}</span> },
                   { header: 'Payment', render: r => r.payment_method || r.paymentMethod || '-' },
                   { header: 'Date', render: r => formatDateTime(r.created_at || r.timestamp) },
-                  { header: '', render: r => (
+                  { header: '', render: r => {
+                    const rIsM = (r.customerType || r.customer_type) === 'member';
+                    return (
                     <Button size="sm" variant="ghost" onClick={() => {
                       const html = generateReceiptHTML({
                         receiptNumber: r.receipt_number || r.saleNumber || r.id,
@@ -490,13 +530,17 @@ function WalkInSalesTab() {
                         totalBV: r.totalBV || r.total_bv || 0,
                         paymentMethod: r.paymentMethod || r.payment_method || '',
                         customerType: r.customerType || r.customer_type || 'non_member',
-                        customerName: r.distributor_name || r.customerName || null,
+                        customerName: r.distributor_name || r.customerName || r.customer_name || (rIsM ? null : 'Walk-in Customer'),
+                        nbNumber: rIsM ? (r.distributor_nb || r.distributorReferral?.nb_number || null) : null,
+                        referralName: !rIsM ? (r.referral_name || r.distributorReferral?.name || null) : null,
+                        referralNB: !rIsM ? (r.referral_nb || r.distributorReferral?.nb_number || null) : null,
                         cashier: r.soldBy || '',
-                        showBV: (r.customerType || r.customer_type) === 'member',
+                        showBV: true,
                       });
                       printReceipt(html);
                     }}><Printer size={12} /></Button>
-                  )},
+                    );
+                  }},
                 ]}
                 data={sales.slice(0, 20)}
                 emptyMessage="No recent sales"
@@ -551,9 +595,12 @@ function WalkInSalesTab() {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-3">
-                    <Button className="flex-1" variant="success" onClick={() => setShowReview(true)}>Review Sale</Button>
+                    <Button className="flex-1" variant="success" onClick={() => setShowReview(true)} disabled={!canCompleteSale}>Review Sale</Button>
                     <Button variant="ghost" onClick={() => setCart([])}>Clear</Button>
                   </div>
+                  {isMember && !selectedDistributor && cart.length > 0 && (
+                    <p className="text-xs text-red-500 mt-1">Select a distributor to continue</p>
+                  )}
                 </div>
               )}
             </CardBody>
@@ -561,49 +608,58 @@ function WalkInSalesTab() {
         </div>
       </div>
 
-      <Modal open={showReview} onClose={() => setShowReview(false)} title="Review Sale" size="md">
-        <div className="p-6 space-y-4">
-          <div className="space-y-2">
-            {cartData.items.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span>{item.name || item.description} x{item.qty}</span>
-                <span className="font-semibold">{formatCurrency(item.lineTotal)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="border-t pt-3 space-y-1">
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span className="text-primary">{formatCurrency(cartData.totalAmount)}</span>
+      <Modal open={showReview} onClose={() => setShowReview(false)} title="Confirm Sale" size="md">
+        <div className="space-y-4">
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <p className="text-xs font-bold uppercase text-gray-500 mb-2">Customer</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-gray-400">Name:</span> <strong>{isMember ? (selectedDistributor?.name || selectedDistributor?.full_name || 'Not selected') : 'Walk-in Customer'}</strong></div>
+              <div><span className="text-gray-400">Type:</span> <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${isMember ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>{isMember ? 'Member (DP)' : 'Non-Member (CP)'}</span></div>
+              <div><span className="text-gray-400">NB#:</span> <span>{isMember ? (selectedDistributor?.nb_number || selectedDistributor?.distributor_code || '—') : '—'}</span></div>
+              <div><span className="text-gray-400">Phone:</span> <span>{isMember ? (selectedDistributor?.phone || selectedDistributor?.mobile_no || '—') : '—'}</span></div>
+              {!isMember && (
+                <div className="col-span-2"><span className="text-gray-400">Referral:</span> <span className="text-orange-600 font-semibold">{selectedReferral?.name || selectedReferral?.full_name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || selectedReferral?.distributor_code || DEFAULT_REFERRAL.nb_number})</span></div>
+              )}
             </div>
-            {isMember && (
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Total BV</span>
-                <span>{cartData.totalBV.toFixed(1)}</span>
-              </div>
-            )}
           </div>
-          <div className="text-sm text-gray-600 space-y-1 bg-gray-50 p-3 rounded-lg">
-            <p><span className="font-medium">Customer:</span> {isMember ? `Member - ${selectedDistributor?.name || selectedDistributor?.full_name || 'Not selected'}` : 'Non-Member (Walk-in)'}</p>
-            <p><span className="font-medium">Pricing:</span> {isMember ? 'DP (Distributor Price)' : 'CP (Consumer Price)'}</p>
-            <p><span className="font-medium">Payment:</span> {paymentMethod}</p>
-            {isMember && selectedDistributor?.nb_number && (
-              <p><span className="font-medium">NB:</span> {selectedDistributor.nb_number}</p>
-            )}
-            {!isMember && (
-              <p><span className="font-medium">Referral:</span> {selectedReferral?.name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || DEFAULT_REFERRAL.nb_number})</p>
-            )}
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <p className="text-xs font-bold uppercase text-gray-500 mb-2">Products</p>
+            <div className="divide-y max-h-48 overflow-y-auto">
+              {cartData.items.map((item, i) => (
+                <div key={i} className="flex items-center justify-between py-2 text-sm">
+                  <div className="flex-1">
+                    <span className="font-medium">{item.name || item.description}</span>
+                    <span className="text-gray-400 ml-1">x{item.qty}</span>
+                  </div>
+                  <div className="text-right flex items-center gap-3">
+                    <span className="font-semibold">{formatCurrency(item.lineTotal)}</span>
+                    {Number(item.lineBV || 0) > 0 && <span className="text-xs text-orange-500 font-medium">{Number(item.lineBV).toFixed(1)} BV</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t mt-2 pt-2 flex justify-between items-center">
+              <div className="text-sm text-gray-500">BV earned: <strong className="text-orange-500">{cartData.totalBV.toFixed(1)}</strong></div>
+              <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(cartData.totalAmount)}</span></div>
+            </div>
           </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <p className="text-xs font-bold uppercase text-gray-500 mb-1">Payment</p>
+            <p className="text-base font-semibold text-gray-800">{paymentMethod}</p>
+          </div>
+
           {!isMember && (
-            <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-xs text-yellow-700">
+            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-xs text-yellow-700">
               BV and profit from this sale will be assigned to referral: {selectedReferral?.name || DEFAULT_REFERRAL.name} ({selectedReferral?.nb_number || DEFAULT_REFERRAL.nb_number})
             </div>
           )}
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setShowReview(false)}>Edit</Button>
             <Button className="flex-1" variant="success" onClick={completeSale} disabled={submitting}>
-              {submitting ? 'Processing...' : 'Confirm Sale'}
+              {submitting ? 'Processing...' : 'Complete Sale'}
             </Button>
-            <Button variant="ghost" onClick={() => setShowReview(false)}>Cancel</Button>
           </div>
         </div>
       </Modal>
@@ -612,10 +668,12 @@ function WalkInSalesTab() {
 }
 
 function PrescriptionsTab() {
+  const { user } = useAuth();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dispensing, setDispensing] = useState(null);
   const [alert, setAlert] = useState(null);
+  const [dispensedReceipt, setDispensedReceipt] = useState(null);
 
   useEffect(() => {
     api.reports.list()
@@ -624,12 +682,42 @@ function PrescriptionsTab() {
       .finally(() => setLoading(false));
   }, []);
 
+  const getPrescriptionItems = (report) => {
+    const prescriptions = report.prescriptions || report.prescription || [];
+    if (!Array.isArray(prescriptions)) return [];
+    return prescriptions.map(p => {
+      if (typeof p === 'string') {
+        const match = PRICE_LIST.find(pl => (pl.name || pl.description || '').toLowerCase().includes(p.toLowerCase()));
+        return { product_name: p, quantity: 1, unit_price: match?.cp || 0, line_total: match?.cp || 0, bv: match?.bv || 0 };
+      }
+      return {
+        product_name: p.product_name || p.name || p.product || '',
+        quantity: p.quantity || 1,
+        unit_price: p.unit_price || p.unitPrice || p.price || 0,
+        line_total: (p.quantity || 1) * (p.unit_price || p.unitPrice || p.price || 0),
+        bv: (p.bv || 0) * (p.quantity || 1),
+      };
+    });
+  };
+
   const handleDispense = async (report) => {
     setDispensing(report.id);
     try {
       await api.put(`/reports/${report.id}`, { dispensed: true, dispensed_at: new Date().toISOString() });
-      setAlert({ type: 'success', message: `Prescription for ${report.client_name || 'patient'} dispensed successfully.` });
       setReports(prev => prev.map(r => r.id === report.id ? { ...r, dispensed: true } : r));
+      const items = getPrescriptionItems(report);
+      const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
+      const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
+      setDispensedReceipt({
+        receipt_number: generateReceiptNumber(),
+        client_name: report.client_name || report.full_name || 'Patient',
+        nb_number: report.nb_number || report.distributor_code || null,
+        items,
+        totalAmount,
+        totalBV,
+        created_at: new Date().toISOString(),
+      });
+      setAlert({ type: 'success', message: `Prescription for ${report.client_name || 'patient'} dispensed successfully.` });
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to dispense' });
     } finally {
@@ -637,11 +725,75 @@ function PrescriptionsTab() {
     }
   };
 
+  const printPrescriptionReceipt = () => {
+    if (!dispensedReceipt) return;
+    const html = generateReceiptHTML({
+      receiptNumber: dispensedReceipt.receipt_number,
+      branch: user?.branch || '',
+      items: dispensedReceipt.items,
+      totalAmount: dispensedReceipt.totalAmount,
+      totalBV: dispensedReceipt.totalBV,
+      paymentMethod: 'Prescription',
+      customerType: 'non_member',
+      customerName: dispensedReceipt.client_name,
+      nbNumber: dispensedReceipt.nb_number,
+      cashier: user?.full_name || user?.username || null,
+      showBV: true,
+    });
+    printReceipt(html);
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div>
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
+
+      {dispensedReceipt && (
+        <Card className="mb-4">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-green-700">Prescription Dispensed</h3>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={printPrescriptionReceipt}><Printer size={14} /> Print Receipt</Button>
+                <Button size="sm" variant="ghost" onClick={() => setDispensedReceipt(null)}>Close</Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div className="text-center mb-3">
+              <p className="text-2xl font-bold text-green-600">&#10003;</p>
+              <p className="text-sm text-gray-500">Receipt: {dispensedReceipt.receipt_number}</p>
+              <p className="text-sm font-medium">{dispensedReceipt.client_name}</p>
+              {dispensedReceipt.nb_number && <p className="text-xs text-gray-400">NB: {dispensedReceipt.nb_number}</p>}
+            </div>
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-3 py-2">
+                <p className="text-xs font-bold uppercase text-gray-500">Prescribed Items</p>
+              </div>
+              <div className="divide-y">
+                {dispensedReceipt.items.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div className="flex-1">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="text-gray-400 ml-1">x{item.quantity}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-semibold">{formatCurrency(item.line_total)}</span>
+                      {Number(item.bv || 0) > 0 && <span className="text-xs text-orange-500 ml-2">{Number(item.bv).toFixed(1)} BV</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t px-3 py-2 flex justify-between items-center bg-gray-50">
+                <div className="text-sm text-gray-500">BV: <strong className="text-orange-500">{dispensedReceipt.totalBV.toFixed(1)}</strong></div>
+                <div className="text-lg font-bold">Total: <span className="text-green-600">{formatCurrency(dispensedReceipt.totalAmount)}</span></div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Prescriptions from Consultant Reports</h3></CardHeader>
         {reports.length === 0 ? (
@@ -657,10 +809,35 @@ function PrescriptionsTab() {
                 return String(prescriptions) || '-';
               }},
               { header: 'Status', render: r => <Badge variant={r.dispensed ? 'success' : 'warning'}>{r.dispensed ? 'Dispensed' : 'Pending'}</Badge> },
-              { header: 'Action', render: r => !r.dispensed && (
-                <Button size="sm" variant="success" onClick={() => handleDispense(r)} disabled={dispensing === r.id}>
-                  {dispensing === r.id ? 'Dispensing...' : 'Dispense'}
-                </Button>
+              { header: 'Action', render: r => (
+                <div className="flex gap-1">
+                  {!r.dispensed && (
+                    <Button size="sm" variant="success" onClick={() => handleDispense(r)} disabled={dispensing === r.id}>
+                      {dispensing === r.id ? 'Dispensing...' : 'Dispense'}
+                    </Button>
+                  )}
+                  {r.dispensed && (
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      const items = getPrescriptionItems(r);
+                      const totalAmount = items.reduce((s, i) => s + (i.line_total || 0), 0);
+                      const totalBV = items.reduce((s, i) => s + (i.bv || 0), 0);
+                      const html = generateReceiptHTML({
+                        receiptNumber: r.id || 'RX-' + Date.now(),
+                        branch: user?.branch || '',
+                        items,
+                        totalAmount,
+                        totalBV,
+                        paymentMethod: 'Prescription',
+                        customerType: 'non_member',
+                        customerName: r.client_name || r.full_name || 'Patient',
+                        nbNumber: r.nb_number || null,
+                        cashier: user?.full_name || user?.username || null,
+                        showBV: true,
+                      });
+                      printReceipt(html);
+                    }}><Printer size={12} /></Button>
+                  )}
+                </div>
               )},
             ]}
             data={reports}
