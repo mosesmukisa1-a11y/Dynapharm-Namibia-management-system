@@ -137,7 +137,11 @@ export default async function handler(req, res) {
     const gender = body?.gender?.trim() || null;
     const address = body?.address?.trim() || null;
 
-    const metadata = JSON.stringify({ dob, position, department, branch, phone, id_number: idNumber, gender, address });
+    const warehouseLocation = body?.warehouse_location?.trim() || null;
+    const warehouseRole = body?.warehouse_role?.trim() || null;
+    const effectiveBranch = (['stock', 'warehouse'].includes(role) && warehouseLocation) ? warehouseLocation : (branch || null);
+
+    const metadata = JSON.stringify({ dob, position, department, branch: effectiveBranch, phone, id_number: idNumber, gender, address, warehouse_location: warehouseLocation, warehouse_role: warehouseRole });
 
     await insert('users', {
       id,
@@ -146,6 +150,7 @@ export default async function handler(req, res) {
       role,
       full_name: fullName,
       email,
+      branch: effectiveBranch,
       is_active: false,
       metadata,
     });

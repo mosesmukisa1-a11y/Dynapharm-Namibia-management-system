@@ -209,6 +209,12 @@ async function handlePut(req, res) {
     params.push(JSON.stringify(body.metadata));
   }
 
+  if (body.additional_roles !== undefined) {
+    const roles = Array.isArray(body.additional_roles) ? body.additional_roles : [];
+    updates.push(`additional_roles = $${updates.length + 1}::jsonb`);
+    params.push(JSON.stringify(roles));
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields to update' });
   }

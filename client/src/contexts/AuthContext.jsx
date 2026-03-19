@@ -16,6 +16,7 @@ const ROLE_PORTAL_ACCESS = {
   director: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'stock'],
   mis: ['mis'],
   stock: ['stock'],
+  warehouse: ['stock'],
   training: ['training', 'distributor'],
 };
 
@@ -45,13 +46,18 @@ export function AuthProvider({ children }) {
 
   const hasPortalAccess = useCallback((portalId) => {
     if (!user) return false;
-    const access = ROLE_PORTAL_ACCESS[user.role] || [];
-    return access.includes(portalId);
+    const primaryAccess = ROLE_PORTAL_ACCESS[user.role] || [];
+    if (primaryAccess.includes(portalId)) return true;
+    const additionalRoles = Array.isArray(user.additional_roles) ? user.additional_roles : [];
+    return additionalRoles.some(r => (ROLE_PORTAL_ACCESS[r] || []).includes(portalId));
   }, [user]);
 
   const getAccessiblePortals = useCallback(() => {
     if (!user) return [];
-    return ROLE_PORTAL_ACCESS[user.role] || [];
+    const primary = ROLE_PORTAL_ACCESS[user.role] || [];
+    const additionalRoles = Array.isArray(user.additional_roles) ? user.additional_roles : [];
+    const extra = additionalRoles.flatMap(r => ROLE_PORTAL_ACCESS[r] || []);
+    return [...new Set([...primary, ...extra])];
   }, [user]);
 
   return (

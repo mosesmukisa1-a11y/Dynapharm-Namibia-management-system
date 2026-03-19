@@ -38,7 +38,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'User is already active' });
     }
 
-    await query('UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1', [userId]);
+    await query(
+      `UPDATE users SET is_active = TRUE, branch = COALESCE(branch, metadata->>'branch'), updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
 
     return res.status(200).json({ success: true, message: 'Registration approved' });
   } catch (error) {

@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     }
 
     const user = await getOne(
-      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, is_active, metadata, last_login
+      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login
          FROM users WHERE username = $1`,
       [username]
     );

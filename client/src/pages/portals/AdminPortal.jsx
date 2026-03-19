@@ -126,7 +126,13 @@ function RegistrationsTab() {
                       {isDistributor ? (
                         <>NB Number: <strong>{(user.username || '').toUpperCase()}</strong> | Branch: {user.branch || meta.branch || '-'}</>
                       ) : (
-                        <>Username: <strong>{user.username || '-'}</strong> | Role: <Badge variant="info">{user.role}</Badge></>
+                        <>
+                          Username: <strong>{user.username || '-'}</strong> | Role: <Badge variant="info">{user.role}</Badge>
+                          {(user.branch || meta.branch) && (
+                            <> | {['stock','warehouse'].includes(user.role) ? 'Warehouse' : 'Branch'}: <strong>{user.branch || meta.branch}</strong></>
+                          )}
+                          {meta.warehouse_location && <> | Location: <strong>{meta.warehouse_location}</strong></>}
+                        </>
                       )}
                     </p>
                     {user.email && <p className="text-xs text-gray-400">{user.email}</p>}
@@ -159,7 +165,9 @@ function UsersTab() {
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '' });
+  const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [] });
+
+  const ALL_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'distributor'];
 
   const loadUsers = () => {
     setLoading(true);
@@ -173,12 +181,26 @@ function UsersTab() {
 
   const handleEdit = (user) => {
     setEditUser(user);
-    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch: user.branch || '' });
+    const additionalRoles = Array.isArray(user.additional_roles) ? user.additional_roles : [];
+    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch: user.branch || '', additional_roles: additionalRoles });
+  };
+
+  const toggleAdditionalRole = (role) => {
+    setEditForm(prev => {
+      const current = Array.isArray(prev.additional_roles) ? prev.additional_roles : [];
+      const next = current.includes(role) ? current.filter(r => r !== role) : [...current, role];
+      return { ...prev, additional_roles: next };
+    });
   };
 
   const handleSaveEdit = async () => {
     try {
-      await api.users.update(editUser.id, editForm);
+      await api.users.update(editUser.id, {
+        role: editForm.role,
+        branch: editForm.branch,
+        isActive: editForm.is_active,
+        additional_roles: editForm.additional_roles,
+      });
       setMessage('User updated successfully!');
       setEditUser(null);
       loadUsers();
@@ -255,26 +277,60 @@ function UsersTab() {
         />
       </Card>
 
-      <Modal open={!!editUser} onClose={() => setEditUser(null)} title="Edit User">
-        <div className="p-6 space-y-4">
+      <Modal open={!!editUser} onClose={() => setEditUser(null)} title="Edit User" size="md">
+        <div className="p-6 space-y-5">
           <p className="text-sm text-gray-500">Editing: <strong>{editUser?.full_name}</strong> ({editUser?.username})</p>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Role</label>
-            <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              {['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'training', 'distributor'].map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Primary Role</label>
+              <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                {ALL_ROLES.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Branch / Location Assignment</label>
+              <select value={editForm.branch} onChange={e => setEditForm({ ...editForm, branch: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                <option value="">No Branch</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                <option value="Windhoek Warehouse">Windhoek Warehouse</option>
+                <option value="Ondangwa Warehouse">Ondangwa Warehouse</option>
+              </select>
+            </div>
           </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Branch Assignment</label>
-            <select value={editForm.branch} onChange={e => setEditForm({ ...editForm, branch: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              <option value="">No Branch</option>
-              {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Additional Roles
+              <span className="ml-2 text-xs text-gray-400 font-normal">Grant access to extra portals alongside the primary role</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              {ALL_ROLES.filter(r => r !== editForm.role).map(r => {
+                const checked = (editForm.additional_roles || []).includes(r);
+                return (
+                  <label key={r} className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${checked ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdditionalRole(r)}
+                      className="w-3.5 h-3.5 accent-primary cursor-pointer"
+                    />
+                    {r}
+                  </label>
+                );
+              })}
+            </div>
+            {(editForm.additional_roles || []).length > 0 && (
+              <p className="text-xs text-primary">
+                Extra access: {editForm.additional_roles.join(', ')}
+              </p>
+            )}
           </div>
+
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700">Active</label>
             <button type="button" onClick={() => setEditForm({ ...editForm, is_active: !editForm.is_active })}
@@ -283,7 +339,8 @@ function UsersTab() {
             </button>
             <span className="text-sm text-gray-500">{editForm.is_active ? 'Active' : 'Inactive'}</span>
           </div>
-          <div className="flex gap-3 justify-end">
+
+          <div className="flex gap-3 justify-end pt-2 border-t">
             <Button variant="secondary" onClick={() => setEditUser(null)}>Cancel</Button>
             <Button onClick={handleSaveEdit}>Save Changes</Button>
           </div>

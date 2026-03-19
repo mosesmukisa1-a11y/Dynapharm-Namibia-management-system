@@ -92,6 +92,11 @@ function getTokenFromRequest(req) {
 
 function sanitizeUser(user) {
   if (!user) return null;
+  const parseJsonField = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') { try { return JSON.parse(val || '[]'); } catch { return []; } }
+    return val || [];
+  };
   return {
     id: user.id,
     username: user.username,
@@ -100,11 +105,8 @@ function sanitizeUser(user) {
     phone: user.phone || null,
     role: user.role,
     branch: user.branch || null,
-    branches: Array.isArray(user.branches)
-      ? user.branches
-      : typeof user.branches === 'string'
-        ? JSON.parse(user.branches || '[]')
-        : user.branches || [],
+    branches: parseJsonField(user.branches),
+    additional_roles: parseJsonField(user.additional_roles),
     lastLogin: user.last_login || user.lastLogin || null,
     metadata: user.metadata || null,
   };
