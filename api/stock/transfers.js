@@ -209,13 +209,20 @@ async function createDispatchNote(transfer, actor, metadata = {}) {
 }
 
 function normalizeTransfer(row, itemsMap, notesMap) {
+  const items = itemsMap.get(row.id) || [];
+  const meta = safeParseJson(row.metadata) || {};
+  const firstItem = items[0] || null;
   return {
     id: row.id,
     requestId: row.request_id,
     requestNumber: row.request_number,
+    from_location: row.from_warehouse,
+    to_location: row.to_branch,
     fromWarehouse: row.from_warehouse,
     toBranch: row.to_branch,
     status: row.status,
+    product_name: meta.product_name || (firstItem ? firstItem.productName : null),
+    quantity: meta.quantity || (firstItem ? firstItem.quantity : null),
     dispatchReference: row.dispatch_reference,
     dispatchNotes: row.dispatch_notes,
     dispatchedBy: row.dispatched_by,
@@ -224,11 +231,12 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     deliveredAt: row.delivered_at instanceof Date ? row.delivered_at.toISOString() : row.delivered_at,
     receivedBy: row.received_by,
     receivedAt: row.received_at instanceof Date ? row.received_at.toISOString() : row.received_at,
-    metadata: safeParseJson(row.metadata),
+    metadata: meta,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     createdBy: row.created_by,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
-    items: itemsMap.get(row.id) || [],
+    items,
     dispatchNote: notesMap.get(row.id) || null,
   };
 }
@@ -313,16 +321,20 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseBody(req);
       const items = parseItems(body.items || body.itemsArray);
-      if (!body.toBranch) {
-        return res.status(400).json({ success: false, error: 'toBranch is required' });
+
+      const toLocation = body.toBranch || body.to_branch || body.to_location || body.toWarehouse || body.to_warehouse || null;
+      const fromLocation = body.fromWarehouse || body.from_warehouse || body.from_location || body.fromLocation || null;
+
+      if (!toLocation) {
+        return res.status(400).json({ success: false, error: 'Destination location is required' });
       }
 
       const transferData = {
         id: body.id || generateId('TRF'),
         request_id: body.requestId || body.request_id || null,
         request_number: body.requestNumber || body.request_number || null,
-        from_warehouse: body.fromWarehouse || body.from_warehouse || null,
-        to_branch: body.toBranch,
+        from_warehouse: fromLocation,
+        to_branch: toLocation,
         status: body.status || 'pending',
         dispatch_reference: body.dispatchReference || body.dispatch_reference || null,
         dispatch_notes: body.dispatchNotes || body.dispatch_notes || null,
@@ -340,8 +352,24 @@ export default async function handler(req, res) {
         if (transferData[key] === undefined) delete transferData[key];
       });
 
+      const productName = body.product_name || body.productName || null;
+      const quantity = Number(body.quantity || 0);
+      if (productName && quantity > 0) {
+        transferData.metadata = JSON.stringify({
+          ...(body.metadata || {}),
+          product_name: productName,
+          quantity,
+          notes: body.notes || null,
+        });
+      }
+
       const transfer = await insert('stock_transfers', transferData);
-      await replaceTransferItems(transfer.id, items);
+
+      let finalItems = items;
+      if (finalItems.length === 0 && productName && quantity > 0) {
+        finalItems = [{ productId: productName, productName, quantity, unit: 'units', batchNo: null, metadata: null }];
+      }
+      await replaceTransferItems(transfer.id, finalItems);
 
       let dispatchNote = null;
       if (transfer.status === 'dispatched') {
@@ -390,6 +418,35 @@ export default async function handler(req, res) {
       delete updatePayload.items;
       delete updatePayload.itemsArray;
       delete updatePayload.dispatchMeta;
+
+      if (updatePayload.from_location) {
+        updatePayload.from_warehouse = updatePayload.from_location;
+        delete updatePayload.from_location;
+      }
+      if (updatePayload.fromWarehouse) {
+        updatePayload.from_warehouse = updatePayload.fromWarehouse;
+        delete updatePayload.fromWarehouse;
+      }
+      if (updatePayload.fromLocation) {
+        updatePayload.from_warehouse = updatePayload.fromLocation;
+        delete updatePayload.fromLocation;
+      }
+      if (updatePayload.to_location) {
+        updatePayload.to_branch = updatePayload.to_location;
+        delete updatePayload.to_location;
+      }
+      if (updatePayload.toBranch) {
+        updatePayload.to_branch = updatePayload.toBranch;
+        delete updatePayload.toBranch;
+      }
+      if (updatePayload.toWarehouse) {
+        updatePayload.to_branch = updatePayload.toWarehouse;
+        delete updatePayload.toWarehouse;
+      }
+      if (updatePayload.to_warehouse) {
+        updatePayload.to_branch = updatePayload.to_warehouse;
+        delete updatePayload.to_warehouse;
+      }
 
       const nowIso = new Date().toISOString();
       if (body.status) {

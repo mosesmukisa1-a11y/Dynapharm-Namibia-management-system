@@ -104,7 +104,7 @@ export const api = {
     createMovement: (data) => api.post('/stock-movements', data),
     transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`),
     createTransfer: (data) => api.post('/stock/transfers', data),
-    updateTransfer: (id, data) => api.put(`/stock/transfers/${id}`, data),
+    updateTransfer: (id, data) => api.put('/stock/transfers', { ...data, id }),
     requests: () => api.get('/stock-requests'),
     createRequest: (data) => api.post('/stock-requests', data),
   },

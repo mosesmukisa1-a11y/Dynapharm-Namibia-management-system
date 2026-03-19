@@ -65,3 +65,12 @@ The Consultant Portal (`/consultant`) provides comprehensive client management, 
 - `calculatePrescriptionTotals()` no longer includes consultation fee in medicine totals — fee is shown separately in the prescription summary
 - Reports saved via consultant portal include `consultation_fee`, `consultant_credit`, `referral_credit`, and `referral_distributor` fields
 - `api.reports.update(id, data)` now available for updating report dispensing state
+
+## Stock Portal Transfers
+- **Transfer API** (`/api/stock/transfers`): Accepts all field name variants — `from_location`/`to_location`, `fromWarehouse`/`toBranch`, `toWarehouse`/`to_warehouse`, `fromLocation` — all normalized to DB columns `from_warehouse`/`to_branch`
+- **No mandatory branch requirement** for warehouse-to-warehouse or country-to-warehouse transfers — only destination is required
+- **Frontend sends** `from_location` and `to_location` for all transfer types (Distribution, Transfers, Warehouse tabs)
+- **`updateTransfer`** sends `id` in request body (not URL path) matching the PUT handler contract
+- **Distribution tab**: Destination dropdown labeled "Destination" (not "Destination Branch") since it includes warehouses and branches
+- **Transfer response** includes `from_location`, `to_location`, `product_name`, `quantity` at top level for table display
+- **Dispatch notes** table has unique index on `transfer_id` for ON CONFLICT upsert support
