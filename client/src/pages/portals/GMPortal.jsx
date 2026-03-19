@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
+import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download } from 'lucide-react';
+import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle } from 'lucide-react';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -35,7 +36,7 @@ export default function GMPortal() {
 }
 
 function DashboardTab() {
-  const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [] });
+  const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,14 +56,32 @@ function DashboardTab() {
   const totalRevenue = data.orders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
     data.sales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
 
-  const cifDeposits = data.deposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+  const totalDeposits = data.deposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
+  const allSalesItems = [];
+  const processItems = (items) => {
+    (items || []).forEach(item => {
+      const rawName = item.name || item.product_name || 'Unknown';
+      const matched = findProductPrice(rawName);
+      const qty = Number(item.quantity || item.qty || 1);
+      const price = matched ? matched.dp : Number(item.price || item.unit_price || 0);
+      const cif = matched ? matched.cif : 0;
+      allSalesItems.push({ product_name: matched ? matched.description : rawName, quantity: qty, price, cif });
+    });
+  };
+  data.orders.forEach(o => processItems(o.items));
+  data.sales.forEach(s => processItems(s.items));
+
+  const totalCIFCost = allSalesItems.reduce((sum, i) => sum + (i.cif * i.quantity), 0);
+  const totalDPRevenue = allSalesItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const grossProfit = totalDPRevenue - totalCIFCost;
+
+  const remittanceDue = totalCIFCost - totalDeposits;
 
   const totalBV = data.sales.reduce((sum, s) => {
     const items = s.items || [];
     return sum + items.reduce((iSum, item) => iSum + Number(item.bv || item.bonus_volume || 0), 0);
   }, 0);
-
-  const grossMargin = totalRevenue - (totalRevenue * 0.6);
 
   const productCounts = {};
   data.sales.forEach(s => {
@@ -83,10 +102,10 @@ function DashboardTab() {
   });
 
   const kpiCards = [
-    { label: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
-    { label: 'CIF Deposits', value: formatCurrency(cifDeposits), icon: '📦', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
-    { label: 'Total BV Points', value: totalBV.toLocaleString(), icon: '⭐', gradient: 'linear-gradient(135deg, #4facfe, #00f2fe)' },
-    { label: 'Gross Margin', value: formatCurrency(grossMargin), icon: '📊', gradient: 'linear-gradient(135deg, #fa709a, #fee140)' },
+    { label: 'Total Sales', value: formatCurrency(totalRevenue), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
+    { label: 'CIF Cost of Sales', value: formatCurrency(totalCIFCost), icon: '🚢', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
+    { label: 'Gross Profit', value: formatCurrency(grossProfit), icon: '📊', gradient: grossProfit >= 0 ? 'linear-gradient(135deg, #43e97b, #38f9d7)' : 'linear-gradient(135deg, #f5576c, #f093fb)' },
+    { label: 'Remittance Due', value: formatCurrency(Math.max(0, remittanceDue)), icon: '📦', gradient: remittanceDue > 0 ? 'linear-gradient(135deg, #fa709a, #fee140)' : 'linear-gradient(135deg, #43e97b, #38f9d7)' },
   ];
 
   return (
@@ -109,8 +128,41 @@ function DashboardTab() {
         <StatCard title="Total Orders" value={data.orders.length} color="green" icon={<DollarSign size={24} />} />
         <StatCard title="Active Branches" value={data.branches.length} color="purple" icon={<Users size={24} />} />
         <StatCard title="Products" value={data.products.length} color="orange" icon={<Package size={24} />} />
-        <StatCard title="Deposits Count" value={data.deposits.length} color="teal" icon={<TrendingUp size={24} />} />
+        <StatCard title="Total BV Points" value={totalBV.toLocaleString()} color="teal" icon={<TrendingUp size={24} />} />
       </div>
+
+      <Card className="mb-6 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
+        <CardBody>
+          <h3 className="font-bold text-emerald-900 mb-3">Profit & Loss Summary</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Total Revenue (DP)</p>
+              <p className="text-lg font-bold text-blue-700">{formatCurrency(totalDPRevenue)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Total CIF Cost</p>
+              <p className="text-lg font-bold text-red-600">{formatCurrency(totalCIFCost)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Gross Profit</p>
+              <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(grossProfit)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Margin %</p>
+              <p className="text-lg font-bold text-purple-700">{totalDPRevenue > 0 ? ((grossProfit / totalDPRevenue) * 100).toFixed(1) : '0'}%</p>
+            </div>
+          </div>
+          <p className="text-xs text-emerald-600 mt-2 font-medium">
+            Profit = DP Selling Price - CIF Cost (actual cost from Malaysia import)
+          </p>
+        </CardBody>
+      </Card>
+
+      {remittanceDue > 0 && (
+        <Alert type="warning" className="mb-6">
+          <strong>Remittance Due:</strong> {formatCurrency(remittanceDue)} — CIF cost of goods sold exceeds deposits received. Coordinate with Finance for remittance to supplier.
+        </Alert>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
@@ -350,6 +402,7 @@ function CampaignsTab() {
               </div>
               <Input label="Target Branches (comma-separated)" value={form.target_branches} onChange={e => setForm({ ...form, target_branches: e.target.value })} placeholder="e.g. Windhoek CBD, Oshakati" />
               <Input label="Discount %" type="number" min="0" max="100" value={form.discount_percentage} onChange={e => setForm({ ...form, discount_percentage: e.target.value })} />
+              <Alert type="info">Campaign pricing affects profit calculations. Discount reduces the selling price, which reduces the margin between DP and CIF.</Alert>
               <Button type="submit">Create Campaign</Button>
             </form>
           </CardBody>

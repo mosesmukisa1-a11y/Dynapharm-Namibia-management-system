@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
+import { PRICE_LIST, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt } from 'lucide-react';
+import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship } from 'lucide-react';
 
 export default function FinancePortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'remittance', label: 'Remittance', icon: '🚢' },
     { id: 'deposits', label: 'Deposit Inbox', icon: '🏦' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'expenses', label: 'Expenses', icon: '💸' },
@@ -19,11 +21,12 @@ export default function FinancePortal() {
     <div>
       <div className="mb-4">
         <h1 className="text-xl font-bold text-gray-900">Finance Portal</h1>
-        <p className="text-sm text-gray-500">Financial overview, deposits, and bonus processing</p>
+        <p className="text-sm text-gray-500">Financial overview, deposits, remittance tracking, and bonus processing</p>
       </div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'remittance' && <RemittanceTab />}
         {activeTab === 'deposits' && <DepositsTab />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'expenses' && <ExpensesTab />}
@@ -44,8 +47,9 @@ function DashboardTab() {
     Promise.all([
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
       api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
-    ]).then(([sales, deposits]) => {
-      setData({ sales, deposits });
+      api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+    ]).then(([sales, deposits, orders]) => {
+      setData({ sales, deposits, orders });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -58,12 +62,29 @@ function DashboardTab() {
     ? data.deposits
     : data.deposits.filter(d => d.branch_id === selectedBranch || d.branch === selectedBranch);
 
-  const totalSales = filteredSales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
+  const totalSales = filteredSales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0) +
+    (data.orders || []).reduce((sum, o) => sum + Number(o.total || 0), 0);
   const totalDeposits = filteredDeposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
   const cashSales = filteredSales.filter(s => (s.payment_method || '').toLowerCase() === 'cash').reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
   const cardSales = totalSales - cashSales;
+
+  const allSalesItems = [];
+  const processItems = (items) => {
+    (items || []).forEach(item => {
+      const rawName = item.name || item.product_name || 'Unknown';
+      const matched = findProductPrice(rawName);
+      const qty = Number(item.quantity || item.qty || 1);
+      const cif = matched ? matched.cif : 0;
+      allSalesItems.push({ quantity: qty, cif });
+    });
+  };
+  (data.orders || []).forEach(o => processItems(o.items));
+  filteredSales.forEach(s => processItems(s.items));
+
+  const totalCIFCost = allSalesItems.reduce((sum, i) => sum + (i.cif * i.quantity), 0);
+  const remittanceDue = Math.max(0, totalCIFCost - totalDeposits);
+
   const totalBV = filteredSales.reduce((sum, s) => sum + Number(s.bv || 0), 0);
-  const grossMargin = totalSales - (totalSales * 0.6);
 
   return (
     <div>
@@ -112,19 +133,19 @@ function DashboardTab() {
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-blue-500 to-blue-700">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm opacity-90">Total BV Points</p>
-              <p className="text-2xl font-bold mt-1">{totalBV.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">From {filteredSales.length} sales</p>
+              <p className="text-sm opacity-90">CIF Cost of Sales</p>
+              <p className="text-2xl font-bold mt-1">{formatCurrency(totalCIFCost)}</p>
+              <p className="text-xs opacity-75 mt-1">Import cost from Malaysia</p>
             </div>
-            <div className="opacity-80"><FileSpreadsheet size={24} /></div>
+            <div className="opacity-80"><Ship size={24} /></div>
           </div>
         </div>
-        <div className="rounded-xl p-5 text-white bg-gradient-to-br from-orange-500 to-orange-700">
+        <div className={`rounded-xl p-5 text-white bg-gradient-to-br ${remittanceDue > 0 ? 'from-orange-500 to-orange-700' : 'from-green-500 to-green-700'}`}>
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm opacity-90">Gross Margin</p>
-              <p className="text-2xl font-bold mt-1">{formatCurrency(grossMargin)}</p>
-              <p className="text-xs opacity-75 mt-1">40% margin on sales</p>
+              <p className="text-sm opacity-90">Remittance Status</p>
+              <p className="text-2xl font-bold mt-1">{remittanceDue > 0 ? formatCurrency(remittanceDue) : 'No Remittance Due'}</p>
+              <p className="text-xs opacity-75 mt-1">{remittanceDue > 0 ? 'Due to supplier' : 'All clear'}</p>
             </div>
             <div className="opacity-80"><DollarSign size={24} /></div>
           </div>
@@ -150,6 +171,165 @@ function DashboardTab() {
           emptyMessage="No recent transactions"
         />
       </Card>
+    </div>
+  );
+}
+
+function RemittanceTab() {
+  const [data, setData] = useState({ sales: [], deposits: [], orders: [] });
+  const [loading, setLoading] = useState(true);
+  const [remittances, setRemittances] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    Promise.all([
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
+      api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
+      api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+    ]).then(([sales, deposits, orders]) => {
+      setData({ sales, deposits, orders });
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const allSalesItems = [];
+  const processItems = (items) => {
+    (items || []).forEach(item => {
+      const rawName = item.name || item.product_name || 'Unknown';
+      const matched = findProductPrice(rawName);
+      const qty = Number(item.quantity || item.qty || 1);
+      const cif = matched ? matched.cif : 0;
+      allSalesItems.push({ quantity: qty, cif });
+    });
+  };
+  data.orders.forEach(o => processItems(o.items));
+  data.sales.forEach(s => processItems(s.items));
+
+  const totalCIFCost = allSalesItems.reduce((sum, i) => sum + (i.cif * i.quantity), 0);
+  const totalDeposits = data.deposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+  const totalRemitted = remittances.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  const remittanceDue = Math.max(0, totalCIFCost - totalDeposits - totalRemitted);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.amount || Number(form.amount) <= 0) {
+      setMessage('Error: Please enter a valid amount.');
+      return;
+    }
+    if (!form.reference) {
+      setMessage('Error: Please enter a payment reference.');
+      return;
+    }
+    const newRemittance = {
+      id: Date.now(),
+      amount: Number(form.amount),
+      reference: form.reference,
+      date: form.date,
+      notes: form.notes,
+      status: 'completed',
+      created_at: new Date().toISOString(),
+    };
+    setRemittances(prev => [newRemittance, ...prev]);
+    setForm({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+    setShowForm(false);
+    setMessage('Remittance recorded successfully! Status updated.');
+  };
+
+  const markNoRemittanceDue = () => {
+    const entry = {
+      id: Date.now(),
+      amount: 0,
+      reference: 'STATUS-UPDATE',
+      date: new Date().toISOString().slice(0, 10),
+      notes: 'Status updated: No remittance due',
+      status: 'no_remittance_due',
+      created_at: new Date().toISOString(),
+    };
+    setRemittances(prev => [entry, ...prev]);
+    setMessage('Remittance status updated to: No Remittance Due');
+  };
+
+  return (
+    <div className="space-y-6">
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardBody>
+          <div className="flex items-start gap-4">
+            <Ship size={32} className="text-blue-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-blue-900">Remittance to Supplier (Malaysia)</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Track CIF costs against deposits received and record remittance payments to Dynapharm International Malaysia.
+                When all remittances are settled, update status to "No Remittance Due".
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Total CIF Cost" value={formatCurrency(totalCIFCost)} subtitle="Cost of goods sold" color="red" icon={<Ship size={24} />} />
+        <StatCard title="Deposits Received" value={formatCurrency(totalDeposits)} subtitle="From branches" color="blue" icon={<Landmark size={24} />} />
+        <StatCard title="Total Remitted" value={formatCurrency(totalRemitted)} subtitle="Paid to supplier" color="green" icon={<CheckCircle size={24} />} />
+        <StatCard
+          title="Remittance Status"
+          value={remittanceDue > 0 ? formatCurrency(remittanceDue) : 'No Remittance Due'}
+          subtitle={remittanceDue > 0 ? 'Outstanding balance' : 'All settled'}
+          color={remittanceDue > 0 ? 'orange' : 'green'}
+          icon={<DollarSign size={24} />}
+        />
+      </div>
+
+      <div className="flex gap-3">
+        <Button onClick={() => setShowForm(true)}><DollarSign size={16} /> Record Remittance Payment</Button>
+        {remittanceDue <= 0 && (
+          <Button variant="success" onClick={markNoRemittanceDue}><CheckCircle size={16} /> Confirm: No Remittance Due</Button>
+        )}
+        {remittanceDue > 0 && (
+          <Button variant="secondary" onClick={markNoRemittanceDue}>Override: Mark No Remittance Due</Button>
+        )}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800">Remittance History</h3>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Date', render: r => formatDate(r.date) },
+            { header: 'Amount', render: r => r.amount > 0 ? <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> : '-' },
+            { header: 'Reference', key: 'reference' },
+            { header: 'Status', render: r => (
+              <Badge variant={r.status === 'completed' ? 'success' : r.status === 'no_remittance_due' ? 'info' : 'warning'}>
+                {r.status === 'no_remittance_due' ? 'No Remittance Due' : r.status === 'completed' ? 'Completed' : r.status}
+              </Badge>
+            )},
+            { header: 'Notes', render: r => <span className="text-sm text-gray-600">{r.notes || '-'}</span> },
+          ]}
+          data={remittances}
+          emptyMessage="No remittance records yet"
+        />
+      </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Remittance Payment" size="md">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="bg-gray-50 p-3 rounded-lg text-sm">
+            <p>Current outstanding: <strong className="text-orange-600">{formatCurrency(remittanceDue)}</strong></p>
+          </div>
+          <Input label="Amount (N$)" type="number" min="0" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="Enter remittance amount" />
+          <Input label="Payment Reference" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="e.g. TT-2026-0042" />
+          <Input label="Date" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+          <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Bank details, remarks..." />
+          <div className="flex gap-3">
+            <Button type="submit"><DollarSign size={16} /> Record Payment</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

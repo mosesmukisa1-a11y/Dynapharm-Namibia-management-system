@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
+import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, StatCard, LoadingSpinner, EmptyState, Table, Badge, Alert, Select } from '../../components/ui';
-import { Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package, ClipboardList, Target, Globe } from 'lucide-react';
+import { Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package, ClipboardList, Target, Globe, Ship, AlertTriangle } from 'lucide-react';
 
 export default function DirectorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -43,8 +44,9 @@ function DashboardTab() {
       api.products.list().then(d => (Array.isArray(d) ? d : d.products || [])).catch(() => []),
       api.branch.walkinSales().then(d => (Array.isArray(d) ? d : d.sales || [])).catch(() => []),
       api.distributors.list().then(d => (Array.isArray(d) ? d : d.distributors || [])).catch(() => []),
-    ]).then(([orders, branches, products, sales, distributors]) => {
-      setData({ orders, branches, products, sales, distributors });
+      api.branch.deposits().then(d => (Array.isArray(d) ? d : d.deposits || [])).catch(() => []),
+    ]).then(([orders, branches, products, sales, distributors, deposits]) => {
+      setData({ orders, branches, products, sales, distributors, deposits });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -53,6 +55,8 @@ function DashboardTab() {
   const totalRevenue = (data.orders || []).reduce((sum, o) => sum + Number(o.total || 0), 0) +
     (data.sales || []).reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
 
+  const totalDeposits = (data.deposits || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
   const thisMonth = new Date();
   thisMonth.setDate(1);
   const monthlyOrders = (data.orders || []).filter(o => new Date(o.created_at) >= thisMonth);
@@ -60,26 +64,100 @@ function DashboardTab() {
   const monthlyRevenue = monthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
     monthlySales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
 
+  const allSalesItems = [];
+  const processItems = (items) => {
+    (items || []).forEach(item => {
+      const rawName = item.name || item.product_name || 'Unknown';
+      const matched = findProductPrice(rawName);
+      const qty = Number(item.quantity || item.qty || 1);
+      const price = matched ? matched.dp : Number(item.price || item.unit_price || 0);
+      const cif = matched ? matched.cif : 0;
+      allSalesItems.push({ product_name: matched ? matched.description : rawName, quantity: qty, price, cif });
+    });
+  };
+  (data.orders || []).forEach(o => processItems(o.items));
+  (data.sales || []).forEach(s => processItems(s.items));
+
+  const totalCIFCost = allSalesItems.reduce((sum, i) => sum + (i.cif * i.quantity), 0);
+  const totalDPRevenue = allSalesItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const grossProfit = totalDPRevenue - totalCIFCost;
+  const marginPct = totalDPRevenue > 0 ? ((grossProfit / totalDPRevenue) * 100).toFixed(1) : '0';
+
+  const remittanceDue = totalCIFCost - totalDeposits;
+
   const branchPerformance = {};
   (data.sales || []).forEach(s => {
     const branch = s.branch_id || s.branch || 'Unknown';
-    if (!branchPerformance[branch]) branchPerformance[branch] = { sales: 0, count: 0 };
+    if (!branchPerformance[branch]) branchPerformance[branch] = { sales: 0, count: 0, cifCost: 0 };
     branchPerformance[branch].sales += Number(s.total || s.amount || 0);
     branchPerformance[branch].count += 1;
+    const items = s.items || [];
+    items.forEach(item => {
+      const matched = findProductPrice(item.name || item.product_name || '');
+      if (matched) {
+        branchPerformance[branch].cifCost += matched.cif * Number(item.quantity || item.qty || 1);
+      }
+    });
   });
 
   const branchRows = Object.entries(branchPerformance)
-    .map(([name, d]) => ({ name, ...d }))
+    .map(([name, d]) => ({ name, ...d, profit: d.sales - d.cifCost }))
     .sort((a, b) => b.sales - a.sales);
 
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="Total Sales" value={formatCurrency(totalRevenue)} color="blue" icon={<TrendingUp size={24} />} />
         <StatCard title="Monthly Revenue" value={formatCurrency(monthlyRevenue)} subtitle="Current month" color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="CIF Cost of Sales" value={formatCurrency(totalCIFCost)} subtitle="Import cost from Malaysia" color="red" icon={<Ship size={24} />} />
+        <StatCard title="Gross Profit" value={formatCurrency(grossProfit)} subtitle={`${marginPct}% margin`} color={grossProfit >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Active Branches" value={data.branches?.length || 0} color="purple" icon={<Users size={24} />} />
         <StatCard title="Distributors" value={data.distributors?.length || 0} color="orange" icon={<Package size={24} />} />
+        <StatCard title="Total Deposits" value={formatCurrency(totalDeposits)} color="teal" icon={<DollarSign size={24} />} />
+        <StatCard title="Remittance Due" value={formatCurrency(Math.max(0, remittanceDue))} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
+
+      <Card className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+        <CardBody>
+          <h3 className="font-bold text-indigo-900 mb-3">Profit & Loss Overview</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Total Revenue (DP)</p>
+              <p className="text-lg font-bold text-blue-700">{formatCurrency(totalDPRevenue)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">CIF Cost</p>
+              <p className="text-lg font-bold text-red-600">{formatCurrency(totalCIFCost)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Gross Profit</p>
+              <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(grossProfit)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Deposits Received</p>
+              <p className="text-lg font-bold text-teal-700">{formatCurrency(totalDeposits)}</p>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3">
+              <p className="text-xs text-gray-500">Remittance Status</p>
+              <p className={`text-lg font-bold ${remittanceDue <= 0 ? 'text-green-700' : 'text-orange-600'}`}>
+                {remittanceDue <= 0 ? 'No Remittance Due' : formatCurrency(remittanceDue)}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-indigo-600 mt-2 font-medium">
+            Profit = DP (Distributor Price) - CIF (Cost, Insurance, Freight from Malaysia)
+          </p>
+        </CardBody>
+      </Card>
+
+      {remittanceDue > 0 && (
+        <Alert type="warning" className="mb-6">
+          <strong>Remittance Due:</strong> {formatCurrency(remittanceDue)} outstanding to supplier. Coordinate with Finance department.
+        </Alert>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <Card>
@@ -109,13 +187,15 @@ function DashboardTab() {
         </Card>
 
         <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Branch Performance</h3></CardHeader>
+          <CardHeader><h3 className="font-bold text-gray-800">Branch Performance (with Profit)</h3></CardHeader>
           {branchRows.length > 0 ? (
             <Table
               columns={[
                 { header: 'Branch', key: 'name' },
                 { header: 'Sales', render: r => <span className="font-bold text-green-600">{formatCurrency(r.sales)}</span> },
-                { header: 'Transactions', render: r => <Badge variant="info">{r.count}</Badge> },
+                { header: 'CIF Cost', render: r => <span className="text-red-600">{formatCurrency(r.cifCost)}</span> },
+                { header: 'Profit', render: r => <span className={`font-bold ${r.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(r.profit)}</span> },
+                { header: 'Txns', render: r => <Badge variant="info">{r.count}</Badge> },
               ]}
               data={branchRows}
             />
@@ -145,15 +225,22 @@ function BranchOverviewTab() {
   if (loading) return <LoadingSpinner />;
 
   const branchStats = {};
-  BRANCHES.forEach(name => { branchStats[name] = { sales: 0, revenue: 0 }; });
+  BRANCHES.forEach(name => { branchStats[name] = { sales: 0, revenue: 0, cifCost: 0 }; });
   sales.forEach(s => {
     const b = s.branch_id || s.branch || 'Unknown';
-    if (!branchStats[b]) branchStats[b] = { sales: 0, revenue: 0 };
+    if (!branchStats[b]) branchStats[b] = { sales: 0, revenue: 0, cifCost: 0 };
     branchStats[b].sales += 1;
     branchStats[b].revenue += Number(s.total_amount || s.total || s.amount || 0);
+    const items = s.items || [];
+    items.forEach(item => {
+      const matched = findProductPrice(item.name || item.product_name || '');
+      if (matched) {
+        branchStats[b].cifCost += matched.cif * Number(item.quantity || item.qty || 1);
+      }
+    });
   });
 
-  const rows = Object.entries(branchStats).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.revenue - a.revenue);
+  const rows = Object.entries(branchStats).map(([name, d]) => ({ name, ...d, profit: d.revenue - d.cifCost })).sort((a, b) => b.revenue - a.revenue);
 
   return (
     <Card>
@@ -163,6 +250,8 @@ function BranchOverviewTab() {
           { header: 'Branch', render: r => <span className="font-medium">{r.name}</span> },
           { header: 'Transactions', render: r => <Badge variant="info">{r.sales}</Badge> },
           { header: 'Revenue', render: r => <span className="font-bold text-green-600">{formatCurrency(r.revenue)}</span> },
+          { header: 'CIF Cost', render: r => <span className="text-red-600">{formatCurrency(r.cifCost)}</span> },
+          { header: 'Profit', render: r => <span className={`font-bold ${r.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(r.profit)}</span> },
           { header: 'Status', render: r => <Badge variant={r.sales > 0 ? 'success' : 'default'}>{r.sales > 0 ? 'Active' : 'No Sales'}</Badge> },
         ]}
         data={rows}

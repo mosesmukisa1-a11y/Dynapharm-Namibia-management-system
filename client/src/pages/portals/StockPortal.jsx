@@ -146,8 +146,9 @@ function SupplierImportTab() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '' }]);
+  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     api.stock.batches()
@@ -159,7 +160,7 @@ function SupplierImportTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '' }]);
+  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateItem = (idx, field, value) => {
     setItems(prev => {
@@ -173,8 +174,25 @@ function SupplierImportTab() {
     });
   };
 
+  const validateItems = () => {
+    const errs = {};
+    items.forEach((item, idx) => {
+      if (!item.product_name) errs[`${idx}_product`] = true;
+      if (!item.quantity || Number(item.quantity) <= 0) errs[`${idx}_qty`] = true;
+      if (!item.carton_no?.trim()) errs[`${idx}_carton`] = true;
+      if (!item.expiry_date) errs[`${idx}_expiry`] = true;
+      if (!item.batch_number?.trim()) errs[`${idx}_batch`] = true;
+    });
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validateItems()) {
+      setAlert({ type: 'error', msg: 'All mandatory fields required: Product, Carton No, Expiry Date, Quantity, Batch Number' });
+      return;
+    }
     const validItems = items.filter(i => i.product_name && Number(i.quantity) > 0);
     if (validItems.length === 0) {
       setAlert({ type: 'error', msg: 'Add at least one product with quantity' });
@@ -186,15 +204,16 @@ function SupplierImportTab() {
         await api.stock.createBatch({
           product_name: item.product_name,
           quantity: Number(item.quantity),
-          batch_number: form.shipping_ref || `IMP-${Date.now()}`,
-          expiry_date: null,
+          batch_number: item.batch_number || form.shipping_ref || `IMP-${Date.now()}`,
+          expiry_date: item.expiry_date || null,
           unit_price: Number(item.cif_price) || getCIFPrice(item.product_name),
           location: 'country_stock',
-          notes: `Supplier: ${form.supplier} | Ref: ${form.shipping_ref} | ${form.notes}`,
+          notes: `Supplier: ${form.supplier} | Ref: ${form.shipping_ref} | Carton: ${item.carton_no} | ${form.notes}`,
+          metadata: JSON.stringify({ carton_no: item.carton_no, shipping_ref: form.shipping_ref, arrival_date: form.arrival_date }),
         });
       }
       setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to Country Stock successfully` });
-      setItems([{ product_name: '', quantity: '', cif_price: '' }]);
+      setItems([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
       setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
       setShowForm(false);
       const d = await api.stock.batches().catch(() => []);
@@ -225,6 +244,9 @@ function SupplierImportTab() {
                 Record stock shipments from Dynapharm International Malaysia. CIF (Cost, Insurance, Freight) prices are auto-populated from the price list.
                 Stock arrives at Country Stock level, then gets distributed to warehouses and branches.
               </p>
+              <p className="text-xs text-blue-600 mt-1 font-semibold">
+                Mandatory fields per item: Product/Description, Carton No, Expiry Date, Quantity, Batch Number
+              </p>
             </div>
           </div>
         </CardBody>
@@ -241,7 +263,8 @@ function SupplierImportTab() {
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Product', key: 'product_name' },
-            { header: 'Batch/Ref', key: 'batch_number' },
+            { header: 'Batch #', key: 'batch_number' },
+            { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
             { header: 'Qty', key: 'quantity' },
             { header: 'CIF Price', render: r => formatCurrency(Number(r.unit_price || 0)) },
             { header: 'CIF Total', render: r => formatCurrency(Number(r.quantity || 0) * Number(r.unit_price || 0)) },
@@ -264,33 +287,55 @@ function SupplierImportTab() {
 
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700">Products in Shipment</label>
+              <label className="block text-sm font-medium text-gray-700">Products in Shipment <span className="text-red-500">*</span></label>
               <Button type="button" size="sm" variant="secondary" onClick={addItem}><Plus size={14} /> Add Product</Button>
             </div>
-            <div className="space-y-2">
+            <div className="text-xs text-gray-500 mb-2 bg-yellow-50 border border-yellow-200 rounded p-2">
+              All fields are mandatory: Product/Description, Carton No, Expiry Date, Quantity, Batch Number
+            </div>
+            <div className="space-y-3">
               {items.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-5">
-                    <select
-                      className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                      value={item.product_name}
-                      onChange={e => updateItem(idx, 'product_name', e.target.value)}
-                    >
-                      <option value="">Select product...</option>
-                      {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
-                    </select>
+                <div key={idx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="text-xs text-gray-500 mb-1 block">Product/Description *</label>
+                      <select
+                        className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 ${errors[`${idx}_product`] ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}
+                        value={item.product_name}
+                        onChange={e => updateItem(idx, 'product_name', e.target.value)}
+                      >
+                        <option value="">Select product...</option>
+                        {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-4 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">Carton No *</label>
+                      <input className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_carton`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} placeholder="CTN-001" value={item.carton_no} onChange={e => updateItem(idx, 'carton_no', e.target.value)} />
+                    </div>
+                    <div className="col-span-4 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">Expiry Date *</label>
+                      <input type="date" className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_expiry`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} value={item.expiry_date} onChange={e => updateItem(idx, 'expiry_date', e.target.value)} />
+                    </div>
+                    <div className="col-span-4 md:col-span-1">
+                      <label className="text-xs text-gray-500 mb-1 block">Qty *</label>
+                      <input type="number" min="1" className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_qty`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} placeholder="0" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">Batch # *</label>
+                      <input className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_batch`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} placeholder="B001" value={item.batch_number} onChange={e => updateItem(idx, 'batch_number', e.target.value)} />
+                    </div>
+                    <div className="col-span-6 md:col-span-1 flex items-end gap-1">
+                      {items.length > 1 && <Button type="button" size="sm" variant="danger" onClick={() => removeItem(idx)}>×</Button>}
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <input type="number" min="1" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Qty" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
-                  </div>
-                  <div className="col-span-2">
-                    <input type="number" min="0" step="0.01" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="CIF N$" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
-                  </div>
-                  <div className="col-span-2 text-sm font-medium text-gray-700 py-2.5">
-                    {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
-                  </div>
-                  <div className="col-span-1">
-                    {items.length > 1 && <Button type="button" size="sm" variant="danger" onClick={() => removeItem(idx)}>×</Button>}
+                  <div className="grid grid-cols-12 gap-2 items-center mt-2">
+                    <div className="col-span-4 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">CIF Price (N$)</label>
+                      <input type="number" min="0" step="0.01" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Auto" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
+                    </div>
+                    <div className="col-span-4 md:col-span-2 text-sm font-medium text-gray-700 pt-5">
+                      CIF Total: {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -527,11 +572,12 @@ function WarehouseTab({ name }) {
 }
 
 function DistributionTab() {
-  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '' });
+  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '', release_reason: '' });
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [recentTransfers, setRecentTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [barcodeInput, setBarcodeInput] = useState('');
 
   useEffect(() => {
     api.stock.transfers()
@@ -554,6 +600,25 @@ function DistributionTab() {
     { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
   ];
 
+  const handleBarcodeSearch = () => {
+    if (!barcodeInput) return;
+    const code = barcodeInput.toUpperCase().trim();
+    const idx = code.startsWith('DYN-') ? parseInt(code.replace('DYN-', ''), 10) : -1;
+    if (idx >= 0 && idx < PRICE_LIST.length) {
+      setForm(f => ({ ...f, product_name: PRICE_LIST[idx].description }));
+      setAlert({ type: 'success', msg: `Product found: ${PRICE_LIST[idx].description}` });
+    } else {
+      const found = PRICE_LIST.find(p => p.description.toLowerCase().includes(barcodeInput.toLowerCase()));
+      if (found) {
+        setForm(f => ({ ...f, product_name: found.description }));
+        setAlert({ type: 'success', msg: `Product found: ${found.description}` });
+      } else {
+        setAlert({ type: 'error', msg: 'Product not found for scanned barcode' });
+      }
+    }
+    setBarcodeInput('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.from_location || !form.to_location || !form.product_name || !form.quantity) {
@@ -564,6 +629,10 @@ function DistributionTab() {
       setAlert({ type: 'error', msg: 'Source and destination must be different' });
       return;
     }
+    if (!form.release_reason) {
+      setAlert({ type: 'error', msg: 'Stock release reason is required. Stock can only leave when cash has been received or field program has been approved.' });
+      return;
+    }
     setSubmitting(true);
     try {
       await api.stock.createTransfer({
@@ -571,9 +640,10 @@ function DistributionTab() {
         to_location: form.to_location,
         product_name: form.product_name,
         quantity: Number(form.quantity),
+        notes: `Release reason: ${form.release_reason}`,
       });
       setAlert({ type: 'success', msg: 'Distribution transfer created successfully' });
-      setForm({ from_location: '', to_location: '', product_name: '', quantity: '' });
+      setForm({ from_location: '', to_location: '', product_name: '', quantity: '', release_reason: '' });
       const d = await api.stock.transfers().catch(() => []);
       setRecentTransfers(Array.isArray(d) ? d : d.transfers || []);
     } catch (err) {
@@ -586,9 +656,41 @@ function DistributionTab() {
   return (
     <div className="space-y-6">
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+
+      <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <CardBody>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <h3 className="font-bold text-amber-900">Stock Release Rules</h3>
+              <p className="text-sm text-amber-700 mt-1">
+                Stock may only be released/distributed when one of the following conditions is met:
+              </p>
+              <ul className="text-sm text-amber-700 list-disc ml-5 mt-1">
+                <li><strong>Cash has been received</strong> — Payment confirmed for the order</li>
+                <li><strong>Field program has been approved</strong> — Approved by management for field activities</li>
+              </ul>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Create Distribution Transfer</h3></CardHeader>
         <CardBody>
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <label className="text-sm font-medium text-blue-800 block mb-1">Barcode Scan / Search</label>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 px-3 py-2 rounded-lg border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                placeholder="Scan barcode or type product code (e.g. DYN-0001)..."
+                value={barcodeInput}
+                onChange={e => setBarcodeInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeSearch(); } }}
+              />
+              <Button type="button" size="sm" onClick={handleBarcodeSearch}>Search</Button>
+            </div>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select label="Source Warehouse" options={warehouses} value={form.from_location} onChange={e => setForm(f => ({ ...f, from_location: e.target.value }))} />
@@ -596,7 +698,7 @@ function DistributionTab() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Product</label>
+                <label className="block text-sm font-medium text-gray-700">Product (or use barcode scan above)</label>
                 <select
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
                   value={form.product_name}
@@ -610,6 +712,19 @@ function DistributionTab() {
                 </select>
               </div>
               <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Release Reason <span className="text-red-500">*</span></label>
+              <select
+                className={`w-full px-3 py-2.5 rounded-lg border bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 ${!form.release_reason ? 'border-gray-300' : 'border-green-400'}`}
+                value={form.release_reason}
+                onChange={e => setForm(f => ({ ...f, release_reason: e.target.value }))}
+                required
+              >
+                <option value="">Select release reason...</option>
+                <option value="cash_received">Cash Received — Payment confirmed</option>
+                <option value="field_program_approved">Field Program Approved — Management approved</option>
+              </select>
             </div>
             <Button type="submit" disabled={submitting}><Truck size={16} /> {submitting ? 'Creating...' : 'Create Distribution'}</Button>
           </form>
