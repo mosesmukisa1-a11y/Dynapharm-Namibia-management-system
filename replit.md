@@ -74,11 +74,15 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `/api/health` — System health check
 
 ## Pricing Engine
-- **client/src/lib/pricing.js** — Complete PRICE_LIST (91 products) with DP (Distributor Price), CP (Consumer Price), BV (Business Volume) values
-- `findProductPrice(name)` — Fuzzy product lookup
-- `enrichProductsWithPricing(products)` — Merge API products with PRICE_LIST pricing data
+- **client/src/lib/pricing.js** — Complete PRICE_LIST (91 products) with DP (Distributor Price), CP (Consumer Price), BV (Business Volume), CIF (Cost Insurance Freight from Malaysia) values
+- `findProductPrice(name)` — Fuzzy product lookup (exact match → partial match → 60% word match)
+- `getCIFPrice(productName)` — Get CIF import price for a product
+- `getProductProfit(productName, campaignPrice?)` — Calculate profit: selling price - CIF, with margin %
+- `enrichProductsWithPricing(products)` — Merge API products with PRICE_LIST pricing data (includes CIF)
 - `calculateCartTotals(cart, isMember)` — Cart calculation with DP/CP switching + BV tracking
 - `generateReceiptNumber()` — Receipt number generation (RCP-YYYYMMDD-HHMM-XXXX)
+- **CIF pricing**: ~42.5% of DP price; represents import cost from Dynapharm International Malaysia
+- **Profit visibility**: CIF prices and profit data restricted to admin/gm/director roles only
 
 ## Official Branches (15 outlets)
 Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo, Eenhana, Ondangwa, Rundu, Walvis Bay, Hochlandpark, Khomasdal, Katima Mulilo
@@ -97,7 +101,7 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 7. **GM** — Dashboard (4 KPIs), Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services
 8. **Director** — Executive Dashboard, Branch Overview (all branches performance table), Distributor Network (stats, by-branch breakdown, recent list), Staff Services
 9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
-10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inv, Invoices, Valuation, Barcode, Reorder, Batch, Realtime
+10. **Stock** — Overview, Supplier Import (Malaysia CIF imports), Country Stock (with CIF pricing), Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Monthly Sales (aggregated by month), Profit Analysis (CIF vs DP, GM/Director/Admin only), Country Inv, Valuation, Barcode, Reorder, Batch, Realtime
 11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search, CSV/Excel bulk import with XLSX.js), Branches, System
 12. **Training** — Training Materials, Videos, Photos, Upload Content (trainers only), Schedule
 
@@ -109,8 +113,8 @@ Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo
 - branch_manager: distributor, frontdesk, branch
 - hr_manager: hr
 - finance: finance
-- gm: distributor, frontdesk, consultant, branch, hr, finance, gm
-- director: distributor, frontdesk, consultant, branch, hr, finance, gm, director
+- gm: distributor, frontdesk, consultant, branch, hr, finance, gm, stock
+- director: distributor, frontdesk, consultant, branch, hr, finance, gm, director, stock
 - mis: mis
 - stock: stock
 - training: training, distributor

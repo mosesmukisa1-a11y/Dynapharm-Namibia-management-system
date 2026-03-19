@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
-import { PRICE_LIST } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar } from 'lucide-react';
 
 export default function StockPortal() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const canViewProfit = ['admin', 'gm', 'director'].includes(user?.role);
+
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'supplierImport', label: 'Supplier Import', icon: '🚢' },
     { id: 'countryStock', label: 'Country Stock', icon: '🌍' },
     { id: 'windhoek', label: 'Windhoek', icon: '🏢' },
     { id: 'ondangwa', label: 'Ondangwa', icon: '🏬' },
@@ -16,10 +21,10 @@ export default function StockPortal() {
     { id: 'transfers', label: 'Transfers', icon: '🔄' },
     { id: 'inventory', label: 'Inventory', icon: '📦' },
     { id: 'orders', label: 'Orders', icon: '🧾' },
-    { id: 'sharing', label: 'Sharing', icon: '🔗' },
+    { id: 'monthlySales', label: 'Monthly Sales', icon: '📈' },
+    ...(canViewProfit ? [{ id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' }] : []),
     { id: 'countryInventory', label: 'Country Inv.', icon: '🗂️' },
-    { id: 'invoices', label: 'Invoices', icon: '🧾' },
-    { id: 'valuation', label: 'Valuation', icon: '💰' },
+    { id: 'valuation', label: 'Valuation', icon: '💎' },
     { id: 'barcode', label: 'Barcode', icon: '🏷️' },
     { id: 'reorder', label: 'Reorder', icon: '⚠️' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
@@ -32,11 +37,12 @@ export default function StockPortal() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Package size={24} className="text-primary" /> Stock Management
         </h1>
-        <p className="text-sm text-gray-500">Warehouse management, transfers, and inventory tracking</p>
+        <p className="text-sm text-gray-500">Warehouse management, supplier imports, transfers, and inventory tracking</p>
       </div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'supplierImport' && <SupplierImportTab />}
         {activeTab === 'countryStock' && <CountryStockTab />}
         {activeTab === 'windhoek' && <WarehouseTab name="Windhoek" />}
         {activeTab === 'ondangwa' && <WarehouseTab name="Ondangwa" />}
@@ -44,9 +50,9 @@ export default function StockPortal() {
         {activeTab === 'transfers' && <TransfersTab />}
         {activeTab === 'inventory' && <InventoryTab />}
         {activeTab === 'orders' && <OrdersTab />}
-        {activeTab === 'sharing' && <SharingTab />}
+        {activeTab === 'monthlySales' && <MonthlySalesTab />}
+        {activeTab === 'profitAnalysis' && canViewProfit && <ProfitAnalysisTab />}
         {activeTab === 'countryInventory' && <CountryInventoryTab />}
-        {activeTab === 'invoices' && <InvoicesTab />}
         {activeTab === 'valuation' && <ValuationTab />}
         {activeTab === 'barcode' && <BarcodeTab />}
         {activeTab === 'reorder' && <ReorderTab />}
@@ -75,29 +81,231 @@ function OverviewTab() {
 
   const totalItems = data.batches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
   const totalValue = data.batches.reduce((sum, b) => sum + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const pendingTransfers = data.transfers.filter(t => t.status === 'pending').length;
+  const inTransit = data.transfers.filter(t => t.status === 'in_transit' || t.status === 'dispatched').length;
 
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Stock Items" value={totalItems.toLocaleString()} color="blue" icon={<Package size={24} />} />
-        <StatCard title="Total Stock Value" value={formatCurrency(totalValue)} color="green" icon={<BarChart3 size={24} />} />
-        <StatCard title="Pending Transfers" value={data.transfers.filter(t => t.status === 'pending').length} color="orange" icon={<ArrowLeftRight size={24} />} />
-        <StatCard title="Stock Batches" value={data.batches.length} color="purple" icon={<Warehouse size={24} />} />
+        <StatCard title="Total Stock Value (DP)" value={formatCurrency(totalValue)} color="green" icon={<BarChart3 size={24} />} />
+        <StatCard title="Pending Transfers" value={pendingTransfers} color="orange" icon={<ArrowLeftRight size={24} />} />
+        <StatCard title="In Transit" value={inTransit} color="purple" icon={<Truck size={24} />} />
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Recent Stock Movements</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDateTime(r.created_at) },
+              { header: 'Product', key: 'product_name' },
+              { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
+              { header: 'Qty', key: 'quantity' },
+              { header: 'Location', key: 'location' },
+            ]}
+            data={data.movements.slice(0, 15)}
+            emptyMessage="No recent movements"
+          />
+        </Card>
+
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Stock by Location</h3></CardHeader>
+          <CardBody>
+            {(() => {
+              const byLoc = {};
+              data.batches.forEach(b => {
+                const loc = b.location || 'unknown';
+                const label = loc.includes('windhoek') ? 'Windhoek Warehouse' : loc.includes('ondangwa') ? 'Ondangwa Warehouse' : loc === 'country_stock' ? 'Country Stock' : loc;
+                if (!byLoc[label]) byLoc[label] = { qty: 0, value: 0 };
+                const qty = Number(b.quantity || 0);
+                byLoc[label].qty += qty;
+                byLoc[label].value += qty * Number(b.unit_price || 0);
+              });
+              return Object.entries(byLoc).map(([loc, d]) => (
+                <div key={loc} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p className="font-medium text-gray-800">{loc}</p>
+                    <p className="text-xs text-gray-500">{d.qty.toLocaleString()} items</p>
+                  </div>
+                  <span className="font-bold text-gray-700">{formatCurrency(d.value)}</span>
+                </div>
+              ));
+            })()}
+            {data.batches.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No stock data</p>}
+          </CardBody>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function SupplierImportTab() {
+  const [showForm, setShowForm] = useState(false);
+  const [imports, setImports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '' }]);
+  const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
+
+  useEffect(() => {
+    api.stock.batches()
+      .then(d => {
+        const all = Array.isArray(d) ? d : d.batches || [];
+        setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '' }]);
+  const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
+  const updateItem = (idx, field, value) => {
+    setItems(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      if (field === 'product_name') {
+        const cif = getCIFPrice(value);
+        if (cif > 0) updated[idx].cif_price = String(cif);
+      }
+      return updated;
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const validItems = items.filter(i => i.product_name && Number(i.quantity) > 0);
+    if (validItems.length === 0) {
+      setAlert({ type: 'error', msg: 'Add at least one product with quantity' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      for (const item of validItems) {
+        await api.stock.createBatch({
+          product_name: item.product_name,
+          quantity: Number(item.quantity),
+          batch_number: form.shipping_ref || `IMP-${Date.now()}`,
+          expiry_date: null,
+          unit_price: Number(item.cif_price) || getCIFPrice(item.product_name),
+          location: 'country_stock',
+          notes: `Supplier: ${form.supplier} | Ref: ${form.shipping_ref} | ${form.notes}`,
+        });
+      }
+      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to Country Stock successfully` });
+      setItems([{ product_name: '', quantity: '', cif_price: '' }]);
+      setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
+      setShowForm(false);
+      const d = await api.stock.batches().catch(() => []);
+      const all = Array.isArray(d) ? d : d.batches || [];
+      setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const totalCIF = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.cif_price) || 0), 0);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-6">
+      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+
+      <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200">
+        <CardBody>
+          <div className="flex items-start gap-4">
+            <Ship size={32} className="text-blue-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-blue-900">Supplier Import from Malaysia</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Record stock shipments from Dynapharm International Malaysia. CIF (Cost, Insurance, Freight) prices are auto-populated from the price list.
+                Stock arrives at Country Stock level, then gets distributed to warehouses and branches.
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Recent Stock Movements</h3></CardHeader>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Supplier Import Shipments</h3>
+            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Import Shipment</Button>
+          </div>
+        </CardHeader>
         <Table
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Product', key: 'product_name' },
-            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
-            { header: 'Quantity', key: 'quantity' },
-            { header: 'Location', key: 'location' },
+            { header: 'Batch/Ref', key: 'batch_number' },
+            { header: 'Qty', key: 'quantity' },
+            { header: 'CIF Price', render: r => formatCurrency(Number(r.unit_price || 0)) },
+            { header: 'CIF Total', render: r => formatCurrency(Number(r.quantity || 0) * Number(r.unit_price || 0)) },
           ]}
-          data={data.movements.slice(0, 20)}
-          emptyMessage="No recent movements"
+          data={imports.slice(0, 50)}
+          emptyMessage="No import shipments recorded"
         />
       </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Import Shipment from Malaysia" size="lg">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Supplier" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
+            <Input label="Shipping Reference / B/L No." value={form.shipping_ref} onChange={e => setForm(f => ({ ...f, shipping_ref: e.target.value }))} placeholder="e.g. BL-2026-0042" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Arrival Date" type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))} />
+            <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Container no., remarks..." />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">Products in Shipment</label>
+              <Button type="button" size="sm" variant="secondary" onClick={addItem}><Plus size={14} /> Add Product</Button>
+            </div>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-5">
+                    <select
+                      className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                      value={item.product_name}
+                      onChange={e => updateItem(idx, 'product_name', e.target.value)}
+                    >
+                      <option value="">Select product...</option>
+                      {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <input type="number" min="1" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Qty" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                  </div>
+                  <div className="col-span-2">
+                    <input type="number" min="0" step="0.01" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="CIF N$" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
+                  </div>
+                  <div className="col-span-2 text-sm font-medium text-gray-700 py-2.5">
+                    {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
+                  </div>
+                  <div className="col-span-1">
+                    {items.length > 1 && <Button type="button" size="sm" variant="danger" onClick={() => removeItem(idx)}>×</Button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-right mt-3 font-bold text-gray-800">
+              Total CIF Value: {formatCurrency(totalCIF)}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" disabled={submitting}><Ship size={16} /> {submitting ? 'Importing...' : 'Record Import'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -151,9 +359,19 @@ function CountryStockTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const totalQty = batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+  const totalValue = batches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+
   return (
     <div>
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <StatCard title="Products in Country" value={batches.length} color="blue" icon={<Globe size={24} />} />
+        <StatCard title="Total Quantity" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
+        <StatCard title="Total Value" value={formatCurrency(totalValue)} color="purple" icon={<DollarSign size={24} />} />
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -183,7 +401,7 @@ function CountryStockTab() {
               value={form.product_name}
               onChange={e => {
                 const prod = PRICE_LIST.find(p => p.description === e.target.value);
-                setForm(f => ({ ...f, product_name: e.target.value, unit_price: prod ? String(prod.dp) : f.unit_price }));
+                setForm(f => ({ ...f, product_name: e.target.value, unit_price: prod ? String(prod.cif) : f.unit_price }));
               }}
               required
             >
@@ -195,13 +413,13 @@ function CountryStockTab() {
           </div>
           {selectedProduct && (
             <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              DP: {formatCurrency(selectedProduct.dp)} | CP: {formatCurrency(selectedProduct.cp)} | BV: {selectedProduct.bv}
+              CIF: {formatCurrency(selectedProduct.cif)} | DP: {formatCurrency(selectedProduct.dp)} | CP: {formatCurrency(selectedProduct.cp)} | BV: {selectedProduct.bv}
             </div>
           )}
           <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
           <Input label="Batch Number" value={form.batch_number} onChange={e => setForm(f => ({ ...f, batch_number: e.target.value }))} placeholder="Auto-generated if empty" />
           <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
-          <Input label="Unit Price (N$)" type="number" min="0" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
+          <Input label="CIF Price (N$)" type="number" min="0" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
           <div className="flex gap-3 pt-2">
             <Button type="submit" disabled={submitting}>{submitting ? 'Importing...' : 'Import Stock'}</Button>
             <Button variant="secondary" type="button" onClick={() => setShowImport(false)}>Cancel</Button>
@@ -725,88 +943,309 @@ function OrdersTab() {
   );
 }
 
-function SharingTab() {
-  const [configs, setConfigs] = useState([]);
-  const [form, setForm] = useState({ from_branch: '', to_branch: '', product_name: '', max_quantity: '', auto_share: false });
-  const [alert, setAlert] = useState(null);
+function MonthlySalesTab() {
+  const [salesData, setSalesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
-  const handleAdd = (e) => {
-    e.preventDefault();
-    if (!form.from_branch || !form.to_branch || !form.product_name) {
-      setAlert({ type: 'error', msg: 'All fields are required' });
-      return;
-    }
-    if (form.from_branch === form.to_branch) {
-      setAlert({ type: 'error', msg: 'Source and destination must be different' });
-      return;
-    }
-    setConfigs(prev => [...prev, { ...form, id: Date.now(), max_quantity: Number(form.max_quantity) || 0 }]);
-    setForm({ from_branch: '', to_branch: '', product_name: '', max_quantity: '', auto_share: false });
-    setAlert({ type: 'success', msg: 'Sharing rule added' });
-  };
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
+    ]).then(([orders, walkinSales]) => {
+      const allSales = [];
 
-  const removeConfig = (id) => {
-    setConfigs(prev => prev.filter(c => c.id !== id));
-  };
+      orders.forEach(o => {
+        const date = new Date(o.created_at || o.date);
+        const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const items = o.items || [];
+        items.forEach(item => {
+          const itemName = item.name || item.product_name || 'Unknown';
+          const prod = findProductPrice(itemName);
+          allSales.push({
+            month,
+            product_name: prod ? prod.description : itemName,
+            quantity: Number(item.quantity || item.qty || 1),
+            dp_price: prod ? prod.dp : Number(item.unit_price || item.price || 0),
+            cif_price: prod ? prod.cif : 0,
+            source: 'online',
+            branch: o.branch || o.delivery_branch || '-',
+          });
+        });
+      });
 
-  const branchOptions = [
-    { value: '', label: 'Select branch...' },
-    { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
-    { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
-    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: b })),
-  ];
+      walkinSales.forEach(s => {
+        const date = new Date(s.created_at || s.sale_date);
+        const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const items = s.items || [];
+        items.forEach(item => {
+          const itemName = item.name || item.product_name || 'Unknown';
+          const prod = findProductPrice(itemName);
+          allSales.push({
+            month,
+            product_name: prod ? prod.description : itemName,
+            quantity: Number(item.quantity || item.qty || 1),
+            dp_price: prod ? prod.dp : Number(item.unit_price || item.price || 0),
+            cif_price: prod ? prod.cif : 0,
+            source: 'walkin',
+            branch: s.branch || '-',
+          });
+        });
+      });
+
+      setSalesData(allSales);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const months = [...new Set(salesData.map(s => s.month))].sort().reverse();
+  if (months.length > 0 && !months.includes(selectedMonth)) {
+    // keep selected or fallback
+  }
+
+  const monthData = salesData.filter(s => s.month === selectedMonth);
+
+  const byProduct = {};
+  monthData.forEach(s => {
+    if (!byProduct[s.product_name]) byProduct[s.product_name] = { product_name: s.product_name, total_qty: 0, total_revenue: 0 };
+    byProduct[s.product_name].total_qty += s.quantity;
+    byProduct[s.product_name].total_revenue += s.quantity * s.dp_price;
+  });
+  const productSummary = Object.values(byProduct).sort((a, b) => b.total_revenue - a.total_revenue);
+
+  const totalRevenue = productSummary.reduce((s, p) => s + p.total_revenue, 0);
+  const totalQty = productSummary.reduce((s, p) => s + p.total_qty, 0);
+
+  const monthLabel = selectedMonth ? new Date(selectedMonth + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'All';
 
   return (
     <div className="space-y-6">
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Calendar size={20} className="text-gray-500" />
+          <select
+            className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium"
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+          >
+            {months.length > 0 ? months.map(m => (
+              <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</option>
+            )) : <option value={selectedMonth}>{monthLabel}</option>}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title={`Sales Revenue (${monthLabel})`} value={formatCurrency(totalRevenue)} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="Units Sold" value={totalQty.toLocaleString()} color="blue" icon={<Package size={24} />} />
+        <StatCard title="Products Sold" value={productSummary.length} color="purple" icon={<BarChart3 size={24} />} />
+      </div>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Add Sharing Rule</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">Sales by Product — {monthLabel}</h3></CardHeader>
+        <Table
+          columns={[
+            { header: '#', render: (_, i) => i + 1 },
+            { header: 'Product', key: 'product_name' },
+            { header: 'Qty Sold', render: r => r.total_qty.toLocaleString() },
+            { header: 'DP Revenue', render: r => formatCurrency(r.total_revenue) },
+            { header: '% of Total', render: r => totalRevenue > 0 ? `${((r.total_revenue / totalRevenue) * 100).toFixed(1)}%` : '0%' },
+          ]}
+          data={productSummary}
+          emptyMessage="No sales data for this month"
+        />
+      </Card>
+
+      {monthData.length === 0 && (
+        <Alert type="info">No sales recorded for {monthLabel}. Sales data comes from online orders and branch walk-in sales.</Alert>
+      )}
+    </div>
+  );
+}
+
+function ProfitAnalysisTab() {
+  const { user } = useAuth();
+  const canView = ['admin', 'gm', 'director'].includes(user?.role);
+  const [salesData, setSalesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [campaignPrices, setCampaignPrices] = useState({});
+  const [editingCampaign, setEditingCampaign] = useState(null);
+  const [campaignPrice, setCampaignPrice] = useState('');
+
+  useEffect(() => {
+    if (!canView) { setLoading(false); return; }
+    Promise.all([
+      api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
+    ]).then(([orders, walkinSales]) => {
+      const allItems = [];
+      const processItems = (items) => {
+        (items || []).forEach(item => {
+          const rawName = item.name || item.product_name || 'Unknown';
+          const matched = findProductPrice(rawName);
+          allItems.push({ product_name: matched ? matched.description : rawName, quantity: Number(item.quantity || item.qty || 1) });
+        });
+      };
+      orders.forEach(o => processItems(o.items));
+      walkinSales.forEach(s => processItems(s.items));
+      setSalesData(allItems);
+    }).finally(() => setLoading(false));
+  }, [canView]);
+
+  if (!canView) {
+    return (
+      <Alert type="error">
+        <strong>Access Restricted</strong> — Profit analysis is only available to the General Manager and Director.
+      </Alert>
+    );
+  }
+
+  if (loading) return <LoadingSpinner />;
+
+  const byProduct = {};
+  salesData.forEach(s => {
+    if (!byProduct[s.product_name]) byProduct[s.product_name] = 0;
+    byProduct[s.product_name] += s.quantity;
+  });
+
+  const profitRows = PRICE_LIST.map(p => {
+    const qtySold = byProduct[p.description] || 0;
+    const campaign = campaignPrices[p.description];
+    const sellingPrice = campaign || p.dp;
+    const profit = sellingPrice - p.cif;
+    const totalProfit = profit * qtySold;
+    const margin = p.cif > 0 ? ((profit / sellingPrice) * 100) : 0;
+    return {
+      product_name: p.description,
+      cif: p.cif,
+      dp: p.dp,
+      cp: p.cp,
+      campaign_price: campaign || null,
+      selling_price: sellingPrice,
+      profit_per_unit: profit,
+      margin: Math.round(margin * 10) / 10,
+      qty_sold: qtySold,
+      total_profit: totalProfit,
+    };
+  }).sort((a, b) => b.total_profit - a.total_profit);
+
+  const totalCIF = profitRows.reduce((s, r) => s + r.cif * r.qty_sold, 0);
+  const totalRevenue = profitRows.reduce((s, r) => s + r.selling_price * r.qty_sold, 0);
+  const grandProfit = profitRows.reduce((s, r) => s + r.total_profit, 0);
+  const avgMargin = totalRevenue > 0 ? ((grandProfit / totalRevenue) * 100).toFixed(1) : '0';
+
+  const saveCampaign = () => {
+    if (editingCampaign && campaignPrice) {
+      setCampaignPrices(prev => ({ ...prev, [editingCampaign]: Number(campaignPrice) }));
+    }
+    setEditingCampaign(null);
+    setCampaignPrice('');
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
         <CardBody>
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select label="From Branch/Warehouse" options={branchOptions} value={form.from_branch} onChange={e => setForm(f => ({ ...f, from_branch: e.target.value }))} />
-              <Select label="To Branch/Warehouse" options={branchOptions} value={form.to_branch} onChange={e => setForm(f => ({ ...f, to_branch: e.target.value }))} />
+          <div className="flex items-start gap-4">
+            <TrendingUp size={32} className="text-emerald-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-emerald-900">Profit Analysis — CIF vs DP</h3>
+              <p className="text-sm text-emerald-700 mt-1">
+                Stock is imported from Malaysia at CIF price (Cost + Insurance + Freight). Sold at DP (Distributor Price).
+                Profit = DP - CIF per unit. Campaign pricing adjustments are supported.
+              </p>
+              <p className="text-xs text-emerald-600 mt-1 font-medium">
+                Restricted to General Manager and Director only.
+              </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Product</label>
-                <select
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                  value={form.product_name}
-                  onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-                >
-                  <option value="">Select product...</option>
-                  {PRICE_LIST.map(p => (
-                    <option key={p.description} value={p.description}>{p.description}</option>
-                  ))}
-                </select>
-              </div>
-              <Input label="Max Quantity" type="number" min="1" value={form.max_quantity} onChange={e => setForm(f => ({ ...f, max_quantity: e.target.value }))} />
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="autoShare" checked={form.auto_share} onChange={e => setForm(f => ({ ...f, auto_share: e.target.checked }))} className="rounded" />
-              <label htmlFor="autoShare" className="text-sm text-gray-700">Enable automatic sharing when stock is low</label>
-            </div>
-            <Button type="submit"><Share2 size={16} /> Add Sharing Rule</Button>
-          </form>
+          </div>
         </CardBody>
       </Card>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
+        <StatCard title="Total Revenue (DP)" value={formatCurrency(totalRevenue)} color="blue" icon={<DollarSign size={24} />} />
+        <StatCard title="Gross Profit" value={formatCurrency(grandProfit)} color="green" icon={<TrendingUp size={24} />} />
+        <StatCard title="Avg Margin" value={`${avgMargin}%`} color="purple" icon={<BarChart3 size={24} />} />
+      </div>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Active Sharing Rules</h3></CardHeader>
-        <Table
-          columns={[
-            { header: 'From', key: 'from_branch' },
-            { header: 'To', key: 'to_branch' },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Max Qty', key: 'max_quantity' },
-            { header: 'Auto', render: r => <Badge variant={r.auto_share ? 'success' : 'default'}>{r.auto_share ? 'Yes' : 'No'}</Badge> },
-            { header: 'Actions', render: r => <Button size="sm" variant="danger" onClick={() => removeConfig(r.id)}>Remove</Button> },
-          ]}
-          data={configs}
-          emptyMessage="No sharing rules configured"
-        />
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Product Profit Breakdown</h3>
+            <Badge variant="info">{profitRows.filter(r => r.qty_sold > 0).length} products with sales</Badge>
+          </div>
+        </CardHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-3 font-semibold text-gray-600">Product</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">CIF</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">DP</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Campaign</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Profit/Unit</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Margin</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Qty Sold</th>
+                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Total Profit</th>
+                <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profitRows.map(r => (
+                <tr key={r.product_name} className={`border-b border-gray-100 hover:bg-gray-50 ${r.qty_sold > 0 ? '' : 'opacity-50'}`}>
+                  <td className="px-4 py-2.5 text-gray-800 max-w-[250px] truncate" title={r.product_name}>{r.product_name}</td>
+                  <td className="px-4 py-2.5 text-right text-red-600 font-medium">{formatCurrency(r.cif)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.dp)}</td>
+                  <td className="px-4 py-2.5 text-right">{r.campaign_price ? <span className="text-orange-600 font-medium">{formatCurrency(r.campaign_price)}</span> : '-'}</td>
+                  <td className="px-4 py-2.5 text-right text-green-700 font-bold">{formatCurrency(r.profit_per_unit)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <span className={`font-medium ${r.margin >= 50 ? 'text-green-600' : r.margin >= 30 ? 'text-blue-600' : 'text-orange-600'}`}>
+                      {r.margin}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-medium">{r.qty_sold > 0 ? r.qty_sold : '-'}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-green-700">{r.total_profit > 0 ? formatCurrency(r.total_profit) : '-'}</td>
+                  <td className="px-4 py-2.5">
+                    <button
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => { setEditingCampaign(r.product_name); setCampaignPrice(String(r.campaign_price || r.dp)); }}
+                    >
+                      Set Campaign
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
+
+      <Modal open={!!editingCampaign} onClose={() => setEditingCampaign(null)} title={`Campaign Price: ${editingCampaign}`} size="sm">
+        <div className="p-6 space-y-4">
+          {editingCampaign && (() => {
+            const prod = PRICE_LIST.find(p => p.description === editingCampaign);
+            return prod ? (
+              <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                <p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p>
+              </div>
+            ) : null;
+          })()}
+          <Input label="Campaign Selling Price (N$)" type="number" min="0" step="0.01" value={campaignPrice} onChange={e => setCampaignPrice(e.target.value)} />
+          <div className="flex gap-3">
+            <Button onClick={saveCampaign}>Apply Campaign Price</Button>
+            <Button variant="secondary" onClick={() => {
+              setCampaignPrices(prev => { const n = { ...prev }; delete n[editingCampaign]; return n; });
+              setEditingCampaign(null);
+            }}>Reset to DP</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -905,174 +1344,6 @@ function CountryInventoryTab() {
   );
 }
 
-function InvoicesTab() {
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [viewPO, setViewPO] = useState(null);
-  const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ supplier: '', items: [{ product_name: '', quantity: 1, unit_price: 0 }], status: 'Draft' });
-
-  const generatePONumber = () => {
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const seq = String(purchaseOrders.length + 1).padStart(3, '0');
-    return `PO-${date}-${seq}`;
-  };
-
-  const addItem = () => {
-    setForm(f => ({ ...f, items: [...f.items, { product_name: '', quantity: 1, unit_price: 0 }] }));
-  };
-
-  const removeItem = (idx) => {
-    setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  };
-
-  const updateItem = (idx, field, value) => {
-    setForm(f => {
-      const items = [...f.items];
-      items[idx] = { ...items[idx], [field]: value };
-      if (field === 'product_name') {
-        const prod = PRICE_LIST.find(p => p.description === value);
-        if (prod) items[idx].unit_price = prod.dp;
-      }
-      return { ...f, items };
-    });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.supplier || form.items.length === 0 || !form.items[0].product_name) {
-      setAlert({ type: 'error', msg: 'Supplier and at least one product are required' });
-      return;
-    }
-    const po = {
-      id: Date.now(),
-      po_number: generatePONumber(),
-      supplier: form.supplier,
-      items: form.items.filter(i => i.product_name),
-      items_count: form.items.filter(i => i.product_name).length,
-      total_amount: form.items.filter(i => i.product_name).reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0),
-      status: form.status,
-      date: new Date().toISOString(),
-    };
-    setPurchaseOrders(prev => [po, ...prev]);
-    setForm({ supplier: '', items: [{ product_name: '', quantity: 1, unit_price: 0 }], status: 'Draft' });
-    setShowForm(false);
-    setAlert({ type: 'success', msg: `Purchase order ${po.po_number} created` });
-  };
-
-  const markReceived = (id) => {
-    setPurchaseOrders(prev => prev.map(po => po.id === id ? { ...po, status: 'Received' } : po));
-    setAlert({ type: 'success', msg: 'Purchase order marked as received' });
-  };
-
-  return (
-    <div className="space-y-6">
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Purchase Orders</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Purchase Order</Button>
-          </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'PO Number', key: 'po_number' },
-            { header: 'Supplier', key: 'supplier' },
-            { header: 'Items', key: 'items_count' },
-            { header: 'Total', render: r => formatCurrency(r.total_amount) },
-            { header: 'Status', render: r => <Badge variant={r.status === 'Received' ? 'success' : r.status === 'Submitted' ? 'info' : 'warning'}>{r.status}</Badge> },
-            { header: 'Date', render: r => formatDate(r.date) },
-            { header: 'Actions', render: r => (
-              <div className="flex gap-1">
-                <Button size="sm" variant="secondary" onClick={() => setViewPO(r)}>View</Button>
-                {r.status !== 'Received' && <Button size="sm" variant="success" onClick={() => markReceived(r.id)}>Mark Received</Button>}
-              </div>
-            )},
-          ]}
-          data={purchaseOrders}
-          emptyMessage="No purchase orders yet"
-        />
-      </Card>
-
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Purchase Order" size="lg">
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <Input label="Supplier Name" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} required />
-          <Select
-            label="Status"
-            options={[{ value: 'Draft', label: 'Draft' }, { value: 'Submitted', label: 'Submitted' }]}
-            value={form.status}
-            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-          />
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700">Products</label>
-              <Button type="button" size="sm" variant="secondary" onClick={addItem}><Plus size={14} /> Add Item</Button>
-            </div>
-            {form.items.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-end">
-                <div className="col-span-5">
-                  <select
-                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                    value={item.product_name}
-                    onChange={e => updateItem(idx, 'product_name', e.target.value)}
-                  >
-                    <option value="">Select product...</option>
-                    {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <input type="number" min="1" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Qty" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
-                </div>
-                <div className="col-span-2">
-                  <input type="number" min="0" step="0.01" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm" placeholder="Price" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} />
-                </div>
-                <div className="col-span-2 text-sm font-medium text-gray-700 py-2.5">
-                  {formatCurrency(Number(item.quantity) * Number(item.unit_price))}
-                </div>
-                <div className="col-span-1">
-                  {form.items.length > 1 && <Button type="button" size="sm" variant="danger" onClick={() => removeItem(idx)}>×</Button>}
-                </div>
-              </div>
-            ))}
-            <div className="text-right font-bold text-gray-800 mt-2">
-              Total: {formatCurrency(form.items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0))}
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <Button type="submit">Create Purchase Order</Button>
-            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal open={!!viewPO} onClose={() => setViewPO(null)} title={viewPO ? `Purchase Order: ${viewPO.po_number}` : ''} size="lg">
-        {viewPO && (
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div><span className="text-sm text-gray-500">Supplier:</span> <span className="font-medium">{viewPO.supplier}</span></div>
-              <div><span className="text-sm text-gray-500">Date:</span> <span className="font-medium">{formatDate(viewPO.date)}</span></div>
-              <div><span className="text-sm text-gray-500">Status:</span> <Badge variant={viewPO.status === 'Received' ? 'success' : 'warning'}>{viewPO.status}</Badge></div>
-              <div><span className="text-sm text-gray-500">Total:</span> <span className="font-bold">{formatCurrency(viewPO.total_amount)}</span></div>
-            </div>
-            <Table
-              columns={[
-                { header: 'Product', key: 'product_name' },
-                { header: 'Quantity', key: 'quantity' },
-                { header: 'Unit Price', render: r => formatCurrency(r.unit_price) },
-                { header: 'Total', render: r => formatCurrency(Number(r.quantity) * Number(r.unit_price)) },
-              ]}
-              data={viewPO.items}
-              emptyMessage="No items"
-            />
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
 function ValuationTab() {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1128,7 +1399,7 @@ function ValuationTab() {
       </div>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Category Breakdown</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">Stock Valuation Breakdown (DP Prices)</h3></CardHeader>
         <Table
           columns={[
             { header: 'Product', key: 'product_name' },
@@ -1335,36 +1606,42 @@ function ReorderTab() {
 
 function BatchTab() {
   const [localBatches, setLocalBatches] = useState([]);
+  const [apiBatches, setApiBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'Windhoek' });
+  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'country_stock' });
 
-  const generateBatchNumber = () => {
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const seq = String(localBatches.length + 1).padStart(3, '0');
-    return `BATCH-${date}-${seq}`;
-  };
+  useEffect(() => {
+    api.stock.batches()
+      .then(d => setApiBatches(Array.isArray(d) ? d : d.batches || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.product_name || !form.quantity) {
       setAlert({ type: 'error', msg: 'Product and quantity are required' });
       return;
     }
-    const batch = {
-      id: Date.now(),
-      batch_number: generateBatchNumber(),
-      product_name: form.product_name,
-      quantity: Number(form.quantity),
-      manufacture_date: form.manufacture_date || null,
-      expiry_date: form.expiry_date || null,
-      location: form.location,
-    };
-    setLocalBatches(prev => [batch, ...prev]);
-    setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'Windhoek' });
-    setShowForm(false);
-    setAlert({ type: 'success', msg: `Batch ${batch.batch_number} created` });
+    try {
+      await api.stock.createBatch({
+        product_name: form.product_name,
+        quantity: Number(form.quantity),
+        batch_number: `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(localBatches.length + apiBatches.length + 1).padStart(3, '0')}`,
+        expiry_date: form.expiry_date || null,
+        unit_price: getCIFPrice(form.product_name),
+        location: form.location,
+      });
+      setAlert({ type: 'success', msg: 'Batch created and saved' });
+      setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'country_stock' });
+      setShowForm(false);
+      const d = await api.stock.batches().catch(() => []);
+      setApiBatches(Array.isArray(d) ? d : d.batches || []);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
   };
 
   const getDaysUntilExpiry = (expiryDate) => {
@@ -1379,6 +1656,17 @@ function BatchTab() {
     if (days <= 30) return { label: 'Expiring Soon', variant: 'warning' };
     return { label: 'OK', variant: 'success' };
   };
+
+  if (loading) return <LoadingSpinner />;
+
+  const allBatches = [...apiBatches.map(b => ({
+    batch_number: b.batch_number || b.barcode || '-',
+    product_name: b.product_name,
+    quantity: b.quantity,
+    manufacture_date: null,
+    expiry_date: b.expiry_date,
+    location: b.location || '-',
+  }))];
 
   return (
     <div className="space-y-6">
@@ -1395,14 +1683,13 @@ function BatchTab() {
             { header: 'Batch Number', key: 'batch_number' },
             { header: 'Product', key: 'product_name' },
             { header: 'Quantity', key: 'quantity' },
-            { header: 'Manufacture Date', render: r => formatDate(r.manufacture_date) },
-            { header: 'Expiry Date', render: r => formatDate(r.expiry_date) },
+            { header: 'Expiry Date', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
             { header: 'Location', key: 'location' },
             { header: 'Days to Expiry', render: r => { const d = getDaysUntilExpiry(r.expiry_date); return d !== null ? d : '-'; } },
             { header: 'Status', render: r => { const s = getExpiryStatus(getDaysUntilExpiry(r.expiry_date)); return <Badge variant={s.variant}>{s.label}</Badge>; } },
           ]}
-          data={localBatches}
-          emptyMessage="No batches tracked yet"
+          data={allBatches}
+          emptyMessage="No batches tracked"
         />
       </Card>
 
@@ -1425,7 +1712,11 @@ function BatchTab() {
           <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
           <Select
             label="Location"
-            options={[{ value: 'Windhoek', label: 'Windhoek' }, { value: 'Ondangwa', label: 'Ondangwa' }]}
+            options={[
+              { value: 'country_stock', label: 'Country Stock' },
+              { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
+              { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
+            ]}
             value={form.location}
             onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
           />
@@ -1488,7 +1779,7 @@ function RealtimeTab() {
           <h3 className="font-bold text-gray-800 flex items-center gap-2">
             <Zap size={20} className="text-yellow-500" /> Real-Time Stock Dashboard
           </h3>
-          <p className="text-xs text-gray-500">Auto-refreshes every 30 seconds • Last: {formatDateTime(lastRefresh)}</p>
+          <p className="text-xs text-gray-500">Auto-refreshes every 30 seconds | Last: {formatDateTime(lastRefresh)}</p>
         </div>
         <Button size="sm" variant="secondary" onClick={fetchData}><Zap size={14} /> Refresh Now</Button>
       </div>
