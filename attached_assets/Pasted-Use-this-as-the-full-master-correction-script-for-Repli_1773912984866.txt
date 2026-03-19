@@ -1,0 +1,845 @@
+Use this as the full master correction script for Replit. It is written to be copied exactly, with strong emphasis on not losing any existing working code, workflows, portals, data structures, or business rules.
+
+MASTER REPLIT CORRECTION SCRIPT – DO NOT OMIT ANYTHING
+
+Important instruction to Replit:
+
+Do not create a simplified replacement. Do not rebuild from scratch unless absolutely necessary.First retrieve and reuse the exact existing code, workflows, portals, logic, forms, and data mappings already present in the system. A lot was lost during migration from HTML, and that must be restored from the existing codebase wherever it still exists.
+
+This instruction is for a full correction, restoration, reconnection, and workflow completion of the Dynapharm Namibia portal.Do not remove any current data.Do not remove existing portals.Do not omit any workflow.Do not replace detailed logic with placeholders or static pages.Everything must be fully functional end-to-end.
+
+1. GLOBAL RULES TO APPLY ACROSS THE WHOLE SYSTEM
+
+Retrieve and use the exact existing code for all workflows that were already working before migration issues.
+
+Do not lose current records, users, branches, distributor data, stock data, prescriptions, reports, receipts, or portal dashboards.
+
+Ensure all buttons, forms, dropdowns, auto-fill actions, approvals, prints, uploads, and notifications are working.
+
+Ensure each portal opens correctly and its workflow is active:
+
+Admin
+
+Front Desk
+
+Consultant
+
+Branch
+
+Stock Management
+
+Finance
+
+MIS
+
+GM
+
+Director
+
+Distributor
+
+Training & Development
+
+Restore any omitted workflow completely.
+
+Remove repetitions and duplicate modules only where they are true duplicates, but do not remove business logic.
+
+All portals must be linked so each role sees only the data and actions they are supposed to see.
+
+Preserve role-based access control.
+
+Where there are multiple user roles, the selected role must remain active even after refresh.
+
+The system must remain dynamic, not static.
+
+Restore the distributor portal and workflow fully if anything is missing.
+
+Ensure all workflows work on both existing and new records.
+
+Apply branch logic consistently across:
+
+full body check-up
+
+online shop
+
+walk-in sale
+
+referrals
+
+prescriptions
+
+receipts
+
+stock movement
+
+reporting
+
+2. OFFICIAL BRANCH / OUTLET LIST TO INCLUDE EVERYWHERE
+
+Use this exact branch list throughout the system wherever branch selection is needed:
+
+Dynapharm Namibia – Outlets 2025
+
+WINDHOEK CBD SHOP269 Independence AvenueShop No 1Continental BuildingTel: +264 817499757
+
+TSUMEBShop No 35B Erf 35Maria Nehoya StreetTel: +264 814757074
+
+GOBABISShop No 8, Erf 939Wordmann Brock ComplexChurch StreetTel: +264 814685905
+
+SWAKOPMUND153Kuruseb Road, MondesaOpposite Mondesa UsaveTel: +264 814686806
+
+OUTAPIOkasikili LocationNext to Lamek GarageMain Road from and to OshakatiTel: +264 814685886
+
+OKAHAOErf 331 Taapopi ComplexTsandi Main RoadTel: +264 814683963
+
+OSHAKATIShop No 15 Fantasy ComplexBehind Bank WindhoekOshakati Main RoadTel: +264 814757055
+
+OTJIWARONGOShop No 13Erindi ComplexAlbertina Amadhila StreetTel: +264 814681997
+
+EENHANAShop No 3Tangi ComplexDimo Amambi StreetTel: +264 814682049
+
+ONDANGWAShop No 3, Oluno RoadWordmann Brock MallOpposite FrescoTel: +264 814685882
+
+RUNDUShop No 6Erf 1736Markus Siwarongo StreetNkarapamweTel: +264 814684968
+
+WALVIS BAYShop No 6Pelican MallTel: +264 814685894
+
+HOCHLANDPARK21 Robin Road, Tauben GlenNext to OK Minimarkt StoreTel: +264 813207195
+
+KHOMASDALShop No 2Khomasdal Funky Town MallTel: +264 814682991
+
+KATIMA MULILOShop No 1Hospital RoadOpposite Open Market next to the former MVA FundTel: +264 814682978
+
+Apply this branch list consistently in:
+
+branch portal
+
+front desk
+
+full body check-up
+
+payment capture
+
+online orders
+
+stock requests
+
+prescriptions
+
+reports
+
+distributor referrals
+
+receipts
+
+MIS filters
+
+finance filters
+
+dashboards
+
+admin management areas
+
+3. FRONT DESK PORTAL – FULL WORKFLOW
+
+Restore and complete the front desk workflow.
+
+Appointments
+
+Most appointments are for full body check-up.
+
+Appointments must include branch selection.
+
+Branches must be able to mark appointments as:
+
+Pending
+
+Completed
+
+Front desk must be able to generate and print reports for all appointments.
+
+Front desk must be able to book full body check-up for:
+
+walk-ins
+
+appointments
+
+Add the branch where payment is being recorded.
+
+Orders
+
+On each order, include:
+
+branch
+
+client full name
+
+client phone number
+
+preferred delivery or pick-up
+
+For delivery orders:
+
+proof of payment photo upload is required
+
+front desk must see the proof before processing
+
+Delivery charges:
+
+Windhoek = free
+
+Outside Windhoek = N$150
+
+Schedules / Delivery
+
+Create Order ID dropdown with auto-fill.
+
+Add communication functionality to distributors as well.
+
+Link company social media handles in the communication area.
+
+4. CONSULTANT PORTAL – FULL WORKFLOW
+
+Restore and complete the consultant portal exactly.
+
+Under Create Reports
+
+Show consultant the client’s personal information.
+
+Show health assessment issues.
+
+Provide a broad physiological symptom checklist.
+
+If consultant marks a symptom as “Yes”, suggest suitable Dynapharm products automatically.
+
+Example: cardiovascular symptoms like numbness should trigger product suggestions.
+
+Consultant should be able to select the recommended product and add it into the prescription.
+
+Before saving or printing, consultant must be able to:
+
+preview
+
+print
+
+submit
+
+Client list should appear in latest-to-first order.
+
+Each report must have a unique reference number created at registration.
+
+Full client name must appear in consultant portal.
+
+Prescription must appear at the branch where the check-up was booked or loaded and where the consultant worked.
+
+Existing broken functions to restore
+
+Recommendation apply button must work.
+
+Add button in prescription creation must work.
+
+No static UI. Full workflow only.
+
+5. FULL BODY CHECK-UP – APPLY TO ALL RELEVANT PORTALS
+
+Do not create a new workflow if one already exists in code. Retrieve the exact existing code and repair it.
+
+The system must support:
+
+Walk-in full body check-up
+
+Booked full body check-up
+
+In both cases user must select client type first:
+
+Member
+
+Non-member
+
+If member:
+
+select name from distributor list
+
+select NB number from distributor list
+
+If non-member:
+
+referral is required
+
+referral must be selected from distributor list
+
+if no referral is provided, default referral must be:Dynapharm Namibia – NB005676
+
+Branch where the check-up will be done must be selected.
+
+Client type must appear on the client form.
+
+Form must remain one page maximum.
+
+Use the official branch list.
+
+Member and referral pricing rules must apply correctly.
+
+This member/referral logic must be emphasized and applied consistently across full body check-up and shop processes.
+
+6. BRANCH PORTAL – FULL SALES AND OPERATIONAL WORKFLOW
+
+Restore full branch workflow. The walk-in sale must be in the correct branch portal workflow and not misplaced.
+
+Sales start logic
+
+Every branch sale must start by selecting customer type:
+
+If customer is a member
+
+Search distributor from saved distributor list.
+
+Select distributor name.
+
+Select NB number.
+
+Apply DP price.
+
+If customer is a non-member
+
+Ask for referral.
+
+Search referral NB and name from distributor list.
+
+If none provided, default referral:Dynapharm Namibia – NB005676
+
+Assign profit and BVs to the selected referral NB and distributor name.
+
+Then select payment method and confirm sale.
+
+After each sale automatically do:
+
+Deduct stock
+
+Increase sales amount
+
+Update distributor-related records
+
+Push relevant information to:
+
+Distributor portal
+
+Stock Management portal
+
+Finance portal
+
+MIS portal
+
+GM portal
+
+Director portal
+
+Enable:
+
+thermal receipt print
+
+PDF print
+
+Receipts
+
+For non-members
+
+Receipt must show:
+
+reference number
+
+products bought
+
+amount
+
+CP paid
+
+For distributors
+
+Receipt must show:
+
+DP price
+
+BV
+
+profit
+
+Referral sale note
+
+Where referral is involved, generate two receipts where required by business logic.This rule applies to branch portal sales.
+
+Branch stock functions
+
+Add and ensure functionality for:
+
+request stock
+
+transfer stock
+
+write off stock
+
+low stock alerts
+
+expiry alerts
+
+auto notify stock management
+
+stock movement reports
+
+search and print customer purchase receipt and information
+
+Branch payments
+
+Create payment records with full details.
+
+Send for finance processing.
+
+Finance processing must wait GM approval where required.
+
+This must affect cash at hand correctly.
+
+Branch handling of online orders
+
+Only online orders directed to that branch should appear there.
+
+Branch should process them as sales.
+
+When marked paid and received:
+
+income increases
+
+stock reduces
+
+This must trigger normal downstream reporting.
+
+Distributor registration at branch
+
+Upline and sponsor must come from saved distributor list.
+
+New distributors registered must also be added automatically to distributor list.
+
+Field program
+
+Add product request list for field use.
+
+Mark items when returned.
+
+Require stock approval.
+
+7. STOCK MANAGEMENT PORTAL – RESTRICT AND RESTORE CORRECTLY
+
+Stock management workflow must appear only where it belongs.Remove stock management portal workflow from:
+
+Director portal
+
+GM portal
+
+MIS portal
+
+Finance portalunless they are meant only to see dashboards/reports and not operational stock workflow actions.
+
+Keep stock management operational controls only in the Stock Management portal.
+
+Core stock management logic
+
+Stock management is the core of the business.
+
+Stock is imported from supplier in Malaysia.
+
+Monthly sales reporting is required.
+
+Use:
+
+CIF price
+
+DP selling price
+
+Difference between CIF and DP price is profit.
+
+Profit visibility must be restricted to:
+
+General Manager
+
+Director
+
+Campaign pricing must also affect profit calculations.
+
+GM and Director dashboard visibility
+
+Always show:
+
+total sales
+
+expenses
+
+CIF price sales
+
+remittance due
+
+profit or loss
+
+Remittance
+
+When remittance is done, Finance update must change status to:
+
+no remittance due
+
+Stock release rules
+
+Stock must leave only when:
+
+cash has been received, or
+
+field program has been approved
+
+Stock capture methods
+
+Allow:
+
+barcode scanning
+
+manual product selection
+
+Documents
+
+All documents should have barcodes where relevant.
+
+Data consistency
+
+Stock quantities must always match across:
+
+stock management
+
+branch
+
+finance
+
+MIS
+
+sales records
+
+8. ONLINE SHOP – FULL LOGIC
+
+The online shop must not be static.Restore existing code if available and repair missing cart / checkout / images workflow.
+
+Required logic
+
+Start by selecting customer type:
+
+registered member
+
+non-member
+
+If registered member:
+
+select name from distributor list
+
+select NB number from distributor list
+
+show DP price
+
+show BV
+
+If non-member:
+
+select referral from distributor list
+
+if none, default referral:Dynapharm Namibia – NB005676
+
+At checkout, customer details must be fully visible and editable.
+
+For non-members do not show BV.
+
+Product images must be uploaded and managed by admin from admin tab.
+
+Cart must work. Fix the “cart not available” problem.
+
+Required checkout fields such as customer name, delivery method, subtotal, and items must be available and properly passed so the error about missing required fields never appears again.
+
+Orders directed to branches must route correctly to the relevant branch.
+
+9. ADMIN PORTAL – FULL CONTROL
+
+Ensure admin portal is active and fully functional.
+
+Required functions
+
+Upload and update distributor list
+
+Upload product photos
+
+Upload and update price list
+
+Reset user passwords
+
+Manage welcome page images / slideshow
+
+Manage shop product images
+
+Manage branch list where applicable
+
+Ensure portal is opening correctly
+
+10. TRAINING & DEVELOPMENT PORTAL
+
+Create and connect the training portal fully.
+
+Requirements
+
+Trainers must upload:
+
+training videos
+
+training photos
+
+Staff and distributors must be able to access the content.
+
+Portal must be connected properly and visible only where appropriate.
+
+11. LANDING PAGE
+
+Add a welcome image or slideshow.
+
+Create a system for admin to upload and update it.
+
+Distributor login must remain on landing page.
+
+12. DISTRIBUTOR PORTAL / DISTRIBUTOR LOGIN
+
+Do not omit the distributor portal again. Fully restore and reconnect it.
+
+Dashboard must show
+
+Client referrals to branches
+
+Profit made, for example difference between DP and CP price where business logic applies
+
+BV earned:
+
+daily
+
+monthly
+
+other summaries
+
+Bonuses uploaded by Finance
+
+Notifications of any activity:
+
+sale
+
+referral
+
+check-up using their NB number
+
+Campaigns from GM portal
+
+Communication tab for branch and management communication
+
+Full information from distributor list
+
+Signup logic
+
+At signup, distributor must select their name from distributor list.
+
+Add BOD field.
+
+Keep track of BV according to sales attached to NB number.
+
+Let them sign up new members according to the registration policy.
+
+13. FINANCE PORTAL
+
+Ensure finance portal opens and functions correctly.
+
+Finance must handle
+
+Processing branch payment requests
+
+Updating remittance status
+
+Uploading distributor bonuses
+
+Working with GM approval flow where required
+
+Maintaining correct cash-at-hand effects
+
+Sending updated financial visibility to GM and Director dashboards
+
+14. GM PORTAL
+
+Ensure GM portal opens and functions correctly.
+
+GM must be able to
+
+See profit/loss dashboards
+
+Approve payments and bonuses where required
+
+Set campaigns
+
+Ensure campaign winners can be seen by MIS
+
+Review expenses, remittance due, and sales summaries
+
+15. DIRECTOR PORTAL
+
+Ensure Director portal opens and functions correctly.
+
+Director must be able to
+
+View full high-level dashboards
+
+View sales
+
+View expenses
+
+View remittance due
+
+View profit or loss
+
+See countrywide summaries
+
+Do not place stock management operational workflow here, only reporting visibility if appropriate.
+
+16. MIS PORTAL
+
+Ensure MIS portal opens and functions correctly.
+
+MIS must:
+
+Receive every sales receipt from each branch immediately after receipt generation.
+
+View and print receipts:
+
+separately
+
+combined
+
+Search:
+
+products sold
+
+distributor who purchased
+
+receipts
+
+Preview receipts
+
+Identify winners of campaigns set by GM
+
+View stock per branch and country
+
+Ensure sales, stock, and finance data remain aligned
+
+17. STAFF SIGNUP / USER MANAGEMENT
+
+Add field for username on staff signup, separate from full name.
+
+Users must log in using username and password.
+
+New staff data must populate automatically into HR portal.
+
+Ensure admin approval flow for non-admin users where required.
+
+Role switching and role assignment by admin must work properly.
+
+Multi-role users must retain their selected role even after page refresh.
+
+18. HR, FINANCE, GM, DIRECTOR, MIS, ADMIN PORTALS NOT OPENING
+
+This must be fixed fully.The workflows already exist in code and must be activated.Do not leave them inaccessible while code exists behind the scenes.Restore proper routing, permissions, menu access, and page loading.
+
+19. PERFORMANCE / LOADING / UI
+
+Improve loading speed throughout the portal.
+
+Ensure product pictures load properly.
+
+Beautify and organize portals without losing data.
+
+Reorganize prescription platform in branch portal to be cleaner and functional.
+
+Keep current data.
+
+Remove static or broken elements.
+
+20. IMPORTANT BUSINESS RULES TO ENFORCE
+
+Member pricing = DP price
+
+Non-member pricing = referral logic applies
+
+If non-member has no referral, default referral is:Dynapharm Namibia – NB005676
+
+Member must select NB number and name from distributor list
+
+Distributor and referral NB must always come from saved distributor list where required
+
+BV and profit allocations must attach to the used NB correctly
+
+Branch-specific sales must trigger stock deduction and income update
+
+Online branch orders must behave like real sales once processed
+
+Receipts must reflect correct customer type logic
+
+Full body check-up and shop must both use the same customer type/referral/member pricing principles
+
+21. DO NOT LOSE OR REPLACE EXISTING CODE
+
+This is critical:
+
+Do not invent simplified replacements for workflows that already exist.
+
+Search the existing codebase thoroughly and restore exact missing sections.
+
+A lot of logic was lost during migration from HTML. Recover it from the project files wherever still available.
+
+Do not omit the distributor portal again.
+
+Do not omit the branch workflow again.
+
+Do not leave forms without required visible fields.
+
+Do not return placeholder interfaces.
+
+Do not charge for redoing missing work that already existed in code.
+
+22. FINAL DELIVERY EXPECTATION
+
+Replit must deliver a system where:
+
+All listed portals open
+
+All listed workflows are active
+
+All pricing rules work
+
+All branch logic works
+
+All distributor logic works
+
+All receipts generate properly
+
+All stock deductions happen properly
+
+All dashboards receive correct downstream data
+
+All uploads work
+
+All approval flows work
+
+All branch names are included everywhere needed
+
+Existing code is preserved and restored, not replaced with shallow rewrites
+
+All printed documentation should have compony logo and address of where the coming and who printed it and time .
+
+
+
+SHORT FINAL INSTRUCTION TO REPLIT
+
+Please retrieve and use the exact existing code first before changing anything. Most of the missing logic already existed and was lost during migration from HTML. Restore it faithfully, reconnect all workflows, and do not omit any portal, branch, pricing rule, referral rule, reporting flow, approval flow, or stock logic. Do not remove current data. Do not simplify. Complete the full Dynapharm Namibia business workflow exactly as instructed above. 
+
+I

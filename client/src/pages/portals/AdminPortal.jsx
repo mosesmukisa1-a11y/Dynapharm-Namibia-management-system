@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
-import { formatDateTime, BRANCHES } from '../../lib/constants';
+import { formatDateTime, formatCurrency, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
+import { enrichProductsWithPricing } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
-import { Settings, Users, Shield, Database, GitBranch, UserCheck, UserX, Plus, Trash2, Edit, Activity } from 'lucide-react';
+import { Settings, Users, Shield, Database, GitBranch, UserCheck, UserX, Plus, Trash2, Edit, Activity, Upload, Image, Key, Package, DollarSign, List } from 'lucide-react';
 
 export default function AdminPortal() {
   const [activeTab, setActiveTab] = useState('registrations');
   const tabs = [
     { id: 'registrations', label: 'Staff Approvals', icon: '✅' },
     { id: 'users', label: 'User Management', icon: '👥' },
+    { id: 'products', label: 'Products & Photos', icon: '📸' },
+    { id: 'distributors', label: 'Distributor List', icon: '📋' },
     { id: 'branches', label: 'Branches', icon: '🏬' },
     { id: 'system', label: 'System', icon: '⚙️' },
   ];
@@ -25,6 +28,8 @@ export default function AdminPortal() {
       <div className="mt-6">
         {activeTab === 'registrations' && <RegistrationsTab />}
         {activeTab === 'users' && <UsersTab />}
+        {activeTab === 'products' && <ProductsTab />}
+        {activeTab === 'distributors' && <DistributorsTab />}
         {activeTab === 'branches' && <BranchesTab />}
         {activeTab === 'system' && <SystemTab />}
       </div>
@@ -89,7 +94,7 @@ function RegistrationsTab() {
               <div key={user.id} className="p-4 flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-gray-800">{user.full_name}</p>
-                  <p className="text-sm text-gray-500">Role: <Badge variant="info">{user.role}</Badge></p>
+                  <p className="text-sm text-gray-500">Username: <strong>{user.username || '-'}</strong> | Role: <Badge variant="info">{user.role}</Badge></p>
                   <p className="text-xs text-gray-400">{formatDateTime(user.created_at)}</p>
                 </div>
                 <div className="flex gap-2">
@@ -114,6 +119,8 @@ function UsersTab() {
   const [loading, setLoading] = useState(true);
   const [editUser, setEditUser] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [resetPwUser, setResetPwUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '' });
@@ -155,6 +162,21 @@ function UsersTab() {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      setMessage('Error: Password must be at least 6 characters');
+      return;
+    }
+    try {
+      await api.users.update(resetPwUser.id, { password: newPassword });
+      setMessage(`Password reset successfully for ${resetPwUser.full_name}`);
+      setResetPwUser(null);
+      setNewPassword('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   const roles = [...new Set(users.map(u => u.role).filter(Boolean))];
@@ -184,11 +206,11 @@ function UsersTab() {
             { header: 'Role', render: r => <Badge variant="info">{r.role}</Badge> },
             { header: 'Branch', render: r => r.branch || '-' },
             { header: 'Status', render: r => <Badge variant={r.is_active !== false ? 'success' : 'danger'}>{r.is_active !== false ? 'Active' : 'Inactive'}</Badge> },
-            { header: 'Created', render: r => formatDateTime(r.created_at) },
             { header: 'Actions', render: r => (
               <div className="flex gap-1">
-                <Button size="sm" variant="secondary" onClick={() => handleEdit(r)}><Edit size={14} /></Button>
-                <Button size="sm" variant="danger" onClick={() => setDeleteConfirm(r)}><Trash2 size={14} /></Button>
+                <Button size="sm" variant="secondary" onClick={() => handleEdit(r)} title="Edit"><Edit size={14} /></Button>
+                <Button size="sm" variant="secondary" onClick={() => { setResetPwUser(r); setNewPassword(''); }} title="Reset Password"><Key size={14} /></Button>
+                <Button size="sm" variant="danger" onClick={() => setDeleteConfirm(r)} title="Delete"><Trash2 size={14} /></Button>
               </div>
             )},
           ]}
@@ -199,12 +221,12 @@ function UsersTab() {
 
       <Modal open={!!editUser} onClose={() => setEditUser(null)} title="Edit User">
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">Editing: <strong>{editUser?.full_name}</strong></p>
+          <p className="text-sm text-gray-500">Editing: <strong>{editUser?.full_name}</strong> ({editUser?.username})</p>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Role</label>
             <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              {['admin', 'branch', 'frontdesk', 'consultant', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'distributor'].map(r => (
+              {['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'training', 'distributor'].map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
@@ -232,6 +254,17 @@ function UsersTab() {
         </div>
       </Modal>
 
+      <Modal open={!!resetPwUser} onClose={() => setResetPwUser(null)} title="Reset Password">
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600">Resetting password for: <strong>{resetPwUser?.full_name}</strong> ({resetPwUser?.username})</p>
+          <Input label="New Password *" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password (min 6 chars)" />
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => setResetPwUser(null)}>Cancel</Button>
+            <Button onClick={handleResetPassword}><Key size={14} /> Reset Password</Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Confirm Delete">
         <div className="p-6">
           <p className="text-sm text-gray-600 mb-4">
@@ -245,6 +278,207 @@ function UsersTab() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function ProductsTab() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
+  const fileInputRef = useRef(null);
+
+  const loadProducts = () => {
+    setLoading(true);
+    api.products.list()
+      .then(data => {
+        const raw = Array.isArray(data) ? data : data.products || [];
+        setProducts(enrichProductsWithPricing(raw));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(loadProducts, []);
+
+  const handlePhotoUpload = async (product, file) => {
+    if (!file) return;
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imageData = e.target.result;
+        try {
+          await api.products.update(product.id, {
+            images: [{ image_data: imageData }],
+          });
+          setMessage(`Photo uploaded for ${product.name || product.description}`);
+          loadProducts();
+        } catch (err) {
+          setMessage('Error: ' + err.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const filtered = products.filter(p =>
+    !search || (p.name || p.description || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1">
+          <Package size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+        </div>
+        <Badge variant="info">{products.length} products</Badge>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filtered.map(product => {
+          const imgSrc = (product.images && product.images.length > 0) ? (product.images[0].image_data || product.images[0].image_url || '') : '';
+          return (
+            <Card key={product.id} className="overflow-hidden">
+              {imgSrc ? (
+                <img src={imgSrc} alt={product.name} className="w-full h-36 object-contain bg-gray-50" onError={e => { e.target.style.display = 'none'; }} />
+              ) : (
+                <div className="w-full h-36 bg-gray-50 flex items-center justify-center text-gray-300">
+                  <Image size={32} />
+                  <span className="ml-2 text-sm">No Photo</span>
+                </div>
+              )}
+              <CardBody>
+                <h3 className="font-semibold text-gray-900 text-sm mb-1">{product.name || product.description}</h3>
+                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                  <span>DP: {formatCurrency(product.dp)}</span>
+                  <span>CP: {formatCurrency(product.cp)}</span>
+                  <span>BV: {product.bv}</span>
+                </div>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-primary/10 text-primary rounded-lg cursor-pointer hover:bg-primary/20 transition-colors">
+                    <Upload size={14} /> Upload Photo
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => e.target.files?.[0] && handlePhotoUpload(product, e.target.files[0])} />
+                  </label>
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DistributorsTab() {
+  const [distributors, setDistributors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ distributor_code: '', distributor_name: '', branch: '', mobile_no: '', email: '' });
+
+  const loadDistributors = () => {
+    setLoading(true);
+    api.distributors.list()
+      .then(d => setDistributors(Array.isArray(d) ? d : d.distributors || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(loadDistributors, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.distributor_code || !form.distributor_name) {
+      setMessage('Error: NB Number and Name are required');
+      return;
+    }
+    try {
+      await api.distributors.create(form);
+      setMessage('Distributor added successfully!');
+      setForm({ distributor_code: '', distributor_name: '', branch: '', mobile_no: '', email: '' });
+      setShowForm(false);
+      loadDistributors();
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const filtered = distributors.filter(d =>
+    !search ||
+    (d.distributor_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (d.distributor_code || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1">
+          <List size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by NB number or name..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+        </div>
+        <Badge variant="info">{distributors.length} distributors</Badge>
+        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Cancel' : <><Plus size={14} /> Add Distributor</>}
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="mb-4">
+          <CardBody>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="NB Number / Code *" value={form.distributor_code} onChange={e => setForm({ ...form, distributor_code: e.target.value })} placeholder="e.g. NB005676" />
+                <Input label="Distributor Name *" value={form.distributor_name} onChange={e => setForm({ ...form, distributor_name: e.target.value })} placeholder="Full name" />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Branch</label>
+                  <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                    <option value="">Select Branch</option>
+                    {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                <Input label="Phone" value={form.mobile_no} onChange={e => setForm({ ...form, mobile_no: e.target.value })} placeholder="+264 81..." />
+                <Input label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
+              </div>
+              <Button type="submit">Add Distributor</Button>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'NB Number', key: 'distributor_code' },
+            { header: 'Name', key: 'distributor_name' },
+            { header: 'Branch', render: r => r.branch || '-' },
+            { header: 'Phone', render: r => r.mobile_no || '-' },
+            { header: 'Email', render: r => r.email || '-' },
+            { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'warning'}>{r.status || 'active'}</Badge> },
+          ]}
+          data={filtered}
+          emptyMessage="No distributors found"
+        />
+      </Card>
     </div>
   );
 }
@@ -289,8 +523,23 @@ function BranchesTab() {
     <div className="space-y-4">
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'}>{message}</Alert>}
 
+      <Card className="mb-4">
+        <CardHeader><h3 className="font-bold text-gray-800">Official Dynapharm Outlets</h3></CardHeader>
+        <CardBody>
+          <div className="grid md:grid-cols-3 gap-3">
+            {BRANCH_DETAILS.map((bd, i) => (
+              <div key={i} className="p-3 bg-gray-50 rounded-lg text-sm">
+                <p className="font-bold text-gray-800">{bd.name}</p>
+                <p className="text-xs text-gray-500">{bd.address}</p>
+                <p className="text-xs text-primary mt-1">{bd.phone}</p>
+              </div>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-gray-800">Branch Configuration</h3>
+        <h3 className="font-bold text-gray-800">Database Branches</h3>
         <Button size="sm" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : <><Plus size={14} /> Add Branch</>}
         </Button>
@@ -391,35 +640,6 @@ function SystemTab() {
             <div className="p-4 bg-gray-50 rounded-lg text-center">
               <p className="text-sm text-gray-500">Products</p>
               <p className="text-2xl font-bold text-gray-800">{stats.products}</p>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">System Settings</h3></CardHeader>
-        <CardBody>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Maintenance Mode</p>
-                <p className="text-xs text-gray-400">Disable public access during maintenance</p>
-              </div>
-              <Badge variant="success">Off</Badge>
-            </div>
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Auto Backups</p>
-                <p className="text-xs text-gray-400">Automatic database backups</p>
-              </div>
-              <Badge variant="success">Enabled</Badge>
-            </div>
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="text-sm font-medium text-gray-700">API Rate Limiting</p>
-                <p className="text-xs text-gray-400">Protect against abuse</p>
-              </div>
-              <Badge variant="success">Active</Badge>
             </div>
           </div>
         </CardBody>

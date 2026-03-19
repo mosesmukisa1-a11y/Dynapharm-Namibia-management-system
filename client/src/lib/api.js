@@ -40,10 +40,10 @@ export const api = {
 
   products: {
     list: () => api.get('/products'),
-    get: (id) => api.get(`/products/${id}`),
+    get: (id) => api.get(`/products?id=${encodeURIComponent(id)}`),
     create: (data) => api.post('/products', data),
-    update: (id, data) => api.put(`/products/${id}`, data),
-    delete: (id) => api.delete(`/products/${id}`),
+    update: (id, data) => api.put('/products', { ...data, id }),
+    delete: (id) => request(`/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 
   branches: {
@@ -87,8 +87,8 @@ export const api = {
   users: {
     list: () => api.get('/users'),
     create: (data) => api.post('/users', data),
-    update: (id, data) => api.put(`/users/${id}`, data),
-    delete: (id) => api.delete(`/users/${id}`),
+    update: (id, data) => api.put('/users', { ...data, id }),
+    delete: (id) => request(`/users?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 
   notifications: {

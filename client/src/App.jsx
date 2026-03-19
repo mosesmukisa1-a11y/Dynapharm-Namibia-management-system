@@ -15,6 +15,7 @@ import DirectorPortal from './pages/portals/DirectorPortal';
 import MISPortal from './pages/portals/MISPortal';
 import StockPortal from './pages/portals/StockPortal';
 import AdminPortal from './pages/portals/AdminPortal';
+import TrainingPortal from './pages/portals/TrainingPortal';
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/mis" element={<ProtectedRoute portalId="mis"><MISPortal /></ProtectedRoute>} />
         <Route path="/stock" element={<ProtectedRoute portalId="stock"><StockPortal /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute portalId="admin"><AdminPortal /></ProtectedRoute>} />
+        <Route path="/training" element={<ProtectedRoute portalId="training"><TrainingPortal /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

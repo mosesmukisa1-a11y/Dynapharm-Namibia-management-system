@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 const AuthContext = createContext(null);
 
 const ROLE_PORTAL_ACCESS = {
-  admin: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'admin'],
+  admin: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'admin', 'training'],
   frontdesk: ['distributor', 'frontdesk'],
   consultant: ['consultant'],
   dispenser: ['distributor', 'frontdesk', 'branch'],
@@ -15,6 +15,7 @@ const ROLE_PORTAL_ACCESS = {
   director: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director'],
   mis: ['mis'],
   stock: ['stock'],
+  training: ['training', 'distributor'],
 };
 
 export function AuthProvider({ children }) {

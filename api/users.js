@@ -242,6 +242,15 @@ async function handleDelete(req, res) {
   return res.status(200).json({ success: true });
 }
 
+function requireAdmin(req, res) {
+  const role = (req.user?.role || '').toLowerCase();
+  if (role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required' });
+    return false;
+  }
+  return true;
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -251,18 +260,22 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      if (!requireAdmin(req, res)) return;
       return await handleGet(req, res);
     }
 
     if (req.method === 'POST') {
+      if (!requireAdmin(req, res)) return;
       return await handlePost(req, res);
     }
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
+      if (!requireAdmin(req, res)) return;
       return await handlePut(req, res);
     }
 
     if (req.method === 'DELETE') {
+      if (!requireAdmin(req, res)) return;
       return await handleDelete(req, res);
     }
 

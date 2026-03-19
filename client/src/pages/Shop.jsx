@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { formatCurrency, BRANCHES } from '../lib/constants';
+import { formatCurrency, BRANCHES, COMPANY_INFO, DELIVERY_FEE_RULES } from '../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../lib/pricing';
 import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert, Select } from '../components/ui';
 import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store } from 'lucide-react';
 
-const DEFAULT_REFERRAL_NAME = 'Dynapharm Namibia';
-const DEFAULT_REFERRAL_NB = 'NB005676';
+const DEFAULT_REFERRAL_NAME = COMPANY_INFO.defaultReferralName;
+const DEFAULT_REFERRAL_NB = COMPANY_INFO.defaultReferralNB;
 
 export default function Shop() {
   const [products, setProducts] = useState([]);
@@ -319,7 +319,7 @@ export default function Shop() {
                 <div className="p-4 flex-1">
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="font-semibold text-gray-900 text-sm leading-tight">{product.name || product.description}</h3>
-                    {product.bv > 0 && <Badge variant="info">{product.bv} BV</Badge>}
+                    {isMember && product.bv > 0 && <Badge variant="info">{product.bv} BV</Badge>}
                   </div>
                   {product.category && <Badge variant="default" className="mb-2">{product.category}</Badge>}
                   <div className="flex items-center justify-between mt-2">
@@ -357,7 +357,7 @@ export default function Shop() {
                       <th className="px-3 py-2">Product</th>
                       <th className="px-3 py-2 text-center">Qty</th>
                       <th className="px-3 py-2 text-right">Price</th>
-                      <th className="px-3 py-2 text-right">BV</th>
+                      {isMember && <th className="px-3 py-2 text-right">BV</th>}
                       <th className="px-3 py-2 text-right">Total</th>
                     </tr>
                   </thead>
@@ -373,7 +373,7 @@ export default function Shop() {
                           </div>
                         </td>
                         <td className="px-3 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
-                        <td className="px-3 py-2 text-right text-blue-600">{item.lineBV.toFixed(1)}</td>
+                        {isMember && <td className="px-3 py-2 text-right text-blue-600">{item.lineBV.toFixed(1)}</td>}
                         <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.lineTotal)}</td>
                       </tr>
                     ))}
@@ -386,10 +386,12 @@ export default function Shop() {
                   <span className="font-semibold text-gray-700">Subtotal</span>
                   <span className="font-bold text-lg text-primary">{formatCurrency(totalAmount)}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm text-blue-600">
-                  <span>Total BV</span>
-                  <span className="font-semibold">{totalBV.toFixed(1)} BV</span>
-                </div>
+                {isMember && (
+                  <div className="flex justify-between items-center text-sm text-blue-600">
+                    <span>Total BV</span>
+                    <span className="font-semibold">{totalBV.toFixed(1)} BV</span>
+                  </div>
+                )}
                 {isMember && selectedDistributor && (
                   <div className="flex justify-between items-center text-sm text-gray-500 mt-1">
                     <span>NB Number</span>
@@ -497,9 +499,11 @@ export default function Shop() {
             <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
               <span>Total:</span><span className="text-primary">{formatCurrency(totalAmount)}</span>
             </div>
-            <div className="flex justify-between text-blue-600 text-sm">
-              <span>Total BV:</span><span>{totalBV.toFixed(1)}</span>
-            </div>
+            {isMember && (
+              <div className="flex justify-between text-blue-600 text-sm">
+                <span>Total BV:</span><span>{totalBV.toFixed(1)}</span>
+              </div>
+            )}
           </div>
           <Button className="w-full" onClick={handleCheckout} disabled={!checkoutForm.name || !checkoutForm.phone}>
             Place Order — {formatCurrency(totalAmount)}

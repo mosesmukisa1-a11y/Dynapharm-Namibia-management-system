@@ -78,21 +78,29 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - `calculateCartTotals(cart, isMember)` — Cart calculation with DP/CP switching + BV tracking
 - `generateReceiptNumber()` — Receipt number generation (RCP-YYYYMMDD-HHMM-XXXX)
 
-## Portals (11 total, all with full business logic)
-1. **Distributor** — Shop with DP pricing + BV tracking, checkout flow, Full Body Check Up, Media/News feed, Testimonials
-2. **Front Desk** — Orders management (Pending/Processing/Shipped/Delivered/All status workflow), Appointment scheduling (create/complete/cancel), Full Body Checkup (form link + recent checkups), Client Registration with ID validation, Payment recording, Client Lookup, Delivery scheduling, Visitor Management (log/sign-in/sign-out/badges), CRM interaction logs, Notifications, Staff Communication (announcements + messages), Staff Services (leave/cash requests)
-3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Report detail views, Follow-up tracking (overdue/upcoming), Analytics stats, Leave requests
-4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation, recent sales), Prescriptions (dispense workflow), Branch Stock view, Banking (deposit submission with validation), Payments, Online Orders (status workflow: Processing→Shipped→Delivered), Bonus payouts, Communication/Announcements, Staff listing, Distributor Registration (new/transfer/renewal), Field Program scheduling
-5. **HR** — Employee directory (add/edit), Leave management (applications, approve/reject, types: Annual/Sick/Personal/Maternity), Warnings (Verbal/Written/Final), Terminations with confirmation, Attendance logging, Performance reviews (1-5 rating), Staff announcements, Data collection/export, Personal leave requests
-6. **Finance** — Dashboard with branch selector + gradient KPI cards (Total Sales with Cash/Card breakdown, Deposits, BV Points, Gross Margin), comparison periods, Deposit verification (individual + batch verify with slip reference + bank match), Bonus workflow (CSV upload, review, approve/reject, export), Expenses tracking (form + categorized list), Staff Communication, Staff Services
-7. **GM** — Enhanced dashboard with 4 gradient KPI cards (Revenue, CIF Deposits, BV Points, Gross Margin), Approval center with sub-tabs (All/Cash/Leave/Stock/Other requests), Campaign creation (dates, branches, discounts), Bonus History (date range filter, CSV export), Staff Communication (priority + target audience), Executive services
-8. **Director** — Enhanced KPI dashboard (revenue, monthly, branches, distributors), Revenue trends, Branch performance comparison, Executive services
-9. **MIS** — Audit trail, Reconciliation (date range + branch with discrepancy highlighting), Branch Status, Encoded Sales (manual entry from PRICE_LIST), Receipt search, Cross-branch stock levels with low-stock alerts, Product Catalog (full PRICE_LIST with DP/CP/BV/margins), Report drafts
-10. **Stock** — Overview stats, Country Stock (import with batch/expiry), Windhoek/Ondangwa Warehouses (transfer in), Distribution (warehouse→branch), Transfer tracking (pending→dispatched→in_transit→delivered with action buttons), Inventory movements (filtered), Stock orders/requests (urgency levels), Inter-branch sharing rules, Country Inventory aggregate with CSV export, Invoices (PO creation + tracking), Valuation (stock value by location with PRICE_LIST), Barcode (product lookup with code generation), Reorder Alerts (configurable thresholds, Critical/Low/OK status), Batch Tracking (batch numbers, expiry alerts), Realtime (auto-refresh stock dashboard)
-11. **Admin** — Staff Approvals (approve/reject), User Management (edit role/status/branch, delete with confirmation, role filter), Branch configuration (create new), System health + DB stats
+## Official Branches (15 outlets)
+Windhoek CBD, Tsumeb, Gobabis, Swakopmund, Outapi, Okahao, Oshakati, Otjiwarongo, Eenhana, Ondangwa, Rundu, Walvis Bay, Hochlandpark, Khomasdal, Katima Mulilo
+- Full details (addresses + phone) in `BRANCH_DETAILS` constant
+- `WINDHOEK_BRANCHES` = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal']
+- `DELIVERY_FEE_RULES`: Windhoek = free, outside = N$150
+- `COMPANY_INFO`: Company name, logo, social media links, default referral
+
+## Portals (12 total, all with full business logic)
+1. **Distributor** — Dashboard (profile, order stats, BV, quick actions), Shop with DP pricing + BV tracking, Full Body Check Up, Media/News, Testimonials
+2. **Front Desk** — Orders (5 status sub-tabs), Appointments, Full Body Checkup, Client Registration, Payments, Client Lookup, Delivery, Visitors, CRM, Notifications, Staff Communication, Staff Services
+3. **Consultant** — Checkup review with report creation (diagnosis, prescriptions from PRICE_LIST, recommendations, follow-ups), Client management, Reports, Follow-ups, Analytics, Staff Services
+4. **Branch** — Walk-in Sales POS (member/non-member pricing, distributor search, cart with DP/CP/BV, payment methods, receipt generation), Prescriptions, Stock, Banking, Payments, Online Orders, Bonus, Communication, Staff, Distributor Reg, Field Program
+5. **HR** — Employees, Leave management, Warnings, Terminations, Attendance, Performance, Communication, Data Collection, Staff Services
+6. **Finance** — Dashboard (gradient KPIs, branch selector), Deposits, Bonus Workflow, Expenses, Communication, Staff Services
+7. **GM** — Dashboard (4 KPIs), Approvals (sub-tabs), Campaigns, Bonus History, Communication, Staff Services
+8. **Director** — Executive Dashboard, Staff Services
+9. **MIS** — Audit, Reconcile, Branch Status, Encoded Sales, Receipts, Stock, Catalogs, Drafts
+10. **Stock** — Overview, Country Stock, Windhoek/Ondangwa Warehouses, Distribution, Transfers, Inventory, Orders, Sharing, Country Inv, Invoices, Valuation, Barcode, Reorder, Batch, Realtime
+11. **Admin** — Staff Approvals, User Management (+ password reset), Products & Photos (upload images), Distributor List (add/search), Branches, System
+12. **Training** — Training Materials, Videos, Photos, Upload Content (trainers only), Schedule
 
 ## Role → Portal Access
-- admin: all portals
+- admin: all portals (including training)
 - frontdesk: distributor, frontdesk
 - consultant: consultant
 - dispenser: distributor, frontdesk, branch
@@ -100,9 +108,10 @@ Cloud-based health management system for Dynapharm International Namibia. React 
 - hr_manager: hr
 - finance: finance
 - gm: distributor, frontdesk, consultant, branch, hr, finance, gm
-- director: all except admin, mis, stock
+- director: distributor, frontdesk, consultant, branch, hr, finance, gm, director
 - mis: mis
 - stock: stock
+- training: training, distributor
 
 ## Database
 - **40 tables** fully migrated: products, branches, online_orders, stock_batches, stock_transfers, branch_walkin_sales, branch_inventory_batches, warehouse_locations, towns, delivery_distances, users, distributors, clients, appointments, employees, and more
