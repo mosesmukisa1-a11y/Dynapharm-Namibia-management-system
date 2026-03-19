@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle } from 'lucide-react';
 
 export default function StockPortal() {
   const { user } = useAuth();
@@ -477,22 +477,50 @@ function CountryStockTab() {
 
 function WarehouseTab({ name }) {
   const [batches, setBatches] = useState([]);
+  const [incomingTransfers, setIncomingTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showTransfer, setShowTransfer] = useState(false);
   const [form, setForm] = useState({ product_name: '', quantity: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [receivingId, setReceivingId] = useState(null);
   const [alert, setAlert] = useState(null);
   const location = name.toLowerCase() + '_warehouse';
 
-  const loadBatches = useCallback(() => {
+  const loadData = useCallback(() => {
     setLoading(true);
-    api.stock.batches()
-      .then(d => setBatches((Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)))
+    Promise.all([
+      api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)),
+      api.stock.transfers(`to_branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
+    ])
+      .then(([batchData, transferData]) => {
+        setBatches(batchData);
+        setIncomingTransfers(transferData.filter(t => t.status !== 'cancelled'));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [location]);
 
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleMarkReceived = async (transfer) => {
+    setReceivingId(transfer.id);
+    try {
+      await api.stock.createBatch({
+        product_name: transfer.product_name,
+        quantity: transfer.quantity,
+        location,
+        batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
+        notes: `Received from transfer ${transfer.id}`,
+      });
+      await api.stock.updateTransfer(transfer.id, { status: 'received' });
+      setAlert({ type: 'success', msg: `${transfer.product_name} (qty ${transfer.quantity}) received into ${name} warehouse` });
+      loadData();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to receive transfer' });
+    } finally {
+      setReceivingId(null);
+    }
+  };
 
   const handleTransferIn = async (e) => {
     e.preventDefault();
@@ -511,7 +539,7 @@ function WarehouseTab({ name }) {
       setAlert({ type: 'success', msg: `Transfer to ${name} warehouse initiated` });
       setForm({ product_name: '', quantity: '' });
       setShowTransfer(false);
-      loadBatches();
+      loadData();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally {
@@ -519,33 +547,69 @@ function WarehouseTab({ name }) {
     }
   };
 
+  const statusColor = { pending: 'warning', dispatched: 'info', received: 'success', cancelled: 'default' };
+
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div>
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+    <div className="space-y-6">
+      {alert && <Alert type={alert.type} className="mb-2" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">{name} Warehouse Inventory</h3>
-            <Button size="sm" onClick={() => setShowTransfer(true)}><Plus size={16} /> Transfer In</Button>
+            <h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3>
+            <Button size="sm" onClick={() => setShowTransfer(true)}><Plus size={16} className="mr-1" /> Request Transfer In</Button>
           </div>
         </CardHeader>
         <Table
           columns={[
             { header: 'Product', key: 'product_name' },
-            { header: 'Batch', key: 'batch_number' },
-            { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : ''}>{r.quantity}</span> },
-            { header: 'Expiry', render: r => formatDateTime(r.expiry_date) },
+            { header: 'Batch Ref', key: 'batch_number' },
+            { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
+            { header: 'Expiry', render: r => r.expiry_date ? formatDateTime(r.expiry_date) : '—' },
           ]}
           data={batches}
-          emptyMessage={`No stock in ${name} warehouse`}
+          emptyMessage={`No confirmed stock in ${name} warehouse yet`}
         />
       </Card>
 
-      <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={`Transfer Stock to ${name} Warehouse`} size="md">
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800">{name} Warehouse — Incoming Transfers</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Stock transferred to this warehouse. Click "Mark Received" to add it to inventory.</p>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Product', render: r => <span className="font-medium">{r.product_name}</span> },
+            { header: 'Qty', render: r => <span className="font-semibold text-primary">{r.quantity}</span> },
+            { header: 'From', render: r => <span className="text-xs text-gray-600">{(r.from_location || r.fromWarehouse || '—').replace(/_/g, ' ')}</span> },
+            { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status}</Badge> },
+            { header: 'Date', render: r => formatDate(r.created_at || r.createdAt) },
+            {
+              header: 'Action',
+              render: r => r.status === 'received' ? (
+                <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Received</span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="success"
+                  onClick={() => handleMarkReceived(r)}
+                  disabled={receivingId === r.id}
+                >
+                  {receivingId === r.id ? 'Receiving...' : 'Mark Received'}
+                </Button>
+              ),
+            },
+          ]}
+          data={incomingTransfers}
+          emptyMessage={`No incoming transfers for ${name} warehouse`}
+        />
+      </Card>
+
+      <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={`Request Stock Transfer to ${name} Warehouse`} size="md">
         <form onSubmit={handleTransferIn} className="p-6 space-y-4">
-          <Alert type="info">Transfer from Country Stock to {name} Warehouse</Alert>
+          <Alert type="info">This will create a transfer request from Country Stock to {name} Warehouse.</Alert>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Product</label>
             <select
@@ -562,7 +626,7 @@ function WarehouseTab({ name }) {
           </div>
           <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Transferring...' : 'Initiate Transfer'}</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Requesting...' : 'Initiate Transfer'}</Button>
             <Button variant="secondary" type="button" onClick={() => setShowTransfer(false)}>Cancel</Button>
           </div>
         </form>
