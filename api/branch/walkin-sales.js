@@ -118,10 +118,7 @@ function buildSaleRecord(payload, existing = {}) {
   }
 
   const id = payload.id || existing.id || generateSaleId();
-  const branchId = payload.branch || payload.branchId || existing.branch_id;
-  if (!branchId) {
-    throw new Error('branchId is required');
-  }
+  const branchId = payload.branch || payload.branchId || payload.branch_id || existing.branch_id || 'main';
 
   const saleDate =
     parseDate(payload.timestamp || payload.saleDate) ||

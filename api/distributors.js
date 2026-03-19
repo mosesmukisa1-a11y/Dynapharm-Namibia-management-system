@@ -264,8 +264,8 @@ export default async function handler(req, res) {
         const record = {
           id: idValue,
           distributor_code: resolveCode(payload, idValue),
-          distributor_name: payload.distributor_name || payload.name,
-          mobile_no: payload.mobile_no || payload.mobile || null,
+          distributor_name: payload.distributor_name || payload.full_name || payload.name || 'Unknown',
+          mobile_no: payload.mobile_no || payload.mobile || payload.phone || null,
           email: payload.email || null,
           commission_rate: payload.commission_rate || 0,
           status: payload.status || 'active',

@@ -173,7 +173,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { id } = req.query;
+      const id = req.query.id || req.body?.id;
       if (!id) {
         return res.status(400).json({ error: 'Order ID is required' });
       }
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
         payment_method,
         delivery_address,
         notes,
-      } = req.body;
+      } = req.body || {};
 
       const updates = {};
       if (status) updates.status = status;
