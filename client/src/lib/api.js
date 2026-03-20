@@ -44,6 +44,8 @@ export const api = {
     create: (data) => api.post('/products', data),
     update: (id, data) => api.put('/products', { ...data, id }),
     delete: (id) => request(`/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    uploadImage: (data) => api.post('/products', { action: 'uploadImage', ...data }),
+    deleteImage: (imageId) => request(`/products?id=${encodeURIComponent(imageId)}&type=image`, { method: 'DELETE' }),
   },
 
   branches: {

@@ -403,8 +403,17 @@ function ProductsTab() {
       reader.onload = async (e) => {
         const imageData = e.target.result;
         try {
-          await api.products.update(product.id, {
-            images: [{ image_data: imageData }],
+          if (product.images && product.images.length > 0) {
+            await Promise.all(product.images.map(img => api.products.deleteImage(img.id)));
+          }
+          await api.products.uploadImage({
+            productId: product.id,
+            productName: product.name || product.description,
+            imageData,
+            imageType: file.type.replace('image/', '') || 'jpg',
+            fileSize: file.size,
+            isPrimary: true,
+            displayOrder: 0,
           });
           setMessage(`Photo uploaded for ${product.name || product.description}`);
           loadProducts();
