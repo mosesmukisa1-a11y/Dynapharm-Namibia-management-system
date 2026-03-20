@@ -689,6 +689,8 @@ function PrescriptionsTab() {
   const [rxFromDate, setRxFromDate] = useState('');
   const [rxToDate, setRxToDate] = useState('');
   const [rxGroupTab, setRxGroupTab] = useState('all');
+  const [consultFeeMode, setConsultFeeMode] = useState({});
+  const [consultFeePaid, setConsultFeePaid] = useState({});
 
   useEffect(() => {
     api.reports.list()
@@ -698,6 +700,11 @@ function PrescriptionsTab() {
   }, []);
 
   if (loading) return <LoadingSpinner />;
+
+  const getConsultMode = (reportId) => consultFeeMode[reportId] || 'separate';
+  const setConsultMode = (reportId, mode) => setConsultFeeMode(prev => ({ ...prev, [reportId]: mode }));
+  const isConsultPaid = (reportId) => !!consultFeePaid[reportId];
+  const toggleConsultPaid = (reportId) => setConsultFeePaid(prev => ({ ...prev, [reportId]: !prev[reportId] }));
 
   const clearRxFilters = () => {
     setRxSearch(''); setRxBranchFilter(''); setRxStatusFilter('all'); setRxFromDate(''); setRxToDate(''); setRxGroupTab('all');
@@ -747,20 +754,173 @@ function PrescriptionsTab() {
     return { dp: 0, cp: 0, bv: 0, isPackage: false };
   };
 
-  const printPrescription = (report) => {
+  const printPrescriptionPDF = (report, consultMode) => {
     const meds = getMedicines(report);
-    const w = window.open('', '_blank', 'width=800,height=600');
-    w.document.write(`<html><head><title>Prescription - ${report.client_name || ''}</title><style>body{font-family:Arial;padding:20px}h2{color:#c41e3a;text-align:center}.med{padding:6px 12px;border-bottom:1px solid #eee}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #ddd}th{background:#f8f9fa}</style></head><body>`);
-    w.document.write(`<h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2><h3 style="text-align:center">Prescription</h3>`);
-    w.document.write(`<p><strong>Patient:</strong> ${report.client_name || ''} | <strong>Report:</strong> ${report.id} | <strong>Date:</strong> ${new Date(report.created_at || report.date || Date.now()).toLocaleDateString()}</p>`);
-    w.document.write(`<table><tr><th>Medicine</th><th>Status</th><th>Price</th></tr>`);
-    meds.forEach(m => {
-      const price = getEffectivePrice(m.name);
-      w.document.write(`<tr><td>${m.name}</td><td>${m.dispensed ? 'Dispensed' : 'Pending'}</td><td>N$${price.cp}</td></tr>`);
-    });
-    w.document.write(`</table></body></html>`);
+    const membershipStatus = report.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
+    const consultFee = getConsultationFee(membershipStatus);
+    const totals = calculatePrescriptionTotals(meds, membershipStatus);
+    const isInclusive = consultMode === 'inclusive';
+    const medTotal = isMember ? totals.total.dp : totals.total.cp;
+    const grandTotal = medTotal + (isInclusive ? consultFee.total : 0);
+    const dateStr = new Date(report.created_at || report.date || Date.now()).toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
+    const branchInfo = BRANCH_DETAILS.find(b => b.name === (user?.branch || '')) || {};
+
+    const rows = meds.map(m => {
+      const p = getEffectivePrice(m.name);
+      return `<tr style="border-bottom:1px solid #eee;">
+        <td style="padding:8px 10px;">${m.name}${p.isPackage ? ' <span style="font-size:10px;background:#e8f5e9;color:#27ae60;padding:1px 5px;border-radius:3px;">Package</span>' : ''}</td>
+        <td style="padding:8px 10px;text-align:center;">${m.dispensed ? '<span style="color:#27ae60;">✅ Dispensed</span>' : '<span style="color:#e67e22;">⏳ Pending</span>'}</td>
+        ${isMember ? `<td style="padding:8px 10px;text-align:right;">N$ ${p.dp}</td><td style="padding:8px 10px;text-align:right;color:#e67e22;">${p.bv}</td>` : `<td style="padding:8px 10px;text-align:right;">N$ ${p.cp}</td>`}
+      </tr>`;
+    }).join('');
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html><html><head><title>Prescription Quote — ${report.client_name || report.id}</title>
+    <style>
+      @media print { body { margin:0; } @page { size:A4; margin:15mm; } .no-print{display:none;} }
+      * { box-sizing:border-box; }
+      body { font-family:Arial,sans-serif; font-size:12px; color:#333; margin:20px; }
+      .header { text-align:center; padding-bottom:16px; margin-bottom:20px; border-bottom:3px solid #c41e3a; }
+      .logo { height:55px; margin-bottom:6px; }
+      .co-name { color:#c41e3a; font-size:18px; font-weight:bold; margin:0; }
+      .co-tag { color:#888; font-size:11px; margin:2px 0; }
+      .rx-title { background:#c41e3a; color:white; font-size:14px; font-weight:bold; letter-spacing:2px; padding:5px 20px; border-radius:20px; display:inline-block; margin-top:8px; }
+      .patient-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px; }
+      .patient-grid .field { font-size:11px; color:#64748b; }
+      .patient-grid .value { font-weight:bold; color:#1e293b; font-size:12px; }
+      table { width:100%; border-collapse:collapse; margin-bottom:16px; }
+      thead tr { background:#1e3a5f; }
+      thead th { color:white; padding:9px 10px; text-align:left; font-size:11px; font-weight:600; letter-spacing:0.5px; }
+      tbody tr:nth-child(even) { background:#f8fafc; }
+      .consult-box { border:2px solid #f59e0b; border-radius:8px; padding:14px; background:#fffbeb; margin-bottom:16px; }
+      .consult-title { font-weight:bold; color:#92400e; font-size:13px; margin-bottom:6px; }
+      .consult-row { display:flex; justify-content:space-between; font-size:11px; color:#78350f; padding:2px 0; }
+      .summary-box { background:#0f172a; color:white; border-radius:8px; padding:16px 20px; margin-bottom:20px; }
+      .sum-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:rgba(255,255,255,0.8); }
+      .sum-row.total { font-size:15px; font-weight:bold; color:#4ade80; border-top:1px solid rgba(255,255,255,0.2); padding-top:8px; margin-top:4px; }
+      .sig { margin-top:40px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:30px; }
+      .sig-line { border-top:1px solid #aaa; padding-top:4px; font-size:10px; color:#666; text-align:center; }
+      .print-btn { background:#1e3a5f; color:white; border:none; padding:10px 24px; border-radius:8px; font-size:13px; cursor:pointer; margin-bottom:16px; }
+    </style></head><body>
+    <button class="no-print print-btn" onclick="window.print()">🖨️ Print PDF</button>
+    <div class="header">
+      <img class="logo" src="${COMPANY_INFO.logo}" onerror="this.style.display='none'" />
+      <div class="co-name">${COMPANY_INFO.name}</div>
+      <div class="co-tag">${COMPANY_INFO.tagline}</div>
+      ${branchInfo.name ? `<div style="font-size:11px;color:#555;margin-top:2px;">${branchInfo.name} Branch${branchInfo.address ? ' · ' + branchInfo.address : ''}</div>` : ''}
+      <div class="rx-title">PRESCRIPTION QUOTE</div>
+    </div>
+
+    <div class="patient-grid">
+      <div><div class="field">Patient Name</div><div class="value">${report.client_name || report.full_name || '—'}</div></div>
+      <div><div class="field">Prescription #</div><div class="value">${report.id}</div></div>
+      <div><div class="field">Membership</div><div class="value">${isMember ? '🏅 Member (DP Price)' : '👤 Non-Member (CP Price)'}</div></div>
+      <div><div class="field">Date</div><div class="value">${dateStr}</div></div>
+      <div><div class="field">Consultant</div><div class="value">${report.consultant || '—'}</div></div>
+      <div><div class="field">Branch</div><div class="value">${user?.branch || '—'}</div></div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th>Prescribed Item</th>
+        <th style="text-align:center;">Status</th>
+        <th style="text-align:right;">${isMember ? 'DP Price' : 'CP Price'}</th>
+        ${isMember ? '<th style="text-align:right;">BV</th>' : ''}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:#f1f5f9;font-weight:bold;">
+        <td colspan="2" style="padding:9px 10px;">Medicines Subtotal</td>
+        <td style="padding:9px 10px;text-align:right;">N$ ${medTotal}</td>
+        ${isMember ? `<td style="padding:9px 10px;text-align:right;color:#e67e22;">${totals.total.bv}</td>` : ''}
+      </tr></tfoot>
+    </table>
+
+    <div class="consult-box">
+      <div class="consult-title">💼 Consultation Fee — ${consultFee.label}</div>
+      <div class="consult-row"><span>Total Consultation Fee:</span><span style="font-weight:bold;font-size:14px;">N$ ${consultFee.total}</span></div>
+      <div class="consult-row" style="margin-top:4px;"><span>• Credited to Consultant:</span><span>N$ ${consultFee.consultantCredit}</span></div>
+      ${!isMember ? `<div class="consult-row"><span>• Credited to Referral Distributor:</span><span>N$ ${consultFee.referralCredit}</span></div>` : ''}
+      <div style="margin-top:8px;font-size:11px;color:#b45309;font-style:italic;">
+        ${isInclusive ? '✅ Consultation fee is included in the Grand Total below.' : '⚠️ Consultation fee is billed separately from medicine total.'}
+      </div>
+    </div>
+
+    <div class="summary-box">
+      <div class="sum-row"><span>Medicines Subtotal:</span><span>N$ ${medTotal}</span></div>
+      ${isMember ? `<div class="sum-row"><span>BV Earned:</span><span style="color:#fbbf24;">${totals.total.bv} BV</span></div>` : ''}
+      <div class="sum-row"><span>Consultation Fee (${isInclusive ? 'inclusive' : 'separate'}):</span><span>N$ ${consultFee.total}</span></div>
+      <div class="sum-row total"><span>GRAND TOTAL${isInclusive ? '' : ' (medicines only)'}:</span><span>N$ ${grandTotal}</span></div>
+    </div>
+
+    <div class="sig">
+      <div class="sig-line">Dispensed by: ___________________</div>
+      <div class="sig-line">Patient / Guardian Signature</div>
+      <div class="sig-line">Date: ___________________________</div>
+    </div>
+    <script>/* auto-print removed so user can review first */<\/script>
+    </body></html>`);
     w.document.close();
-    w.print();
+  };
+
+  const printPrescriptionReceipt = (report, consultMode, copyType) => {
+    const meds = getMedicines(report);
+    const membershipStatus = report.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
+    const consultFee = getConsultationFee(membershipStatus);
+    const totals = calculatePrescriptionTotals(meds, membershipStatus);
+    const isInclusive = consultMode === 'inclusive';
+    const medTotal = isMember ? totals.total.dp : totals.total.cp;
+
+    const items = meds.map(m => {
+      const p = getEffectivePrice(m.name);
+      const price = isMember ? p.dp : p.cp;
+      return { product_name: m.name, quantity: 1, unit_price: price, line_total: price, bv: p.bv, lineBV: p.bv };
+    });
+
+    if (isInclusive) {
+      items.push({ product_name: `Consultation Fee (${consultFee.label})`, quantity: 1, unit_price: consultFee.total, line_total: consultFee.total, bv: 0, lineBV: 0 });
+    }
+
+    const totalAmount = items.reduce((s, it) => s + it.line_total, 0);
+    const totalBV = totals.total.bv;
+
+    const commonParams = {
+      receiptNumber: report.id || ('RX-' + Date.now()),
+      branch: user?.branch || '',
+      items,
+      totalAmount,
+      totalBV,
+      paymentMethod: 'Prescription',
+      customerType: isMember ? 'member' : 'non_member',
+      customerName: report.client_name || report.full_name || 'Patient',
+      nbNumber: report.nb_number || null,
+      cashier: user?.full_name || user?.username || null,
+    };
+
+    if (isMember) {
+      printReceipt(generateReceiptHTML({ ...commonParams, showBV: true }));
+    } else {
+      if (copyType === 'customer' || copyType === 'both') {
+        printReceipt(generateReceiptHTML({ ...commonParams, showBV: false, copyType: 'customer' }));
+      }
+      if (copyType === 'staff' || copyType === 'both') {
+        const delay = copyType === 'both' ? 900 : 0;
+        setTimeout(() => {
+          const branchProfit = meds.reduce((s, m) => {
+            const p = getEffectivePrice(m.name);
+            return s + ((p.cp || 0) - (p.dp || 0));
+          }, 0);
+          printReceipt(generateReceiptHTML({
+            ...commonParams,
+            showBV: true,
+            copyType: 'staff',
+            branchProfit,
+            distributorBV: totalBV,
+          }));
+        }, delay);
+      }
+    }
   };
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -784,17 +944,9 @@ function PrescriptionsTab() {
     }
     if (rxFromDate) { const d = (r.created_at || r.date || '').slice(0, 10); if (d < rxFromDate) return false; }
     if (rxToDate) { const d = (r.created_at || r.date || '').slice(0, 10); if (d > rxToDate) return false; }
-    if (rxGroupTab === 'recent') {
-      const created = new Date(r.created_at || r.date || 0);
-      if (created < sevenDaysAgo) return false;
-    }
-    if (rxGroupTab === 'partial') {
-      const dispensed = meds.filter(m => m.dispensed).length;
-      if (dispensed === 0 || dispensed === meds.length) return false;
-    }
-    if (rxGroupTab === 'full') {
-      if (meds.length === 0 || !meds.every(m => m.dispensed)) return false;
-    }
+    if (rxGroupTab === 'recent') { if (new Date(r.created_at || r.date || 0) < sevenDaysAgo) return false; }
+    if (rxGroupTab === 'partial') { const d = meds.filter(m => m.dispensed).length; if (d === 0 || d === meds.length) return false; }
+    if (rxGroupTab === 'full') { if (!meds.every(m => m.dispensed)) return false; }
     return true;
   });
 
@@ -809,217 +961,265 @@ function PrescriptionsTab() {
 
   return (
     <div>
-      <div style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)', color: 'white', padding: '20px 24px', borderRadius: '12px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>💊 Prescription Dispensing</h3>
-          <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Search, filter and dispense client prescriptions</p>
+      <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)', boxShadow: '0 4px 20px rgba(15,23,42,0.25)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.12)' }}>💊</div>
+          <div>
+            <h3 className="text-xl font-bold m-0">Prescription Dispensing</h3>
+            <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>{user?.branch ? `${user.branch} Branch` : 'Branch'} · Dispense, track and quote</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>📊 Daily Statement</button>
-          <button onClick={refreshDispenserData} style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', cursor: 'pointer' }}>🔄 Refresh</button>
-        </div>
+        <button onClick={refreshDispenserData} className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl cursor-pointer" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>↻ Refresh</button>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <div className="flex gap-2 mb-4 flex-wrap">
         {[
-          { id: 'all', label: 'All Prescriptions', icon: '💊', color: '#1e40af', bg: '#eff6ff', border: '#93c5fd', activeBg: '#1e40af' },
-          { id: 'recent', label: 'Recent (7 days)', icon: '🕐', color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7', activeBg: '#059669' },
-          { id: 'partial', label: 'Partially Dispensed', icon: '⏳', color: '#92400e', bg: '#fffbeb', border: '#fcd34d', activeBg: '#d97706' },
-          { id: 'full', label: 'Fully Dispensed', icon: '✅', color: '#166534', bg: '#f0fdf4', border: '#86efac', activeBg: '#16a34a' },
+          { id: 'all', label: 'All', icon: '💊', activeBg: '#1e40af', border: '#93c5fd', bg: '#eff6ff', color: '#1e40af' },
+          { id: 'recent', label: 'Recent (7 days)', icon: '🕐', activeBg: '#059669', border: '#6ee7b7', bg: '#ecfdf5', color: '#065f46' },
+          { id: 'partial', label: 'Partially Dispensed', icon: '⏳', activeBg: '#d97706', border: '#fcd34d', bg: '#fffbeb', color: '#92400e' },
+          { id: 'full', label: 'Fully Dispensed', icon: '✅', activeBg: '#16a34a', border: '#86efac', bg: '#f0fdf4', color: '#166534' },
         ].map(tab => {
-          const count = groupCounts[tab.id];
           const isActive = rxGroupTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setRxGroupTab(tab.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', border: `2px solid ${isActive ? tab.activeBg : tab.border}`, borderRadius: 10, background: isActive ? tab.activeBg : tab.bg, color: isActive ? '#fff' : tab.color, cursor: 'pointer', fontWeight: isActive ? 700 : 500, fontSize: '0.85rem', transition: 'all .15s', boxShadow: isActive ? `0 3px 10px ${tab.activeBg}55` : 'none' }}>
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-              <span style={{ marginLeft: 2, padding: '1px 7px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, background: isActive ? 'rgba(255,255,255,0.25)' : tab.activeBg, color: isActive ? '#fff' : '#fff' }}>
-                {count}
-              </span>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: `2px solid ${isActive ? tab.activeBg : tab.border}`, borderRadius: 10, background: isActive ? tab.activeBg : tab.bg, color: isActive ? '#fff' : tab.color, cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', transition: 'all .15s', boxShadow: isActive ? `0 3px 10px ${tab.activeBg}55` : 'none' }}>
+              {tab.icon} {tab.label}
+              <span style={{ padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700, background: isActive ? 'rgba(255,255,255,0.25)' : tab.activeBg, color: '#fff' }}>{groupCounts[tab.id]}</span>
             </button>
           );
         })}
       </div>
 
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <input type="text" placeholder="Search by client name, report ID or consultant…" value={rxSearch} onChange={e => setRxSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') refreshDispenserData(); }} style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.95rem' }} />
-          <button onClick={refreshDispenserData} style={{ padding: '10px 18px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>🔍 Search</button>
-          <button onClick={() => { setRxSearch(''); setRxStatusFilter('all'); setRxGroupTab('all'); refreshDispenserData(); }} style={{ padding: '10px 18px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>💊 Show All</button>
+      <div className="rounded-xl p-4 mb-4" style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div className="flex gap-2 flex-wrap mb-3">
+          <input type="text" placeholder="Search by name, report ID or consultant…" value={rxSearch} onChange={e => setRxSearch(e.target.value)}
+            className="flex-1 text-sm rounded-lg px-3 py-2.5" style={{ minWidth: 200, border: '1.5px solid #e2e8f0' }} />
+          <button onClick={refreshDispenserData} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer border-none" style={{ background: '#16a34a' }}>🔍 Search</button>
+          <button onClick={clearRxFilters} className="px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer border-none" style={{ background: '#f1f5f9', color: '#64748b' }}>♻️ Clear</button>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', fontSize: '0.9rem' }}>
+        <div className="flex gap-2 flex-wrap items-center">
+          <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
             <option value="">All Branches</option>
             {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
-          <select value={rxStatusFilter} onChange={e => setRxStatusFilter(e.target.value)} style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', fontSize: '0.9rem' }}>
+          <select value={rxStatusFilter} onChange={e => setRxStatusFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
             <option value="all">All Status</option>
             <option value="pending">⏳ Pending</option>
             <option value="dispensed">✅ Dispensed</option>
             <option value="paid">💰 Paid</option>
             <option value="outstanding">⚠️ Outstanding</option>
           </select>
-          <input type="date" value={rxFromDate} onChange={e => setRxFromDate(e.target.value)} title="From date" style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem' }} />
-          <input type="date" value={rxToDate} onChange={e => setRxToDate(e.target.value)} title="To date" style={{ padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem' }} />
-          <button onClick={clearRxFilters} style={{ padding: '9px 14px', background: '#f1f5f9', color: '#64748b', border: '2px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}>♻️ Clear</button>
-          <button style={{ padding: '9px 14px', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>💰 Update Pricing</button>
+          <input type="date" value={rxFromDate} onChange={e => setRxFromDate(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }} />
+          <span className="text-gray-400 text-sm">to</span>
+          <input type="date" value={rxToDate} onChange={e => setRxToDate(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }} />
         </div>
       </div>
 
-      {alert && <div style={{ padding: '10px 16px', marginBottom: '12px', borderRadius: '8px', background: alert.type === 'success' ? '#dcfce7' : '#fee2e2', color: alert.type === 'success' ? '#166534' : '#991b1b' }}>{alert.message}</div>}
+      {alert && <div className="p-3 mb-3 rounded-lg text-sm" style={{ background: alert.type === 'success' ? '#dcfce7' : '#fee2e2', color: alert.type === 'success' ? '#166534' : '#991b1b' }}>{alert.message}</div>}
 
-      <div id="prescriptionList">
-        {filteredReports.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
-            <h3>💊 No prescriptions to dispense</h3>
-            <p>Prescriptions will appear here once consultants create reports.</p>
-          </div>
-        ) : filteredReports.map(report => {
-          const medicines = getMedicines(report);
-          const pending = medicines.filter(m => !m.dispensed).length;
-          const dispensed = medicines.filter(m => m.dispensed).length;
-          const total = medicines.length;
-          const clientMembershipStatus = report.membership_status || 'referred';
-          const consultFee = getConsultationFee(clientMembershipStatus);
-          const totals = calculatePrescriptionTotals(medicines, clientMembershipStatus);
+      {filteredReports.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <div className="text-5xl mb-3">💊</div>
+          <h3 className="text-lg font-semibold text-gray-500 mb-1">No prescriptions found</h3>
+          <p className="text-sm">Prescriptions appear here once consultants create health reports.</p>
+        </div>
+      ) : filteredReports.map(report => {
+        const medicines = getMedicines(report);
+        const pendingCount = medicines.filter(m => !m.dispensed).length;
+        const dispensedCount = medicines.filter(m => m.dispensed).length;
+        const total = medicines.length;
+        const pct = total > 0 ? Math.round((dispensedCount / total) * 100) : 0;
+        const membershipStatus = report.membership_status || 'referred';
+        const isMember = membershipStatus === 'member';
+        const consultFee = getConsultationFee(membershipStatus);
+        const totals = calculatePrescriptionTotals(medicines, membershipStatus);
+        const consultMode = getConsultMode(report.id);
+        const isInclusive = consultMode === 'inclusive';
+        const medTotal = isMember ? totals.total.dp : totals.total.cp;
+        const grandTotal = medTotal + (isInclusive ? consultFee.total : 0);
+        const allDispensed = pendingCount === 0 && total > 0;
+        const headerGradient = allDispensed
+          ? 'linear-gradient(135deg,#166534,#16a34a)'
+          : pendingCount < total
+            ? 'linear-gradient(135deg,#92400e,#d97706)'
+            : 'linear-gradient(135deg,#1e3a5f,#2980b9)';
 
-          return (
-            <div key={report.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '10px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-              <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #a0172e 100%)', padding: '16px', color: 'white' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>PRESCRIPTION</div>
-                    <h4 style={{ color: 'white', margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>{report.id}</h4>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>{new Date(report.created_at || report.date || Date.now()).toLocaleDateString()}</div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginTop: '2px' }}>By: {report.consultant || 'Consultant'}</div>
+        return (
+          <div key={report.id} className="rounded-2xl overflow-hidden mb-5" style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,0.07)' }}>
+
+            <div className="p-5 text-white" style={{ background: headerGradient }}>
+              <div className="flex justify-between items-start gap-3">
+                <div>
+                  <div className="text-xs font-bold tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.6)', letterSpacing: '0.12em' }}>PRESCRIPTION</div>
+                  <div className="text-xl font-bold">{report.id}</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ background: 'rgba(255,255,255,0.18)' }}>👤 {report.client_name || report.full_name || 'Patient'}</span>
+                    {isMember
+                      ? <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: 'rgba(99,220,143,0.3)', color: '#d1fae5' }}>🏅 Member</span>
+                      : <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: 'rgba(251,191,36,0.3)', color: '#fef3c7' }}>👤 Non-Member</span>}
+                    <span className="text-xs px-3 py-1 rounded-full" style={{ background: allDispensed ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.15)' }}>
+                      {allDispensed ? `✅ All dispensed` : `⏳ ${pendingCount} pending`}
+                    </span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                  <span style={{ background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>👤 {report.client_name || report.full_name || 'Patient'}</span>
-                  {clientMembershipStatus === 'member' && <span style={{ background: 'rgba(39,174,96,0.3)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>🏅 Member</span>}
-                  <span style={{ background: pending > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(39,174,96,0.3)', padding: '3px 10px', borderRadius: '12px', fontSize: '0.8rem' }}>
-                    {pending > 0 ? `⏳ ${pending} pending` : '✅ All dispensed'} ({dispensed}/{total})
-                  </span>
+                <div className="text-right shrink-0">
+                  <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>{new Date(report.created_at || report.date || Date.now()).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.65)' }}>By: {report.consultant || 'Consultant'}</div>
+                  <div className="text-xs mt-2 font-bold" style={{ color: 'rgba(255,255,255,0.9)' }}>{dispensedCount}/{total} dispensed</div>
                 </div>
               </div>
-
-              <div style={{ padding: '16px' }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '0.95rem', color: '#2c3e50' }}>Prescribed Items:</h4>
-                {medicines.map((med, i) => {
-                  const price = getEffectivePrice(med.name);
-                  return (
-                    <div key={i} style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                        <span style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', textDecoration: med.dispensed ? 'line-through' : 'none', color: med.dispensed ? '#27ae60' : '#1e293b' }}>
-                          {med.dispensed ? '✅ ' : ''}{med.name}
-                          {price.isPackage && <span style={{ marginLeft: '6px', fontSize: '0.75rem', background: '#e8f5e9', color: '#27ae60', padding: '2px 6px', borderRadius: '4px' }}>📦 Package</span>}
-                        </span>
-                      </div>
-                      {price.isPackage && price.products && (
-                        <div style={{ marginLeft: '28px', background: '#f8f9fa', padding: '8px', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
-                          {price.products.map((product, pi) => (
-                            <div key={pi} style={{ padding: '3px 0', fontSize: '0.8rem', color: '#555', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{product.name}</span>
-                              <span>Qty: {product.quantity} | {clientMembershipStatus === 'member' ? `DP: N$${product.dp} | BV: ${product.bv}` : `CP: N$${product.cp}`}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{ fontSize: '0.9rem', color: '#666', marginLeft: '28px' }}>
-                        {clientMembershipStatus === 'member' ? (
-                          <><span style={{ marginRight: '15px' }}><strong>DP:</strong> N${price.dp}</span><span><strong>BV:</strong> {price.bv}</span></>
-                        ) : (
-                          <span><strong>CP:</strong> N${price.cp}</span>
-                        )}
-                      </div>
-                      {med.dispensed && (
-                        <div style={{ marginLeft: '28px', marginTop: '4px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={!!med.paid} onChange={() => togglePayment(report.id, i)} style={{ marginRight: '8px' }} />
-                            <span style={{ fontSize: '0.85rem', color: '#27ae60', fontWeight: 500 }}>💰 Payment Received</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '20px', borderRadius: '8px', marginTop: '20px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
-                  <h4 style={{ color: 'white', marginBottom: '12px', textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>💰 Prescription Summary</h4>
-                  <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', marginBottom: '18px' }}>
-                    <div style={{ marginBottom: '4px' }}>{consultFee.label}: N${consultFee.total}</div>
-                    <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>{consultFee.note}</div>
-                    <div style={{ fontSize: '0.75rem', opacity: 0.75, marginTop: '2px' }}>Consultation fees not included in branch sales</div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Total</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#c41e3a' }}>
-                        {clientMembershipStatus === 'member' ? (
-                          <><div>N${totals.total.dp}</div><div style={{ fontSize: '0.75rem', color: '#27ae60', marginTop: '4px' }}>BV: {totals.total.bv}</div></>
-                        ) : <div>N${totals.total.cp}</div>}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #27ae60' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Dispensed</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#27ae60' }}>
-                        {clientMembershipStatus === 'member' ? (
-                          <><div>N${totals.dispensed.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.dispensed.bv}</div></>
-                        ) : <div>N${totals.dispensed.cp}</div>}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #3498db' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Paid</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#3498db' }}>
-                        {clientMembershipStatus === 'member' ? (
-                          <><div>N${totals.paid.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.paid.bv}</div></>
-                        ) : <div>N${totals.paid.cp}</div>}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.95)', padding: '14px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderLeft: '4px solid #e74c3c' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Outstanding</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e74c3c' }}>
-                        {clientMembershipStatus === 'member' ? (
-                          <><div>N${totals.outstanding.dp}</div><div style={{ fontSize: '0.75rem', marginTop: '4px' }}>BV: {totals.outstanding.bv}</div></>
-                        ) : <div>N${totals.outstanding.cp}</div>}
-                      </div>
-                    </div>
-                  </div>
+              <div className="mt-3">
+                <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  <span>Dispensing progress</span><span>{pct}%</span>
                 </div>
-
-                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <button onClick={() => printPrescription(report)} style={{ padding: '8px 16px', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>🖨️ Print Prescription</button>
-                  <button onClick={() => {
-                    const meds = getMedicines(report);
-                    const items = meds.map(m => {
-                      const p = getEffectivePrice(m.name);
-                      return { product_name: m.name, quantity: 1, unit_price: p.cp, line_total: p.cp, bv: p.bv };
-                    });
-                    const totalAmount = items.reduce((s, it) => s + it.line_total, 0);
-                    const totalBV = items.reduce((s, it) => s + it.bv, 0);
-                    const html = generateReceiptHTML({
-                      receiptNumber: report.id || 'RX-' + Date.now(),
-                      branch: user?.branch || '',
-                      items, totalAmount, totalBV,
-                      paymentMethod: 'Prescription',
-                      customerType: clientMembershipStatus === 'member' ? 'member' : 'non_member',
-                      customerName: report.client_name || report.full_name || 'Patient',
-                      nbNumber: report.nb_number || null,
-                      cashier: user?.full_name || user?.username || null,
-                      showBV: true,
-                    });
-                    printReceipt(html);
-                  }} style={{ padding: '8px 16px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>🧾 Print Receipt</button>
+                <div className="rounded-full overflow-hidden" style={{ height: 6, background: 'rgba(255,255,255,0.2)' }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: pct === 100 ? '#4ade80' : '#fbbf24' }} />
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="p-5">
+
+              <div className="mb-4">
+                <div className="text-xs font-bold tracking-widest mb-3" style={{ color: '#94a3b8', letterSpacing: '0.12em' }}>PRESCRIBED MEDICINES</div>
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
+                  {medicines.map((med, i) => {
+                    const price = getEffectivePrice(med.name);
+                    const unitPrice = isMember ? price.dp : price.cp;
+                    return (
+                      <div key={i} style={{ borderBottom: i < medicines.length - 1 ? '1px solid #f8fafc' : 'none', padding: '12px 14px', background: med.dispensed ? '#f0fdf4' : '#fff' }}>
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)}
+                            style={{ width: 18, height: 18, marginTop: 2, accentColor: '#16a34a', cursor: 'pointer', flexShrink: 0 }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm" style={{ color: med.dispensed ? '#16a34a' : '#1e293b', textDecoration: med.dispensed ? 'line-through' : 'none' }}>
+                                {med.name}
+                              </span>
+                              {price.isPackage && <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ background: '#dbeafe', color: '#1e40af' }}>📦 Package</span>}
+                              {med.dispensed && <span className="text-xs font-bold" style={{ color: '#16a34a' }}>✅ Dispensed</span>}
+                            </div>
+                            <div className="flex items-center gap-4 mt-1">
+                              <span className="text-sm font-bold" style={{ color: '#16a34a' }}>
+                                {isMember ? `DP: N$ ${price.dp}` : `CP: N$ ${price.cp}`}
+                              </span>
+                              {isMember && price.bv > 0 && <span className="text-xs font-semibold" style={{ color: '#f59e0b' }}>{price.bv} BV</span>}
+                            </div>
+                            {price.isPackage && price.products && (
+                              <div className="mt-2 rounded-lg p-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                {price.products.map((pp, pi) => (
+                                  <div key={pi} className="flex justify-between py-0.5" style={{ color: '#64748b' }}>
+                                    <span>{pp.name} ×{pp.quantity}</span>
+                                    <span>{isMember ? `DP: N$${pp.dp}` : `CP: N$${pp.cp}`}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {med.dispensed && (
+                              <label className="flex items-center gap-2 mt-2 cursor-pointer" style={{ display: 'inline-flex' }}>
+                                <input type="checkbox" checked={!!med.paid} onChange={() => togglePayment(report.id, i)}
+                                  style={{ width: 15, height: 15, accentColor: '#2563eb' }} />
+                                <span className="text-xs font-semibold" style={{ color: med.paid ? '#2563eb' : '#94a3b8' }}>
+                                  {med.paid ? '💰 Payment received' : '⏳ Payment pending'}
+                                </span>
+                              </label>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="font-bold text-sm" style={{ color: '#1e293b' }}>N$ {unitPrice}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-xl p-4 mb-4" style={{ background: '#fffbeb', border: '2px solid #fcd34d' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">💼</span>
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: '#92400e' }}>{consultFee.label}</div>
+                    <div className="text-xs" style={{ color: '#b45309' }}>{consultFee.note}</div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-xl font-black" style={{ color: '#92400e' }}>N$ {consultFee.total}</div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => setConsultMode(report.id, 'separate')}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${!isInclusive ? '#f59e0b' : '#e2e8f0'}`, background: !isInclusive ? '#fef3c7' : '#fff', color: !isInclusive ? '#92400e' : '#64748b', fontWeight: !isInclusive ? 700 : 400, cursor: 'pointer', fontSize: '0.78rem', transition: 'all .15s' }}>
+                    💳 Separate Payment
+                  </button>
+                  <button onClick={() => setConsultMode(report.id, 'inclusive')}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${isInclusive ? '#16a34a' : '#e2e8f0'}`, background: isInclusive ? '#f0fdf4' : '#fff', color: isInclusive ? '#166534' : '#64748b', fontWeight: isInclusive ? 700 : 400, cursor: 'pointer', fontSize: '0.78rem', transition: 'all .15s' }}>
+                    ➕ Include in Total
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={isConsultPaid(report.id)} onChange={() => toggleConsultPaid(report.id)}
+                    style={{ width: 16, height: 16, accentColor: '#16a34a' }} />
+                  <span className="text-xs font-semibold" style={{ color: isConsultPaid(report.id) ? '#16a34a' : '#b45309' }}>
+                    {isConsultPaid(report.id) ? '✅ Consultation fee paid' : '⏳ Consultation fee unpaid'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="rounded-xl p-4 mb-4" style={{ background: 'linear-gradient(135deg,#0f172a,#1e3a5f)', color: '#fff' }}>
+                <div className="text-xs font-bold tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.5)', letterSpacing: '0.12em' }}>QUOTE SUMMARY</div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>Medicines subtotal ({total} item{total !== 1 ? 's' : ''})</span>
+                    <span className="font-bold">N$ {medTotal}</span>
+                  </div>
+                  {isMember && <div className="flex justify-between items-center">
+                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>Total BV earned</span>
+                    <span className="font-bold" style={{ color: '#fbbf24' }}>{totals.total.bv} BV</span>
+                  </div>}
+                  <div className="flex justify-between items-center">
+                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>Consultation fee <span style={{ fontSize: '0.7rem', background: isInclusive ? '#16a34a44' : '#f59e0b44', padding: '1px 6px', borderRadius: 10, color: isInclusive ? '#4ade80' : '#fbbf24' }}>{isInclusive ? 'included' : 'separate'}</span></span>
+                    <span className="font-semibold" style={{ color: isInclusive ? '#4ade80' : '#fbbf24' }}>N$ {consultFee.total}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                    <span className="font-bold text-base">GRAND TOTAL {!isInclusive ? '(medicines)' : ''}</span>
+                    <span className="text-xl font-black" style={{ color: '#4ade80' }}>N$ {grandTotal}</span>
+                  </div>
+                  {!isInclusive && <div className="text-xs pt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>+ N$ {consultFee.total} consultation fee billed separately</div>}
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  {[
+                    { label: 'Dispensed', val: isMember ? totals.dispensed.dp : totals.dispensed.cp, color: '#4ade80' },
+                    { label: 'Paid', val: isMember ? totals.paid.dp : totals.paid.cp, color: '#60a5fa' },
+                    { label: 'Outstanding', val: isMember ? totals.outstanding.dp : totals.outstanding.cp, color: '#f87171' },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} className="text-center rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                      <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</div>
+                      <div className="font-bold text-sm" style={{ color }}>N$ {val}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 flex-wrap justify-end">
+                <button onClick={() => printPrescriptionReceipt(report, consultMode, isMember ? 'member' : 'customer')}
+                  style={{ padding: '8px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                  🖨️ Thermal Receipt
+                </button>
+                {!isMember && (
+                  <button onClick={() => printPrescriptionReceipt(report, consultMode, 'both')}
+                    style={{ padding: '8px 14px', border: '1.5px solid #93c5fd', borderRadius: 8, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                    🧾🧾 Both Receipts
+                  </button>
+                )}
+                <button onClick={() => printPrescriptionPDF(report, consultMode)}
+                  style={{ padding: '8px 14px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#c41e3a,#991b1b)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(196,30,58,0.3)' }}>
+                  📄 PDF Quote
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
