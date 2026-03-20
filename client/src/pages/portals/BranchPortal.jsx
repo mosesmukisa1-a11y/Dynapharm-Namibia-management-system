@@ -1372,6 +1372,12 @@ function BranchStockTab() {
   const [receiveReceivedBy, setReceiveReceivedBy] = useState('');
   const [transferForm, setTransferForm] = useState({ product_name: '', quantity: '', to_branch: '', notes: '' });
   const [writeOffForm, setWriteOffForm] = useState({ product_name: '', quantity: '', reason: '' });
+  const [transferItems, setTransferItems] = useState([]);
+  const [transferProductSearch, setTransferProductSearch] = useState('');
+  const [transferToBranch, setTransferToBranch] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [viewRequest, setViewRequest] = useState(null);
+  const [viewTransfer, setViewTransfer] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -1415,6 +1421,19 @@ function BranchStockTab() {
   };
   const updateRequestQty = (id, delta) => setRequestItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
   const removeRequestItem = (id) => setRequestItems(prev => prev.filter(i => i.id !== id));
+
+  const filteredTransferProducts = products.filter(p => !transferProductSearch || (p.name || p.description || '').toLowerCase().includes(transferProductSearch.toLowerCase()));
+  const addToTransferItems = (p) => {
+    setTransferItems(prev => {
+      const ex = prev.find(i => i.id === p.id);
+      if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+      return [...prev, { id: p.id, product_name: p.name || p.description, quantity: 1 }];
+    });
+  };
+  const updateTransferQty = (id, delta) => setTransferItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
+  const removeTransferItem = (id) => setTransferItems(prev => prev.filter(i => i.id !== id));
+  const openTransferForm = () => { setTransferItems([]); setTransferProductSearch(''); setTransferToBranch(''); setTransferNotes(''); setShowTransferForm(true); };
+  const parseItems = (r) => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } };
 
   const handleStockRequest = async () => {
     if (requestItems.length === 0) return;
@@ -1474,18 +1493,18 @@ function BranchStockTab() {
   };
 
   const handleTransfer = async () => {
-    if (!transferForm.product_name.trim() || !transferForm.quantity || !transferForm.to_branch) return;
+    if (transferItems.length === 0 || !transferToBranch) return;
     setSubmitting(true);
     try {
       await api.stock.createTransfer({
         fromWarehouse: user?.branch || '',
-        toBranch: transferForm.to_branch,
-        items: [{ product_name: transferForm.product_name, quantity: Number(transferForm.quantity) }],
+        toBranch: transferToBranch,
+        items: transferItems.map(i => ({ product_name: i.product_name, quantity: i.quantity })),
         created_by: user?.full_name || user?.username || '',
-        notes: transferForm.notes,
+        notes: transferNotes,
       });
-      setAlert({ type: 'success', message: 'Stock transfer initiated' });
-      setTransferForm({ product_name: '', quantity: '', to_branch: '', notes: '' });
+      setAlert({ type: 'success', message: 'Stock transfer initiated successfully' });
+      setTransferItems([]); setTransferToBranch(''); setTransferNotes(''); setTransferProductSearch('');
       setShowTransferForm(false);
       loadData();
     } catch (err) {
@@ -1540,7 +1559,7 @@ function BranchStockTab() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: '#c41e3a', border: 'none', fontWeight: 700 }}>📋 Request Stock</button>
-          <button onClick={() => setShowTransferForm(true)} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>↔ Transfer</button>
+          <button onClick={openTransferForm} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>↔ Transfer</button>
           <button onClick={() => setShowWriteOffForm(true)} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>🗑️ Write Off</button>
         </div>
       </div>
@@ -1595,15 +1614,20 @@ function BranchStockTab() {
           <Table
             columns={[
               { header: 'Request #', render: r => <span className="font-mono text-xs">{r.request_number || r.id}</span> },
-              { header: 'Branch', render: r => r.requesting_branch || '-' },
-              { header: 'Items', render: r => { try { const items = typeof r.items==='string'?JSON.parse(r.items):(r.items||[]); return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.product_name} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}</span>; } catch { return '-'; } }},
+              { header: 'Branch', render: r => <span className="font-semibold text-xs">{r.requesting_branch || user?.branch || '-'}</span> },
+              { header: 'Items', render: r => { const items = parseItems(r); return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.product_name} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>; }},
               { header: 'Priority', render: r => <Badge variant={r.priority==='urgent'?'danger':r.priority==='high'?'warning':'info'}>{r.priority||'normal'}</Badge> },
               { header: 'Status', render: r => <Badge variant={r.status==='approved'?'success':r.status==='received'?'success':r.status==='rejected'?'danger':'warning'}>{r.status||'pending'}</Badge> },
               { header: 'Date', render: r => formatDateTime(r.created_at) },
-              { header: '', render: r => (r.status==='approved'||r.status==='dispatched') ? <button onClick={() => openReceiveForm(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#166534', color: '#fff' }}>📥 Receive</button> : null },
+              { header: '', render: r => (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setViewRequest(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>👁 View</button>
+                  {(r.status==='approved'||r.status==='dispatched') && <button onClick={() => openReceiveForm(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#166534', color: '#fff' }}>📥 Receive</button>}
+                </div>
+              )},
             ]}
             data={requests}
-            emptyMessage="No stock requests"
+            emptyMessage="No stock requests yet — click New Request to start"
           />
         </Card>
       )}
@@ -1649,17 +1673,19 @@ function BranchStockTab() {
         <Card>
           <CardHeader className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Stock Transfers</h3>
-            <button onClick={() => setShowTransferForm(true)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>↔ New Transfer</button>
+            <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>↔ New Transfer</button>
           </CardHeader>
           <Table
             columns={[
-              { header: 'From', render: r => r.from_warehouse || '-' },
-              { header: 'To', render: r => r.to_branch || '-' },
+              { header: 'From Branch', render: r => <span className="font-semibold text-xs">{r.from_warehouse || user?.branch || '-'}</span> },
+              { header: 'To Branch', render: r => <span className="font-semibold text-xs">{r.to_branch || '-'}</span> },
+              { header: 'Items', render: r => { const items = parseItems(r); return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.product_name} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>; }},
               { header: 'Status', render: r => <Badge variant={r.status==='delivered'?'success':r.status==='dispatched'?'info':'warning'}>{r.status||'pending'}</Badge> },
               { header: 'Date', render: r => formatDateTime(r.created_at) },
+              { header: '', render: r => <button onClick={() => setViewTransfer(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>👁 View</button> },
             ]}
             data={transfers}
-            emptyMessage="No transfers"
+            emptyMessage="No transfers yet — click New Transfer to start"
           />
         </Card>
       )}
@@ -1850,24 +1876,199 @@ function BranchStockTab() {
         </div>
       )}
 
-      <Modal open={showTransferForm} onClose={() => setShowTransferForm(false)} title="Transfer Stock">
-        <div className="p-6 space-y-4">
-          <Input label="Product" value={transferForm.product_name} onChange={e => setTransferForm({ ...transferForm, product_name: e.target.value })} />
-          <Input label="Quantity" type="number" value={transferForm.quantity} onChange={e => setTransferForm({ ...transferForm, quantity: e.target.value })} />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">To Branch</label>
-            <select value={transferForm.to_branch} onChange={e => setTransferForm({ ...transferForm, to_branch: e.target.value })} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
-              <option value="">Select branch...</option>
-              {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
-          <Textarea label="Notes" value={transferForm.notes} onChange={e => setTransferForm({ ...transferForm, notes: e.target.value })} />
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={() => setShowTransferForm(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={handleTransfer} disabled={submitting} style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none' }}>{submitting ? 'Processing...' : '↔ Initiate Transfer'}</Button>
+      {/* Transfer Stock Form - full catalogue picker */}
+      {showTransferForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 20, overflow: 'hidden', maxHeight: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>↔ Transfer Stock to Branch</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>From: <strong style={{ color: '#fff' }}>{user?.branch || 'Your Branch'}</strong> · Select destination and products</div>
+              </div>
+              <button onClick={() => setShowTransferForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+
+            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+              {/* Product picker */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e8eef4' }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid #e8eef4', flexShrink: 0 }}>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#1e3a5f', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
+                    <input type="text" value={transferProductSearch} onChange={e => setTransferProductSearch(e.target.value)} placeholder="Search catalogue products…"
+                      style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #c8d8e8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(155px,1fr))', gap: 8 }}>
+                    {filteredTransferProducts.slice(0, 80).map(p => {
+                      const inList = transferItems.find(i => i.id === p.id);
+                      return (
+                        <button key={p.id} onClick={() => addToTransferItems(p)} type="button"
+                          style={{ padding: '10px', border: inList ? '2.5px solid #1e3a5f' : '1.5px solid #e0e8f0', borderRadius: 11, background: inList ? '#eef3f9' : '#fff', cursor: 'pointer', textAlign: 'left', position: 'relative' }}>
+                          {inList && <div style={{ position: 'absolute', top: 6, right: 6, background: '#1e3a5f', color: '#fff', borderRadius: '50%', width: 20, height: 20, fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inList.quantity}</div>}
+                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.8rem', lineHeight: 1.3, paddingRight: inList ? 22 : 0 }}>{p.name || p.description}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#1e3a5f', fontWeight: 700, marginTop: 5 }}>DP: {formatCurrency(p.dp || p.price || 0)}</div>
+                        </button>
+                      );
+                    })}
+                    {filteredTransferProducts.length === 0 && <p style={{ color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: '24px 0' }}>No products found</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transfer summary sidebar */}
+              <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#f4f7fb' }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid #dbe6f0', flexShrink: 0 }}>
+                  {sectionLabel('Transfer Details')}
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>From Branch</label>
+                    <div style={{ padding: '8px 12px', background: '#dbe6f0', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: '#0f2040' }}>{user?.branch || 'Your Branch'}</div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>To Branch *</label>
+                    <select value={transferToBranch} onChange={e => setTransferToBranch(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #c8d8e8', borderRadius: 8, fontSize: '0.87rem', outline: 'none', background: '#fff' }}>
+                      <option value="">Select destination branch…</option>
+                      {BRANCHES.filter(b => b !== user?.branch).map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #dbe6f0', flexShrink: 0 }}>
+                  {sectionLabel('Items to Transfer')}
+                  <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                    {transferItems.length === 0 ? <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '16px 0' }}>Click products to add them</p> : transferItems.map(item => (
+                      <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderBottom: '1px solid #e8f0f8' }}>
+                        <div style={{ flex: 1, fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product_name}</div>
+                        <button onClick={() => updateTransferQty(item.id, -1)} style={{ width: 22, height: 22, border: '1px solid #c8d8e8', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#1e3a5f', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                        <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 800, fontSize: '0.85rem' }}>{item.quantity}</span>
+                        <button onClick={() => updateTransferQty(item.id, 1)} style={{ width: 22, height: 22, border: '1px solid #c8d8e8', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#1e3a5f', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        <button onClick={() => removeTransferItem(item.id)} style={{ width: 20, height: 20, border: 'none', borderRadius: 5, background: '#e8f0f8', cursor: 'pointer', color: '#1e3a5f', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ padding: '12px 16px', flexShrink: 0 }}>
+                  {sectionLabel('Notes')}
+                  <textarea value={transferNotes} onChange={e => setTransferNotes(e.target.value)} rows={3} placeholder="Reason for transfer or additional notes…" style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #c8d8e8', borderRadius: 8, fontSize: '0.85rem', resize: 'none', outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+                </div>
+
+                <div style={{ padding: '12px 16px', borderTop: '1px solid #dbe6f0', display: 'flex', gap: 8, flexShrink: 0, marginTop: 'auto' }}>
+                  <button onClick={() => setShowTransferForm(false)} style={{ flex: 1, padding: '10px', border: '1.5px solid #c8d8e8', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
+                  <button onClick={handleTransfer} disabled={submitting || transferItems.length === 0 || !transferToBranch}
+                    style={{ flex: 2, padding: '10px', border: 'none', borderRadius: 10, background: (transferItems.length === 0 || !transferToBranch) ? '#c8d8e8' : 'linear-gradient(135deg,#1e3a5f,#0f2040)', color: '#fff', fontWeight: 800, cursor: (transferItems.length===0||!transferToBranch)?'not-allowed':'pointer', fontSize: '0.87rem', opacity: submitting?0.65:1 }}>
+                    {submitting ? '⏳ Transferring…' : `↔ Transfer (${transferItems.length} item${transferItems.length!==1?'s':''})`}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </Modal>
+      )}
+
+      {/* View Request Modal */}
+      {viewRequest && (
+        <div onClick={e => { if (e.target === e.currentTarget) setViewRequest(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>📋 Request Details</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.77rem', marginTop: 2, fontFamily: 'monospace' }}>{viewRequest.request_number || viewRequest.id}</div>
+              </div>
+              <button onClick={() => setViewRequest(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: 'Requesting Branch', value: viewRequest.requesting_branch || user?.branch || '-' },
+                  { label: 'Priority', value: viewRequest.priority || 'normal' },
+                  { label: 'Status', value: viewRequest.status || 'pending' },
+                  { label: 'Date', value: formatDateTime(viewRequest.created_at) },
+                  { label: 'Created By', value: viewRequest.created_by || '-' },
+                  { label: 'Request Type', value: (viewRequest.request_type || 'branch_restock').replace(/_/g, ' ') },
+                ].map(f => (
+                  <div key={f.label} style={{ background: '#f8f9fa', padding: '10px 14px', borderRadius: 10 }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 3 }}>{f.label}</div>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{f.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Requested Items</div>
+                {parseItems(viewRequest).map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f9f5f5', borderRadius: 9, border: '1px solid #f0e8ea', marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{item.product_name}</div>
+                    <div style={{ background: '#c41e3a', color: '#fff', borderRadius: 20, padding: '2px 12px', fontWeight: 800, fontSize: '0.82rem' }}>× {item.quantity}</div>
+                  </div>
+                ))}
+                {parseItems(viewRequest).length === 0 && <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No items recorded</p>}
+              </div>
+              {viewRequest.notes && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Notes</div>
+                  <div style={{ color: '#374151', fontSize: '0.87rem' }}>{viewRequest.notes}</div>
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #f0e8ea', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+              {(viewRequest.status==='approved'||viewRequest.status==='dispatched') && (
+                <button onClick={() => { openReceiveForm(viewRequest); setViewRequest(null); }} style={{ padding: '10px 22px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.9rem' }}>📥 Receive Stock</button>
+              )}
+              <button onClick={() => setViewRequest(null)} style={{ padding: '10px 22px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Transfer Modal */}
+      {viewTransfer && (
+        <div onClick={e => { if (e.target === e.currentTarget) setViewTransfer(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(30,58,95,0.25)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>↔ Transfer Details</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.77rem', marginTop: 2, fontFamily: 'monospace' }}>{viewTransfer.id || '-'}</div>
+              </div>
+              <button onClick={() => setViewTransfer(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: 'From Branch', value: viewTransfer.from_warehouse || user?.branch || '-' },
+                  { label: 'To Branch', value: viewTransfer.to_branch || '-' },
+                  { label: 'Status', value: viewTransfer.status || 'pending' },
+                  { label: 'Date', value: formatDateTime(viewTransfer.created_at) },
+                  { label: 'Created By', value: viewTransfer.created_by || '-' },
+                ].map(f => (
+                  <div key={f.label} style={{ background: '#f4f7fb', padding: '10px 14px', borderRadius: 10 }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 3 }}>{f.label}</div>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{f.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Items Transferred</div>
+                {parseItems(viewTransfer).map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f4f7fb', borderRadius: 9, border: '1px solid #dbe6f0', marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{item.product_name}</div>
+                    <div style={{ background: '#1e3a5f', color: '#fff', borderRadius: 20, padding: '2px 12px', fontWeight: 800, fontSize: '0.82rem' }}>× {item.quantity}</div>
+                  </div>
+                ))}
+                {parseItems(viewTransfer).length === 0 && <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No items recorded</p>}
+              </div>
+              {viewTransfer.notes && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Notes</div>
+                  <div style={{ color: '#374151', fontSize: '0.87rem' }}>{viewTransfer.notes}</div>
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button onClick={() => setViewTransfer(null)} style={{ padding: '10px 22px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Modal open={showWriteOffForm} onClose={() => setShowWriteOffForm(false)} title="Write Off Stock">
         <div className="p-6 space-y-4">
