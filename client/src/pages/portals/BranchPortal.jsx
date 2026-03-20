@@ -281,19 +281,19 @@ function WalkInSalesTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)', boxShadow: '0 4px 20px rgba(15,23,42,0.25)' }}>
+      <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div>
           <div className="flex items-center gap-3 mb-1">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(255,255,255,0.15)' }}>🛒</div>
             <div>
               <h3 className="text-xl font-bold m-0">Walk-in Sales</h3>
-              <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                {user?.branch ? `${user.branch} Branch POS` : 'Branch Point of Sale'}
+              <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                {user?.branch ? `${user.branch} Branch · Point of Sale` : 'Branch Point of Sale'}
               </p>
             </div>
           </div>
         </div>
-        <button onClick={openModal} className="flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl cursor-pointer transition-all" style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', border: 'none', boxShadow: '0 3px 10px rgba(22,163,74,0.4)', letterSpacing: '0.02em' }}>
+        <button onClick={openModal} className="flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl cursor-pointer transition-all" style={{ background: '#fff', color: '#c41e3a', border: 'none', boxShadow: '0 3px 12px rgba(0,0,0,0.18)', letterSpacing: '0.02em' }}>
           ＋ New Walk-in Sale
         </button>
       </div>
@@ -385,200 +385,230 @@ function WalkInSalesTab() {
       </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-          <div style={{ width: '100%', maxWidth: '1100px', background: '#fff', borderRadius: '20px', overflow: 'hidden', maxHeight: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.35)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.72)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={{ width: '100%', maxWidth: '1160px', background: '#fff', borderRadius: '22px', overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(196,30,58,0.25)' }}>
 
-            <div style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <div className="flex items-center gap-3">
-                <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>🏪</div>
+            {/* POS Header — Dynapharm Red */}
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 13, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', backdropFilter: 'blur(4px)' }}>🏪</div>
                 <div>
-                  <div style={{ color: '#fff', fontSize: '1.15rem', fontWeight: 700, letterSpacing: '0.01em' }}>Branch Point of Sale</div>
-                  <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem', marginTop: 1 }}>
-                    {user?.branch || 'Walk-in'} &nbsp;·&nbsp; {isMember ? '🪪 DP Prices' : '👤 CP Prices'} &nbsp;·&nbsp; {cart.length} item{cart.length !== 1 ? 's' : ''} in cart
+                  <div style={{ color: '#fff', fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Branch Point of Sale</div>
+                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 1 }}>
+                    {user?.branch ? `${user.branch} Branch` : 'Dynapharm'} &nbsp;·&nbsp;
+                    <span style={{ color: '#ffd0d8', fontWeight: 600 }}>{isMember ? '🏅 Member — DP Prices' : '👤 Walk-in — CP Prices'}</span>
+                    &nbsp;·&nbsp; {cart.length} item{cart.length !== 1 ? 's' : ''} in cart
                   </div>
                 </div>
               </div>
-              <button onClick={closeModal} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              <button onClick={closeModal} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>×</button>
             </div>
 
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-              <div style={{ width: 320, flexShrink: 0, borderRight: '1px solid #f1f5f9', overflowY: 'auto', background: '#fafbfc', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-                {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: '8px', fontSize: '0.82rem' }}>{error}</div>}
+              {/* LEFT SIDEBAR */}
+              <div style={{ width: 310, flexShrink: 0, borderRight: '1px solid #f0e8ea', overflowY: 'auto', background: '#fff', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+                {error && <div style={{ background: '#fff0f3', border: '1px solid #fecaca', color: '#c41e3a', padding: '8px 12px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 500 }}>{error}</div>}
+
+                {/* Customer Type */}
                 <div>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Customer Type</div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Type</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {[
-                      { type: 'registered', icon: '🪪', label: 'Member', sub: 'DP price + BV', color: '#1e40af', bg: '#eff6ff', border: '#93c5fd' },
-                      { type: 'new', icon: '👤', label: 'New Customer', sub: 'CP price', color: '#92400e', bg: '#fffbeb', border: '#fcd34d' },
-                    ].map(opt => (
-                      <button key={opt.type} type="button" onClick={() => wiSetCustomerType(opt.type)}
-                        style={{ padding: '10px 8px', border: customerType === opt.type ? `2px solid ${opt.border}` : '2px solid #e2e8f0', borderRadius: 10, background: customerType === opt.type ? opt.bg : '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all .15s' }}>
-                        <div style={{ fontSize: '1.2rem', marginBottom: 2 }}>{opt.icon}</div>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: customerType === opt.type ? opt.color : '#374151' }}>{opt.label}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 1 }}>{opt.sub}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {customerType === 'registered' ? (
-                  <div>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
-                    <div style={{ position: 'relative' }}>
-                      <input type="text" value={regSearch} placeholder="Search by name or NB#…" onChange={e => searchRegistered(e.target.value)}
-                        style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', boxSizing: 'border-box', background: '#fff' }} />
-                      {regResults.length > 0 && (
-                        <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 180, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.12)', top: 'calc(100% + 4px)', left: 0 }}>
-                          {regResults.map(d => (
-                            <button key={d.id} onClick={() => selectRegistered(d)}
-                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f8fafc', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
-                              <strong>{d.name || d.full_name}</strong>
-                              <span style={{ color: '#3b82f6', marginLeft: 6, fontSize: '0.78rem' }}>#{d.nb_number || d.distributor_code}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {selectedReg && (
-                      <div style={{ marginTop: 8, padding: '10px 12px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', border: '1px solid #86efac', borderRadius: 8, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#166534' }}>{selectedReg.name}</div>
-                          <div style={{ color: '#16a34a', fontSize: '0.78rem' }}>NB#{selectedReg.nb_number} &nbsp;·&nbsp; {selectedReg.phone || 'No phone'}</div>
-                        </div>
-                        <button type="button" onClick={clearRegistered} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>×</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Customer Details</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
-                        style={{ padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', boxSizing: 'border-box' }} />
-                      <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone (optional)"
-                        style={{ padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', boxSizing: 'border-box' }} />
-                    </div>
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Referral Distributor</div>
-                      <div style={{ position: 'relative' }}>
-                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB#…" disabled={noReferral}
-                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #fcd34d', borderRadius: 8, fontSize: '0.88rem', boxSizing: 'border-box', opacity: noReferral ? 0.5 : 1 }} />
-                        {referralResults.length > 0 && !noReferral && (
-                          <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 160, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.12)', top: 'calc(100% + 4px)', left: 0 }}>
-                            {referralResults.map(d => (
-                              <button key={d.id} onClick={() => selectReferral(d)}
-                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f8fafc', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                <strong>{d.name || d.full_name}</strong>
-                                <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: '0.78rem' }}>#{d.nb_number || d.distributor_code}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {selectedReferral && !noReferral && (
-                        <div style={{ marginTop: 6, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: 700, color: '#92400e' }}>{selectedReferral.name}</div>
-                            <div style={{ color: '#b45309', fontSize: '0.78rem' }}>NB#{selectedReferral.nb_number}</div>
-                          </div>
-                          <button type="button" onClick={clearReferral} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>×</button>
-                        </div>
-                      )}
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: '0.82rem', cursor: 'pointer', color: '#64748b' }}>
-                        <input type="checkbox" checked={noReferral} onChange={e => toggleNoReferral(e.target.checked)} style={{ width: 15, height: 15 }} />
-                        No referral (direct walk-in)
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Payment Method</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    {paymentMethods.map(m => (
-                      <button key={m.id} type="button" onClick={() => setPaymentMethod(m.id)}
-                        style={{ padding: '10px 6px', border: paymentMethod === m.id ? '2px solid #16a34a' : '2px solid #e2e8f0', borderRadius: 10, background: paymentMethod === m.id ? '#f0fdf4' : '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: paymentMethod === m.id ? 700 : 400, color: paymentMethod === m.id ? '#166534' : '#374151', transition: 'all .15s', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.1rem', marginBottom: 2 }}>{m.icon}</div>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', background: '#fff', flexShrink: 0 }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Products</div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products by name…"
-                      style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem' }} />
-                    <span style={{ fontSize: '0.75rem', padding: '5px 12px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#dbeafe' : '#fef3c7', color: isMember ? '#1e40af' : '#92400e', border: `1px solid ${isMember ? '#93c5fd' : '#fcd34d'}` }}>
-                      {isMember ? '🪪 DP Price' : '👤 CP Price'}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
-                    {filteredProducts.length === 0 ? (
-                      <p style={{ color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: '32px 0' }}>No products found</p>
-                    ) : filteredProducts.slice(0, 60).map(p => {
-                      const price = isMember ? (p.dp || p.price) : (p.cp || p.price);
-                      const inCart = cart.find(c => c.id === p.id);
-                      const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
+                      { type: 'registered', icon: '🏅', label: 'Member', sub: 'DP price · BV', activeColor: '#c41e3a', activeBg: '#fff0f3', activeBorder: '#c41e3a' },
+                      { type: 'new', icon: '👤', label: 'Walk-in', sub: 'CP price', activeColor: '#92400e', activeBg: '#fffbeb', activeBorder: '#f59e0b' },
+                    ].map(opt => {
+                      const isAct = customerType === opt.type;
                       return (
-                        <button key={p.id} onClick={() => addToCart(p)} type="button"
-                          style={{ padding: '12px', border: inCart ? '2px solid #16a34a' : '1.5px solid #e2e8f0', borderRadius: 12, background: inCart ? '#f0fdf4' : '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 2px 8px rgba(22,163,74,0.15)' : '0 1px 3px rgba(0,0,0,0.04)', position: 'relative' }}>
-                          {inCart && <div style={{ position: 'absolute', top: 8, right: 8, background: '#16a34a', color: '#fff', borderRadius: '50%', width: 20, height: 20, fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inCart.qty}</div>}
-                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 6, lineHeight: 1.3, fontSize: '0.82rem', paddingRight: inCart ? 22 : 0 }}>{p.name || p.description}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ fontWeight: 800, color: '#16a34a', fontSize: '0.92rem' }}>{formatCurrency(price)}</span>
-                            {p.bv > 0 && <span style={{ fontSize: '0.68rem', color: '#f59e0b', fontWeight: 600 }}>{p.bv} BV</span>}
-                          </div>
-                          {!isMember && profit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', marginTop: 3, fontWeight: 600 }}>+{formatCurrency(profit)} profit</div>}
+                        <button key={opt.type} type="button" onClick={() => wiSetCustomerType(opt.type)}
+                          style={{ padding: '11px 8px', border: isAct ? `2.5px solid ${opt.activeBorder}` : '1.5px solid #ede8e8', borderRadius: 12, background: isAct ? opt.activeBg : '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'all .15s', boxShadow: isAct ? `0 3px 10px ${opt.activeBorder}33` : 'none' }}>
+                          <div style={{ fontSize: '1.3rem', marginBottom: 3 }}>{opt.icon}</div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 800, color: isAct ? opt.activeColor : '#374151' }}>{opt.label}</div>
+                          <div style={{ fontSize: '0.67rem', color: isAct ? opt.activeColor : '#94a3b8', marginTop: 1, opacity: 0.8 }}>{opt.sub}</div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div style={{ flexShrink: 0, borderTop: '1px solid #f1f5f9', background: '#fff' }}>
-                  <div style={{ padding: '12px 20px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', borderBottom: '1px solid #f8fafc' }}>Cart</div>
-                  <div style={{ maxHeight: 200, overflowY: 'auto', padding: '8px 20px' }}>
+                {/* Member or New Customer details */}
+                {customerType === 'registered' ? (
+                  <div>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
+                      <input type="text" value={regSearch} placeholder="Search by name or NB#…" onChange={e => searchRegistered(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', background: '#fff', outline: 'none' }} />
+                      {regResults.length > 0 && (
+                        <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 28px rgba(196,30,58,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
+                          {regResults.map(d => (
+                            <button key={d.id} onClick={() => selectRegistered(d)}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fff5f5', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
+                              <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.full_name}</div>
+                              <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.distributor_code}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {selectedReg && (
+                      <div style={{ marginTop: 8, padding: '10px 13px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #f9a8b4', borderRadius: 10, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 800, color: '#9b1c2e' }}>{selectedReg.name}</div>
+                          <div style={{ color: '#c41e3a', fontSize: '0.75rem', marginTop: 2 }}>NB#{selectedReg.nb_number} &nbsp;·&nbsp; {selectedReg.phone || '—'}</div>
+                        </div>
+                        <button type="button" onClick={clearRegistered} style={{ border: 'none', background: '#fecaca', color: '#c41e3a', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Details</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
+                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none' }} />
+                      <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone number (optional)"
+                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none' }} />
+                    </div>
+
+                    <div style={{ marginTop: 14, padding: '13px', background: '#fffbeb', borderRadius: 11, border: '1.5px solid #fcd34d' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 8 }}>Referral Distributor</div>
+                      <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#f59e0b', fontSize: '0.9rem', pointerEvents: 'none', opacity: noReferral ? 0.4 : 1 }}>🔍</div>
+                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB#…" disabled={noReferral}
+                          style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none', opacity: noReferral ? 0.5 : 1, background: noReferral ? '#fef9ee' : '#fff' }} />
+                        {referralResults.length > 0 && !noReferral && (
+                          <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 170, overflowY: 'auto', boxShadow: '0 8px 28px rgba(245,158,11,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
+                            {referralResults.map(d => (
+                              <button key={d.id} onClick={() => selectReferral(d)}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fffbeb', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.full_name}</div>
+                                <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.distributor_code}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {selectedReferral && !noReferral && (
+                        <div style={{ marginTop: 8, padding: '9px 12px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 9, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 800, color: '#92400e' }}>{selectedReferral.name}</div>
+                            <div style={{ color: '#d97706', fontSize: '0.75rem', marginTop: 2 }}>NB#{selectedReferral.nb_number}</div>
+                          </div>
+                          <button type="button" onClick={clearReferral} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
+                        </div>
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.82rem', cursor: 'pointer', color: '#92400e', userSelect: 'none' }}>
+                        <input type="checkbox" checked={noReferral} onChange={e => toggleNoReferral(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#c41e3a' }} />
+                        No referral — direct walk-in
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Method */}
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Payment Method</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                    {paymentMethods.map(m => {
+                      const isAct = paymentMethod === m.id;
+                      return (
+                        <button key={m.id} type="button" onClick={() => setPaymentMethod(m.id)}
+                          style={{ padding: '11px 6px', border: isAct ? '2.5px solid #c41e3a' : '1.5px solid #ede8e8', borderRadius: 11, background: isAct ? '#fff0f3' : '#fafafa', cursor: 'pointer', fontSize: '0.82rem', fontWeight: isAct ? 800 : 400, color: isAct ? '#c41e3a' : '#374151', transition: 'all .15s', textAlign: 'center', boxShadow: isAct ? '0 2px 8px rgba(196,30,58,0.15)' : 'none' }}>
+                          <div style={{ fontSize: '1.2rem', marginBottom: 3 }}>{m.icon}</div>
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT PANEL — Products + Cart */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, background: '#f9f5f5' }}>
+
+                {/* Products header */}
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0e8ea', background: '#fff', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
+                      <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…"
+                        style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <span style={{ fontSize: '0.78rem', padding: '6px 14px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1.5px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
+                      {isMember ? '🏅 DP Price' : '👤 CP Price'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Product grid */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 10 }}>
+                    {filteredProducts.length === 0 ? (
+                      <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
+                    ) : filteredProducts.slice(0, 60).map(p => {
+                      const price = isMember ? (p.dp || p.price) : (p.cp || p.price);
+                      const inCart = cart.find(c => c.id === p.id);
+                      const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
+                      return (
+                        <button key={p.id} onClick={() => addToCart(p)} type="button"
+                          style={{ padding: '12px 11px', border: inCart ? '2.5px solid #c41e3a' : '1.5px solid #f0e8ea', borderRadius: 13, background: inCart ? '#fff0f3' : '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
+                          {inCart && (
+                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#c41e3a', color: '#fff', borderRadius: '50%', width: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inCart.qty}</div>
+                          )}
+                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: inCart ? 24 : 0 }}>{p.name || p.description}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                            <span style={{ fontWeight: 900, color: '#c41e3a', fontSize: '0.95rem' }}>{formatCurrency(price)}</span>
+                            {p.bv > 0 && <span style={{ fontSize: '0.67rem', color: '#d97706', fontWeight: 700, background: '#fffbeb', padding: '1px 5px', borderRadius: 8 }}>{p.bv} BV</span>}
+                          </div>
+                          {!isMember && profit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', marginTop: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Cart */}
+                <div style={{ flexShrink: 0, borderTop: '2px solid #f0e8ea', background: '#fff' }}>
+                  <div style={{ padding: '10px 18px', fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', borderBottom: '1px solid #f9f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Shopping Cart</span>
+                    {cart.length > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{cart.length} item{cart.length !== 1 ? 's' : ''}</span>}
+                  </div>
+                  <div style={{ maxHeight: 190, overflowY: 'auto', padding: '6px 18px' }}>
                     {cart.length === 0 ? (
-                      <p style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px 0', fontSize: '0.85rem' }}>Add products from above</p>
+                      <p style={{ color: '#c4a0a7', textAlign: 'center', padding: '18px 0', fontSize: '0.85rem' }}>No items yet — select products above</p>
                     ) : cartData.items.map(item => {
                       const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
                       return (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f8fafc', gap: 8 }}>
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #fdf5f5', gap: 8 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name || item.description}</div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name || item.description}</div>
                             {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.7rem', color: '#0891b2', fontWeight: 600 }}>+{formatCurrency(lineProfit)} profit</div>}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: '0.85rem' }}>−</button>
-                            <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{item.qty}</span>
-                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: '0.85rem' }}>+</button>
-                            <span style={{ fontWeight: 700, color: '#1e293b', minWidth: 65, textAlign: 'right', fontSize: '0.88rem' }}>{formatCurrency(item.lineTotal)}</span>
-                            <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                            <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{item.qty}</span>
+                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                            <span style={{ fontWeight: 800, color: '#1e293b', minWidth: 68, textAlign: 'right', fontSize: '0.9rem' }}>{formatCurrency(item.lineTotal)}</span>
+                            <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem' }}>×</button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div style={{ padding: '14px 20px', background: 'linear-gradient(135deg,#0f172a,#1e3a5f)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-                      {isMember && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>BV: <strong style={{ color: '#fbbf24' }}>{cartData.totalBV.toFixed(1)}</strong></div>}
-                      {!isMember && branchProfit > 0 && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>Branch Profit: <strong style={{ color: '#34d399' }}>{formatCurrency(branchProfit)}</strong></div>}
-                      <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 700 }}>Total: <span style={{ color: '#4ade80' }}>{formatCurrency(cartData.totalAmount)}</span></div>
+                  {/* Cart footer / totals bar */}
+                  <div style={{ padding: '13px 18px', background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {isMember && cartData.totalBV > 0 && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>BV: <strong style={{ color: '#fbbf24' }}>{cartData.totalBV.toFixed(1)}</strong></div>}
+                      {!isMember && branchProfit > 0 && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>Profit: <strong style={{ color: '#86efac' }}>{formatCurrency(branchProfit)}</strong></div>}
+                      <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Total: <span style={{ color: '#ffd0d8' }}>{formatCurrency(cartData.totalAmount)}</span></div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={closeModal} style={{ padding: '9px 18px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
-                      <button type="button" onClick={wiReviewSale} style={{ padding: '9px 22px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 2px 8px rgba(22,163,74,0.4)' }}>
-                        Review &amp; Confirm →
+                      <button type="button" onClick={closeModal} style={{ padding: '9px 16px', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: '0.84rem' }}>Cancel</button>
+                      <button type="button" onClick={wiReviewSale} style={{ padding: '9px 22px', border: 'none', borderRadius: 10, background: '#fff', color: '#c41e3a', fontWeight: 800, cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(0,0,0,0.2)', letterSpacing: '0.01em' }}>
+                        Review Sale →
                       </button>
                     </div>
                   </div>
@@ -590,61 +620,70 @@ function WalkInSalesTab() {
       )}
 
       {showConfirmModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
-          <div style={{ maxWidth: 600, width: '100%', borderRadius: 20, overflow: 'hidden', background: '#fff', boxShadow: '0 25px 60px rgba(0,0,0,0.35)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', padding: '18px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.72)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(3px)' }}>
+          <div style={{ maxWidth: 620, width: '100%', borderRadius: 22, overflow: 'hidden', background: '#fff', boxShadow: '0 30px 80px rgba(196,30,58,0.25)' }}>
+
+            {/* Confirm header — red */}
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>✅ Confirm Sale</div>
-                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', marginTop: 2 }}>Review before processing payment</div>
+                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Confirm Sale</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>Review details before processing payment</div>
               </div>
-              <button onClick={() => setShowConfirmModal(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              <button onClick={() => setShowConfirmModal(false)} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
 
-            <div style={{ padding: '20px', maxHeight: '65vh', overflowY: 'auto', background: '#f8fafc' }}>
-              {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '0.82rem' }}>{error}</div>}
+            <div style={{ padding: '20px', maxHeight: '68vh', overflowY: 'auto', background: '#fdf7f8' }}>
+              {error && <div style={{ background: '#fff0f3', border: '1px solid #fecaca', color: '#c41e3a', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '0.82rem', fontWeight: 500 }}>{error}</div>}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-                <div style={{ background: '#fff', borderRadius: 12, padding: '14px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Customer</div>
-                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>{isMember ? selectedReg?.name : newName}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 4 }}>
-                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: isMember ? '#dbeafe' : '#fef3c7', color: isMember ? '#1e40af' : '#92400e', marginRight: 6 }}>
-                      {isMember ? 'Member (DP)' : 'Walk-in (CP)'}
+                {/* Customer card */}
+                <div style={{ background: '#fff', borderRadius: 14, padding: '15px', border: '1.5px solid #f0e8ea', boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer</div>
+                  <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.97rem' }}>{isMember ? selectedReg?.name : newName}</div>
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ padding: '2px 9px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
+                      {isMember ? '🏅 Member' : '👤 Walk-in'}
                     </span>
-                    {isMember ? (selectedReg?.nb_number ? `NB#${selectedReg.nb_number}` : '') : (newPhone || '')}
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {isMember ? (selectedReg?.nb_number ? `NB#${selectedReg.nb_number}` : '') : (newPhone || '')}
+                    </span>
                   </div>
                   {!isMember && (selectedReferral || noReferral) && (
-                    <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#92400e', background: '#fffbeb', padding: '4px 8px', borderRadius: 6, border: '1px solid #fcd34d' }}>
+                    <div style={{ marginTop: 8, padding: '5px 9px', background: '#fffbeb', borderRadius: 7, border: '1px solid #fcd34d', fontSize: '0.77rem', color: '#92400e' }}>
                       Referral: <strong>{selectedReferral?.name || DEFAULT_REFERRAL.name}</strong>
+                      {selectedReferral?.nb_number && <span style={{ color: '#d97706', marginLeft: 4 }}>({selectedReferral.nb_number})</span>}
                     </div>
                   )}
                 </div>
-                <div style={{ background: '#fff', borderRadius: 12, padding: '14px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Payment</div>
-                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
+
+                {/* Payment card */}
+                <div style={{ background: '#fff', borderRadius: 14, padding: '15px', border: '1.5px solid #f0e8ea', boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Payment</div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
                     {paymentMethods.find(m => m.id === paymentMethod)?.icon} {paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}
                   </div>
-                  <div style={{ marginTop: 8, padding: '6px 10px', background: 'linear-gradient(135deg,#0f172a,#1e3a5f)', borderRadius: 8 }}>
-                    <div style={{ color: '#4ade80', fontWeight: 800, fontSize: '1.15rem' }}>{formatCurrency(cartData.totalAmount)}</div>
-                    {isMember && <div style={{ color: '#fbbf24', fontSize: '0.72rem', marginTop: 1 }}>{cartData.totalBV.toFixed(1)} BV earned</div>}
-                    {!isMember && branchProfit > 0 && <div style={{ color: '#34d399', fontSize: '0.72rem', marginTop: 1 }}>Branch profit: {formatCurrency(branchProfit)}</div>}
+                  <div style={{ marginTop: 10, padding: '10px 13px', background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 10 }}>
+                    <div style={{ color: '#ffd0d8', fontWeight: 900, fontSize: '1.3rem' }}>{formatCurrency(cartData.totalAmount)}</div>
+                    {isMember && <div style={{ color: '#fbbf24', fontSize: '0.72rem', marginTop: 2 }}>{cartData.totalBV.toFixed(1)} BV earned</div>}
+                    {!isMember && branchProfit > 0 && <div style={{ color: '#86efac', fontSize: '0.72rem', marginTop: 2 }}>Branch profit: {formatCurrency(branchProfit)}</div>}
                   </div>
                 </div>
               </div>
 
-              <div style={{ background: '#fff', borderRadius: 12, padding: '14px', border: '1px solid #e2e8f0', marginBottom: 12 }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Items ({cart.length})</div>
-                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              {/* Items list */}
+              <div style={{ background: '#fff', borderRadius: 14, padding: '15px', border: '1.5px solid #f0e8ea', marginBottom: 12, boxShadow: '0 2px 8px rgba(196,30,58,0.04)' }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>Items ({cart.length})</div>
+                <div style={{ maxHeight: 175, overflowY: 'auto' }}>
                   {cartData.items.map((item, i) => {
                     const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
                     return (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < cartData.items.length - 1 ? '1px solid #f8fafc' : 'none', fontSize: '0.85rem' }}>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i < cartData.items.length - 1 ? '1px solid #fdf5f5' : 'none', fontSize: '0.86rem' }}>
                         <div>
-                          <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.name || item.description}</span>
-                          <span style={{ color: '#94a3b8', marginLeft: 4 }}>×{item.qty}</span>
+                          <span style={{ fontWeight: 700, color: '#1e293b' }}>{item.name || item.description}</span>
+                          <span style={{ color: '#94a3b8', marginLeft: 5 }}>×{item.qty}</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontWeight: 700 }}>{formatCurrency(item.lineTotal)}</div>
+                          <div style={{ fontWeight: 800, color: '#c41e3a' }}>{formatCurrency(item.lineTotal)}</div>
                           {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.72rem', color: '#0891b2' }}>+{formatCurrency(lineProfit)} profit</div>}
                         </div>
                       </div>
@@ -653,32 +692,34 @@ function WalkInSalesTab() {
                 </div>
               </div>
 
+              {/* Non-member receipt notice */}
               {!isMember && (
-                <div style={{ background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', borderRadius: 12, padding: '12px 16px', border: '1px solid #6ee7b7' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>Non-Member Sale Summary</div>
+                <div style={{ background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', borderRadius: 13, padding: '13px 16px', border: '1.5px solid #fecaca' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#9b1c2e', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Non-Member Sale Summary</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: '#059669', marginBottom: 2 }}>Customer Pays</div>
-                      <div style={{ fontWeight: 800, color: '#064e3b', fontSize: '0.95rem' }}>{formatCurrency(cartData.totalAmount)}</div>
+                    <div style={{ background: '#fff', borderRadius: 9, padding: '9px 6px', border: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#c41e3a', marginBottom: 3, fontWeight: 700 }}>Customer Pays</div>
+                      <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '0.95rem' }}>{formatCurrency(cartData.totalAmount)}</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: '#059669', marginBottom: 2 }}>Branch Profit</div>
-                      <div style={{ fontWeight: 800, color: '#064e3b', fontSize: '0.95rem' }}>{formatCurrency(branchProfit)}</div>
+                    <div style={{ background: '#fff', borderRadius: 9, padding: '9px 6px', border: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#c41e3a', marginBottom: 3, fontWeight: 700 }}>Branch Profit</div>
+                      <div style={{ fontWeight: 900, color: '#166534', fontSize: '0.95rem' }}>{formatCurrency(branchProfit)}</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: '#d97706', marginBottom: 2 }}>Distributor BV</div>
-                      <div style={{ fontWeight: 800, color: '#064e3b', fontSize: '0.95rem' }}>{cartData.totalBV.toFixed(1)}</div>
+                    <div style={{ background: '#fff', borderRadius: 9, padding: '9px 6px', border: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#d97706', marginBottom: 3, fontWeight: 700 }}>Distributor BV</div>
+                      <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '0.95rem' }}>{cartData.totalBV.toFixed(1)}</div>
                     </div>
                   </div>
-                  <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#047857', textAlign: 'center' }}>Two receipts will print: Customer copy + Staff/Distributor copy</div>
+                  <div style={{ marginTop: 10, fontSize: '0.73rem', color: '#9b1c2e', textAlign: 'center', fontWeight: 600 }}>🧾🧾 Two receipts will print: Customer copy → Staff/Distributor copy</div>
                 </div>
               )}
             </div>
 
-            <div style={{ padding: '14px 20px', background: '#fff', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button type="button" onClick={() => setShowConfirmModal(false)} style={{ padding: '10px 20px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontSize: '0.88rem' }}>← Edit</button>
+            {/* Action footer */}
+            <div style={{ padding: '14px 24px', background: '#fff', borderTop: '1px solid #f0e8ea', display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center' }}>
+              <button type="button" onClick={() => setShowConfirmModal(false)} style={{ padding: '10px 20px', border: '1.5px solid #e8d5d8', borderRadius: 11, background: '#fff', cursor: 'pointer', color: '#64748b', fontSize: '0.88rem', fontWeight: 600 }}>← Edit Sale</button>
               <button type="button" onClick={completeSale} disabled={submitting}
-                style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.65 : 1, boxShadow: '0 3px 10px rgba(22,101,52,0.35)' }}>
+                style={{ padding: '11px 32px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.92rem', opacity: submitting ? 0.65 : 1, boxShadow: '0 4px 14px rgba(196,30,58,0.35)', letterSpacing: '0.01em' }}>
                 {submitting ? '⏳ Processing…' : '✅ Complete Sale'}
               </button>
             </div>
