@@ -565,18 +565,24 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
             </div>
           </div>
 
-          {!isBranchMode && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="bg-[#c41e3a] text-white text-xs font-bold px-3 py-1 rounded">Processing Branch</span>
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="bg-[#c41e3a] text-white text-xs font-bold px-3 py-1 rounded">Processing Branch</span>
+            </div>
+            {isBranchMode && userBranch ? (
+              <div className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 flex items-center gap-2">
+                <span style={{ color: '#c41e3a', fontWeight: 700 }}>🏪</span>
+                <span className="font-semibold">{userBranch}</span>
+                <span className="text-xs text-gray-400 ml-1">(your branch)</span>
               </div>
+            ) : (
               <select value={form.processing_branch} onChange={e => set('processing_branch', e.target.value)} required
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#c41e3a] focus:border-[#c41e3a] bg-white">
-                <option value="">Select branch where you will process</option>
+                <option value="">Select processing branch…</option>
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div className="border border-[#c41e3a]/30 rounded-lg p-4">

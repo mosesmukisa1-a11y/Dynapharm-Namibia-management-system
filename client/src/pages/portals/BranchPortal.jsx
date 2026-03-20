@@ -3439,8 +3439,19 @@ function FieldProgramTab() {
                 </div>
                 <div>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Branch *</label>
-                  <input type="text" value={requestBranch} onChange={e => setRequestBranch(e.target.value)}
-                    style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  {user?.branch ? (
+                    <div style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', background: '#faf9f9', color: '#374151', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#c41e3a', fontWeight: 700 }}>🏪</span>
+                      <span style={{ fontWeight: 700 }}>{user.branch}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 4 }}>(your branch)</span>
+                    </div>
+                  ) : (
+                    <select value={requestBranch} onChange={e => setRequestBranch(e.target.value)}
+                      style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box', background: '#fff', color: '#374151', cursor: 'pointer' }}>
+                      <option value="">Select branch…</option>
+                      {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
 
