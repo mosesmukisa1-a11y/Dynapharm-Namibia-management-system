@@ -113,6 +113,7 @@ export const api = {
     updateTransfer: (id, data) => api.put('/stock/transfers', { ...data, id }),
     requests: () => api.get('/stock-requests'),
     createRequest: (data) => api.post('/stock-requests', data),
+    updateRequest: (id, data) => api.put('/stock-requests', { ...data, id }),
   },
 
   branch: {
