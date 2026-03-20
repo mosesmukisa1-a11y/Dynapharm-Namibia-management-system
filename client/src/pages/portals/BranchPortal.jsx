@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
-import { generateReceiptHTML, printReceipt } from '../../lib/receipt';
+import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -334,37 +334,48 @@ function WalkInSalesTab() {
           <div className="divide-y">
             {sales.slice(0, 10).map((s, i) => {
               const sIsM = (s.customerType || s.customer_type) === 'member';
+              const saleParams = {
+                receiptNumber: s.receipt_number || s.saleNumber || s.id,
+                branch: s.branch || user?.branch || '',
+                items: s.products || s.items || [],
+                totalAmount: s.total || s.totalAmount || s.total_amount || 0,
+                totalBV: s.totalBV || s.total_bv || 0,
+                paymentMethod: s.paymentMethod || s.payment_method || '',
+                customerType: s.customerType || s.customer_type || 'non_member',
+                customerName: s.distributor_name || s.customerName || s.customer_name || (sIsM ? null : 'Walk-in Customer'),
+                nbNumber: sIsM ? (s.distributor_nb || s.distributorReferral?.nb_number || null) : null,
+                referralName: !sIsM ? (s.referral_name || s.distributorReferral?.name || null) : null,
+                referralNB: !sIsM ? (s.referral_nb || s.distributorReferral?.nb_number || null) : null,
+                cashier: s.soldBy || '',
+                saleDate: s.created_at || s.timestamp,
+              };
               return (
-                <div key={i} className="flex items-center justify-between px-5 py-3 text-sm hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono font-semibold text-gray-700">{s.receipt_number || s.saleNumber || `#${s.id}`}</span>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: sIsM ? '#dbeafe' : '#fef3c7', color: sIsM ? '#1e40af' : '#92400e' }}>
-                      {sIsM ? 'Member' : 'Walk-in'}
+                <div key={i} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-gray-50 transition-colors gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className="font-mono font-semibold text-gray-700 text-xs">{saleParams.receiptNumber}</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0" style={{ background: sIsM ? '#dbeafe' : '#fef3c7', color: sIsM ? '#1e40af' : '#92400e' }}>
+                      {sIsM ? '🏅 Member' : '👤 Walk-in'}
                     </span>
-                    <span className="text-gray-500">{s.distributor_name || s.customer_name || s.customerName || '—'}</span>
+                    <span className="text-gray-500 truncate">{saleParams.customerName || '—'}</span>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-bold text-gray-800">{formatCurrency(s.total || s.totalAmount || s.total_amount || 0)}</span>
-                    <span className="text-xs text-gray-400">{formatDate(s.created_at || s.timestamp)}</span>
-                    <button onClick={(e) => {
-                      e.stopPropagation();
-                      const html = generateReceiptHTML({
-                        receiptNumber: s.receipt_number || s.saleNumber || s.id,
-                        branch: s.branch || user?.branch || '',
-                        items: s.products || s.items || [],
-                        totalAmount: s.total || s.totalAmount || s.total_amount || 0,
-                        totalBV: s.totalBV || s.total_bv || 0,
-                        paymentMethod: s.paymentMethod || s.payment_method || '',
-                        customerType: s.customerType || s.customer_type || 'non_member',
-                        customerName: s.distributor_name || s.customerName || s.customer_name || (sIsM ? null : 'Walk-in Customer'),
-                        nbNumber: sIsM ? (s.distributor_nb || s.distributorReferral?.nb_number || null) : null,
-                        referralName: !sIsM ? (s.referral_name || s.distributorReferral?.name || null) : null,
-                        referralNB: !sIsM ? (s.referral_nb || s.distributorReferral?.nb_number || null) : null,
-                        cashier: s.soldBy || '',
-                        showBV: true,
-                      });
-                      printReceipt(html);
-                    }} className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#64748b', borderColor: '#e2e8f0', background: '#fff' }}>🖨️</button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
+                    <span className="text-xs text-gray-400 hidden sm:inline">{formatDate(s.created_at || s.timestamp)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: sIsM })); }}
+                      title="Print 80mm thermal receipt"
+                      className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#374151', borderColor: '#e2e8f0', background: '#fff' }}>🖨️ Thermal</button>
+                    {!sIsM && (
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        printReceipt(generateReceiptHTML({ ...saleParams, showBV: false, copyType: 'customer' }));
+                        setTimeout(() => printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, copyType: 'staff' })), 900);
+                      }}
+                        title="Print customer copy + staff copy"
+                        className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#1e40af', borderColor: '#93c5fd', background: '#eff6ff' }}>🧾🧾 Both</button>
+                    )}
+                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM }); }}
+                      title="Open A4 PDF invoice"
+                      className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#fff', borderColor: '#c41e3a', background: '#c41e3a', fontWeight: 600 }}>📄 PDF</button>
                   </div>
                 </div>
               );
@@ -452,7 +463,7 @@ function WalkInSalesTab() {
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Referral Distributor</div>
                       <div style={{ position: 'relative' }}>
-                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search distributor…" disabled={noReferral}
+                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB#…" disabled={noReferral}
                           style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #fcd34d', borderRadius: 8, fontSize: '0.88rem', boxSizing: 'border-box', opacity: noReferral ? 0.5 : 1 }} />
                         {referralResults.length > 0 && !noReferral && (
                           <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 160, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.12)', top: 'calc(100% + 4px)', left: 0 }}>
