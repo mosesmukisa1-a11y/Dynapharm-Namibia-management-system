@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
+import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF } from '../../lib/receipt';
@@ -24,6 +25,7 @@ export default function BranchPortal() {
     { id: 'staff', label: 'Staff', icon: '👤' },
     { id: 'registration', label: 'Distributor Registration', icon: '📝' },
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
+    { id: 'distributorPerf', label: 'Distributor Performance', icon: '👥' },
   ];
 
   return (
@@ -56,9 +58,15 @@ export default function BranchPortal() {
         {activeTab === 'staff' && <StaffTab />}
         {activeTab === 'registration' && <DistributorRegTab />}
         {activeTab === 'fieldProgram' && <FieldProgramTab />}
+        {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
       </div>
     </div>
   );
+}
+
+function DistributorPerformanceTabWrapper() {
+  const { user } = useAuth();
+  return <DistributorPerformanceTab branchFilter={user?.branch || null} title="Distributor Performance" />;
 }
 
 function WalkInSalesTab() {

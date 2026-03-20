@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { PRICE_LIST } from '../../lib/pricing';
@@ -16,6 +17,7 @@ export default function MISPortal() {
     { id: 'stock', label: 'Stock', icon: '📦' },
     { id: 'catalogs', label: 'Catalogs', icon: '📖' },
     { id: 'drafts', label: 'Drafts', icon: '✏️' },
+    { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
   ];
 
   return (
@@ -36,6 +38,7 @@ export default function MISPortal() {
         {activeTab === 'stock' && <MISStockTab />}
         {activeTab === 'catalogs' && <CatalogsTab />}
         {activeTab === 'drafts' && <DraftsTab />}
+        {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Performance — MIS Overview" />}
       </div>
     </div>
   );

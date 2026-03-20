@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
@@ -16,6 +17,7 @@ export default function GMPortal() {
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
   ];
 
   return (
@@ -33,6 +35,7 @@ export default function GMPortal() {
         {activeTab === 'bonus' && <BonusHistoryTab />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
+        {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Performance — All Branches" />}
       </div>
     </div>
   );

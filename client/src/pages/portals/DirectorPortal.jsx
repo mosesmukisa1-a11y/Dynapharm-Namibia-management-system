@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
@@ -28,7 +29,7 @@ export default function DirectorPortal() {
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'branches' && <BranchOverviewTab />}
-        {activeTab === 'distributors' && <DistributorNetworkTab />}
+        {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>
