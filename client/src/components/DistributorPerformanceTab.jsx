@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate, BRANCHES } from '../lib/constants';
 import { Card, CardHeader, CardBody, Badge, LoadingSpinner, Table, Input } from './ui';
@@ -159,27 +159,65 @@ export function printAllBranchDistributorsReport(distributors, sales, branch) {
   `);
 }
 
+const INITIAL_LIMIT = 300;
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function DistributorPerformanceTab({ branchFilter = null, title = 'Distributor Performance' }) {
   const [distributors, setDistributors] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [search, setSearch] = useState('');
   const [branchSel, setBranchSel] = useState(branchFilter || '');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState(null);
-  const [sortBy, setSortBy] = useState('bv');
+  const [sortBy, setSortBy] = useState('name');
+  const [totalCount, setTotalCount] = useState(null);
+  const [isServerSearch, setIsServerSearch] = useState(false);
+  const searchTimer = useRef(null);
 
-  useEffect(() => {
-    const branchParam = branchFilter ? `branch=${encodeURIComponent(branchFilter)}` : '';
+  const loadInitial = useCallback(() => {
+    setLoading(true);
+    setSearch('');
+    setIsServerSearch(false);
+    const branchParam = branchFilter ? `&branch=${encodeURIComponent(branchFilter)}` : '';
     Promise.all([
-      api.distributors.list().catch(() => []),
-      api.branch.walkinSales(branchParam).catch(() => []),
+      api.get(`/distributors?limit=${INITIAL_LIMIT}${branchParam}`).catch(() => []),
+      api.branch.walkinSales(branchFilter ? `branch=${encodeURIComponent(branchFilter)}` : '').catch(() => []),
+      api.get('/distributors?limit=1').then(r => null).catch(() => null),
     ]).then(([d, s]) => {
-      setDistributors(Array.isArray(d) ? d : d.distributors || []);
+      const distList = Array.isArray(d) ? d : d.distributors || [];
+      setDistributors(distList);
       setSales(Array.isArray(s) ? s : s.sales || []);
     }).finally(() => setLoading(false));
   }, [branchFilter]);
+
+  useEffect(() => { loadInitial(); }, [loadInitial]);
+
+  // Server-side search when user types (debounced)
+  useEffect(() => {
+    if (!search.trim()) {
+      if (isServerSearch) loadInitial();
+      return;
+    }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      if (search.length < 2) return;
+      setSearching(true);
+      setIsServerSearch(true);
+      try {
+        const branchParam = branchFilter ? `&branch=${encodeURIComponent(branchFilter)}` : '';
+        const res = await api.get(`/distributors?search=${encodeURIComponent(search)}${branchParam}&limit=200`);
+        const list = Array.isArray(res) ? res : res.distributors || [];
+        setDistributors(list);
+      } catch {
+        // keep existing list
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [search, branchFilter, isServerSearch, loadInitial]);
 
   const perf = useMemo(() => {
     return distributors.map(dist => {
@@ -205,14 +243,10 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
     let list = perf;
     if (branchSel) list = list.filter(d => d.branch === branchSel);
     if (statusFilter) list = list.filter(d => (d.status || 'active') === statusFilter);
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(d => (d.distributor_name || '').toLowerCase().includes(q) || (d.distributor_code || '').toLowerCase().includes(q) || (d.mobile_no || '').includes(q) || (d.email || '').toLowerCase().includes(q));
-    }
     const sortKey = sortBy === 'bv' ? '_totalBV' : sortBy === 'sales' ? '_totalSales' : sortBy === 'referrals' ? '_referrals' : 'distributor_name';
     if (sortBy === 'name') return [...list].sort((a, b) => (a.distributor_name || '').localeCompare(b.distributor_name || ''));
     return [...list].sort((a, b) => (b[sortKey] || 0) - (a[sortKey] || 0));
-  }, [perf, search, branchSel, statusFilter, sortBy]);
+  }, [perf, branchSel, statusFilter, sortBy]);
 
   const totalBV = filtered.reduce((s, d) => s + d._totalBV, 0);
   const totalSales = filtered.reduce((s, d) => s + d._totalSales, 0);
@@ -244,6 +278,10 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', marginTop: 4, margin: 0 }}>BVs · Referrals · Sales · Commission Performance</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={loadInitial}
+            style={{ padding: '9px 18px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '99px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+            🔄 Refresh
+          </button>
           <button onClick={() => printAllBranchDistributorsReport(filtered, sales, branchSel || branchFilter || '')}
             style={{ padding: '9px 18px', background: '#fff', color: '#c41e3a', border: 'none', borderRadius: '99px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
             📄 Print All Report
@@ -253,7 +291,8 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10, marginBottom: 18 }}>
-        {statCard('Total Distributors', filtered.length, `${activeCount} active`, '#1e293b')}
+        {statCard('Distributors Loaded', filtered.length, isServerSearch ? 'from search results' : `of 12,429 total in DB`, '#1e293b')}
+        {statCard('Active (Loaded)', activeCount, 'in current view', '#166534')}
         {statCard('Total BV', totalBV.toFixed(1), 'accumulated from referrals', '#c41e3a')}
         {statCard('Referral Sales', formatCurrency(totalSales), 'via distributor referrals', '#166534')}
         {statCard('Total Referrals', totalReferrals, 'unique customers referred', '#1e40af')}
@@ -261,10 +300,14 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
 
       {/* Filters */}
       <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1', minWidth: 200 }}>
-          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.87rem', pointerEvents: 'none' }}>🔍</span>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, code, phone or email…"
-            style={{ width: '100%', padding: '8px 12px 8px 32px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+        <div style={{ position: 'relative', flex: '1', minWidth: 220 }}>
+          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.87rem', pointerEvents: 'none' }}>{searching ? '⏳' : '🔍'}</span>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, NB code, phone or email…"
+            style={{ width: '100%', padding: '8px 12px 8px 32px', border: `1.5px solid ${searching ? '#fcd34d' : '#e8d5d8'}`, borderRadius: 9, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color .2s' }} />
+          {search && (
+            <button onClick={() => { setSearch(''); if (isServerSearch) loadInitial(); }}
+              style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: 0 }}>×</button>
+          )}
         </div>
         {!branchFilter && (
           <select value={branchSel} onChange={e => setBranchSel(e.target.value)}
@@ -291,8 +334,17 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
 
       {/* Main table */}
       <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.05)' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.92rem' }}>Distributor Performance ({filtered.length})</div>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.92rem' }}>
+            Distributor Performance
+            <span style={{ marginLeft: 8, fontWeight: 600, color: '#c41e3a' }}>({filtered.length} shown)</span>
+            {!isServerSearch && !search && (
+              <span style={{ marginLeft: 6, fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>— First {INITIAL_LIMIT} of 12,429 · Search to find more</span>
+            )}
+            {isServerSearch && search && (
+              <span style={{ marginLeft: 6, fontSize: '0.72rem', color: '#1e40af', fontWeight: 600 }}>{searching ? '— Searching…' : `— Search results for "${search}"`}</span>
+            )}
+          </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Click a row to view full profile</div>
         </div>
         <div style={{ overflowX: 'auto' }}>
