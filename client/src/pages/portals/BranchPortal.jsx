@@ -896,21 +896,10 @@ function PrescriptionsTab() {
       </tr></tfoot>
     </table>
 
-    <div class="consult-box">
-      <div class="consult-title">💼 Consultation Fee — ${consultFee.label}</div>
-      <div class="consult-row"><span>Total Consultation Fee:</span><span style="font-weight:bold;font-size:14px;">N$ ${consultFee.total}</span></div>
-      <div class="consult-row" style="margin-top:4px;"><span>• Credited to Consultant:</span><span>N$ ${consultFee.consultantCredit}</span></div>
-      ${!isMember ? `<div class="consult-row"><span>• Credited to Referral Distributor:</span><span>N$ ${consultFee.referralCredit}</span></div>` : ''}
-      <div style="margin-top:8px;font-size:11px;color:#b45309;font-style:italic;">
-        ${isInclusive ? '✅ Consultation fee is included in the Grand Total below.' : '⚠️ Consultation fee is billed separately from medicine total.'}
-      </div>
-    </div>
-
     <div class="summary-box">
       <div class="sum-row"><span>Medicines Subtotal:</span><span>N$ ${medTotal}</span></div>
       ${isMember ? `<div class="sum-row"><span>BV Earned:</span><span style="color:#fbbf24;">${totals.total.bv} BV</span></div>` : ''}
-      <div class="sum-row"><span>Consultation Fee (${isInclusive ? 'inclusive' : 'separate'}):</span><span>N$ ${consultFee.total}</span></div>
-      <div class="sum-row total"><span>GRAND TOTAL${isInclusive ? '' : ' (medicines only)'}:</span><span>N$ ${grandTotal}</span></div>
+      <div class="sum-row total"><span>GRAND TOTAL:</span><span>N$ ${grandTotal}</span></div>
     </div>
 
     <div class="sig">
@@ -2632,10 +2621,28 @@ function FieldProgramTab() {
     rows[idx][field] = val;
     if (field === 'product') {
       const q = val.toLowerCase();
-      rows[idx].suggestions = q.length >= 2 ? catalogue.filter(p => (p.name||p.description||'').toLowerCase().includes(q)).slice(0, 6) : [];
-      rows[idx].showSug = rows[idx].suggestions.length > 0;
+      const filtered = q.length === 0
+        ? catalogue.slice(0, 10)
+        : catalogue.filter(p => (p.name||p.description||'').toLowerCase().includes(q)).slice(0, 8);
+      rows[idx].suggestions = filtered;
+      rows[idx].showSug = filtered.length > 0;
     }
     setProductRows(rows);
+  };
+  const focusProductRow = (idx) => {
+    const rows = [...productRows];
+    if (!rows[idx].product) {
+      rows[idx].suggestions = catalogue.slice(0, 10);
+      rows[idx].showSug = rows[idx].suggestions.length > 0;
+      setProductRows(rows);
+    }
+  };
+  const blurProductRow = (idx) => {
+    setTimeout(() => {
+      const rows = [...productRows];
+      rows[idx].showSug = false;
+      setProductRows(rows);
+    }, 180);
   };
   const selectProductSuggestion = (idx, p) => {
     const rows = [...productRows];
@@ -2745,7 +2752,8 @@ function FieldProgramTab() {
                     <div style={{ position: 'absolute', zIndex: 100, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px rgba(245,158,11,.15)', top: 'calc(100% + 4px)', left: 0 }}>
                       {distributorResults.map((d, i) => (
                         <div key={d.id||i} onClick={() => selectDistributor(d)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #fffbeb', fontSize: '0.85rem' }}>
-                          <strong>{d.distributor_name||d.name}</strong> <span style={{ color: '#d97706', marginLeft: 6 }}>NB#{d.distributor_code||d.nb_number}</span>
+                          <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.distributor_name||d.name}</div>
+                          <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 2 }}>NB#{d.distributor_code||d.nb_number}{d.mobile_no||d.phone ? ` · ${d.mobile_no||d.phone}` : ''}</div>
                         </div>
                       ))}
                     </div>
@@ -2784,7 +2792,7 @@ function FieldProgramTab() {
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr auto', gap: 8, alignItems: 'end' }}>
                       <div style={{ position: 'relative' }}>
                         {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Product *</label>}
-                        <input type="text" value={row.product} onChange={e => updateProductRow(idx, 'product', e.target.value)} placeholder="Type product name or search…"
+                        <input type="text" value={row.product} onChange={e => updateProductRow(idx, 'product', e.target.value)} onFocus={() => focusProductRow(idx)} onBlur={() => blurProductRow(idx)} placeholder="Click to browse or type to search…"
                           style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
                         {row.showSug && row.suggestions.length > 0 && (
                           <div style={{ position: 'absolute', zIndex: 200, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 9, maxHeight: 170, overflowY: 'auto', boxShadow: '0 6px 20px rgba(196,30,58,.12)', top: '100%', left: 0 }}>
