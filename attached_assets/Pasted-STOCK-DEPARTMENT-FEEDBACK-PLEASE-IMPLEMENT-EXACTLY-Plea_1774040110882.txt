@@ -1,0 +1,86 @@
+STOCK DEPARTMENT FEEDBACK – PLEASE IMPLEMENT EXACTLY
+
+Please organize and improve the Stock Department workflow with the following corrections and features. Do not remove any existing working logic. Retrieve and preserve the current stock code and extend it properly.
+
+1. STOCK VISIBILITY PER SHOP
+- The system must allow me to see the stock available in each and every shop/branch individually.
+- Stock should not only appear as a general total; it must be visible per shop.
+- Each shop must have its own clear stock balance dashboard.
+- I must be able to check what products each shop currently has in stock at any time.
+
+2. AUTO-GENERATED STOCK REPORTS
+- The system must automatically generate stock reports without requiring manual calculations.
+- Reports must be generated per shop/branch.
+- The system must also generate a full summary report for the whole company/overall stock count.
+
+3. STOCK CALCULATION FORMULA
+Please use this stock reporting formula exactly:
+
+Opening Stock
++ Issued Stock
+- Returns
+- Expiring Stock
+- Promotions / Campaign Stock Adjustments
+= Closing Stock
+
+This formula must be automated in the stock reports.
+
+4. PROMOTIONS / CAMPAIGNS IMPACT ON STOCK
+- Any promotion or campaign created in the GM portal must affect stock automatically.
+- Example: “Buy 1 Get 1” promotions must deduct the correct extra stock from the affected shop/branch.
+- Campaign and promotion stock movements must be reflected in the stock report calculation under:
+  “Promotions / Campaign Stock Adjustments”
+
+5. SHOP / BRANCH SALES AND STOCK MOVEMENT MONITORING
+- I want to see what each and every shop has.
+- I also want to see how each shop is selling.
+- The stock system must show stock movement per shop, including:
+  - stock received
+  - stock issued
+  - returns
+  - expiries
+  - promotional deductions
+  - sales deductions
+  - closing stock
+- This should make it easy to evaluate branch/shop performance.
+
+6. REPORT TYPES REQUIRED
+Please create the following reports:
+
+A. Per Shop / Branch Report
+- Opening stock
+- Stock received / issued
+- Returns
+- Expiring stock
+- Promotion/campaign deductions
+- Sales
+- Closing stock
+
+B. Company Summary Report
+- Combined stock count for all shops
+- Combined movement summary
+- Overall closing stock
+- Overall sales and stock performance summary
+
+7. PDF REVIEW AND PRINTING FOR ALL TABS
+- Add PDF preview/review functionality for all tabs where reports or records are shown.
+- Add print functionality for all tabs.
+- Users must be able to review and print reports from every relevant section of the system.
+- PDF export and printing should be clean, properly formatted, and professional.
+
+8. IMPORTANT IMPLEMENTATION NOTE
+- Do not create disconnected new logic if this workflow already exists partly in the code.
+- First retrieve the exact current stock management workflow and build on it.
+- Ensure all tabs are connected properly.
+- Ensure stock updates in real time across branches, GM portal promotions, and summary reports.
+- Ensure no data is lost.
+
+EXPECTED RESULT
+After this update:
+- I can see stock per shop
+- Stock reports are auto-generated
+- Reports follow the exact stock formula
+- GM promotions affect stock automatically
+- I can monitor how each shop is selling
+- I get per-shop reports and a full company summary
+- All tabs support PDF review and printing

@@ -54,6 +54,8 @@ export default function StockPortal() {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'branchStock', label: 'Branch Stock', icon: '🏪' },
+    { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
     { id: 'supplierImport', label: 'Supplier Import', icon: '🚢' },
     { id: 'countryStock', label: 'Country Stock', icon: '🌍' },
     { id: 'windhoek', label: 'Windhoek', icon: '🏢' },
@@ -82,6 +84,8 @@ export default function StockPortal() {
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'branchStock' && <BranchStockTab />}
+        {activeTab === 'stockReports' && <StockReportsTab />}
         {activeTab === 'supplierImport' && <SupplierImportTab />}
         {activeTab === 'countryStock' && <CountryStockTab />}
         {activeTab === 'windhoek' && <WarehouseTab name="Windhoek" />}
@@ -134,7 +138,15 @@ function OverviewTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Recent Stock Movements</h3></CardHeader>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">Recent Stock Movements</h3>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = data.movements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td></tr>`).join('');
+                printDocument('Recent Stock Movements', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+            </div>
+          </CardHeader>
           <Table
             columns={[
               { header: 'Date', render: r => formatDateTime(r.created_at) },
@@ -985,6 +997,10 @@ function InventoryTab() {
           <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Stock Movements</h3>
             <div className="flex gap-2 flex-wrap">
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = filtered.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'-'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td><td>${r.reference||''}</td></tr>`).join('');
+                printDocument('Stock Movements Report', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
               <div className="relative">
                 <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -1072,9 +1088,15 @@ function OrdersTab() {
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Stock Orders / Requests</h3>
-            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Request</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = requests.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.urgency||'Normal'}</td><td>${r.status||'Pending'}</td><td>${r.notes||''}</td></tr>`).join('');
+                printDocument('Stock Orders / Requests', `<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Urgency</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Request</Button>
+            </div>
           </div>
         </CardHeader>
         <Table
@@ -1233,7 +1255,15 @@ function MonthlySalesTab() {
       </div>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Sales by Product — {monthLabel}</h3></CardHeader>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Sales by Product — {monthLabel}</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const rows = productSummary.map((r, i) => `<tr><td>${i+1}</td><td>${r.product_name||''}</td><td>${r.total_qty.toLocaleString()}</td><td>${formatCurrency(r.total_revenue)}</td><td>${totalRevenue > 0 ? ((r.total_revenue/totalRevenue)*100).toFixed(1)+'%' : '0%'}</td></tr>`).join('');
+              printDocument(`Monthly Sales Report — ${monthLabel}`, `<table><thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>DP Revenue</th><th>% of Total</th></tr></thead><tbody>${rows}<tr style="font-weight:bold;background:#f0fdf4"><td colspan="2">TOTAL</td><td>${totalQty.toLocaleString()}</td><td>${formatCurrency(totalRevenue)}</td><td>100%</td></tr></tbody></table>`);
+            }}><Printer size={14} /> Print</Button>
+          </div>
+        </CardHeader>
         <Table
           columns={[
             { header: '#', render: (_, i) => i + 1 },
@@ -1812,7 +1842,15 @@ function ReorderTab() {
       </div>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Reorder Alerts</h3></CardHeader>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Reorder Alerts</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const rows = alerts.map(r => `<tr><td>${r.product_name||''}</td><td style="color:${r.status==='Critical'?'#dc2626':r.status==='Low'?'#d97706':'#166534'};font-weight:bold">${r.current_qty}</td><td>${r.reorder_level}</td><td style="font-weight:700;color:${r.status==='Critical'?'#dc2626':r.status==='Low'?'#d97706':'#166534'}">${r.status}</td></tr>`).join('');
+              printDocument('Reorder Alerts Report', `<table><thead><tr><th>Product</th><th>Current Qty</th><th>Reorder Level</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }}><Printer size={14} /> Print</Button>
+          </div>
+        </CardHeader>
         <Table
           columns={[
             { header: 'Product', key: 'product_name' },
@@ -1969,6 +2007,462 @@ function BatchTab() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+// ─── Branch Stock Tab ─────────────────────────────────────────────────────────
+function BranchStockTab() {
+  const [batches, setBatches] = useState([]);
+  const [walkinSales, setWalkinSales] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [viewMode, setViewMode] = useState('dashboard');
+  const [productSearch, setProductSearch] = useState('');
+
+  const loadData = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+    ]).then(([b, s, m]) => {
+      setBatches(b);
+      setWalkinSales(s);
+      setMovements(m);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+
+  // Group batches by branch location
+  const branchLocations = new Set();
+  batches.forEach(b => {
+    const loc = b.location || '';
+    if (loc && !loc.includes('warehouse') && loc !== 'country_stock') branchLocations.add(loc);
+  });
+  // Also add known branches from BRANCHES constant mapped to snake_case
+  BRANCHES.forEach(b => branchLocations.add(b.toLowerCase().replace(/\s+/g, '_')));
+
+  const buildBranchSummary = (branchKey) => {
+    const branchBatches = batches.filter(b => {
+      const loc = (b.location || '').toLowerCase().replace(/\s+/g, '_');
+      return loc === branchKey;
+    });
+    const branchSales = walkinSales.filter(s => {
+      const br = (s.branch || '').toLowerCase().replace(/\s+/g, '_');
+      return br === branchKey;
+    });
+    const branchMovs = movements.filter(m => {
+      const loc = (m.location || '').toLowerCase().replace(/\s+/g, '_');
+      return loc === branchKey;
+    });
+
+    const closingQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
+
+    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
+    const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const writeoffs = movsPeriod.filter(m => (m.movement_type || '').includes('write')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+
+    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
+    const salesQty = salesPeriod.reduce((s, r) => {
+      const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
+      return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
+    }, 0);
+    const salesRevenue = salesPeriod.reduce((s, r) => s + Number(r.total_amount || r.amount || 0), 0);
+
+    const opening = Math.max(0, closingQty + salesQty + writeoffs - issued + returns_);
+
+    // Products list
+    const productMap = {};
+    branchBatches.forEach(b => {
+      const name = b.product_name || 'Unknown';
+      if (!productMap[name]) productMap[name] = { product_name: name, qty: 0, value: 0, expiring: false };
+      productMap[name].qty += Number(b.quantity || 0);
+      productMap[name].value += Number(b.quantity || 0) * Number(b.unit_price || 0);
+      if (b.expiry_date && new Date(b.expiry_date) < now) productMap[name].expiring = true;
+    });
+    const products = Object.values(productMap);
+
+    return { branchKey, closingQty, closingValue, expiryQty, issued, returns: returns_, writeoffs, salesQty, salesRevenue, opening, products, batchCount: branchBatches.length };
+  };
+
+  const allBranchSummaries = BRANCHES.map(b => {
+    const key = b.toLowerCase().replace(/\s+/g, '_');
+    return { name: b, key, ...buildBranchSummary(key) };
+  }).filter(br => br.batchCount > 0 || br.salesQty > 0 || selectedBranch !== 'all');
+
+  const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch);
+
+  const companySummary = {
+    closing: allBranchSummaries.reduce((s, b) => s + b.closingQty, 0),
+    closingValue: allBranchSummaries.reduce((s, b) => s + b.closingValue, 0),
+    salesQty: allBranchSummaries.reduce((s, b) => s + b.salesQty, 0),
+    salesRevenue: allBranchSummaries.reduce((s, b) => s + b.salesRevenue, 0),
+    issued: allBranchSummaries.reduce((s, b) => s + b.issued, 0),
+    returns: allBranchSummaries.reduce((s, b) => s + b.returns, 0),
+    expiry: allBranchSummaries.reduce((s, b) => s + b.expiryQty, 0),
+  };
+
+  const printBranchReport = (br) => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">⚠ Expiring</span>':'-'}</td><td>N$ ${p.value.toFixed(2)}</td></tr>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Branch Stock — ${br.name}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-box{border:1.5px solid #f0e8ea;border-radius:10px;padding:14px;margin-bottom:14px}.formula-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9}.formula-label{font-weight:600;color:#374151}.formula-val{font-weight:900;font-size:14px}.closing-row{display:flex;justify-content:space-between;padding:10px 12px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-top:2px solid #86efac}.closing-label{font-weight:800;color:#166534;font-size:13px}.closing-val{font-weight:900;font-size:18px;color:#15803d}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📍 Branch Stock Report — ${br.name}</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel}</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
+    <div class="formula-box">
+      <div style="font-weight:800;color:#c41e3a;font-size:13px;margin-bottom:10px;border-bottom:1px solid #fecaca;padding-bottom:6px">📐 Stock Formula — ${periodLabel}</div>
+      <div class="formula-row"><span class="formula-label">Opening Stock</span><span class="formula-val" style="color:#1e3a5f">${br.opening.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">+ Issued / Received Stock</span><span class="formula-val" style="color:#166534">+${br.issued.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">− Returns</span><span class="formula-val" style="color:#92400e">−${br.returns.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">− Expiring / Expired Stock</span><span class="formula-val" style="color:#c41e3a">−${br.expiryQty.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">− Promotions / Campaign Adjustments</span><span class="formula-val" style="color:#c41e3a">−0</span></div>
+      <div class="closing-row"><span class="closing-label">= Closing Stock</span><span class="closing-val">${br.closingQty.toLocaleString()}</span></div>
+      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">N$ ${br.closingValue.toFixed(2)}</strong></span><span>Sales (units): <strong style="color:#c41e3a">${br.salesQty.toLocaleString()}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
+    </div>
+    <div style="font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;border-bottom:1px solid #fecaca;padding-bottom:4px">Current Product Inventory</div>
+    <table><thead><tr><th>Product</th><th>Qty on Hand</th><th>Expiry Status</th><th>Stock Value</th></tr></thead><tbody>${pRows||'<tr><td colspan="4" style="text-align:center;color:#94a3b8">No inventory on file</td></tr>'}</tbody></table>
+    </body></html>`);
+    win.document.close();
+  };
+
+  const printCompanyReport = () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const brRows = allBranchSummaries.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">+${br.issued.toLocaleString()}</td><td style="color:#92400e">−${br.returns.toLocaleString()}</td><td style="color:#c41e3a">−${br.expiryQty.toLocaleString()}</td><td style="color:#c41e3a">${br.salesQty.toLocaleString()}</td><td style="font-weight:800;color:#15803d">${br.closingQty.toLocaleString()}</td><td>N$ ${br.closingValue.toFixed(2)}</td></tr>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Company Stock Summary</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.kpi{border:1.5px solid #f0e8ea;border-radius:8px;padding:10px 12px;text-align:center}.kpi-val{font-size:18px;font-weight:900;color:#c41e3a;margin-top:4px}.kpi-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">🏢 Company Stock Summary — All Branches</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel} · ${allBranchSummaries.length} Branch(es)</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Total Closing Stock</div><div class="kpi-val">${companySummary.closing.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">Total Stock Value</div><div class="kpi-val">N$ ${companySummary.closingValue.toFixed(0)}</div></div><div class="kpi"><div class="kpi-label">Total Sales (units)</div><div class="kpi-val">${companySummary.salesQty.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">Total Sales Revenue</div><div class="kpi-val">N$ ${companySummary.salesRevenue.toFixed(0)}</div></div></div>
+    <table><thead><tr><th>Branch</th><th>Opening</th><th>Issued</th><th>Returns</th><th>Expiring</th><th>Sales (units)</th><th>Closing Qty</th><th>Closing Value</th></tr></thead>
+    <tbody>${brRows}
+    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td>-</td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#92400e">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.expiry.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.salesQty.toLocaleString()}</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
+    </tbody></table></body></html>`);
+    win.document.close();
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Branch View</p>
+          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>🏪 Per-Branch Stock Dashboard</h3>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Live stock balances per shop · {periodLabel}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>
+          <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Company Report PDF</button>
+        </div>
+      </div>
+
+      {/* Company KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
+        {[
+          ['Total Branches', allBranchSummaries.length, '#1e3a5f', '#f4f7fb'],
+          ['Closing Stock', companySummary.closing.toLocaleString(), '#15803d', '#f0fdf4'],
+          ['Stock Value', `N$${Math.round(companySummary.closingValue).toLocaleString()}`, '#c41e3a', '#fff0f3'],
+          ['Sales (units)', companySummary.salesQty.toLocaleString(), '#c41e3a', '#fef2f2'],
+          ['Sales Revenue', `N$${Math.round(companySummary.salesRevenue).toLocaleString()}`, '#166534', '#f0fdf4'],
+          ['Expiring Items', companySummary.expiry.toLocaleString(), companySummary.expiry > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
+        ].map(([l, v, col, bg]) => (
+          <div key={l} style={{ background: bg, border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>{l}</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: col, marginTop: 4 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {[{ id: 'dashboard', label: '📊 Dashboard' }, { id: 'products', label: '📦 Products' }].map(v => (
+          <button key={v.id} onClick={() => setViewMode(v.id)} style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.83rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: viewMode === v.id ? '#c41e3a' : '#f1f5f9', color: viewMode === v.id ? '#fff' : '#64748b' }}>{v.label}</button>
+        ))}
+        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
+          <option value="all">All Branches</option>
+          {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+        </select>
+      </div>
+
+      {/* Dashboard view — card per branch */}
+      {viewMode === 'dashboard' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 14 }}>
+          {displayBranches.length === 0 && (
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏪</div>
+              <p style={{ fontWeight: 600 }}>No branch stock data available</p>
+              <p style={{ fontSize: '0.82rem', marginTop: 6 }}>Stock data appears here once inventory is loaded into branches via transfers from the warehouse</p>
+            </div>
+          )}
+          {displayBranches.map(br => (
+            <div key={br.key} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
+              <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>📍 {br.name}</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.products.length} products</span>
+                  <button onClick={() => printBranchReport(br)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
+                </div>
+              </div>
+              <div>
+                {[
+                  ['Opening Stock', br.opening, '#1e3a5f'],
+                  ['+ Issued / Received', br.issued, '#166534'],
+                  ['− Returns', br.returns, '#92400e'],
+                  ['− Expiring', br.expiryQty, '#c41e3a'],
+                  ['− Promotions', 0, '#c41e3a'],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600 }}>{label}</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
+                  <span style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
+                  <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
+                </div>
+                <div style={{ padding: '8px 16px', background: '#fafafa', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
+                  <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
+                  <span>Revenue: <strong style={{ color: '#1e3a5f' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
+                  <span>Value: <strong style={{ color: '#1e3a5f' }}>N$ {br.closingValue.toFixed(0)}</strong></span>
+                </div>
+                {br.expiryQty > 0 && (
+                  <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.75rem', color: '#c41e3a', fontWeight: 700 }}>
+                    ⚠️ {br.expiryQty} units expiring/expired
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Products view */}
+      {viewMode === 'products' && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">Product Stock by Branch</h3>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const allProds = displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name })));
+                const rows = allProds.map(p => `<tr><td>${p.product_name}</td><td>${p.branch}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'⚠ Expiring':'-'}</td><td>N$ ${p.value.toFixed(2)}</td></tr>`).join('');
+                printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Qty</th><th>Expiry</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
+              }}><Printer size={14} /> Print</Button>
+            </div>
+          </CardHeader>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+            <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…" style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-semibold">{r.product_name}</span> },
+              { header: 'Branch', render: r => <Badge variant="info">{r.branch}</Badge> },
+              { header: 'Qty', render: r => <span style={{ fontWeight: 800, color: r.qty === 0 ? '#c41e3a' : r.qty < 10 ? '#d97706' : '#166534' }}>{r.qty}</span> },
+              { header: 'Status', render: r => r.qty === 0 ? <Badge variant="danger">Out of Stock</Badge> : r.qty < 10 ? <Badge variant="warning">Low</Badge> : <Badge variant="success">OK</Badge> },
+              { header: 'Expiry', render: r => r.expiring ? <Badge variant="danger">⚠ Expiring</Badge> : '-' },
+              { header: 'Stock Value', render: r => `N$ ${r.value.toFixed(2)}` },
+            ]}
+            data={displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name }))).filter(p => !productSearch || p.product_name.toLowerCase().includes(productSearch.toLowerCase()))}
+            emptyMessage="No product data available for selected branch(es)"
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Stock Reports Tab ─────────────────────────────────────────────────────────
+function StockReportsTab() {
+  const [batches, setBatches] = useState([]);
+  const [walkinSales, setWalkinSales] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [misReport, setMisReport] = useState(null);
+
+  const loadData = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.mis.stockReport().catch(() => null),
+    ]).then(([b, s, m, mis]) => {
+      setBatches(b);
+      setWalkinSales(s);
+      setMovements(m);
+      setMisReport(mis);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+
+  const buildFormula = (branchKey) => {
+    const branchBatches = batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
+    const branchSales = walkinSales.filter(s => (s.branch || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
+    const branchMovs = movements.filter(m => (m.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
+
+    const closingQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
+
+    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
+    const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+
+    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
+    const salesQty = salesPeriod.reduce((s, r) => {
+      const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
+      return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
+    }, 0);
+
+    const opening = Math.max(0, closingQty + salesQty - issued + returns_);
+    return { opening, issued, returns: returns_, expiryQty, promotions: 0, closing: closingQty, closingValue, salesQty };
+  };
+
+  const branchReports = BRANCHES.map(b => {
+    const key = b.toLowerCase().replace(/\s+/g, '_');
+    const formula = buildFormula(key);
+    return { name: b, key, formula };
+  });
+
+  const displayReports = selectedBranch === 'all' ? branchReports : branchReports.filter(r => r.key === selectedBranch);
+
+  const companySummary = {
+    opening: branchReports.reduce((s, r) => s + r.formula.opening, 0),
+    issued: branchReports.reduce((s, r) => s + r.formula.issued, 0),
+    returns: branchReports.reduce((s, r) => s + r.formula.returns, 0),
+    expiryQty: branchReports.reduce((s, r) => s + r.formula.expiryQty, 0),
+    promotions: 0,
+    closing: branchReports.reduce((s, r) => s + r.formula.closing, 0),
+    closingValue: branchReports.reduce((s, r) => s + r.formula.closingValue, 0),
+    salesQty: branchReports.reduce((s, r) => s + r.formula.salesQty, 0),
+  };
+
+  const printAllBranches = () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const brRows = displayReports.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.formula.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">${br.formula.issued.toLocaleString()}</td><td style="color:#92400e">${br.formula.returns.toLocaleString()}</td><td style="color:#c41e3a">${br.formula.expiryQty.toLocaleString()}</td><td style="color:#c41e3a">0</td><td style="font-weight:800;color:#15803d">${br.formula.closing.toLocaleString()}</td><td>N$ ${br.formula.closingValue.toFixed(2)}</td></tr>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Formula Report</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-banner{background:linear-gradient(135deg,#c41e3a,#8b0000);color:#fff;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.fb-item{text-align:center}.fb-val{font-size:14px;font-weight:900}.fb-label{font-size:8px;opacity:.7;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📋 Stock Formula Report — ${selectedBranch === 'all' ? 'All Branches' : displayReports[0]?.name || ''}</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel}</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
+    <div class="formula-banner"><div class="fb-item"><div class="fb-val">${companySummary.opening.toLocaleString()}</div><div class="fb-label">Opening</div></div><div style="font-size:16px;font-weight:900">+</div><div class="fb-item"><div class="fb-val">${companySummary.issued.toLocaleString()}</div><div class="fb-label">Issued</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.returns.toLocaleString()}</div><div class="fb-label">Returns</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.expiryQty.toLocaleString()}</div><div class="fb-label">Expiring</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">0</div><div class="fb-label">Promotions</div></div><div style="font-size:16px;font-weight:900">=</div><div class="fb-item"><div class="fb-val" style="font-size:18px">${companySummary.closing.toLocaleString()}</div><div class="fb-label">Closing</div></div></div>
+    <table><thead><tr><th>Branch</th><th>Opening</th><th>Issued</th><th>Returns</th><th>Expiring</th><th>Promotions</th><th>Closing Qty</th><th>Closing Value</th></tr></thead>
+    <tbody>${brRows}
+    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td><strong>${companySummary.opening.toLocaleString()}</strong></td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#92400e">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.expiryQty.toLocaleString()}</strong></td><td><strong>0</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
+    </tbody></table></body></html>`);
+    win.document.close();
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Reports</p>
+          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📋 Stock Formula Reports</h3>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Opening + Issued − Returns − Expiring − Promotions = Closing · {periodLabel}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>
+          <button onClick={printAllBranches} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Print Full Report PDF</button>
+        </div>
+      </div>
+
+      {/* Company summary formula */}
+      <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '16px 20px', marginBottom: 18 }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12, borderBottom: '1px solid #fecaca', paddingBottom: 8 }}>📐 Company-Wide Formula — {periodLabel}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
+          {[
+            ['Opening Stock', companySummary.opening, '#1e3a5f', '#f4f7fb'],
+            ['+ Issued / Received', companySummary.issued, '#166534', '#f0fdf4'],
+            ['− Returns', companySummary.returns, '#92400e', '#fffbeb'],
+            ['− Expiring', companySummary.expiryQty, '#c41e3a', '#fef2f2'],
+            ['− Promotions', 0, '#c41e3a', '#fef2f2'],
+            ['= Closing Stock', companySummary.closing, '#15803d', '#f0fdf4'],
+          ].map(([l, v, col, bg]) => (
+            <div key={l} style={{ background: bg, border: '1.5px solid #f0e8ea', borderRadius: 10, padding: '10px 12px', textAlign: 'center', ...(l.includes('=') ? { borderColor: '#86efac', gridColumn: 'span 2' } : {}) }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>{l}</div>
+              <div style={{ fontSize: l.includes('=') ? '1.4rem' : '1.1rem', fontWeight: 900, color: col, marginTop: 4 }}>{Number(v || 0).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', gap: 16, fontSize: '0.78rem', color: '#64748b', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+          <span>Stock Value: <strong style={{ color: '#c41e3a' }}>N$ {companySummary.closingValue.toFixed(2)}</strong></span>
+          <span>Sales (units): <strong style={{ color: '#c41e3a' }}>{companySummary.salesQty.toLocaleString()}</strong></span>
+        </div>
+      </div>
+
+      {/* Branch filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>Filter by branch:</span>
+        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
+          <option value="all">All Branches</option>
+          {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+        </select>
+      </div>
+
+      {/* Per-branch report table */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Per-Branch Stock Formula</h3>
+            <Button size="sm" variant="secondary" onClick={printAllBranches}><Printer size={14} /> Print Report</Button>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Branch', render: r => <span className="font-bold text-gray-800">{r.name}</span> },
+            { header: 'Opening', render: r => <span style={{ color: '#1e3a5f', fontWeight: 700 }}>{r.formula.opening.toLocaleString()}</span> },
+            { header: '+ Issued', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>{r.formula.issued.toLocaleString()}</span> },
+            { header: '− Returns', render: r => <span style={{ color: '#92400e', fontWeight: 700 }}>{r.formula.returns.toLocaleString()}</span> },
+            { header: '− Expiring', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{r.formula.expiryQty.toLocaleString()}</span> },
+            { header: '− Promotions', render: () => '0' },
+            { header: '= Closing', render: r => <span style={{ color: '#15803d', fontWeight: 900, fontSize: '1rem' }}>{r.formula.closing.toLocaleString()}</span> },
+            { header: 'Stock Value', render: r => <span style={{ fontWeight: 600, color: '#1e3a5f' }}>N$ {r.formula.closingValue.toFixed(2)}</span> },
+            { header: 'Sales (units)', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{r.formula.salesQty.toLocaleString()}</span> },
+          ]}
+          data={displayReports}
+          emptyMessage="No data available"
+        />
+        {/* Total row */}
+        <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 24, fontSize: '0.82rem', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 800, color: '#c41e3a' }}>COMPANY TOTAL</span>
+          <span>Opening: <strong>{companySummary.opening.toLocaleString()}</strong></span>
+          <span>Issued: <strong style={{ color: '#166534' }}>{companySummary.issued.toLocaleString()}</strong></span>
+          <span>Returns: <strong style={{ color: '#92400e' }}>{companySummary.returns.toLocaleString()}</strong></span>
+          <span>Expiring: <strong style={{ color: '#c41e3a' }}>{companySummary.expiryQty.toLocaleString()}</strong></span>
+          <span>Closing: <strong style={{ color: '#15803d', fontSize: '1rem' }}>{companySummary.closing.toLocaleString()}</strong></span>
+          <span>Value: <strong>N$ {companySummary.closingValue.toFixed(2)}</strong></span>
+        </div>
+      </Card>
+
+      {/* MIS stock report reference */}
+      {misReport && (
+        <div style={{ marginTop: 16, padding: '12px 16px', background: '#f4f7fb', border: '1.5px solid #c8d8e8', borderRadius: 12, fontSize: '0.82rem', color: '#1e3a5f' }}>
+          <strong>📊 MIS Stock Report also available</strong> — The MIS portal provides an additional automated stock formula report cross-referenced with branch data. Check the MIS portal for the combined view.
+        </div>
+      )}
     </div>
   );
 }
