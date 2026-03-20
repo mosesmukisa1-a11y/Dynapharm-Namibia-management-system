@@ -1010,7 +1010,7 @@ function PrescriptionsTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)', boxShadow: '0 4px 20px rgba(15,23,42,0.25)' }}>
+      <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.12)' }}>💊</div>
           <div>
@@ -1023,7 +1023,7 @@ function PrescriptionsTab() {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {[
-          { id: 'all', label: 'All', icon: '💊', activeBg: '#1e40af', border: '#93c5fd', bg: '#eff6ff', color: '#1e40af' },
+          { id: 'all', label: 'All', icon: '💊', activeBg: '#c41e3a', border: '#fecaca', bg: '#fff0f3', color: '#c41e3a' },
           { id: 'recent', label: 'Recent (7 days)', icon: '🕐', activeBg: '#059669', border: '#6ee7b7', bg: '#ecfdf5', color: '#065f46' },
           { id: 'partial', label: 'Partially Dispensed', icon: '⏳', activeBg: '#d97706', border: '#fcd34d', bg: '#fffbeb', color: '#92400e' },
           { id: 'full', label: 'Fully Dispensed', icon: '✅', activeBg: '#16a34a', border: '#86efac', bg: '#f0fdf4', color: '#166534' },
@@ -1091,7 +1091,7 @@ function PrescriptionsTab() {
           ? 'linear-gradient(135deg,#166534,#16a34a)'
           : pendingCount < total
             ? 'linear-gradient(135deg,#92400e,#d97706)'
-            : 'linear-gradient(135deg,#1e3a5f,#2980b9)';
+            : 'linear-gradient(135deg,#c41e3a,#8b0000)';
 
         return (
           <div key={report.id} className="rounded-2xl overflow-hidden mb-5" style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,0.07)' }}>
@@ -2086,103 +2086,274 @@ function BranchStockTab() {
 }
 
 function BankingTab() {
+  const { user } = useAuth();
   const [deposits, setDeposits] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [bankSubTab, setBankSubTab] = useState('deposits');
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
-  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  // Deposit form
+  const [showDepositForm, setShowDepositForm] = useState(false);
+  const [depositForm, setDepositForm] = useState({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
+
+  // Expense form
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
+
+  // Cash drawer
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerOpening, setDrawerOpening] = useState('');
+  const [drawerEntries, setDrawerEntries] = useState([]);
+  const [drawerEntry, setDrawerEntry] = useState({ type: 'in', amount: '', description: '' });
 
   useEffect(() => {
-    api.branch.deposits()
-      .then(d => setDeposits(Array.isArray(d) ? d : d.deposits || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.branch.deposits().catch(() => []),
+      api.branch.expenses().catch(() => []),
+    ]).then(([d, e]) => {
+      setDeposits(Array.isArray(d) ? d : d.deposits || []);
+      setExpenses(Array.isArray(e) ? e : e.expenses || []);
+    }).finally(() => setLoading(false));
   }, []);
 
-  const validate = () => {
-    const e = {};
-    if (!form.amount || Number(form.amount) <= 0) e.amount = 'Amount must be greater than 0';
-    if (!form.bank_name.trim()) e.bank_name = 'Bank name is required';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  const reloadAll = async () => {
+    const [d, e] = await Promise.all([api.branch.deposits().catch(() => []), api.branch.expenses().catch(() => [])]);
+    setDeposits(Array.isArray(d) ? d : d.deposits || []);
+    setExpenses(Array.isArray(e) ? e : e.expenses || []);
   };
 
-  const handleSubmit = async () => {
-    if (!validate()) return;
-    setSubmitting(true);
-    setAlert(null);
-    try {
-      await api.branch.createDeposit({
-        amount: Number(form.amount),
-        bank_name: form.bank_name.trim(),
-        reference: form.reference.trim(),
-        deposit_date: form.deposit_date || new Date().toISOString().slice(0, 10),
-        notes: form.notes.trim(),
-      });
-      setAlert({ type: 'success', message: 'Deposit recorded successfully' });
-      setForm({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
-      setShowForm(false);
-      const res = await api.branch.deposits().catch(() => ({ deposits: [] }));
-      setDeposits(Array.isArray(res) ? res : res.deposits || []);
-    } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to record deposit' });
-    } finally {
-      setSubmitting(false);
+  const submitDeposit = async () => {
+    if (!depositForm.amount || Number(depositForm.amount) <= 0 || !depositForm.bank_name.trim()) {
+      setAlert({ type: 'error', message: 'Amount and bank name are required' }); return;
     }
+    setSubmitting(true);
+    try {
+      await api.branch.createDeposit({ amount: Number(depositForm.amount), bank_name: depositForm.bank_name.trim(), reference: depositForm.reference.trim(), deposit_date: depositForm.deposit_date || new Date().toISOString().slice(0, 10), notes: depositForm.notes.trim() });
+      setAlert({ type: 'success', message: 'Deposit recorded successfully' });
+      setDepositForm({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
+      setShowDepositForm(false);
+      await reloadAll();
+    } catch (err) { setAlert({ type: 'error', message: err.message || 'Failed to record deposit' }); }
+    finally { setSubmitting(false); }
   };
+
+  const submitExpense = async () => {
+    if (!expenseForm.amount || Number(expenseForm.amount) <= 0 || !expenseForm.description.trim()) {
+      setAlert({ type: 'error', message: 'Amount and description are required' }); return;
+    }
+    setSubmitting(true);
+    try {
+      await api.branch.createExpense({ category: expenseForm.category, amount: Number(expenseForm.amount), description: expenseForm.description.trim(), receipt_ref: expenseForm.receipt_ref.trim(), date: expenseForm.date, branch: user?.branch || '' });
+      setAlert({ type: 'success', message: 'Expense recorded successfully' });
+      setExpenseForm({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
+      setShowExpenseForm(false);
+      await reloadAll();
+    } catch (err) { setAlert({ type: 'error', message: err.message || 'Failed to record expense' }); }
+    finally { setSubmitting(false); }
+  };
+
+  const addDrawerEntry = () => {
+    if (!drawerEntry.amount || Number(drawerEntry.amount) <= 0) return;
+    setDrawerEntries(prev => [...prev, { ...drawerEntry, amount: Number(drawerEntry.amount), time: new Date().toLocaleTimeString('en-NA', { hour: '2-digit', minute: '2-digit' }) }]);
+    setDrawerEntry({ type: 'in', amount: '', description: '' });
+  };
+  const drawerBalance = Number(drawerOpening || 0) + drawerEntries.reduce((s, e) => s + (e.type === 'in' ? e.amount : -e.amount), 0);
 
   if (loading) return <LoadingSpinner />;
 
+  const inputStyle = { width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 };
+
   return (
     <div>
-      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-        <h3 className="text-white text-lg font-bold m-0">🏦 Banking Operations</h3>
-        <p className="text-white/75 text-sm mt-1 m-0">Manage deposits, cash drawer, and expenses</p>
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
+        <div>
+          <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Branch Finance</p>
+          <h3 className="text-white text-lg font-bold m-0">🏦 Banking & Finance</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Deposits · Cash Drawer · Expenses</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => { setShowDepositForm(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: '#c41e3a', border: 'none', fontWeight: 700 }}>💰 New Deposit</button>
+          <button onClick={() => { setShowDrawer(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>💵 Cash Drawer</button>
+          <button onClick={() => { setShowExpenseForm(true); setAlert(null); setBankSubTab('expenses'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>💸 Record Expense</button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-        <button onClick={() => setShowForm(true)} className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>💰 Make Deposit</button>
-        <button className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>💵 Cash Drawer</button>
-        <button className="p-5 rounded-lg text-white text-base font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #f39c12, #d68910)' }}>💸 Record Expense</button>
-        <button className="p-5 rounded-lg text-gray-700 text-base font-semibold cursor-pointer border-none bg-gray-100 hover:bg-gray-200">📋 Banking History</button>
+      {alert && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: alert.type === 'success' ? '#f0fdf4' : '#fef2f2', color: alert.type === 'success' ? '#166534' : '#991b1b', border: `1px solid ${alert.type === 'success' ? '#86efac' : '#fca5a5'}` }}>{alert.message}</div>}
+
+      <div className="flex gap-2 mb-5">
+        {[{ id: 'deposits', label: '💰 Deposits' }, { id: 'expenses', label: '💸 Expenses' }].map(t => (
+          <button key={t.id} onClick={() => setBankSubTab(t.id)}
+            style={{ padding: '8px 20px', borderRadius: 20, fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: bankSubTab === t.id ? '#c41e3a' : '#f1f5f9', color: bankSubTab === t.id ? '#fff' : '#64748b' }}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Bank Deposit">
-        <div className="p-6 space-y-4">
-          <Input label="Amount (N$)" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} error={errors.amount} />
-          <Input label="Bank Name" value={form.bank_name} onChange={e => setForm({ ...form, bank_name: e.target.value })} error={errors.bank_name} placeholder="e.g. FNB, Standard Bank" />
-          <Input label="Reference Number" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Deposit slip reference" />
-          <Input label="Deposit Date" type="date" value={form.deposit_date} onChange={e => setForm({ ...form, deposit_date: e.target.value })} />
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes..." />
-          <div className="flex gap-3">
-            <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Record Deposit'}
-            </Button>
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+      {bankSubTab === 'deposits' && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Bank Deposits</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDateTime(r.deposit_date || r.date || r.created_at) },
+              { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
+              { header: 'Bank', render: r => r.bank_name || r.bankName || '-' },
+              { header: 'Reference', render: r => r.reference || r.slip_number || '-' },
+              { header: 'Status', render: r => <Badge variant={r.status === 'verified' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
+            ]}
+            data={deposits}
+            emptyMessage="No deposits recorded — click New Deposit to start"
+          />
+        </Card>
+      )}
+
+      {bankSubTab === 'expenses' && (
+        <Card>
+          <CardHeader className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Branch Expenses</h3>
+            <div style={{ fontWeight: 700, color: '#c41e3a', fontSize: '0.9rem' }}>Total: {formatCurrency(expenses.reduce((s, e) => s + Number(e.amount || 0), 0))}</div>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDateTime(r.date || r.created_at) },
+              { header: 'Category', render: r => <Badge variant="info">{r.category || '-'}</Badge> },
+              { header: 'Description', render: r => <span className="text-sm">{r.description || '-'}</span> },
+              { header: 'Amount', render: r => <span className="font-bold text-red-600">{formatCurrency(r.amount)}</span> },
+              { header: 'Receipt Ref', render: r => r.receipt_ref || r.receiptRef || '-' },
+              { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
+            ]}
+            data={expenses}
+            emptyMessage="No expenses recorded — click Record Expense to start"
+          />
+        </Card>
+      )}
+
+      {/* Deposit Form Modal */}
+      {showDepositForm && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowDepositForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💰 Record Bank Deposit</div>
+              <button onClick={() => setShowDepositForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={labelStyle}>Amount (N$) *</label><input type="number" min="1" value={depositForm.amount} onChange={e => setDepositForm(f => ({ ...f, amount: e.target.value }))} style={inputStyle} placeholder="0.00" /></div>
+                <div><label style={labelStyle}>Bank Name *</label><input type="text" value={depositForm.bank_name} onChange={e => setDepositForm(f => ({ ...f, bank_name: e.target.value }))} style={inputStyle} placeholder="e.g. FNB, Standard Bank" /></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={labelStyle}>Reference / Slip #</label><input type="text" value={depositForm.reference} onChange={e => setDepositForm(f => ({ ...f, reference: e.target.value }))} style={inputStyle} placeholder="Deposit slip ref" /></div>
+                <div><label style={labelStyle}>Deposit Date</label><input type="date" value={depositForm.deposit_date} onChange={e => setDepositForm(f => ({ ...f, deposit_date: e.target.value }))} style={inputStyle} /></div>
+              </div>
+              <div><label style={labelStyle}>Notes</label><textarea value={depositForm.notes} onChange={e => setDepositForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Optional notes…" style={{ ...inputStyle, resize: 'none' }} /></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowDepositForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                <button onClick={submitDeposit} disabled={submitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.65 : 1 }}>{submitting ? '⏳ Saving…' : '💰 Record Deposit'}</button>
+              </div>
+            </div>
           </div>
         </div>
-      </Modal>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Bank Deposits</h3>
+      )}
+
+      {/* Expense Form Modal */}
+      {showExpenseForm && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowExpenseForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💸 Record Branch Expense</div>
+              <button onClick={() => setShowExpenseForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Expense Category *</label>
+                  <select value={expenseForm.category} onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))} style={inputStyle}>
+                    {['Supplies', 'Transport', 'Maintenance', 'Utilities', 'Marketing', 'Staff Welfare', 'Equipment', 'Cleaning', 'Communication', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Amount (N$) *</label><input type="number" min="1" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} style={inputStyle} placeholder="0.00" /></div>
+              </div>
+              <div><label style={labelStyle}>Description *</label><textarea value={expenseForm.description} onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))} rows={3} placeholder="Describe the expense…" style={{ ...inputStyle, resize: 'none' }} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={labelStyle}>Receipt / Ref #</label><input type="text" value={expenseForm.receipt_ref} onChange={e => setExpenseForm(f => ({ ...f, receipt_ref: e.target.value }))} style={inputStyle} placeholder="Receipt reference" /></div>
+                <div><label style={labelStyle}>Date</label><input type="date" value={expenseForm.date} onChange={e => setExpenseForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} /></div>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowExpenseForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                <button onClick={submitExpense} disabled={submitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.65 : 1 }}>{submitting ? '⏳ Saving…' : '💸 Record Expense'}</button>
+              </div>
+            </div>
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Date', render: r => formatDateTime(r.deposit_date || r.date || r.created_at) },
-            { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
-            { header: 'Bank', render: r => r.bank_name || r.bankName || '-' },
-            { header: 'Reference', render: r => r.reference || r.slip_number || r.slipNumber || '-' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'verified' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
-          ]}
-          data={deposits}
-          emptyMessage="No deposits"
-        />
-      </Card>
+        </div>
+      )}
+
+      {/* Cash Drawer Modal */}
+      {showDrawer && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowDrawer(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💵 Cash Drawer</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.77rem', marginTop: 2 }}>Daily cash register — {new Date().toLocaleDateString('en-NA', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              </div>
+              <button onClick={() => setShowDrawer(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+              {/* Opening balance */}
+              <div style={{ background: '#f4f7fb', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.08em', display: 'block', marginBottom: 6 }}>Opening Balance (N$)</label>
+                <input type="number" min="0" value={drawerOpening} onChange={e => setDrawerOpening(e.target.value)} placeholder="Enter opening cash amount…" style={{ width: '100%', padding: '10px 14px', border: '2px solid #c8d8e8', borderRadius: 9, fontSize: '1.05rem', fontWeight: 700, outline: 'none', boxSizing: 'border-box', textAlign: 'right' }} />
+              </div>
+
+              {/* Add entry */}
+              <div style={{ border: '1.5px dashed #fecaca', borderRadius: 12, padding: '14px 16px', marginBottom: 16, background: '#fff8f8' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Add Cash Movement</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <select value={drawerEntry.type} onChange={e => setDrawerEntry(d => ({ ...d, type: e.target.value }))} style={{ padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: drawerEntry.type === 'in' ? '#166534' : '#c41e3a', outline: 'none', background: drawerEntry.type === 'in' ? '#f0fdf4' : '#fff0f3' }}>
+                    <option value="in">+ Cash In</option>
+                    <option value="out">− Cash Out</option>
+                  </select>
+                  <input type="number" min="1" value={drawerEntry.amount} onChange={e => setDrawerEntry(d => ({ ...d, amount: e.target.value }))} placeholder="Amount" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, outline: 'none' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" value={drawerEntry.description} onChange={e => setDrawerEntry(d => ({ ...d, description: e.target.value }))} placeholder="Description (e.g. Sale payment, Petty cash)" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
+                  <button onClick={addDrawerEntry} style={{ padding: '8px 16px', border: 'none', borderRadius: 8, background: '#c41e3a', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>+ Add</button>
+                </div>
+              </div>
+
+              {/* Entries */}
+              {drawerEntries.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Today's Movements</div>
+                  {drawerEntries.map((e, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: e.type === 'in' ? '#f0fdf4' : '#fef2f2', borderRadius: 9, border: `1px solid ${e.type === 'in' ? '#86efac' : '#fca5a5'}`, marginBottom: 6 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: e.type === 'in' ? '#166534' : '#c41e3a', fontSize: '0.85rem' }}>{e.type === 'in' ? '+' : '−'} N$ {Number(e.amount).toFixed(2)}</span>
+                        <span style={{ marginLeft: 10, fontSize: '0.8rem', color: '#64748b' }}>{e.description || '—'}</span>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{e.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Balance summary */}
+              <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', borderRadius: 12, padding: '16px 20px', color: '#fff' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, textAlign: 'center' }}>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Opening</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4 }}>N$ {Number(drawerOpening || 0).toFixed(2)}</div></div>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Movements</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4, color: drawerBalance - Number(drawerOpening || 0) >= 0 ? '#86efac' : '#fca5a5' }}>{drawerBalance - Number(drawerOpening || 0) >= 0 ? '+' : ''}N$ {(drawerBalance - Number(drawerOpening || 0)).toFixed(2)}</div></div>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Closing Balance</div><div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4, color: '#fbbf24' }}>N$ {drawerBalance.toFixed(2)}</div></div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button onClick={() => setShowDrawer(false)} style={{ padding: '10px 28px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2646,38 +2817,244 @@ function CommunicationTab() {
 }
 
 function StaffTab() {
+  const { user } = useAuth();
   const [alert, setAlert] = useState(null);
-  const [leaveStatus, setLeaveStatus] = useState('');
-  const [cashStatus, setCashStatus] = useState('');
+  const [staffSubTab, setStaffSubTab] = useState('leave');
+
+  // Leave state
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leaveLoading, setLeaveLoading] = useState(true);
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({ type: 'Annual', startDate: '', endDate: '', reason: '', urgent: false });
+
+  // Cash state
+  const [cashRequests, setCashRequests] = useState([]);
+  const [cashLoading, setCashLoading] = useState(true);
+  const [showCashForm, setShowCashForm] = useState(false);
+  const [cashSubmitting, setCashSubmitting] = useState(false);
+  const [cashForm, setCashForm] = useState({ amount: '', purpose: '', neededBy: '', urgent: false });
+
+  useEffect(() => {
+    api.get('/leave-requests').then(d => setLeaveRequests(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLeaveLoading(false));
+    api.get('/cash-requests').then(d => setCashRequests(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setCashLoading(false));
+  }, []);
+
+  const refreshLeave = () => api.get('/leave-requests').then(d => setLeaveRequests(Array.isArray(d) ? d : [])).catch(() => {});
+  const refreshCash = () => api.get('/cash-requests').then(d => setCashRequests(Array.isArray(d) ? d : [])).catch(() => {});
+
+  const submitLeave = async () => {
+    if (!leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason.trim()) {
+      setAlert({ type: 'error', message: 'Please fill in all required fields' }); return;
+    }
+    setLeaveSubmitting(true);
+    try {
+      await api.post('/leave-requests', { type: leaveForm.type, startDate: leaveForm.startDate, endDate: leaveForm.endDate, reason: leaveForm.reason, urgent: leaveForm.urgent });
+      setAlert({ type: 'success', message: 'Leave request submitted successfully' });
+      setLeaveForm({ type: 'Annual', startDate: '', endDate: '', reason: '', urgent: false });
+      setShowLeaveForm(false);
+      await refreshLeave();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to submit leave request' });
+    } finally { setLeaveSubmitting(false); }
+  };
+
+  const submitCash = async () => {
+    if (!cashForm.amount || Number(cashForm.amount) <= 0 || !cashForm.purpose.trim()) {
+      setAlert({ type: 'error', message: 'Please enter a valid amount and purpose' }); return;
+    }
+    setCashSubmitting(true);
+    try {
+      await api.post('/cash-requests', { amount: Number(cashForm.amount), purpose: cashForm.purpose, neededBy: cashForm.neededBy, urgent: cashForm.urgent });
+      setAlert({ type: 'success', message: 'Cash request submitted successfully' });
+      setCashForm({ amount: '', purpose: '', neededBy: '', urgent: false });
+      setShowCashForm(false);
+      await refreshCash();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to submit cash request' });
+    } finally { setCashSubmitting(false); }
+  };
+
+  const leaveTypeColor = (t) => ({ Annual: '#166534', Sick: '#9a3412', Emergency: '#7c2d12', Unpaid: '#374151' }[t] || '#374151');
+  const statusBadge = (s) => {
+    const colors = { Pending: { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' }, Approved: { bg: '#f0fdf4', color: '#166534', border: '#86efac' }, Rejected: { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } };
+    const c = colors[s] || colors.Pending;
+    return <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{s || 'Pending'}</span>;
+  };
 
   return (
     <div>
-      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-        <h3 className="text-white text-lg font-bold m-0">👤 Staff Services</h3>
-        <p className="text-white/75 text-sm mt-1 m-0">Leave management and cash requests</p>
-      </div>
-
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '8px', border: '2px solid #4caf50' }}>
-          <h4 style={{ color: '#2e7d32', marginBottom: '15px', marginTop: 0 }}>📅 Leave Management</h4>
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={() => setAlert({ type: 'info', message: 'Leave request form coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>Request Leave</button>
-            <button onClick={() => setAlert({ type: 'info', message: 'Leave history coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>My Leave Requests</button>
-          </div>
-          {leaveStatus && <div className="mt-4 text-sm" style={{ color: '#2e7d32' }}>{leaveStatus}</div>}
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
+        <div>
+          <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Staff Services</p>
+          <h3 className="text-white text-lg font-bold m-0">👤 Leave & Cash Management</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Submit and track your leave and cash requests</p>
         </div>
-
-        <div style={{ background: '#e3f2fd', padding: '20px', borderRadius: '8px', border: '2px solid #2196f3' }}>
-          <h4 style={{ color: '#1565c0', marginBottom: '15px', marginTop: 0 }}>💵 Cash Requests</h4>
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={() => setAlert({ type: 'info', message: 'Cash request form coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>Request Cash</button>
-            <button onClick={() => setAlert({ type: 'info', message: 'Cash request history coming soon' })} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>My Cash Requests</button>
-          </div>
-          {cashStatus && <div className="mt-4 text-sm" style={{ color: '#1565c0' }}>{cashStatus}</div>}
+        <div className="flex gap-2">
+          <button onClick={() => { setShowLeaveForm(true); setAlert(null); setStaffSubTab('leave'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: '#c41e3a', border: 'none', fontWeight: 700 }}>📅 Request Leave</button>
+          <button onClick={() => { setShowCashForm(true); setAlert(null); setStaffSubTab('cash'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>💵 Request Cash</button>
         </div>
       </div>
+
+      {alert && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: alert.type === 'success' ? '#f0fdf4' : '#fef2f2', color: alert.type === 'success' ? '#166534' : '#991b1b', border: `1px solid ${alert.type === 'success' ? '#86efac' : '#fca5a5'}` }}>{alert.message}</div>}
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-5">
+        {[{ id: 'leave', label: '📅 Leave Requests' }, { id: 'cash', label: '💵 Cash Requests' }].map(t => (
+          <button key={t.id} onClick={() => setStaffSubTab(t.id)}
+            style={{ padding: '8px 20px', borderRadius: 20, fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: staffSubTab === t.id ? '#c41e3a' : '#f1f5f9', color: staffSubTab === t.id ? '#fff' : '#64748b', transition: 'all 0.2s' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Leave Requests */}
+      {staffSubTab === 'leave' && (
+        <Card>
+          <CardHeader className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">My Leave Requests</h3>
+            <button onClick={refreshLeave} className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer" style={{ background: '#f9f5f5', color: '#64748b' }}>🔄 Refresh</button>
+          </CardHeader>
+          {leaveLoading ? <div className="p-6 text-center text-gray-400">Loading…</div> : leaveRequests.length === 0 ? (
+            <div className="p-10 text-center text-gray-400">
+              <div className="text-4xl mb-3">📅</div>
+              <p className="font-semibold text-gray-500">No leave requests yet</p>
+              <p className="text-sm mt-1">Click "Request Leave" to submit your first request</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {leaveRequests.map((r, i) => (
+                <div key={r.id || i} style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: '#fff0f3', color: leaveTypeColor(r.type), border: `1px solid #fecaca` }}>{r.type || 'Annual'}</span>
+                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      {statusBadge(r.status)}
+                    </div>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>{r.startDate} → {r.endDate}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>{r.reason}</div>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'right' }}>{r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-NA') : '-'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Cash Requests */}
+      {staffSubTab === 'cash' && (
+        <Card>
+          <CardHeader className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">My Cash Requests</h3>
+            <button onClick={refreshCash} className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer" style={{ background: '#f9f5f5', color: '#64748b' }}>🔄 Refresh</button>
+          </CardHeader>
+          {cashLoading ? <div className="p-6 text-center text-gray-400">Loading…</div> : cashRequests.length === 0 ? (
+            <div className="p-10 text-center text-gray-400">
+              <div className="text-4xl mb-3">💵</div>
+              <p className="font-semibold text-gray-500">No cash requests yet</p>
+              <p className="text-sm mt-1">Click "Request Cash" to submit a cash request</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {cashRequests.map((r, i) => (
+                <div key={r.id || i} style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 800, color: '#166534', fontSize: '0.95rem' }}>N$ {Number(r.amount || 0).toFixed(2)}</span>
+                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      {statusBadge(r.status)}
+                    </div>
+                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>{r.purpose}</div>
+                    {r.neededBy && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>Needed by: {r.neededBy}</div>}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'right' }}>{r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-NA') : '-'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Leave Request Form Modal */}
+      {showLeaveForm && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowLeaveForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>📅 Submit Leave Request</div>
+              <button onClick={() => setShowLeaveForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Leave Type *</label>
+                <select value={leaveForm.type} onChange={e => setLeaveForm(f => ({ ...f, type: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none' }}>
+                  {['Annual', 'Sick', 'Emergency', 'Unpaid', 'Maternity', 'Study'].map(t => <option key={t} value={t}>{t} Leave</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Start Date *</label>
+                  <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm(f => ({ ...f, startDate: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>End Date *</label>
+                  <input type="date" value={leaveForm.endDate} min={leaveForm.startDate} onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Reason / Notes *</label>
+                <textarea value={leaveForm.reason} onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))} rows={3} placeholder="Please provide a reason for your leave request…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#dc2626', userSelect: 'none' }}>
+                <input type="checkbox" checked={leaveForm.urgent} onChange={e => setLeaveForm(f => ({ ...f, urgent: e.target.checked }))} style={{ width: 16, height: 16, accentColor: '#c41e3a' }} />
+                Mark as URGENT (requires immediate approval)
+              </label>
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button onClick={() => setShowLeaveForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.9rem' }}>Cancel</button>
+                <button onClick={submitLeave} disabled={leaveSubmitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: leaveSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: leaveSubmitting ? 0.65 : 1 }}>
+                  {leaveSubmitting ? '⏳ Submitting…' : '📅 Submit Leave Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Request Form Modal */}
+      {showCashForm && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowCashForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💵 Submit Cash Request</div>
+              <button onClick={() => setShowCashForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Amount Requested (N$) *</label>
+                <input type="number" min="1" value={cashForm.amount} onChange={e => setCashForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '1rem', fontWeight: 700, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Purpose / Reason *</label>
+                <textarea value={cashForm.purpose} onChange={e => setCashForm(f => ({ ...f, purpose: e.target.value }))} rows={3} placeholder="Describe what the cash will be used for…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Date Needed By</label>
+                <input type="date" value={cashForm.neededBy} onChange={e => setCashForm(f => ({ ...f, neededBy: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#dc2626', userSelect: 'none' }}>
+                <input type="checkbox" checked={cashForm.urgent} onChange={e => setCashForm(f => ({ ...f, urgent: e.target.checked }))} style={{ width: 16, height: 16, accentColor: '#c41e3a' }} />
+                Mark as URGENT
+              </label>
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button onClick={() => setShowCashForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.9rem' }}>Cancel</button>
+                <button onClick={submitCash} disabled={cashSubmitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: cashSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: cashSubmitting ? 0.65 : 1 }}>
+                  {cashSubmitting ? '⏳ Submitting…' : '💵 Submit Cash Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
