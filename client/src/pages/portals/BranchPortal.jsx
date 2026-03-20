@@ -1344,6 +1344,81 @@ function printSalesReportDoc(sales, period, branch) {
   ].map(([l,v,c])=>`<div style="background:#f9f5f5;border:1.5px solid #f0e8ea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">${l}</div><div style="font-size:14px;font-weight:900;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>`;
   printStockDocument(`Sales Report — ${period==='today'?'Daily':'Monthly'}`, `<p style="color:#64748b;margin-bottom:12px;font-size:10px">Period: <strong>${period==='today'?new Date().toDateString():new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})}</strong></p>${summary}<table><thead><tr><th>Receipt #</th><th>Type</th><th>Customer</th><th>Payment</th><th>Amount</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No sales in this period</td></tr>'}</tbody>${filtered.length>0?`<tfoot><tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td><strong>N$ ${total.toFixed(2)}</strong></td><td></td></tr></tfoot>`:''}</table>`, branch);
 }
+function printStockFormulaReport(inventory, movements, sales, branch) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+
+  // Compute formula components from movements
+  const movsPeriod = movements.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
+  const received = movsPeriod.filter(m => (m.movement_type||'').includes('received') || (m.type||'').includes('receive')).reduce((s, m) => s + Number(m.quantity||0), 0);
+  const returns_ = movsPeriod.filter(m => (m.movement_type||'').includes('return') || (m.type||'').includes('return')).reduce((s, m) => s + Number(m.quantity||0), 0);
+  const writeOffs = movsPeriod.filter(m => (m.movement_type||'').includes('write_off') || (m.type||'').includes('write_off')).reduce((s, m) => s + Number(m.quantity||0), 0);
+  const expiryItems = inventory.filter(i => i.expiry_date && new Date(i.expiry_date) < now);
+  const expiryQty = expiryItems.reduce((s, i) => s + Number(i.quantity||0), 0);
+  const closingQty = inventory.reduce((s, i) => s + Number(i.quantity||0), 0);
+  const closingValue = inventory.reduce((s, i) => s + (Number(i.quantity||0) * Number(i.unit_price||0)), 0);
+  const salesPeriod = sales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
+  const salesQty = salesPeriod.reduce((s, r) => {
+    const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items||[]); } catch { return []; } })();
+    return s + items.reduce((si, i) => si + Number(i.quantity||0), 0);
+  }, 0);
+  const issuedTotal = received + salesQty;
+  const outflows = salesQty + writeOffs + expiryQty;
+  const opening = Math.max(0, closingQty - issuedTotal + outflows - returns_);
+
+  const win = window.open('', '_blank');
+  if (!win) return;
+  const fmt = (n) => Number(n||0).toLocaleString();
+  const fmtC = (n) => `N$ ${Number(n||0).toFixed(2)}`;
+  const fRow = (label, val, color, bg, borderTop) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px;${bg?`background:${bg};`:''}${borderTop?`border-top:2px solid ${borderTop};`:''}border-bottom:1px solid #f1f5f9">
+       <span style="font-size:12px;font-weight:700;color:#374151">${label}</span>
+       <span style="font-size:16px;font-weight:900;color:${color||'#1e293b'}">${val}</span>
+     </div>`;
+  const invRows = inventory.map(i => `<tr><td>${i.product_name||i.description||'-'}</td><td>${i.batch_no||'-'}</td><td style="font-weight:800;color:${Number(i.quantity||0)<=0?'#c41e3a':Number(i.quantity||0)<10?'#d97706':'#166534'}">${i.quantity||0}</td><td>${i.unit_price?fmtC(i.unit_price):'-'}</td><td style="font-weight:700">${fmtC(Number(i.quantity||0)*Number(i.unit_price||0))}</td><td>${i.expiry_date?new Date(i.expiry_date).toLocaleDateString('en-NA'):'—'}</td></tr>`).join('');
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Report — ${branch}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; padding: 24px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #c41e3a; padding-bottom:10px; margin-bottom:16px; }
+    .company { color:#c41e3a; font-weight:900; font-size:15px; }
+    .sec-title { font-size:9px; font-weight:800; color:#c41e3a; text-transform:uppercase; letter-spacing:.12em; margin:14px 0 6px; border-bottom:1px solid #fecaca; padding-bottom:4px; }
+    .formula-card { border:1.5px solid #f0e8ea; border-radius:12px; overflow:hidden; margin-bottom:16px; }
+    .formula-header { background:linear-gradient(135deg,#c41e3a,#8b0000); color:#fff; padding:12px 18px; font-weight:800; font-size:13px; }
+    table { width:100%; border-collapse:collapse; margin-top:4px; }
+    th { background:#c41e3a; color:#fff; font-weight:700; padding:6px 8px; text-align:left; font-size:9.5px; }
+    td { padding:5px 8px; border-bottom:1px solid #f1f5f9; font-size:9.5px; }
+    tr:nth-child(even) td { background:#fdf7f8; }
+    .total-row td { font-weight:800; background:#fff0f3 !important; border-top:2px solid #fecaca; }
+    .meta { text-align:right; color:#64748b; font-size:10px; line-height:1.6; }
+    .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; }
+    @media print { .print-btn { display:none; } body { padding:10px; } }
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+  <div class="header">
+    <div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📊 Branch Stock Formula Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${branch} Branch &nbsp;·&nbsp; ${periodLabel}</div></div>
+    <div class="meta">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Time: ${now.toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'})}<br>Generated by: Branch Portal</div>
+  </div>
+  <div class="formula-card">
+    <div class="formula-header">📐 Stock Calculation — ${periodLabel}</div>
+    ${fRow('Opening Stock (estimated)', fmt(opening), '#1e3a5f', '#f4f7fb')}
+    ${fRow('+ Issued / Received Stock', '+' + fmt(received), '#166534', '#f0fdf4')}
+    ${fRow('− Returns', '−' + fmt(returns_), '#92400e', '#fffbeb')}
+    ${fRow('− Expiring / Expired Stock', '−' + fmt(expiryQty), '#c41e3a', '#fef2f2')}
+    ${fRow('− Promotions / Campaign Adjustments', '−0', '#c41e3a', '#fef2f2')}
+    ${fRow('= Closing Stock', fmt(closingQty), '#15803d', 'linear-gradient(135deg,#f0fdf4,#dcfce7)', '#86efac')}
+    <div style="padding:8px 18px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">${fmtC(closingValue)}</strong></span><span>Sales (units, this month): <strong style="color:#c41e3a">${fmt(salesQty)}</strong></span><span>Write-offs: <strong>${fmt(writeOffs)}</strong></span></div>
+  </div>
+  <div class="sec-title">Current Inventory — ${branch}</div>
+  <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Unit Price</th><th>Stock Value</th><th>Expiry</th></tr></thead>
+  <tbody>${invRows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No inventory data</td></tr>'}
+  <tr class="total-row"><td colspan="2"><strong>TOTALS</strong></td><td><strong>${fmt(closingQty)}</strong></td><td></td><td><strong>${fmtC(closingValue)}</strong></td><td></td></tr>
+  </tbody></table>
+  </body></html>`);
+  win.document.close();
+}
 // ─── End PDF helpers ───────────────────────────────────────────────────────────
 
 function BranchStockTab() {
@@ -1609,7 +1684,10 @@ function BranchStockTab() {
         <Card>
           <CardHeader className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Stock Requests</h3>
-            <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📋 New Request</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => printReceivingStockReport(requests, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
+              <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📋 New Request</button>
+            </div>
           </CardHeader>
           <Table
             columns={[
@@ -1673,7 +1751,10 @@ function BranchStockTab() {
         <Card>
           <CardHeader className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Stock Transfers</h3>
-            <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>↔ New Transfer</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
+              <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>↔ New Transfer</button>
+            </div>
           </CardHeader>
           <Table
             columns={[
@@ -1718,6 +1799,7 @@ function BranchStockTab() {
               { icon: '📊', title: 'Daily Sales Report', desc: "Today's walk-in sales summary", action: () => printSalesReportDoc(sales, 'today', user?.branch||'') },
               { icon: '📈', title: 'Monthly Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} sales summary`, action: () => printSalesReportDoc(sales, 'month', user?.branch||'') },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch & expiry', action: () => printPhysicalStockReport(inventory, user?.branch||'') },
+              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued − Returns − Expiring − Promotions = Closing', action: () => printStockFormulaReport(inventory, movements, sales, user?.branch||'') },
               { icon: '🔄', title: 'Stock Movements Report', desc: 'All stock movements: sales, received, write-offs', action: () => printStockMovementsReport(movements, user?.branch||'') },
               { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse', action: () => printReceivingStockReport(requests, user?.branch||'') },
             ].map(card => (

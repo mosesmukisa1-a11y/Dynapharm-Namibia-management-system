@@ -155,6 +155,7 @@ export const api = {
     receipts: (params = '') => api.get(`/mis/receipts${params ? '?' + params : ''}`),
     reconcile: (params = '') => api.get(`/mis/reconcile${params ? '?' + params : ''}`),
     stock: () => api.get('/mis/stock'),
+    stockReport: (params = '') => api.get(`/mis/stock-report${params ? '?' + params : ''}`),
   },
 
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),
