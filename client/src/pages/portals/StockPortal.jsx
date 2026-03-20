@@ -2011,6 +2011,83 @@ function BatchTab() {
   );
 }
 
+// ─── Shared period helper ──────────────────────────────────────────────────────
+function getDefaultPeriod() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  return {
+    from: `${y}-${String(m + 1).padStart(2, '0')}-01`,
+    to: now.toISOString().slice(0, 10),
+  };
+}
+
+function applyPeriodPreset(preset, setter) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  let from, to;
+  if (preset === 'this_month') {
+    from = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    to = now.toISOString().slice(0, 10);
+  } else if (preset === 'last_month') {
+    const lm = m === 0 ? 11 : m - 1, ly = m === 0 ? y - 1 : y;
+    const days = new Date(ly, lm + 1, 0).getDate();
+    from = `${ly}-${String(lm + 1).padStart(2, '0')}-01`;
+    to = `${ly}-${String(lm + 1).padStart(2, '0')}-${String(days).padStart(2, '0')}`;
+  } else if (preset === 'last_3') {
+    const d = new Date(y, m - 2, 1);
+    from = d.toISOString().slice(0, 10);
+    to = now.toISOString().slice(0, 10);
+  } else if (preset === 'ytd') {
+    from = `${y}-01-01`;
+    to = now.toISOString().slice(0, 10);
+  }
+  setter({ from, to });
+}
+
+function PeriodFilter({ period, onChange }) {
+  const presets = [
+    { key: 'this_month', label: 'This Month' },
+    { key: 'last_month', label: 'Last Month' },
+    { key: 'last_3', label: 'Last 3 Months' },
+    { key: 'ytd', label: 'Year to Date' },
+  ];
+  const def = getDefaultPeriod();
+  const isDefault = period.from === def.from && period.to === def.to;
+  return (
+    <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#374151', whiteSpace: 'nowrap' }}>📅 Period:</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {presets.map(p => {
+          const def2 = {};
+          applyPeriodPreset(p.key, v => { def2.from = v.from; def2.to = v.to; });
+          const active = period.from === def2.from && period.to === def2.to;
+          return (
+            <button key={p.key} onClick={() => applyPeriodPreset(p.key, onChange)}
+              style={{ padding: '5px 12px', borderRadius: 16, fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer', background: active ? '#c41e3a' : '#f1f5f9', color: active ? '#fff' : '#64748b', transition: 'all .15s' }}>
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Custom:</span>
+        <input type="date" value={period.from} onChange={e => onChange({ ...period, from: e.target.value })}
+          style={{ padding: '4px 9px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.8rem', outline: 'none', color: '#374151', cursor: 'pointer' }} />
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>to</span>
+        <input type="date" value={period.to} onChange={e => onChange({ ...period, to: e.target.value })}
+          style={{ padding: '4px 9px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.8rem', outline: 'none', color: '#374151', cursor: 'pointer' }} />
+      </div>
+    </div>
+  );
+}
+
+function fmtPeriodLabel(from, to) {
+  const opts = { day: '2-digit', month: 'short', year: 'numeric' };
+  const a = new Date(from + 'T00:00:00').toLocaleDateString('en-NA', opts);
+  const b = new Date(to + 'T00:00:00').toLocaleDateString('en-NA', opts);
+  return from === to ? a : `${a} – ${b}`;
+}
+
 // ─── Branch Stock Tab ─────────────────────────────────────────────────────────
 function BranchStockTab() {
   const [batches, setBatches] = useState([]);
@@ -2020,6 +2097,7 @@ function BranchStockTab() {
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [viewMode, setViewMode] = useState('dashboard');
   const [productSearch, setProductSearch] = useState('');
+  const [period, setPeriod] = useState(getDefaultPeriod);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -2040,8 +2118,9 @@ function BranchStockTab() {
 
   const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+  const periodStart = new Date(period.from + 'T00:00:00');
+  const periodEnd = new Date(period.to + 'T23:59:59');
+  const periodLabel = fmtPeriodLabel(period.from, period.to);
 
   // Group batches by branch location
   const branchLocations = new Set();
@@ -2070,12 +2149,12 @@ function BranchStockTab() {
     const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
     const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
 
-    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
+    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
     const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
     const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
     const writeoffs = movsPeriod.filter(m => (m.movement_type || '').includes('write')).reduce((s, m) => s + Number(m.quantity || 0), 0);
 
-    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
+    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= periodStart && new Date(s.created_at) <= periodEnd);
     const salesQty = salesPeriod.reduce((s, r) => {
       const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
       return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
@@ -2169,6 +2248,9 @@ function BranchStockTab() {
           <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Company Report PDF</button>
         </div>
       </div>
+
+      {/* Period filter */}
+      <PeriodFilter period={period} onChange={setPeriod} />
 
       {/* Company KPI cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
@@ -2292,6 +2374,7 @@ function StockReportsTab() {
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [misReport, setMisReport] = useState(null);
+  const [period, setPeriod] = useState(getDefaultPeriod);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -2313,8 +2396,9 @@ function StockReportsTab() {
   if (loading) return <LoadingSpinner />;
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+  const periodStart = new Date(period.from + 'T00:00:00');
+  const periodEnd = new Date(period.to + 'T23:59:59');
+  const periodLabel = fmtPeriodLabel(period.from, period.to);
 
   const buildFormula = (branchKey) => {
     const branchBatches = batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
@@ -2325,11 +2409,11 @@ function StockReportsTab() {
     const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
     const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
 
-    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
+    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
     const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
     const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
 
-    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
+    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= periodStart && new Date(s.created_at) <= periodEnd);
     const salesQty = salesPeriod.reduce((s, r) => {
       const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
       return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
@@ -2388,6 +2472,9 @@ function StockReportsTab() {
           <button onClick={printAllBranches} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Print Full Report PDF</button>
         </div>
       </div>
+
+      {/* Period filter */}
+      <PeriodFilter period={period} onChange={setPeriod} />
 
       {/* Company summary formula */}
       <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '16px 20px', marginBottom: 18 }}>
