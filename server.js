@@ -266,20 +266,69 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
     if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
     if (adj.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
-    // Apply the change to the actual stock record
     const { field_to_adjust, new_value, target_id, target_type } = adj;
-    const safeFields = ['quantity', 'expiry_date', 'batch_number', 'unit_price', 'notes', 'remaining_quantity'];
-    if (target_id && safeFields.includes(field_to_adjust)) {
+
+    // stock_batches column name mapping (API exposes 'batch_number' but DB column is 'batch_no')
+    const batchColumnMap = {
+      batch_number: 'batch_no',
+      quantity: 'quantity',
+      expiry_date: 'expiry_date',
+      unit_price: 'unit_price',
+      notes: 'notes',
+      remaining_quantity: 'remaining_quantity',
+    };
+
+    if (target_id && field_to_adjust) {
       if (['import', 'country_stock', 'warehouse'].includes(target_type)) {
-        await query(`UPDATE stock_batches SET ${field_to_adjust} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
-        // Also log the movement
-        await query(
-          `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-           VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW()) ON CONFLICT DO NOTHING`,
-          ['MOV-ADJ-' + Date.now(), adj.product_name || 'Unknown', field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0, adj.location || target_type, adjId, `Stock adjustment approved: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}`, approved_by]
-        );
+        const dbCol = batchColumnMap[field_to_adjust];
+        if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
+
+        await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+
+        // Log to stock_movements (no ON CONFLICT — use unique movement id)
+        const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
+        const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0;
+        try {
+          await query(
+            `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+             VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
+            [movId, adj.product_name || 'Unknown', qtyDelta, adj.location || target_type, adjId,
+             `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}`, approved_by]
+          );
+        } catch (movErr) {
+          console.warn('stock_movements insert skipped:', movErr.message);
+        }
+
       } else if (target_type === 'distribution') {
-        await query(`UPDATE stock_transfers SET ${field_to_adjust} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        // stock_transfers has no quantity/expiry/batch columns — those are in stock_request_items
+        if (field_to_adjust === 'quantity') {
+          // Update quantity in stock_request_items linked to this transfer
+          const transfer = await getOne('SELECT request_id FROM stock_transfers WHERE id = $1', [target_id]);
+          if (transfer?.request_id) {
+            await query(
+              `UPDATE stock_request_items SET quantity = $1 WHERE request_id = $2 AND product_name = $3`,
+              [Number(new_value), transfer.request_id, adj.product_name]
+            );
+          }
+        } else if (field_to_adjust === 'notes') {
+          await query(`UPDATE stock_transfers SET dispatch_notes = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        }
+        // Log movement for distribution quantity changes
+        if (field_to_adjust === 'quantity') {
+          const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
+          try {
+            await query(
+              `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+               VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
+              [movId, adj.product_name || 'Unknown',
+               Number(new_value) - Number(adj.old_value || 0),
+               adj.location || 'distribution', adjId,
+               `Approved distribution correction: quantity changed from ${adj.old_value} to ${new_value}`, approved_by]
+            );
+          } catch (movErr) {
+            console.warn('stock_movements insert skipped:', movErr.message);
+          }
+        }
       }
     }
 

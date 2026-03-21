@@ -72,20 +72,24 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
 
-  const fieldOptions = [
+  const allFieldOptions = [
     { value: 'quantity', label: 'Quantity' },
     { value: 'expiry_date', label: 'Expiry Date' },
     { value: 'batch_number', label: 'Batch Number' },
     { value: 'unit_price', label: 'Unit Price (CIF)' },
     { value: 'notes', label: 'Notes' },
   ];
+  // distribution transfers only support quantity + notes (stock_transfers has no other stock fields)
+  const fieldOptions = targetType === 'distribution'
+    ? allFieldOptions.filter(o => o.value === 'quantity' || o.value === 'notes')
+    : allFieldOptions;
 
   const currentValue = record ? (
-    field === 'quantity' ? record.quantity :
+    field === 'quantity' ? (record.quantity ?? '—') :
     field === 'expiry_date' ? (record.expiry_date ? formatDate(record.expiry_date) : '—') :
-    field === 'batch_number' ? (record.batch_number || record.batch_no || '—') :
-    field === 'unit_price' ? record.unit_price :
-    field === 'notes' ? record.notes :
+    field === 'batch_number' ? (record.batchNo || record.batch_number || record.batch_no || '—') :
+    field === 'unit_price' ? (record.unit_price ?? record.unitPrice ?? '—') :
+    field === 'notes' ? (record.notes ?? record.dispatch_notes ?? '—') :
     '—'
   ) : '—';
 
@@ -102,7 +106,7 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
       const res = await api.post('/stock-adjustments', {
         target_type: targetType,
         target_id: record?.id || null,
-        product_name: record?.product_name || record?.description || null,
+        product_name: record?.product_name || record?.productName || record?.description || null,
         location: location || null,
         field_to_adjust: field,
         old_value: String(currentValue),
@@ -131,7 +135,7 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
         {record && (
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px' }}>
             <p className="text-xs text-gray-500 font-semibold mb-1">Record Being Edited</p>
-            <p className="text-sm font-bold text-gray-800">{record.product_name || record.description || 'Unknown product'}</p>
+            <p className="text-sm font-bold text-gray-800">{record.product_name || record.productName || record.description || 'Unknown product'}</p>
             <p className="text-xs text-gray-500">{targetType} · {location || record.location || ''} · Ref: {record.id?.slice(-8) || '—'}</p>
           </div>
         )}
