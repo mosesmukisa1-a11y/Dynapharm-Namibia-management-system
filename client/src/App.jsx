@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import Landing from './pages/Landing';
@@ -15,8 +16,16 @@ import MISPortal from './pages/portals/MISPortal';
 import StockPortal from './pages/portals/StockPortal';
 import AdminPortal from './pages/portals/AdminPortal';
 import TrainingPortal from './pages/portals/TrainingPortal';
+import { api } from './lib/api';
+import { setLivePrices } from './lib/pricing';
 
 export default function App() {
+  useEffect(() => {
+    api.prices.list()
+      .then(prices => { if (Array.isArray(prices)) setLivePrices(prices); })
+      .catch(() => {});
+  }, []);
+
   return (
     <Routes>
       <Route element={<Layout />}>

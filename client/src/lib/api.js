@@ -158,6 +158,14 @@ export const api = {
     stockReport: (params = '') => api.get(`/mis/stock-report${params ? '?' + params : ''}`),
   },
 
+  prices: {
+    list: () => api.get('/prices'),
+    update: (id, data) => api.patch(`/prices/${id}`, data),
+    bulkUpdate: (updates) => api.put('/prices', updates),
+    create: (data) => api.post('/prices', data),
+    delete: (id) => api.delete(`/prices/${id}`),
+  },
+
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),
   health: () => api.get('/health'),
 };

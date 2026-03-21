@@ -1,3 +1,22 @@
+let _livePrices = null;
+
+export function setLivePrices(prices) {
+  if (Array.isArray(prices) && prices.length > 0) {
+    _livePrices = prices.map(p => ({
+      id: p.id,
+      description: p.description,
+      dp: Number(p.dp) || 0,
+      cp: Number(p.cp) || 0,
+      cif: Number(p.cif) || 0,
+      bv: Number(p.bv) || 0,
+    }));
+  }
+}
+
+export function getLiveProductList() {
+  return _livePrices || PRICE_LIST;
+}
+
 export const PRICE_LIST = [
   {description: "ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's", dp: 260, cp: 320, bv: 43, cif: 110},
   {description: "BEE POLEN CAPSULE (30's)", dp: 182, cp: 237, bv: 32, cif: 78},
@@ -95,19 +114,18 @@ export const PRICE_LIST = [
 
 export function findProductPrice(productName) {
   if (!productName) return null;
+  const list = getLiveProductList();
   const normalized = productName.trim().toUpperCase();
-  let product = PRICE_LIST.find(p =>
-    p.description.toUpperCase() === normalized
-  );
+  let product = list.find(p => p.description.toUpperCase() === normalized);
   if (!product) {
-    product = PRICE_LIST.find(p => {
+    product = list.find(p => {
       const desc = p.description.toUpperCase();
       return desc.includes(normalized) || normalized.includes(desc);
     });
   }
   if (!product) {
     const words = normalized.split(/\s+/).filter(w => w.length > 2);
-    product = PRICE_LIST.find(p => {
+    product = list.find(p => {
       const desc = p.description.toUpperCase();
       return words.filter(w => desc.includes(w)).length >= Math.ceil(words.length * 0.6);
     });

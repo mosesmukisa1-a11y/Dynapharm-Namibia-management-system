@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
-import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
@@ -21,6 +21,7 @@ export default function GMPortal() {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'approvals', label: 'Approvals', icon: '✅' },
     { id: 'stockAdjustments', label: pendingAdj > 0 ? `Stock Edits (${pendingAdj})` : 'Stock Edits', icon: '✏️' },
+    { id: 'priceList', label: 'Price List', icon: '💲' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
@@ -40,6 +41,7 @@ export default function GMPortal() {
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'approvals' && <ApprovalsTab />}
         {activeTab === 'stockAdjustments' && <StockAdjustmentsTab onCountChange={setPendingAdj} />}
+        {activeTab === 'priceList' && <PriceListTab />}
         {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'bonus' && <BonusHistoryTab />}
@@ -1011,6 +1013,261 @@ function ProfitAnalysisTab() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ── Price List Management Tab ────────────────────────────────────────────────
+function PriceListTab() {
+  const [rows, setRows] = useState([]);
+  const [edits, setEdits] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newProd, setNewProd] = useState({ description: '', dp: '', cp: '', cif: '', bv: '' });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.prices.list()
+      .then(data => {
+        if (Array.isArray(data)) {
+          setRows(data);
+          setLivePrices(data);
+        }
+      })
+      .catch(() => setAlert({ type: 'error', msg: 'Failed to load prices.' }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const setEdit = (id, field, val) => {
+    setEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }));
+  };
+
+  const hasEdits = Object.keys(edits).length > 0;
+
+  const saveAll = async () => {
+    setSaving(true);
+    setAlert(null);
+    try {
+      const updates = Object.entries(edits).map(([id, fields]) => {
+        const row = rows.find(r => String(r.id) === String(id)) || {};
+        return {
+          id: Number(id),
+          description: fields.description ?? row.description,
+          dp: Number(fields.dp ?? row.dp) || 0,
+          cp: Number(fields.cp ?? row.cp) || 0,
+          cif: Number(fields.cif ?? row.cif) || 0,
+          bv: Number(fields.bv ?? row.bv) || 0,
+        };
+      });
+      await api.prices.bulkUpdate(updates);
+      setEdits({});
+      setAlert({ type: 'success', msg: `${updates.length} product price(s) updated successfully.` });
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to save prices. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addProduct = async () => {
+    if (!newProd.description.trim()) return setAlert({ type: 'error', msg: 'Product description is required.' });
+    setSaving(true);
+    setAlert(null);
+    try {
+      await api.prices.create({
+        description: newProd.description.trim(),
+        dp: Number(newProd.dp) || 0,
+        cp: Number(newProd.cp) || 0,
+        cif: Number(newProd.cif) || 0,
+        bv: Number(newProd.bv) || 0,
+      });
+      setShowAdd(false);
+      setNewProd({ description: '', dp: '', cp: '', cif: '', bv: '' });
+      setAlert({ type: 'success', msg: 'Product added successfully.' });
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to add product.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteRow = async (id) => {
+    if (!window.confirm('Remove this product from the price list?')) return;
+    try {
+      await api.prices.delete(id);
+      setAlert({ type: 'success', msg: 'Product removed.' });
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to delete product.' });
+    }
+  };
+
+  const filtered = rows.filter(r =>
+    r.description?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const getVal = (row, field) =>
+    edits[row.id]?.[field] !== undefined ? edits[row.id][field] : row[field];
+
+  const fieldInput = (row, field, label) => (
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={getVal(row, field)}
+      onChange={e => setEdit(row.id, field, e.target.value)}
+      className={`w-24 text-right border rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-red-400 ${edits[row.id]?.[field] !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
+      title={label}
+    />
+  );
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {alert && (
+        <Alert variant={alert.type === 'success' ? 'success' : 'error'} className="mb-2">
+          {alert.msg}
+        </Alert>
+      )}
+
+      <Card>
+        <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-white">Product Price List</h2>
+              <p className="text-xs text-red-100">{rows.length} products &middot; {hasEdits ? `${Object.keys(edits).length} unsaved change(s)` : 'No unsaved changes'}</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => setShowAdd(true)}
+                className="px-3 py-1.5 bg-white text-red-700 text-sm font-semibold rounded shadow hover:bg-red-50"
+              >
+                + Add Product
+              </button>
+              {hasEdits && (
+                <button
+                  onClick={saveAll}
+                  disabled={saving}
+                  className="px-4 py-1.5 bg-amber-400 text-gray-900 text-sm font-bold rounded shadow hover:bg-amber-300 disabled:opacity-60"
+                >
+                  {saving ? 'Saving…' : 'Save All Changes'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <CardBody>
+          <div className="mb-3">
+            <input
+              type="text"
+              placeholder="Search products…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
+                  <th className="text-left py-2 px-3 border-b">Product Description</th>
+                  <th className="text-right py-2 px-3 border-b">CIF (N$)</th>
+                  <th className="text-right py-2 px-3 border-b">DP (N$)</th>
+                  <th className="text-right py-2 px-3 border-b">CP (N$)</th>
+                  <th className="text-right py-2 px-3 border-b">BV</th>
+                  <th className="text-center py-2 px-3 border-b">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">No products found.</td></tr>
+                )}
+                {filtered.map((row, i) => {
+                  const changed = !!edits[row.id];
+                  return (
+                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="py-2 px-3">
+                        <span className="font-medium text-gray-800">{row.description}</span>
+                        {changed && <span className="ml-2 text-xs text-amber-600 font-semibold">&bull; unsaved</span>}
+                      </td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'cif', 'Cost Insurance Freight')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'dp', 'Distributor Price')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'cp', 'Consumer Price')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'bv', 'Business Volume')}</td>
+                      <td className="py-2 px-2 text-center">
+                        <button
+                          onClick={() => deleteRow(row.id)}
+                          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs text-gray-400 mt-3">
+            CIF = Cost Insurance &amp; Freight &middot; DP = Distributor Price &middot; CP = Consumer Price &middot; BV = Business Volume.
+            Click any field to edit, then click <strong>Save All Changes</strong>.
+          </p>
+        </CardBody>
+      </Card>
+
+      {showAdd && (
+        <Modal title="Add New Product" onClose={() => setShowAdd(false)}>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Product Description *</label>
+              <input
+                type="text"
+                value={newProd.description}
+                onChange={e => setNewProd(p => ({ ...p, description: e.target.value }))}
+                placeholder="Enter full product name"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[['cif','CIF (N$)'],['dp','DP (N$)'],['cp','CP (N$)'],['bv','BV']].map(([f, lbl]) => (
+                <div key={f}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newProd[f]}
+                    onChange={e => setNewProd(p => ({ ...p, [f]: e.target.value }))}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={addProduct}
+                disabled={saving}
+                className="px-4 py-2 rounded text-sm font-semibold text-white"
+                style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}
+              >
+                {saving ? 'Adding…' : 'Add Product'}
+              </button>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
