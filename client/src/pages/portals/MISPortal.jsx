@@ -389,6 +389,7 @@ function printStockReportDoc(branchData, title, period) {
       <div class="formula-grid">
         <div class="fbox opening"><div class="flabel">Opening Stock</div><div class="fval">${fmtQty(f.opening)}</div></div>
         <div class="fbox plus"><div class="flabel">+ Issued / Received</div><div class="fval green">${fmtQty(f.issued)}</div></div>
+        <div class="fbox minus"><div class="flabel">− Sales (units sold)</div><div class="fval red">${fmtQty(f.sales)}</div></div>
         <div class="fbox minus"><div class="flabel">− Returns</div><div class="fval amber">${fmtQty(f.returns)}</div></div>
         <div class="fbox minus"><div class="flabel">− Expiring / Expired</div><div class="fval red">${fmtQty(f.expiring)}</div></div>
         <div class="fbox minus"><div class="flabel">− Promotions / Campaign</div><div class="fval red">${fmtQty(f.promotions)}</div></div>
@@ -495,6 +496,8 @@ function printCompanySummaryDoc(summary, branches, period) {
     <div style="font-size:20px;font-weight:900">+</div>
     <div class="fb-item"><div class="fb-val">${fmtQty(summary.issued)}</div><div class="fb-label">Issued/Received</div></div>
     <div style="font-size:20px;font-weight:900">−</div>
+    <div class="fb-item"><div class="fb-val">${fmtQty(summary.sales)}</div><div class="fb-label">Sales</div></div>
+    <div style="font-size:20px;font-weight:900">−</div>
     <div class="fb-item"><div class="fb-val">${fmtQty(summary.returns)}</div><div class="fb-label">Returns</div></div>
     <div style="font-size:20px;font-weight:900">−</div>
     <div class="fb-item"><div class="fb-val">${fmtQty(summary.expiring)}</div><div class="fb-label">Expiring</div></div>
@@ -593,11 +596,11 @@ function MISStockTab() {
       {Object.keys(summary).length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
           {statCard('Opening Stock', summary.opening, '#1e3a5f', '#f4f7fb')}
-          {statCard('Issued / Received', summary.issued, '#166534', '#f0fdf4')}
-          {statCard('Returns', summary.returns, '#92400e', '#fffbeb')}
-          {statCard('Expiring / Expired', summary.expiring, '#c41e3a', '#fef2f2')}
-          {statCard('Sales (units)', summary.sales, '#c41e3a', '#fff0f3')}
-          {statCard('Closing Stock', summary.closing, '#15803d', '#f0fdf4')}
+          {statCard('+ Issued / Received', summary.issued, '#166534', '#f0fdf4')}
+          {statCard('− Sales (units)', summary.sales, '#c41e3a', '#fff0f3')}
+          {statCard('− Returns', summary.returns, '#92400e', '#fffbeb')}
+          {statCard('− Expiring / Expired', summary.expiring, '#c41e3a', '#fef2f2')}
+          {statCard('= Closing Stock', summary.closing, '#15803d', '#f0fdf4')}
           <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', border: 'none', borderRadius: 12, padding: '14px 16px', textAlign: 'center', minWidth: 110 }}>
             <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Stock Value</div>
             <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', marginTop: 4 }}>N$ {Number(summary.closing_value || 0).toFixed(0)}</div>
@@ -643,6 +646,7 @@ function MISStockTab() {
                 <div>
                   {formulaRow('Opening Stock', f.opening, '#1e3a5f')}
                   {formulaRow('+ Issued / Received', f.issued, '#166534')}
+                  {formulaRow('− Sales (units sold)', f.sales, '#c41e3a')}
                   {formulaRow('− Returns', f.returns, '#92400e')}
                   {formulaRow('− Expiring / Expired', f.expiring, '#c41e3a')}
                   {formulaRow('− Promotions / Campaigns', f.promotions, '#c41e3a')}

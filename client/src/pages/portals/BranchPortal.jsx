@@ -1363,9 +1363,8 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
     const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items||[]); } catch { return []; } })();
     return s + items.reduce((si, i) => si + Number(i.quantity||0), 0);
   }, 0);
-  const issuedTotal = received + salesQty;
-  const outflows = salesQty + writeOffs + expiryQty;
-  const opening = Math.max(0, closingQty - issuedTotal + outflows - returns_);
+  // Opening = Closing − Issued + Sales + Returns + Expiring + Write-offs (backwards from closing)
+  const opening = Math.max(0, closingQty - received + salesQty + returns_ + expiryQty + writeOffs);
 
   const win = window.open('', '_blank');
   if (!win) return;
@@ -1405,11 +1404,12 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
     <div class="formula-header">📐 Stock Calculation — ${periodLabel}</div>
     ${fRow('Opening Stock (estimated)', fmt(opening), '#1e3a5f', '#f4f7fb')}
     ${fRow('+ Issued / Received Stock', '+' + fmt(received), '#166534', '#f0fdf4')}
+    ${fRow('− Sales (units sold)', '−' + fmt(salesQty), '#c41e3a', '#fef2f2')}
     ${fRow('− Returns', '−' + fmt(returns_), '#92400e', '#fffbeb')}
     ${fRow('− Expiring / Expired Stock', '−' + fmt(expiryQty), '#c41e3a', '#fef2f2')}
     ${fRow('− Promotions / Campaign Adjustments', '−0', '#c41e3a', '#fef2f2')}
     ${fRow('= Closing Stock', fmt(closingQty), '#15803d', 'linear-gradient(135deg,#f0fdf4,#dcfce7)', '#86efac')}
-    <div style="padding:8px 18px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">${fmtC(closingValue)}</strong></span><span>Sales (units, this month): <strong style="color:#c41e3a">${fmt(salesQty)}</strong></span><span>Write-offs: <strong>${fmt(writeOffs)}</strong></span></div>
+    <div style="padding:8px 18px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">${fmtC(closingValue)}</strong></span><span>Write-offs: <strong>${fmt(writeOffs)}</strong></span></div>
   </div>
   <div class="sec-title">Current Inventory — ${branch}</div>
   <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Unit Price</th><th>Stock Value</th><th>Expiry</th></tr></thead>
@@ -1799,7 +1799,7 @@ function BranchStockTab() {
               { icon: '📊', title: 'Daily Sales Report', desc: "Today's walk-in sales summary", action: () => printSalesReportDoc(sales, 'today', user?.branch||'') },
               { icon: '📈', title: 'Monthly Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} sales summary`, action: () => printSalesReportDoc(sales, 'month', user?.branch||'') },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch & expiry', action: () => printPhysicalStockReport(inventory, user?.branch||'') },
-              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued − Returns − Expiring − Promotions = Closing', action: () => printStockFormulaReport(inventory, movements, sales, user?.branch||'') },
+              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued − Sales − Returns − Expiring − Promotions = Closing', action: () => printStockFormulaReport(inventory, movements, sales, user?.branch||'') },
               { icon: '🔄', title: 'Stock Movements Report', desc: 'All stock movements: sales, received, write-offs', action: () => printStockMovementsReport(movements, user?.branch||'') },
               { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse', action: () => printReceivingStockReport(requests, user?.branch||'') },
             ].map(card => (

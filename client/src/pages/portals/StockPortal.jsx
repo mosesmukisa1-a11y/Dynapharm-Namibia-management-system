@@ -2426,7 +2426,8 @@ function BranchStockTab() {
     }, 0);
     const salesRevenue = salesPeriod.reduce((s, r) => s + Number(r.total_amount || r.amount || 0), 0);
 
-    const opening = Math.max(0, closingQty + salesQty + writeoffs - issued + returns_);
+    // Opening = Closing − Issued + Sales + Returns + Expiring + Write-offs (backwards from closing)
+    const opening = Math.max(0, closingQty + salesQty + writeoffs + expiryQty - issued + returns_);
 
     // Products list
     const productMap = {};
@@ -2471,11 +2472,12 @@ function BranchStockTab() {
       <div style="font-weight:800;color:#c41e3a;font-size:13px;margin-bottom:10px;border-bottom:1px solid #fecaca;padding-bottom:6px">📐 Stock Formula — ${periodLabel}</div>
       <div class="formula-row"><span class="formula-label">Opening Stock</span><span class="formula-val" style="color:#1e3a5f">${br.opening.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">+ Issued / Received Stock</span><span class="formula-val" style="color:#166534">+${br.issued.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">− Sales (units sold)</span><span class="formula-val" style="color:#c41e3a">−${br.salesQty.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">− Returns</span><span class="formula-val" style="color:#92400e">−${br.returns.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">− Expiring / Expired Stock</span><span class="formula-val" style="color:#c41e3a">−${br.expiryQty.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">− Promotions / Campaign Adjustments</span><span class="formula-val" style="color:#c41e3a">−0</span></div>
       <div class="closing-row"><span class="closing-label">= Closing Stock</span><span class="closing-val">${br.closingQty.toLocaleString()}</span></div>
-      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">N$ ${br.closingValue.toFixed(2)}</strong></span><span>Sales (units): <strong style="color:#c41e3a">${br.salesQty.toLocaleString()}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
+      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">N$ ${br.closingValue.toFixed(2)}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
     </div>
     <div style="font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;border-bottom:1px solid #fecaca;padding-bottom:4px">Current Product Inventory</div>
     <table><thead><tr><th>Product</th><th>Qty on Hand</th><th>Expiry Status</th><th>Stock Value</th></tr></thead><tbody>${pRows||'<tr><td colspan="4" style="text-align:center;color:#94a3b8">No inventory on file</td></tr>'}</tbody></table>
@@ -2568,6 +2570,7 @@ function BranchStockTab() {
                 {[
                   ['Opening Stock', br.opening, '#1e3a5f'],
                   ['+ Issued / Received', br.issued, '#166534'],
+                  ['− Sales (units)', br.salesQty, '#c41e3a'],
                   ['− Returns', br.returns, '#92400e'],
                   ['− Expiring', br.expiryQty, '#c41e3a'],
                   ['− Promotions', 0, '#c41e3a'],
@@ -2684,7 +2687,8 @@ function StockReportsTab() {
       return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
     }, 0);
 
-    const opening = Math.max(0, closingQty + salesQty - issued + returns_);
+    // Opening = Closing − Issued + Sales + Returns + Expiring (backwards from closing)
+    const opening = Math.max(0, closingQty + salesQty + returns_ + expiryQty - issued);
     return { opening, issued, returns: returns_, expiryQty, promotions: 0, closing: closingQty, closingValue, salesQty };
   };
 
@@ -2710,15 +2714,15 @@ function StockReportsTab() {
   const printAllBranches = () => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const brRows = displayReports.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.formula.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">${br.formula.issued.toLocaleString()}</td><td style="color:#92400e">${br.formula.returns.toLocaleString()}</td><td style="color:#c41e3a">${br.formula.expiryQty.toLocaleString()}</td><td style="color:#c41e3a">0</td><td style="font-weight:800;color:#15803d">${br.formula.closing.toLocaleString()}</td><td>N$ ${br.formula.closingValue.toFixed(2)}</td></tr>`).join('');
+    const brRows = displayReports.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.formula.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">+${br.formula.issued.toLocaleString()}</td><td style="color:#c41e3a;font-weight:700">−${br.formula.salesQty.toLocaleString()}</td><td style="color:#92400e">−${br.formula.returns.toLocaleString()}</td><td style="color:#c41e3a">−${br.formula.expiryQty.toLocaleString()}</td><td style="color:#c41e3a">−0</td><td style="font-weight:800;color:#15803d">${br.formula.closing.toLocaleString()}</td><td>N$ ${br.formula.closingValue.toFixed(2)}</td></tr>`).join('');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Formula Report</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-banner{background:linear-gradient(135deg,#c41e3a,#8b0000);color:#fff;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.fb-item{text-align:center}.fb-val{font-size:14px;font-weight:900}.fb-label{font-size:8px;opacity:.7;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
     <button class="print-btn" onclick="window.print()">🖨️ Print</button>
     <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📋 Stock Formula Report — ${selectedBranch === 'all' ? 'All Branches' : displayReports[0]?.name || ''}</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel}</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
-    <div class="formula-banner"><div class="fb-item"><div class="fb-val">${companySummary.opening.toLocaleString()}</div><div class="fb-label">Opening</div></div><div style="font-size:16px;font-weight:900">+</div><div class="fb-item"><div class="fb-val">${companySummary.issued.toLocaleString()}</div><div class="fb-label">Issued</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.returns.toLocaleString()}</div><div class="fb-label">Returns</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.expiryQty.toLocaleString()}</div><div class="fb-label">Expiring</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">0</div><div class="fb-label">Promotions</div></div><div style="font-size:16px;font-weight:900">=</div><div class="fb-item"><div class="fb-val" style="font-size:18px">${companySummary.closing.toLocaleString()}</div><div class="fb-label">Closing</div></div></div>
-    <table><thead><tr><th>Branch</th><th>Opening</th><th>Issued</th><th>Returns</th><th>Expiring</th><th>Promotions</th><th>Closing Qty</th><th>Closing Value</th></tr></thead>
+    <div class="formula-banner"><div class="fb-item"><div class="fb-val">${companySummary.opening.toLocaleString()}</div><div class="fb-label">Opening</div></div><div style="font-size:16px;font-weight:900">+</div><div class="fb-item"><div class="fb-val">${companySummary.issued.toLocaleString()}</div><div class="fb-label">Issued</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.salesQty.toLocaleString()}</div><div class="fb-label">Sales</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.returns.toLocaleString()}</div><div class="fb-label">Returns</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">${companySummary.expiryQty.toLocaleString()}</div><div class="fb-label">Expiring</div></div><div style="font-size:16px;font-weight:900">−</div><div class="fb-item"><div class="fb-val">0</div><div class="fb-label">Promotions</div></div><div style="font-size:16px;font-weight:900">=</div><div class="fb-item"><div class="fb-val" style="font-size:18px">${companySummary.closing.toLocaleString()}</div><div class="fb-label">Closing</div></div></div>
+    <table><thead><tr><th>Branch</th><th>Opening</th><th>+ Issued</th><th>− Sales</th><th>− Returns</th><th>− Expiring</th><th>− Promotions</th><th>= Closing Qty</th><th>Closing Value</th></tr></thead>
     <tbody>${brRows}
-    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td><strong>${companySummary.opening.toLocaleString()}</strong></td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#92400e">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.expiryQty.toLocaleString()}</strong></td><td><strong>0</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
+    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td><strong>${companySummary.opening.toLocaleString()}</strong></td><td><strong style="color:#166534">+${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">−${companySummary.salesQty.toLocaleString()}</strong></td><td><strong style="color:#92400e">−${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">−${companySummary.expiryQty.toLocaleString()}</strong></td><td><strong>−0</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
     </tbody></table></body></html>`);
     win.document.close();
   };
@@ -2730,7 +2734,7 @@ function StockReportsTab() {
         <div>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Reports</p>
           <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📋 Stock Formula Reports</h3>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Opening + Issued − Returns − Expiring − Promotions = Closing · {periodLabel}</p>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Opening + Issued − Sales − Returns − Expiring − Promotions = Closing · {periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>
@@ -2748,6 +2752,7 @@ function StockReportsTab() {
           {[
             ['Opening Stock', companySummary.opening, '#1e3a5f', '#f4f7fb'],
             ['+ Issued / Received', companySummary.issued, '#166534', '#f0fdf4'],
+            ['− Sales (units)', companySummary.salesQty, '#c41e3a', '#fef2f2'],
             ['− Returns', companySummary.returns, '#92400e', '#fffbeb'],
             ['− Expiring', companySummary.expiryQty, '#c41e3a', '#fef2f2'],
             ['− Promotions', 0, '#c41e3a', '#fef2f2'],
@@ -2786,13 +2791,13 @@ function StockReportsTab() {
           columns={[
             { header: 'Branch', render: r => <span className="font-bold text-gray-800">{r.name}</span> },
             { header: 'Opening', render: r => <span style={{ color: '#1e3a5f', fontWeight: 700 }}>{r.formula.opening.toLocaleString()}</span> },
-            { header: '+ Issued', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>{r.formula.issued.toLocaleString()}</span> },
-            { header: '− Returns', render: r => <span style={{ color: '#92400e', fontWeight: 700 }}>{r.formula.returns.toLocaleString()}</span> },
-            { header: '− Expiring', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{r.formula.expiryQty.toLocaleString()}</span> },
-            { header: '− Promotions', render: () => '0' },
+            { header: '+ Issued', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>+{r.formula.issued.toLocaleString()}</span> },
+            { header: '− Sales', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>−{r.formula.salesQty.toLocaleString()}</span> },
+            { header: '− Returns', render: r => <span style={{ color: '#92400e', fontWeight: 700 }}>−{r.formula.returns.toLocaleString()}</span> },
+            { header: '− Expiring', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>−{r.formula.expiryQty.toLocaleString()}</span> },
+            { header: '− Promotions', render: () => '−0' },
             { header: '= Closing', render: r => <span style={{ color: '#15803d', fontWeight: 900, fontSize: '1rem' }}>{r.formula.closing.toLocaleString()}</span> },
             { header: 'Stock Value', render: r => <span style={{ fontWeight: 600, color: '#1e3a5f' }}>N$ {r.formula.closingValue.toFixed(2)}</span> },
-            { header: 'Sales (units)', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{r.formula.salesQty.toLocaleString()}</span> },
           ]}
           data={displayReports}
           emptyMessage="No data available"
@@ -2801,9 +2806,10 @@ function StockReportsTab() {
         <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 24, fontSize: '0.82rem', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 800, color: '#c41e3a' }}>COMPANY TOTAL</span>
           <span>Opening: <strong>{companySummary.opening.toLocaleString()}</strong></span>
-          <span>Issued: <strong style={{ color: '#166534' }}>{companySummary.issued.toLocaleString()}</strong></span>
-          <span>Returns: <strong style={{ color: '#92400e' }}>{companySummary.returns.toLocaleString()}</strong></span>
-          <span>Expiring: <strong style={{ color: '#c41e3a' }}>{companySummary.expiryQty.toLocaleString()}</strong></span>
+          <span>Issued: <strong style={{ color: '#166534' }}>+{companySummary.issued.toLocaleString()}</strong></span>
+          <span>Sales: <strong style={{ color: '#c41e3a' }}>−{companySummary.salesQty.toLocaleString()}</strong></span>
+          <span>Returns: <strong style={{ color: '#92400e' }}>−{companySummary.returns.toLocaleString()}</strong></span>
+          <span>Expiring: <strong style={{ color: '#c41e3a' }}>−{companySummary.expiryQty.toLocaleString()}</strong></span>
           <span>Closing: <strong style={{ color: '#15803d', fontSize: '1rem' }}>{companySummary.closing.toLocaleString()}</strong></span>
           <span>Value: <strong>N$ {companySummary.closingValue.toFixed(2)}</strong></span>
         </div>
