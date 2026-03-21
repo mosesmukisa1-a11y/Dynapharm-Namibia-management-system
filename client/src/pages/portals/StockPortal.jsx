@@ -3,20 +3,26 @@ import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle } from 'lucide-react';
 
 function printDocument(title, bodyHtml, landscape = false) {
-  const w = window.open('', '_blank', 'width=900,height=700');
+  const logoUrl = window.location.origin + '/assets/dynapharm-logo.png';
+  const now = new Date().toLocaleString('en-NA');
+  const w = window.open('', '_blank', 'width=960,height=720');
   w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
     @media print { @page { size: ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; } }
     body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 16px; }
-    h2 { font-size: 16px; margin: 0 0 4px; color: #8b0000; }
-    .meta { font-size: 11px; color: #555; margin-bottom: 12px; }
+    .doc-header { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #8b0000; padding-bottom: 10px; margin-bottom: 12px; }
+    .doc-header img { height: 52px; width: auto; }
+    .doc-header-text h2 { font-size: 16px; font-weight: bold; color: #8b0000; margin: 0 0 2px; }
+    .doc-header-text .sub { font-size: 11px; color: #555; }
+    .doc-title { font-size: 13px; font-weight: bold; color: #1e293b; margin: 0 0 2px; }
+    .doc-meta { font-size: 10px; color: #777; margin-bottom: 14px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     th { background: #8b0000; color: white; padding: 6px 8px; text-align: left; font-size: 11px; }
     td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
     tr:nth-child(even) td { background: #f9f9f9; }
-    .footer { margin-top: 16px; font-size: 10px; color: #888; border-top: 1px solid #ddd; padding-top: 6px; }
+    .footer { margin-top: 18px; font-size: 10px; color: #888; border-top: 1px solid #ddd; padding-top: 6px; display: flex; justify-content: space-between; }
     .label-grid { display: flex; flex-wrap: wrap; gap: 6px; }
     .label { border: 1px solid #333; padding: 8px; width: 160px; text-align: center; font-size: 10px; }
     .label .code { font-family: monospace; font-size: 13px; font-weight: bold; letter-spacing: 1px; }
@@ -24,15 +30,24 @@ function printDocument(title, bodyHtml, landscape = false) {
     .label .bar { background: #000; }
     .label .product { font-size: 9px; margin-top: 4px; }
     .label .price { font-size: 11px; font-weight: bold; color: #8b0000; }
-    no-print { display: none !important; }
     @media print { .no-print { display: none !important; } }
   </style></head><body>
-    <h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2>
-    <div class="meta">${title} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-NA')}</div>
+    <div class="doc-header">
+      <img src="${logoUrl}" alt="Dynapharm Logo" onerror="this.style.display='none'" />
+      <div class="doc-header-text">
+        <h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2>
+        <div class="sub">Health &bull; Wealth &bull; Freedom &mdash; Namibia Operations</div>
+      </div>
+    </div>
+    <div class="doc-title">${title}</div>
+    <div class="doc-meta">Printed: ${now} &nbsp;&bull;&nbsp; Confidential — Internal Use Only</div>
     ${bodyHtml}
-    <div class="footer">Dynapharm International Namibia &mdash; Confidential</div>
+    <div class="footer">
+      <span>Dynapharm International Namibia &mdash; Confidential</span>
+      <span>${now}</span>
+    </div>
     <div class="no-print" style="margin-top:16px;text-align:center">
-      <button onclick="window.print()" style="padding:8px 24px;background:#8b0000;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px">Print / Save PDF</button>
+      <button onclick="window.print()" style="padding:8px 24px;background:#8b0000;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px">🖨️ Print / Save PDF</button>
     </div>
   </body></html>`);
   w.document.close();
@@ -47,6 +62,201 @@ function barsForCode(code) {
     const w = ((i * 7 + 3) % 3) + 1;
     return `<div class="bar" style="width:${w}px;height:${25 + (i % 8) * 2}px"></div>`;
   }).join('');
+}
+
+// ── Shared Stock Adjustment Request Modal ────────────────────────────────────
+function RequestAdjustmentModal({ open, onClose, record, targetType, location, onSuccess }) {
+  const [field, setField] = useState('quantity');
+  const [newValue, setNewValue] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [alert, setAlert] = useState(null);
+
+  const fieldOptions = [
+    { value: 'quantity', label: 'Quantity' },
+    { value: 'expiry_date', label: 'Expiry Date' },
+    { value: 'batch_number', label: 'Batch Number' },
+    { value: 'unit_price', label: 'Unit Price (CIF)' },
+    { value: 'notes', label: 'Notes' },
+  ];
+
+  const currentValue = record ? (
+    field === 'quantity' ? record.quantity :
+    field === 'expiry_date' ? (record.expiry_date ? formatDate(record.expiry_date) : '—') :
+    field === 'batch_number' ? (record.batch_number || record.batch_no || '—') :
+    field === 'unit_price' ? record.unit_price :
+    field === 'notes' ? record.notes :
+    '—'
+  ) : '—';
+
+  const handleClose = () => { onClose(); setAlert(null); setNewValue(''); setReason(''); setField('quantity'); };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newValue.trim() || !reason.trim()) {
+      setAlert({ type: 'error', msg: 'New value and reason are required' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.post('/stock-adjustments', {
+        target_type: targetType,
+        target_id: record?.id || null,
+        product_name: record?.product_name || record?.description || null,
+        location: location || null,
+        field_to_adjust: field,
+        old_value: String(currentValue),
+        new_value: newValue.trim(),
+        reason: reason.trim(),
+      });
+      setAlert({ type: 'success', msg: `Request ${res.adj_number} submitted. Awaiting GM approval.` });
+      setNewValue('');
+      setReason('');
+      if (onSuccess) onSuccess(res.adj_number);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to submit request' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Request Stock Record Edit (Requires GM Approval)" size="md">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <Alert type="info">
+          This correction request will be sent to the GM for approval. The record will only be updated once approved.
+        </Alert>
+        {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
+
+        {record && (
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px' }}>
+            <p className="text-xs text-gray-500 font-semibold mb-1">Record Being Edited</p>
+            <p className="text-sm font-bold text-gray-800">{record.product_name || record.description || 'Unknown product'}</p>
+            <p className="text-xs text-gray-500">{targetType} · {location || record.location || ''} · Ref: {record.id?.slice(-8) || '—'}</p>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Field to Change <span className="text-red-500">*</span></label>
+          <select value={field} onChange={e => { setField(e.target.value); setNewValue(''); }}
+            className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+            {fieldOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-500">Current Value</label>
+            <div style={{ padding: '8px 12px', background: '#f1f5f9', borderRadius: 8, fontSize: '0.85rem', color: '#374151', border: '1px solid #e2e8f0' }}>{String(currentValue)}</div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">New Value <span className="text-red-500">*</span></label>
+            {field === 'expiry_date' ? (
+              <input type="date" value={newValue} onChange={e => setNewValue(e.target.value)} required
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            ) : (field === 'quantity' || field === 'unit_price') ? (
+              <input type="number" min="0" step={field === 'unit_price' ? '0.01' : '1'} value={newValue} onChange={e => setNewValue(e.target.value)} required placeholder="Enter new value"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            ) : (
+              <input type="text" value={newValue} onChange={e => setNewValue(e.target.value)} required placeholder="Enter new value"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Reason for Change <span className="text-red-500">*</span></label>
+          <textarea value={reason} onChange={e => setReason(e.target.value)} required rows={3}
+            placeholder="Explain why this record needs to be corrected (e.g. data entry error, physical recount difference)..."
+            className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-y" />
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <Button type="submit" disabled={submitting}><Edit2 size={15} /> {submitting ? 'Submitting…' : 'Submit for GM Approval'}</Button>
+          <Button variant="secondary" type="button" onClick={handleClose}>Cancel</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Adjustment Requests History Tab ───────────────────────────────────────────
+function AdjustmentsTab() {
+  const [adjustments, setAdjustments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+
+  const load = () => {
+    setLoading(true);
+    api.get('/stock-adjustments')
+      .then(d => setAdjustments(Array.isArray(d) ? d : []))
+      .catch(() => setAdjustments([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
+  const pendingCount = adjustments.filter(a => a.status === 'pending').length;
+
+  const statusBadge = (s) => {
+    if (s === 'pending') return <Badge variant="warning"><Clock size={11} className="inline mr-1" />Pending GM</Badge>;
+    if (s === 'approved') return <Badge variant="success"><CheckCircle size={11} className="inline mr-1" />Approved</Badge>;
+    if (s === 'rejected') return <Badge variant="danger"><XCircle size={11} className="inline mr-1" />Rejected</Badge>;
+    return <Badge>{s}</Badge>;
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h3 style={{ fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✏️ Stock Edit Requests</h3>
+          <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '2px 0 0' }}>All correction requests submitted for GM approval. Use the Edit button on any stock record to create a new request.</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {pendingCount > 0 && <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 99, padding: '4px 12px', fontSize: '0.78rem', fontWeight: 800 }}>⏳ {pendingCount} Awaiting GM</span>}
+          <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {['all','pending','approved','rejected'].map(s => (
+          <button key={s} onClick={() => setFilter(s)}
+            style={{ padding: '6px 16px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem',
+              background: filter === s ? '#c41e3a' : '#f1f5f9', color: filter === s ? '#fff' : '#475569' }}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === 'pending' && pendingCount > 0 && ` (${pendingCount})`}
+          </button>
+        ))}
+      </div>
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'Ref #', render: r => <span className="font-mono text-xs font-bold text-primary">{r.adj_number}</span> },
+            { header: 'Product', render: r => <span className="font-medium text-sm">{r.product_name || '—'}</span> },
+            { header: 'Type', render: r => <Badge variant="info" className="text-xs">{r.target_type}</Badge> },
+            { header: 'Field', render: r => <span className="text-xs font-semibold text-gray-600">{(r.field_to_adjust||'').replace(/_/g,' ')}</span> },
+            { header: 'Change', render: r => (
+              <span className="text-xs">
+                <span className="line-through text-gray-400">{r.old_value}</span>
+                <span className="mx-1 text-gray-400">→</span>
+                <span className="font-bold text-green-700">{r.new_value}</span>
+              </span>
+            )},
+            { header: 'Reason', render: r => <span className="text-xs text-gray-500 max-w-[160px] block truncate" title={r.reason}>{r.reason}</span> },
+            { header: 'Status', render: r => statusBadge(r.status) },
+            { header: 'GM Notes', render: r => r.gm_notes ? <span className="text-xs text-gray-600 italic">{r.gm_notes}</span> : <span className="text-gray-300 text-xs">—</span> },
+            { header: 'Date', render: r => <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span> },
+          ]}
+          data={filtered}
+          emptyMessage="No adjustment requests found. Use the ✏️ Edit button on any stock record to request a correction."
+        />
+      </Card>
+    </div>
+  );
 }
 
 export default function StockPortal() {
@@ -71,6 +281,7 @@ export default function StockPortal() {
     { id: 'reorder', label: 'Reorder', icon: '⚠️' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
+    { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
   ];
 
   return (
@@ -101,6 +312,7 @@ export default function StockPortal() {
         {activeTab === 'reorder' && <ReorderTab />}
         {activeTab === 'batch' && <BatchTab />}
         {activeTab === 'realtime' && <RealtimeTab />}
+        {activeTab === 'adjustments' && <AdjustmentsTab />}
       </div>
     </div>
   );
@@ -197,6 +409,7 @@ function SupplierImportTab() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
+  const [adjRecord, setAdjRecord] = useState(null);
   const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
   const [errors, setErrors] = useState({});
@@ -325,11 +538,23 @@ function SupplierImportTab() {
             { header: 'Qty', key: 'quantity' },
             { header: 'CIF Price', render: r => formatCurrency(Number(r.unit_price || 0)) },
             { header: 'CIF Total', render: r => formatCurrency(Number(r.quantity || 0) * Number(r.unit_price || 0)) },
+            { header: 'Edit', render: r => (
+              <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
+                style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Edit2 size={12} /> Edit
+              </button>
+            )},
           ]}
           data={imports.slice(0, 50)}
           emptyMessage="No import shipments recorded"
         />
       </Card>
+
+      <RequestAdjustmentModal
+        open={!!adjRecord} onClose={() => setAdjRecord(null)}
+        record={adjRecord} targetType="import" location="country_stock"
+        onSuccess={() => setAlert({ type: 'success', msg: 'Edit request submitted — awaiting GM approval' })}
+      />
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Import Shipment from Malaysia" size="lg">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -416,6 +641,7 @@ function CountryStockTab() {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDetail, setShowDetail] = useState(false);
+  const [adjRecord, setAdjRecord] = useState(null);
 
   const loadBatches = useCallback(() => {
     setLoading(true);
@@ -500,12 +726,23 @@ function CountryStockTab() {
               { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
               { header: 'CIF/Unit', render: r => formatCurrency(Number(r.unit_price || 0)) },
               { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-xs block">{r.notes || '—'}</span> },
+              { header: 'Edit', render: r => (
+                <button onClick={() => setAdjRecord(r)} title="Request correction"
+                  style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Edit2 size={12} /> Edit
+                </button>
+              )},
             ]}
             data={batches}
             emptyMessage="No country stock batches found."
           />
         )}
       </Card>
+
+      <RequestAdjustmentModal
+        open={!!adjRecord} onClose={() => setAdjRecord(null)}
+        record={adjRecord} targetType="country_stock" location="country_stock"
+      />
     </div>
   );
 }
@@ -519,6 +756,7 @@ function WarehouseTab({ name }) {
   const [submitting, setSubmitting] = useState(false);
   const [receivingId, setReceivingId] = useState(null);
   const [alert, setAlert] = useState(null);
+  const [adjRecord, setAdjRecord] = useState(null);
   const location = name.toLowerCase() + '_warehouse';
 
   const loadData = useCallback(() => {
@@ -603,6 +841,12 @@ function WarehouseTab({ name }) {
             { header: 'Batch Ref', key: 'batch_number' },
             { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
             { header: 'Expiry', render: r => r.expiry_date ? formatDateTime(r.expiry_date) : '—' },
+            { header: 'Edit', render: r => (
+              <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
+                style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Edit2 size={12} /> Edit
+              </button>
+            )},
           ]}
           data={batches}
           emptyMessage={`No confirmed stock in ${name} warehouse yet`}
@@ -666,12 +910,18 @@ function WarehouseTab({ name }) {
           </div>
         </form>
       </Modal>
+
+      <RequestAdjustmentModal
+        open={!!adjRecord} onClose={() => setAdjRecord(null)}
+        record={adjRecord} targetType="warehouse" location={location}
+      />
     </div>
   );
 }
 
 function DistributionTab() {
   const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '' });
+  const [adjRecord, setAdjRecord] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [recentTransfers, setRecentTransfers] = useState([]);
@@ -814,9 +1064,15 @@ function DistributionTab() {
               { header: 'Qty', key: 'quantity' },
               { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
               { header: '', render: r => (
-                <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${r.from_location||''}</td></tr><tr><td>To</td><td>${r.to_location||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
-                  <Printer size={12} />
-                </Button>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${r.from_location||''}</td></tr><tr><td>To</td><td>${r.to_location||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
+                    <Printer size={12} />
+                  </Button>
+                  <button onClick={() => setAdjRecord(r)} title="Request correction"
+                    style={{ padding: '3px 8px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                    <Edit2 size={11} />
+                  </button>
+                </div>
               )},
             ]}
             data={recentTransfers}
@@ -824,6 +1080,11 @@ function DistributionTab() {
           />
         )}
       </Card>
+
+      <RequestAdjustmentModal
+        open={!!adjRecord} onClose={() => setAdjRecord(null)}
+        record={adjRecord} targetType="distribution" location={adjRecord?.from_location || ''}
+      />
     </div>
   );
 }

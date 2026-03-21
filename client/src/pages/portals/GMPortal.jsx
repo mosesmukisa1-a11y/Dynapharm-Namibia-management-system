@@ -4,14 +4,23 @@ import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle } from 'lucide-react';
+import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [pendingAdj, setPendingAdj] = useState(0);
+
+  useEffect(() => {
+    api.get('/stock-adjustments?status=pending')
+      .then(d => setPendingAdj(Array.isArray(d) ? d.length : 0))
+      .catch(() => {});
+  }, []);
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'approvals', label: 'Approvals', icon: '✅' },
+    { id: 'stockAdjustments', label: pendingAdj > 0 ? `Stock Edits (${pendingAdj})` : 'Stock Edits', icon: '✏️' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
@@ -30,6 +39,7 @@ export default function GMPortal() {
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'approvals' && <ApprovalsTab />}
+        {activeTab === 'stockAdjustments' && <StockAdjustmentsTab onCountChange={setPendingAdj} />}
         {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'bonus' && <BonusHistoryTab />}
@@ -40,6 +50,170 @@ export default function GMPortal() {
     </div>
   );
 }
+
+// ── Stock Adjustments Approval Tab (GM only) ─────────────────────────────────
+function StockAdjustmentsTab({ onCountChange }) {
+  const [adjustments, setAdjustments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('pending');
+  const [actionModal, setActionModal] = useState(null);
+  const [gmNotes, setGmNotes] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/stock-adjustments')
+      .then(d => {
+        const list = Array.isArray(d) ? d : [];
+        setAdjustments(list);
+        if (onCountChange) onCountChange(list.filter(a => a.status === 'pending').length);
+      })
+      .catch(() => setAdjustments([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
+  const pendingCount = adjustments.filter(a => a.status === 'pending').length;
+
+  const handleDecision = async (action) => {
+    if (!actionModal) return;
+    setProcessing(true);
+    try {
+      await api.patch(`/stock-adjustments/${actionModal.id}/${action}`, { gm_notes: gmNotes });
+      setMessage({ type: 'success', text: `Adjustment ${action === 'approve' ? 'approved and applied to stock' : 'rejected'} successfully.` });
+      setActionModal(null);
+      setGmNotes('');
+      load();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Action failed' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const statusBadge = (s) => {
+    if (s === 'pending') return <Badge variant="warning"><Clock size={11} className="inline mr-1" />Pending</Badge>;
+    if (s === 'approved') return <Badge variant="success"><CheckCircle size={11} className="inline mr-1" />Approved</Badge>;
+    if (s === 'rejected') return <Badge variant="danger"><XCircle size={11} className="inline mr-1" />Rejected</Badge>;
+    return <Badge>{s}</Badge>;
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {message && <Alert type={message.type} className="mb-4">{message.text}</Alert>}
+
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h3 style={{ fontWeight: 800, fontSize: '1.1rem', margin: 0 }}>✏️ Stock Record Edit Requests</h3>
+          <p style={{ fontSize: '0.82rem', opacity: 0.8, margin: '3px 0 0' }}>
+            Stock/warehouse managers submit correction requests here. Review each change and approve or reject.
+            Approved changes are immediately applied to the stock records.
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          {pendingCount > 0 && (
+            <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 99, padding: '5px 14px', fontSize: '0.82rem', fontWeight: 800 }}>
+              ⏳ {pendingCount} Awaiting Your Decision
+            </span>
+          )}
+          <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {['pending','approved','rejected','all'].map(s => (
+          <button key={s} onClick={() => setFilter(s)}
+            style={{ padding: '6px 18px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.83rem',
+              background: filter === s ? '#c41e3a' : '#f1f5f9', color: filter === s ? '#fff' : '#475569' }}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === 'pending' && pendingCount > 0 && <span style={{ marginLeft: 6, background: 'rgba(255,255,255,0.25)', borderRadius: 99, padding: '1px 7px', fontSize: '0.75rem' }}>{pendingCount}</span>}
+          </button>
+        ))}
+      </div>
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'Ref #', render: r => <span className="font-mono text-xs font-bold text-primary">{r.adj_number}</span> },
+            { header: 'Requested By', render: r => <span className="text-sm font-medium">{r.requested_by_name || r.requested_by || '—'}</span> },
+            { header: 'Product', render: r => <span className="font-medium text-sm">{r.product_name || '—'}</span> },
+            { header: 'Type', render: r => <Badge variant="info" className="text-xs">{r.target_type}</Badge> },
+            { header: 'Field', render: r => <span className="text-xs font-semibold text-gray-700">{(r.field_to_adjust||'').replace(/_/g,' ')}</span> },
+            { header: 'Proposed Change', render: r => (
+              <span className="text-xs">
+                <span className="line-through text-gray-400 mr-1">{r.old_value || '—'}</span>
+                <span className="text-primary font-bold">→ {r.new_value}</span>
+              </span>
+            )},
+            { header: 'Reason', render: r => <span className="text-xs text-gray-600 max-w-[180px] block" title={r.reason}>{r.reason}</span> },
+            { header: 'Date', render: r => <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span> },
+            { header: 'Status', render: r => statusBadge(r.status) },
+            { header: 'Actions', render: r => r.status !== 'pending' ? (
+              <span className="text-xs text-gray-400 italic">{r.approved_by_name || '—'}</span>
+            ) : (
+              <div className="flex gap-1">
+                <button onClick={() => setActionModal({ ...r, _action: 'approve' })}
+                  style={{ padding: '4px 12px', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                  ✓ Approve
+                </button>
+                <button onClick={() => setActionModal({ ...r, _action: 'reject' })}
+                  style={{ padding: '4px 10px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                  ✕ Reject
+                </button>
+              </div>
+            )},
+          ]}
+          data={filtered}
+          emptyMessage={`No ${filter === 'all' ? '' : filter + ' '}adjustment requests found.`}
+        />
+      </Card>
+
+      <Modal open={!!actionModal} onClose={() => { setActionModal(null); setGmNotes(''); }}
+        title={actionModal?._action === 'approve' ? '✓ Approve Stock Adjustment' : '✕ Reject Stock Adjustment'}>
+        <div className="p-6 space-y-4">
+          {actionModal && (
+            <div style={{ background: actionModal._action === 'approve' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${actionModal._action === 'approve' ? '#86efac' : '#fca5a5'}`, borderRadius: 10, padding: '12px 16px' }}>
+              <p className="text-sm font-bold text-gray-800 mb-1">{actionModal.product_name || 'Unknown product'}</p>
+              <p className="text-xs text-gray-600">
+                Change <strong>{(actionModal.field_to_adjust||'').replace(/_/g,' ')}</strong> from{' '}
+                <span className="line-through text-gray-400">{actionModal.old_value || '—'}</span> to{' '}
+                <span className="font-bold text-primary">{actionModal.new_value}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1 italic">Reason: {actionModal.reason}</p>
+              {actionModal._action === 'approve' && (
+                <Alert type="warning" className="mt-2 text-xs">
+                  Approving will immediately update the actual stock record and cannot be undone.
+                </Alert>
+              )}
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">GM Notes (optional)</label>
+            <textarea value={gmNotes} onChange={e => setGmNotes(e.target.value)} rows={3}
+              placeholder="Add notes about your decision..."
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-y" />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => { setActionModal(null); setGmNotes(''); }}>Cancel</Button>
+            <Button variant={actionModal?._action === 'approve' ? 'success' : 'danger'}
+              disabled={processing}
+              onClick={() => handleDecision(actionModal._action)}>
+              {processing ? 'Processing…' : actionModal?._action === 'approve' ? '✓ Approve & Apply' : '✕ Reject'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+// ── End StockAdjustmentsTab ───────────────────────────────────────────────────
 
 function DashboardTab() {
   const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });

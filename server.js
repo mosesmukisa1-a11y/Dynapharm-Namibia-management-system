@@ -211,6 +211,108 @@ app.post('/api/cash-requests', (req, res) => {
   res.json({ success: true });
 });
 
+// ── Stock Adjustment Requests (requires GM approval) ──────────────────────────
+app.get('/api/stock-adjustments', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { status, target_id } = req.query;
+    let sql = 'SELECT * FROM stock_adjustments';
+    const params = [];
+    const conds = [];
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    if (target_id) { params.push(target_id); conds.push(`target_id = $${params.length}`); }
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+    sql += ' ORDER BY created_at DESC';
+    const { rows } = await query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('stock-adjustments GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/stock-adjustments', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { target_type, target_id, product_name, location, field_to_adjust, old_value, new_value, reason } = req.body;
+    if (!target_type || !field_to_adjust || !new_value || !reason) {
+      return res.status(400).json({ error: 'target_type, field_to_adjust, new_value, reason are required' });
+    }
+    const id = 'ADJ-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const adj_number = 'ADJ-' + String(Date.now()).slice(-6);
+    const requested_by = req.user?.sub || req.user?.username || 'unknown';
+    const requested_by_name = req.user?.name || requested_by;
+    await query(
+      `INSERT INTO stock_adjustments (id, adj_number, target_type, target_id, product_name, location, field_to_adjust, old_value, new_value, reason, requested_by, requested_by_name, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',NOW(),NOW())`,
+      [id, adj_number, target_type, target_id || null, product_name || null, location || null, field_to_adjust, old_value || null, new_value, reason, requested_by, requested_by_name]
+    );
+    res.status(201).json({ success: true, id, adj_number });
+  } catch (err) {
+    console.error('stock-adjustments POST:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const adjId = req.params.id;
+    const gm_notes = req.body?.gm_notes || '';
+    const approved_by = req.user?.sub || req.user?.username || 'gm';
+    const approved_by_name = req.user?.name || approved_by;
+
+    const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1', [adjId]);
+    if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
+    if (adj.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
+
+    // Apply the change to the actual stock record
+    const { field_to_adjust, new_value, target_id, target_type } = adj;
+    const safeFields = ['quantity', 'expiry_date', 'batch_number', 'unit_price', 'notes', 'remaining_quantity'];
+    if (target_id && safeFields.includes(field_to_adjust)) {
+      if (['import', 'country_stock', 'warehouse'].includes(target_type)) {
+        await query(`UPDATE stock_batches SET ${field_to_adjust} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        // Also log the movement
+        await query(
+          `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW()) ON CONFLICT DO NOTHING`,
+          ['MOV-ADJ-' + Date.now(), adj.product_name || 'Unknown', field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0, adj.location || target_type, adjId, `Stock adjustment approved: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}`, approved_by]
+        );
+      } else if (target_type === 'distribution') {
+        await query(`UPDATE stock_transfers SET ${field_to_adjust} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+      }
+    }
+
+    await query(
+      `UPDATE stock_adjustments SET status='approved', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
+      [gm_notes, approved_by, approved_by_name, adjId]
+    );
+    res.json({ success: true, message: 'Adjustment approved and applied' });
+  } catch (err) {
+    console.error('stock-adjustments approve:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const adjId = req.params.id;
+    const gm_notes = req.body?.gm_notes || '';
+    const approved_by = req.user?.sub || req.user?.username || 'gm';
+    const approved_by_name = req.user?.name || approved_by;
+    await query(
+      `UPDATE stock_adjustments SET status='rejected', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
+      [gm_notes, approved_by, approved_by_name, adjId]
+    );
+    res.json({ success: true, message: 'Adjustment rejected' });
+  } catch (err) {
+    console.error('stock-adjustments reject:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ── End Stock Adjustment Routes ────────────────────────────────────────────────
+
 app.all('/api/*', async (req, res) => {
   try {
     const handler = await getHandler(req.path);
