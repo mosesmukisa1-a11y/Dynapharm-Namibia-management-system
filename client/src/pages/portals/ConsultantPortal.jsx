@@ -181,8 +181,14 @@ function CheckupsSection() {
     fd.setDate(fd.getDate() + 14);
     setFollowUpDate(fd.toISOString().split('T')[0]);
     const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+    const rawSymptoms = data.symptoms;
+    const flatSymptoms = Array.isArray(rawSymptoms)
+      ? rawSymptoms
+      : (rawSymptoms && typeof rawSymptoms === 'object')
+        ? Object.values(rawSymptoms).flat()
+        : [];
     const client = {
-      symptoms: data.symptoms || [],
+      symptoms: flatSymptoms,
       medicalHistory: data.medicalHistory || [],
       gender: data.gender || apt.gender || '',
       age: data.age || apt.age || '',
@@ -482,7 +488,8 @@ ${followUpDate ? `<div class="section"><strong>Follow-up Date:</strong> ${new Da
       {showReport && selectedCheckup && (() => {
         const apt = selectedCheckup;
         const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
-        const symptoms = (data.symptoms || []).filter(s => s !== 'none');
+        const rawSym = data.symptoms;
+        const symptoms = (Array.isArray(rawSym) ? rawSym : (rawSym && typeof rawSym === 'object') ? Object.values(rawSym).flat() : []).filter(s => s !== 'none');
         const lifestyleRecs = getLifestyleRecommendations();
         return (
           <div onClick={e => { if (e.target === e.currentTarget) setShowReport(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
