@@ -30,6 +30,7 @@ export default function HealthCheckup() {
 
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD',
+    weight: '', height: '',
     symptoms: {}, notes: '', declaration: false,
   });
   const [submitted, setSubmitted] = useState(false);
@@ -59,6 +60,22 @@ export default function HealthCheckup() {
     : (referralNB.trim() || DEFAULT_REFERRAL_NB);
 
   const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const calcBMI = () => {
+    const h = parseFloat(form.height);
+    const w = parseFloat(form.weight);
+    if (!h || !w || h <= 0) return null;
+    return (w / ((h / 100) ** 2)).toFixed(1);
+  };
+  const bmiValue = calcBMI();
+  const bmiCategory = (bmi) => {
+    if (!bmi) return '';
+    const b = parseFloat(bmi);
+    if (b < 18.5) return 'Underweight';
+    if (b < 25) return 'Normal';
+    if (b < 30) return 'Overweight';
+    return 'Obese';
+  };
   const toggleSymptom = (system, symptom) => {
     setForm(prev => {
       const current = prev.symptoms[system] || [];
@@ -93,6 +110,11 @@ export default function HealthCheckup() {
         data: {
           customer_type: customerType,
           gender: form.gender,
+          dob: form.dob,
+          height: form.height,
+          weight: form.weight,
+          bmi: bmiValue,
+          bmi_category: bmiCategory(bmiValue),
           symptoms: form.symptoms,
           referral_name: effectiveReferralName,
           referral_nb: effectiveReferralNB,
@@ -114,7 +136,7 @@ export default function HealthCheckup() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-3">Checkup Submitted!</h2>
         <p className="text-gray-500 mb-6">Your full body checkup form has been received. A consultant will review your submission shortly.</p>
-        <Button onClick={() => { setSubmitted(false); setCustomerType(null); setSelectedDistributor(null); setForm({ fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD', symptoms: {}, notes: '', declaration: false }); }}>
+        <Button onClick={() => { setSubmitted(false); setCustomerType(null); setSelectedDistributor(null); setForm({ fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD', weight: '', height: '', symptoms: {}, notes: '', declaration: false }); }}>
           Submit Another
         </Button>
       </div>
@@ -251,6 +273,48 @@ export default function HealthCheckup() {
                   {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Height (cm)</label>
+                <input
+                  type="number"
+                  min="50" max="250"
+                  value={form.height}
+                  onChange={e => updateField('height', e.target.value)}
+                  placeholder="e.g. 165"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Weight (kg)</label>
+                <input
+                  type="number"
+                  min="1" max="400"
+                  value={form.weight}
+                  onChange={e => updateField('weight', e.target.value)}
+                  placeholder="e.g. 70"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                />
+              </div>
+              {bmiValue && (
+                <div className="md:col-span-2">
+                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 ${
+                    parseFloat(bmiValue) < 18.5 ? 'border-blue-300 bg-blue-50' :
+                    parseFloat(bmiValue) < 25 ? 'border-green-300 bg-green-50' :
+                    parseFloat(bmiValue) < 30 ? 'border-yellow-300 bg-yellow-50' :
+                    'border-red-300 bg-red-50'
+                  }`}>
+                    <div className="text-2xl font-black" style={{ color: parseFloat(bmiValue) < 18.5 ? '#2563eb' : parseFloat(bmiValue) < 25 ? '#16a34a' : parseFloat(bmiValue) < 30 ? '#d97706' : '#dc2626' }}>
+                      {bmiValue}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">BMI</div>
+                      <div className="font-bold text-sm" style={{ color: parseFloat(bmiValue) < 18.5 ? '#2563eb' : parseFloat(bmiValue) < 25 ? '#16a34a' : parseFloat(bmiValue) < 30 ? '#d97706' : '#dc2626' }}>
+                        {bmiCategory(bmiValue)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-1 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">Customer Type</label>
                 <input type="text" readOnly value={isMember ? `Member — ${effectiveReferralName} (${effectiveReferralNB})` : `Non-Member — Referral: ${effectiveReferralName} (${effectiveReferralNB})`}
@@ -332,6 +396,13 @@ export default function HealthCheckup() {
             <div><strong>DOB:</strong> {form.dob}</div>
             <div><strong>Gender:</strong> {form.gender}</div>
             <div><strong>Branch:</strong> {form.branch}</div>
+            <div><strong>Height:</strong> {form.height ? `${form.height} cm` : '-'}</div>
+            <div><strong>Weight:</strong> {form.weight ? `${form.weight} kg` : '-'}</div>
+            {bmiValue && (
+              <div className="col-span-2">
+                <strong>BMI:</strong> {bmiValue} — <span style={{ fontWeight: 700, color: parseFloat(bmiValue) < 18.5 ? '#2563eb' : parseFloat(bmiValue) < 25 ? '#16a34a' : parseFloat(bmiValue) < 30 ? '#d97706' : '#dc2626' }}>{bmiCategory(bmiValue)}</span>
+              </div>
+            )}
           </div>
           {Object.entries(form.symptoms).filter(([, v]) => v.length > 0).map(([system, symptoms]) => (
             <div key={system}>
@@ -339,6 +410,74 @@ export default function HealthCheckup() {
             </div>
           ))}
           {form.notes && <div><strong>Notes:</strong> {form.notes}</div>}
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                const logo = window.location.origin + '/assets/dynapharm-logo.png';
+                const bmi = bmiValue ? `${bmiValue} (${bmiCategory(bmiValue)})` : 'N/A';
+                const allSymptoms = Object.entries(form.symptoms).filter(([,v])=>v.length>0);
+                const w = window.open('', '_blank', 'width=820,height=700');
+                w.document.write(`<!DOCTYPE html><html><head><title>Full Body Checkup — ${esc(form.fullName)}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 30px; color: #222; }
+  .header { display: flex; align-items: center; gap: 18px; border-bottom: 3px solid #c41e3a; padding-bottom: 14px; margin-bottom: 18px; }
+  .logo { height: 60px; }
+  .company-name { font-size: 1.3rem; font-weight: 900; color: #c41e3a; }
+  .subtitle { font-size: 0.9rem; color: #555; }
+  h3 { color: #c41e3a; border-bottom: 1.5px solid #e0b0b8; padding-bottom: 5px; margin: 18px 0 10px; font-size: 1rem; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+  .field { padding: 4px 0; font-size: 0.9rem; }
+  .label { font-weight: bold; color: #444; }
+  .bmi-box { display: inline-block; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 6px 16px; font-weight: 800; font-size: 1rem; color: #15803d; margin-top: 6px; }
+  .symptom-section { margin-bottom: 8px; }
+  .symptom-label { font-weight: bold; color: #555; text-transform: capitalize; font-size: 0.88rem; }
+  .symptom-list { color: #333; font-size: 0.87rem; }
+  .declaration { background: #f9fafb; border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: #666; margin-top: 18px; }
+  .footer { margin-top: 28px; border-top: 1.5px solid #c41e3a; padding-top: 10px; font-size: 0.78rem; color: #888; display: flex; justify-content: space-between; }
+  @media print { body { padding: 18px; } }
+</style></head><body>
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="company-name">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="subtitle">Full Body Check Up Form — Client Copy</div>
+  </div>
+</div>
+<h3>Referral & Customer Type</h3>
+<div class="grid2">
+  <div class="field"><span class="label">Type:</span> ${esc(isMember ? 'Registered Member' : 'Non-Member')}</div>
+  <div class="field"><span class="label">Referral:</span> ${esc(effectiveReferralName)} (${esc(effectiveReferralNB)})</div>
+</div>
+<h3>Personal Information</h3>
+<div class="grid2">
+  <div class="field"><span class="label">Full Name:</span> ${esc(form.fullName)}</div>
+  <div class="field"><span class="label">Phone:</span> ${esc(form.phone)}</div>
+  <div class="field"><span class="label">Email:</span> ${esc(form.email || '-')}</div>
+  <div class="field"><span class="label">Date of Birth:</span> ${esc(form.dob)}</div>
+  <div class="field"><span class="label">Gender:</span> ${esc(form.gender)}</div>
+  <div class="field"><span class="label">Branch:</span> ${esc(form.branch)}</div>
+  <div class="field"><span class="label">Height:</span> ${esc(form.height ? form.height + ' cm' : 'Not provided')}</div>
+  <div class="field"><span class="label">Weight:</span> ${esc(form.weight ? form.weight + ' kg' : 'Not provided')}</div>
+</div>
+${bmiValue ? `<div class="bmi-box">BMI: ${esc(bmi)}</div>` : ''}
+${allSymptoms.length > 0 ? `<h3>Health Assessment — Reported Symptoms</h3>${allSymptoms.map(([sys, sxs]) => `<div class="symptom-section"><span class="symptom-label">${esc(sys)}:</span> <span class="symptom-list">${sxs.map(esc).join(', ')}</span></div>`).join('')}` : ''}
+${form.notes ? `<h3>Additional Notes</h3><p style="font-size:0.9rem;color:#333">${esc(form.notes)}</p>` : ''}
+<div class="declaration">I declare that all information provided is accurate and true. I consent to the processing of my health data for consultation purposes.</div>
+<div class="footer">
+  <span>Date submitted: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</span>
+  <span>Dynapharm International Namibia — Confidential</span>
+</div>
+</body></html>`);
+                w.document.close();
+                w.print();
+              }}
+              style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 22px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}
+            >
+              🖨️ Print PDF
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

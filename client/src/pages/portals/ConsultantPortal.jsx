@@ -291,15 +291,65 @@ function CheckupsSection() {
     if (!apt) return;
     const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
     const meds = Array.from(selectedMedicines);
-    const w = window.open('', '_blank', 'width=800,height=600');
-    w.document.write(`<html><head><title>Report - ${apt.full_name || ''}</title><style>body{font-family:Arial;padding:20px}h2{color:#c41e3a;text-align:center}h3{color:#2c3e50;border-bottom:2px solid #c41e3a;padding-bottom:5px}.section{margin:15px 0;padding:10px;border:1px solid #ddd;border-radius:5px}.med{padding:4px 8px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px}</style></head><body>`);
-    w.document.write(`<h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2><h3>Summary Analysis Report Card</h3>`);
-    w.document.write(`<div class="section"><strong>Patient:</strong> ${apt.full_name || ''} | <strong>Phone:</strong> ${data.phone || apt.phone || ''} | <strong>Gender:</strong> ${data.gender || ''} | <strong>Date:</strong> ${new Date().toLocaleDateString()}</div>`);
-    if (consultantNotes) w.document.write(`<div class="section"><h3>Consultant Notes</h3><p>${consultantNotes}</p></div>`);
-    if (meds.length > 0) w.document.write(`<div class="section"><h3>Prescription</h3>${meds.map(m => `<span class="med">${m}</span>`).join('')}</div>`);
-    if (followUpDate) w.document.write(`<div class="section"><strong>Follow-up Date:</strong> ${new Date(followUpDate).toLocaleDateString('en-GB')}</div>`);
-    w.document.write(`<div class="section"><strong>Consultant:</strong> ${user?.full_name || user?.username || ''}</div>`);
-    w.document.write('</body></html>');
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const logo = window.location.origin + '/assets/dynapharm-logo.png';
+    const heightVal = data.height || '';
+    const weightVal = data.weight || '';
+    let bmiDisplay = '';
+    if (heightVal && weightVal) {
+      const h = parseFloat(heightVal); const wkg = parseFloat(weightVal);
+      if (h > 0 && wkg > 0) {
+        const bmi = (wkg / ((h / 100) ** 2)).toFixed(1);
+        const cat = parseFloat(bmi) < 18.5 ? 'Underweight' : parseFloat(bmi) < 25 ? 'Normal' : parseFloat(bmi) < 30 ? 'Overweight' : 'Obese';
+        bmiDisplay = `${bmi} (${cat})`;
+      }
+    }
+    const bmiStored = data.bmi ? `${data.bmi}${data.bmi_category ? ` (${data.bmi_category})` : ''}` : bmiDisplay;
+    const w = window.open('', '_blank', 'width=820,height=700');
+    w.document.write(`<!DOCTYPE html><html><head><title>Report - ${esc(apt.full_name || '')}</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:28px;color:#222;}
+  .header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c41e3a;padding-bottom:14px;margin-bottom:18px;}
+  .logo{height:58px;}
+  .company{font-size:1.25rem;font-weight:900;color:#c41e3a;}
+  .subtitle{font-size:0.88rem;color:#555;}
+  h3{color:#c41e3a;border-bottom:1.5px solid #e0b0b8;padding-bottom:5px;margin:16px 0 10px;font-size:1rem;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;}
+  .field{font-size:0.9rem;padding:3px 0;}
+  .section{margin:14px 0;padding:12px;border:1px solid #ddd;border-radius:6px;}
+  .med{padding:4px 10px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px;font-size:0.85rem;}
+  .bmi-pill{display:inline-block;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:4px 14px;font-weight:800;font-size:0.92rem;color:#15803d;}
+  .footer{margin-top:30px;border-top:1.5px solid #c41e3a;padding-top:10px;font-size:0.76rem;color:#888;display:flex;justify-content:space-between;}
+  @media print{body{padding:16px;}}
+</style></head><body>
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="subtitle">Summary Analysis Report Card</div>
+  </div>
+</div>
+<h3>Patient Details</h3>
+<div class="grid2">
+  <div class="field"><strong>Name:</strong> ${esc(apt.full_name || '')}</div>
+  <div class="field"><strong>Phone:</strong> ${esc(data.phone || apt.phone || '')}</div>
+  <div class="field"><strong>Gender:</strong> ${esc(data.gender || '')}</div>
+  <div class="field"><strong>DOB:</strong> ${esc(data.dob || '')}</div>
+  <div class="field"><strong>Branch:</strong> ${esc(data.branch || apt.branch || '')}</div>
+  <div class="field"><strong>Date:</strong> ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div>
+  <div class="field"><strong>Height:</strong> ${heightVal ? esc(heightVal) + ' cm' : 'N/A'}</div>
+  <div class="field"><strong>Weight:</strong> ${weightVal ? esc(weightVal) + ' kg' : 'N/A'}</div>
+</div>
+${bmiStored ? `<div style="margin-top:8px"><span class="bmi-pill">BMI: ${esc(bmiStored)}</span></div>` : ''}
+${consultantNotes ? `<div class="section"><h3>Consultant Notes</h3><p>${esc(consultantNotes)}</p></div>` : ''}
+${meds.length > 0 ? `<div class="section"><h3>Prescription / Recommended Products</h3>${meds.map(m => `<span class="med">${esc(m)}</span>`).join('')}</div>` : ''}
+${followUpDate ? `<div class="section"><strong>Follow-up Date:</strong> ${new Date(followUpDate).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>` : ''}
+<div class="section"><strong>Consultant:</strong> ${esc(user?.full_name || user?.username || '')}</div>
+<div class="footer">
+  <span>Generated: ${new Date().toLocaleString('en-NA')}</span>
+  <span>Dynapharm International Namibia — Confidential</span>
+</div>
+</body></html>`);
     w.document.close();
     w.print();
   };
