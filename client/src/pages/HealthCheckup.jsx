@@ -111,6 +111,8 @@ export default function HealthCheckup() {
         client_reference: effectiveReferralNB,
         data: {
           customer_type: customerType,
+          membershipStatus: isMember ? 'member' : 'referred',
+          membership_status: isMember ? 'member' : 'referred',
           gender: form.gender,
           dob: form.dob,
           height: form.height,
@@ -233,7 +235,14 @@ export default function HealthCheckup() {
                     {filteredDistributors.length === 0 ? (
                       <p className="p-3 text-sm text-gray-400 text-center">No distributors found</p>
                     ) : filteredDistributors.slice(0, 20).map(d => (
-                      <button type="button" key={d.id} onClick={() => { setSelectedDistributor(d); setDistributorSearch(''); }}
+                      <button type="button" key={d.id} onClick={() => {
+                        setSelectedDistributor(d);
+                        setDistributorSearch('');
+                        if (d.distributor_name) updateField('fullName', d.distributor_name);
+                        if (d.mobile_no || d.phone) updateField('phone', d.mobile_no || d.phone || '');
+                        if (d.email) updateField('email', d.email);
+                        if (d.branch) updateField('branch', d.branch);
+                      }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-100 last:border-0 cursor-pointer">
                         <span className="font-semibold text-primary">{d.distributor_code}</span>
                         <span className="text-gray-600 ml-2">{d.distributor_name}</span>

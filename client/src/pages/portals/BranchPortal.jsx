@@ -119,13 +119,14 @@ function WalkInSalesTab() {
   const regSearchTimer = useRef(null);
   const searchRegistered = (q) => {
     setRegSearch(q);
+    if (selectedReg) setSelectedReg(null);
     if (q.length < 2) { setRegResults([]); return; }
     if (regSearchTimer.current) clearTimeout(regSearchTimer.current);
     regSearchTimer.current = setTimeout(async () => {
       try { const res = await api.distributors.search(q); setRegResults(Array.isArray(res) ? res : res.distributors || []); } catch { setRegResults([]); }
     }, 300);
   };
-  const selectRegistered = (d) => { setSelectedReg(normalizeDistributor(d)); setRegResults([]); setRegSearch(''); };
+  const selectRegistered = (d) => { const nd = normalizeDistributor(d); setSelectedReg(nd); setRegResults([]); setRegSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || ''); };
   const clearRegistered = () => { setSelectedReg(null); setRegSearch(''); };
 
   const refSearchTimer = useRef(null);
@@ -264,7 +265,7 @@ function WalkInSalesTab() {
       printReceipt(generateReceiptHTML({
         ...commonReceiptParams,
         showBV: true,
-        cashback: !isMember ? 50 : 0,
+        cashback: 0,
         branchAmount: !isMember ? branchAmount : null,
         distributorProfit: !isMember ? branchProfit : null,
       }));
@@ -376,10 +377,10 @@ function WalkInSalesTab() {
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
                     <span className="text-xs text-gray-400 hidden sm:inline">{formatDate(s.created_at || s.timestamp)}</span>
-                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, cashback: sIsM ? 0 : 50 })); }}
+                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, cashback: 0 })); }}
                       title="Print 80mm thermal receipt"
                       className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#374151', borderColor: '#e2e8f0', background: '#fff' }}>🖨️ Thermal</button>
-                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM, cashback: sIsM ? 0 : 50 }); }}
+                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM, cashback: 0 }); }}
                       title="Open A4 PDF invoice"
                       className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#fff', borderColor: '#c41e3a', background: '#c41e3a', fontWeight: 600 }}>📄 PDF</button>
                   </div>

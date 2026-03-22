@@ -253,10 +253,13 @@ function CheckupsSection() {
     const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
     const selectedSymptoms = getLifestyleRecommendations();
     const medicines = Array.from(selectedMedicines).map(name => ({ name, dispensed: false }));
-    const membershipStatus = data.membershipStatus || data.membership_status || 'referred';
+    const rawMemberType = data.membershipStatus || data.membership_status || data.customer_type || 'referred';
+    const membershipStatus = rawMemberType === 'member' ? 'member' : 'referred';
     const isMember = membershipStatus === 'member';
     const consultationFee = isMember ? 150 : 200;
-    const referralDistributor = isMember ? null : (data.referralDistributor || 'Dynapharm Namibia NB005676');
+    const referralName = !isMember ? (data.referral_name || data.referralName || 'Dynapharm Namibia') : null;
+    const referralNb = !isMember ? (data.referral_nb || data.referralNB || 'NB005676') : null;
+    const referralDistributor = isMember ? null : `${referralName} ${referralNb}`;
     try {
       await api.reports.create({
         client_name: apt.full_name || data.fullName || '',
@@ -274,6 +277,9 @@ function CheckupsSection() {
         consultant_credit: 150,
         referral_credit: isMember ? 0 : 50,
         referral_distributor: referralDistributor,
+        referral_name: referralName,
+        referral_nb: referralNb,
+        nb_number: isMember ? (data.referral_nb || data.nb_number || null) : null,
       });
       setShowReport(false);
       setSelectedCheckup(null);
@@ -737,7 +743,8 @@ function CheckupDetailContent({ apt }) {
   const visitType = (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment';
   const dateStr = apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '';
   const timeStr = apt.time ? apt.time.slice(0, 5) : '';
-  const clientType = data.clientType === 'member' ? 'I am a Member' : 'Referred by a Distributor';
+  const rawType = data.membershipStatus || data.membership_status || data.customer_type || data.clientType || 'referred';
+  const clientType = rawType === 'member' ? '🏅 Registered Member (Distributor)' : '👤 Non-Member (Referred)';
 
   const fieldStyle = { marginBottom: '8px', fontSize: '0.9rem', color: '#374151' };
   const labelStyle = { fontWeight: 600, color: '#1e293b' };
@@ -768,7 +775,12 @@ function CheckupDetailContent({ apt }) {
       <div style={sectionStyle}>
         <h4 style={sectionTitleStyle}>Client Type</h4>
         <div style={fieldStyle}><span style={labelStyle}>Type:</span> {clientType}</div>
-        {data.distributorName && <div style={fieldStyle}><span style={labelStyle}>Referral:</span> {data.distributorName} ({data.distributorNB || ''})</div>}
+        {rawType !== 'member' && (
+          <div style={fieldStyle}><span style={labelStyle}>Referred By:</span> {data.referral_name || data.referralName || data.distributorName || 'Dynapharm Namibia'} ({data.referral_nb || data.referralNB || data.distributorNB || 'NB005676'})</div>
+        )}
+        {rawType === 'member' && (data.referral_nb || data.nb_number) && (
+          <div style={fieldStyle}><span style={labelStyle}>NB Number:</span> {data.referral_nb || data.nb_number}</div>
+        )}
       </div>
       <div style={sectionStyle}>
         <h4 style={sectionTitleStyle}>Health Information</h4>

@@ -22,7 +22,7 @@ export function generateReceiptHTML({
   const isNonMember = !isMember;
 
   const nbRow = nbNumber ? `<tr><td style="color:#888;">NB#:</td><td style="text-align:right;font-weight:bold;">${nbNumber}</td></tr>` : '';
-  const referralRow = (isNonMember && referralName) ? `<tr><td style="color:#888;">Referral:</td><td style="text-align:right;color:#e67e22;font-weight:bold;">${referralName}${referralNB ? ` (${referralNB})` : ''}</td></tr>` : '';
+  const referralRow = isNonMember ? `<tr><td style="color:#888;">Referral:</td><td style="text-align:right;color:#e67e22;font-weight:bold;">${referralName || 'Dynapharm Namibia'}${referralNB ? ` (${referralNB})` : referralName ? '' : ' (NB005676)'}</td></tr>` : '';
 
   /* ── Member receipt: simple — Price(DP), BV, Total ── */
   if (isMember) {
