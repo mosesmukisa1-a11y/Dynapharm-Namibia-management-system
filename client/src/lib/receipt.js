@@ -4,7 +4,9 @@ export function generateReceiptHTML({
   receiptNumber, branch, items, totalAmount, totalBV,
   paymentMethod, customerType, customerName, nbNumber,
   referralName, referralNB, cashier, showBV = true,
-  branchProfit, distributorBV, copyType
+  branchProfit, distributorBV, copyType,
+  cashback = 0, branchAmount = null, distributorProfit = null,
+  consultFeeAmount = 0, consultFeeMode = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -15,21 +17,36 @@ export function generateReceiptHTML({
   const isCustomerCopy = copyType === 'customer';
   const isStaffCopy = copyType === 'staff';
   const hideBV = isCustomerCopy || (!showBV);
+  const showNonMemberBreakdown = isStaffCopy && !isMember;
 
   const itemRows = items.map(item => {
     const rawBV = Number(item.bv || item.lineBV || 0);
     const bvVal = isNaN(rawBV) ? 0 : rawBV;
     const bvDisplay = bvVal.toFixed(1);
     const profit = item.lineProfit != null ? item.lineProfit : null;
-    return `
+    const dpPrice = item.dpPrice != null ? item.dpPrice : null;
+    const cpPrice = item.cpPrice != null ? item.cpPrice : null;
+    const qty = Number(item.quantity || item.qty || 1);
+
+    const mainRow = `
     <tr>
-      <td style="padding:4px 8px;text-align:left;border-bottom:1px solid #eee;font-size:12px;">${item.product_name || item.name || item.description}</td>
-      <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #eee;font-size:12px;">${item.quantity || item.qty}</td>
-      <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${formatCurrency(item.unit_price || item.unitPrice)}</td>
-      <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${formatCurrency(item.line_total || item.lineTotal)}</td>
+      <td style="padding:4px 8px;text-align:left;border-bottom:${showNonMemberBreakdown ? 'none' : '1px solid #eee'};font-size:12px;">${item.product_name || item.name || item.description}</td>
+      <td style="padding:4px 8px;text-align:center;border-bottom:${showNonMemberBreakdown ? 'none' : '1px solid #eee'};font-size:12px;">${qty}</td>
+      <td style="padding:4px 8px;text-align:right;border-bottom:${showNonMemberBreakdown ? 'none' : '1px solid #eee'};font-size:12px;">${formatCurrency(item.unit_price || item.unitPrice)}</td>
+      <td style="padding:4px 8px;text-align:right;border-bottom:${showNonMemberBreakdown ? 'none' : '1px solid #eee'};font-size:12px;">${formatCurrency(item.line_total || item.lineTotal)}</td>
       ${!hideBV ? `<td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;">${bvDisplay}</td>` : ''}
-      ${isStaffCopy && profit != null ? `<td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;font-size:12px;color:#27ae60;font-weight:600;">${formatCurrency(profit)}</td>` : ''}
     </tr>`;
+
+    const subRow = showNonMemberBreakdown && dpPrice != null ? `
+    <tr>
+      <td colspan="4" style="padding:1px 8px 6px 16px;border-bottom:1px solid #eee;font-size:10px;color:#64748b;">
+        ↳ Branch (DP): <strong style="color:#1e40af;">${formatCurrency(dpPrice * qty)}</strong>
+        &nbsp;|&nbsp; Dist. Profit: <strong style="color:#16a34a;">${formatCurrency(profit != null ? profit : (cpPrice != null ? (cpPrice - dpPrice) * qty : 0))}</strong>
+        ${bvVal > 0 ? `&nbsp;|&nbsp; BV: <strong style="color:#e67e22;">${bvDisplay}</strong>` : ''}
+      </td>
+    </tr>` : '';
+
+    return mainRow + subRow;
   }).join('');
 
   const referralRow = (!isMember && referralName)
@@ -44,15 +61,43 @@ export function generateReceiptHTML({
     : '';
 
   const bvHeader = !hideBV ? '<th style="padding:6px 8px;text-align:right;font-size:11px;border-bottom:2px solid #ddd;">BV</th>' : '';
-  const profitHeader = isStaffCopy && branchProfit != null ? '<th style="padding:6px 8px;text-align:right;font-size:11px;border-bottom:2px solid #ddd;color:#27ae60;">Profit</th>' : '';
 
-  const profitSection = isStaffCopy && branchProfit != null ? `
-    <div style="border-top:2px dashed #e2e8f0;margin-top:6px;padding-top:8px;">
-      ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;font-weight:bold;margin-bottom:4px;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;font-size:13px;color:#27ae60;font-weight:bold;padding:6px 10px;background:#f0fdf4;border-radius:6px;margin-top:4px;border:1px solid #bbf7d0;">
-        <span>Branch Profit Earned</span><span>${formatCurrency(branchProfit)}</span>
-      </div>
-    </div>` : '';
+  const cashbackBanner = (!isMember && isCustomerCopy && cashback > 0)
+    ? `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#fef3c7;border:2px solid #f59e0b;text-align:center;">
+        <div style="font-size:13px;font-weight:900;color:#92400e;">🎁 N$${cashback} CASHBACK</div>
+        <div style="font-size:10px;color:#b45309;margin-top:2px;">Your N$${cashback} cashback has been credited</div>
+      </div>`
+    : '';
+
+  const branchBreakdown = showNonMemberBreakdown && branchAmount != null
+    ? `<div style="border-top:2px dashed #e2e8f0;margin-top:6px;padding-top:8px;">
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;letter-spacing:0.05em;">SALES BREAKDOWN</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#1e40af;font-weight:bold;margin-bottom:3px;">
+          <span>Customer Paid (CP Total)</span><span>${formatCurrency(totalAmount)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#1e3a5f;font-weight:bold;margin-bottom:3px;">
+          <span>Branch Amount (DP Total)</span><span>${formatCurrency(branchAmount)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#16a34a;font-weight:bold;padding:5px 8px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;margin-bottom:3px;">
+          <span>Distributor Profit (CP−DP)</span><span>${formatCurrency(distributorProfit != null ? distributorProfit : totalAmount - branchAmount)}</span>
+        </div>
+        ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;color:#e67e22;font-weight:bold;margin-top:3px;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
+        <div style="font-size:9px;color:#94a3b8;margin-top:5px;font-style:italic;">* Distributor profit is off branch books</div>
+      </div>`
+    : isStaffCopy && branchProfit != null
+      ? `<div style="border-top:2px dashed #e2e8f0;margin-top:6px;padding-top:8px;">
+          ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;font-weight:bold;margin-bottom:4px;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#27ae60;font-weight:bold;padding:6px 10px;background:#f0fdf4;border-radius:6px;margin-top:4px;border:1px solid #bbf7d0;">
+            <span>Branch Profit Earned</span><span>${formatCurrency(branchProfit)}</span>
+          </div>
+        </div>`
+      : '';
+
+  const consultNote = consultFeeAmount > 0 && isStaffCopy
+    ? `<div style="margin-top:6px;padding:5px 8px;border-radius:5px;background:#fffbeb;border:1px solid #fcd34d;font-size:10px;color:#92400e;">
+        💼 Consult Fee: <strong>N$${consultFeeAmount}</strong> — ${consultFeeMode === 'inclusive' ? 'Collected with medicines (NOT in branch sales)' : 'Billed separately (NOT in branch sales)'}
+      </div>`
+    : '';
 
   const bvLine = !hideBV && totalBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;margin-top:4px;font-weight:bold;"><span>Total BV</span><span>${(isNaN(Number(totalBV)) ? 0 : Number(totalBV)).toFixed(1)}</span></div>` : '';
 
@@ -86,10 +131,9 @@ export function generateReceiptHTML({
             <tr style="background:#f5f5f5;">
               <th style="padding:6px 8px;text-align:left;font-size:11px;border-bottom:2px solid #ddd;">Item</th>
               <th style="padding:6px 8px;text-align:center;font-size:11px;border-bottom:2px solid #ddd;">Qty</th>
-              <th style="padding:6px 8px;text-align:right;font-size:11px;border-bottom:2px solid #ddd;">Price</th>
+              <th style="padding:6px 8px;text-align:right;font-size:11px;border-bottom:2px solid #ddd;">${!isMember && isStaffCopy ? 'CP Price' : 'Price'}</th>
               <th style="padding:6px 8px;text-align:right;font-size:11px;border-bottom:2px solid #ddd;">Total</th>
               ${bvHeader}
-              ${profitHeader}
             </tr>
           </thead>
           <tbody>${itemRows}</tbody>
@@ -101,9 +145,11 @@ export function generateReceiptHTML({
           <span style="color:#c41e3a;">${formatCurrency(totalAmount)}</span>
         </div>
         ${bvLine}
-        ${profitSection}
+        ${branchBreakdown}
+        ${consultNote}
       </div>
-      <div style="text-align:center;padding:16px 0;border-top:1px dashed #ccc;font-size:10px;color:#999;">
+      ${cashbackBanner}
+      <div style="text-align:center;padding:16px 0;border-top:1px dashed #ccc;font-size:10px;color:#999;margin-top:8px;">
         <p style="margin:0;">Thank you for shopping with Dynapharm!</p>
         <p style="margin:4px 0;">${COMPANY_INFO.tagline}</p>
         <p style="margin:4px 0;">Facebook: ${COMPANY_INFO.socialMedia.facebook.replace('https://www.facebook.com/', '@')}</p>
@@ -134,7 +180,9 @@ export function generateSalesPDFHTML({
   receiptNumber, branch, items, totalAmount, totalBV,
   paymentMethod, customerType, customerName, nbNumber,
   referralName, referralNB, cashier, showBV = true,
-  branchProfit, distributorBV, copyType, saleDate
+  branchProfit, distributorBV, copyType, saleDate,
+  cashback = 0, branchAmount = null, distributorProfit = null,
+  consultFeeAmount = 0, consultFeeMode = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -145,36 +193,91 @@ export function generateSalesPDFHTML({
   const isCustomerCopy = copyType === 'customer';
   const isStaffCopy = copyType === 'staff';
   const hideBV = isCustomerCopy || (!showBV);
+  const showNonMemberBreakdown = isStaffCopy && !isMember;
 
   const copyLabel = copyType ? (isCustomerCopy ? 'CUSTOMER COPY' : 'STAFF / DISTRIBUTOR COPY') : 'SALES INVOICE';
   const copyColor = isCustomerCopy ? '#166534' : isStaffCopy ? '#7d4e17' : '#c41e3a';
   const copyBg = isCustomerCopy ? '#dcfce7' : isStaffCopy ? '#fef3c7' : '#fff0f3';
 
+  const extraCols = showNonMemberBreakdown ? 2 : (!hideBV ? 1 : 0);
+
   const itemRows = items.map(item => {
     const rawBV = Number(item.bv || item.lineBV || 0);
     const bvVal = isNaN(rawBV) ? 0 : rawBV;
     const profit = item.lineProfit != null ? item.lineProfit : null;
+    const dpPrice = item.dpPrice != null ? item.dpPrice : null;
+    const cpPrice = item.cpPrice != null ? item.cpPrice : null;
+    const qty = Number(item.quantity || item.qty || 1);
+    const distProfit = profit != null ? profit : (dpPrice != null && cpPrice != null ? (cpPrice - dpPrice) * qty : null);
+
     return `<tr style="border-bottom:1px solid #f1f5f9;">
       <td style="padding:9px 10px;">${item.product_name || item.name || item.description || '—'}</td>
-      <td style="padding:9px 10px;text-align:center;">${item.quantity || item.qty || 1}</td>
-      <td style="padding:9px 10px;text-align:right;">${formatCurrency(item.unit_price || item.unitPrice || 0)}</td>
+      <td style="padding:9px 10px;text-align:center;">${qty}</td>
+      ${showNonMemberBreakdown
+        ? `<td style="padding:9px 10px;text-align:right;color:#1e40af;font-weight:600;">${dpPrice != null ? formatCurrency(dpPrice) : '—'}</td>
+           <td style="padding:9px 10px;text-align:right;">${formatCurrency(item.unit_price || item.unitPrice || cpPrice || 0)}</td>`
+        : `<td style="padding:9px 10px;text-align:right;">${formatCurrency(item.unit_price || item.unitPrice || 0)}</td>`
+      }
       <td style="padding:9px 10px;text-align:right;font-weight:600;">${formatCurrency(item.line_total || item.lineTotal || 0)}</td>
-      ${!hideBV ? `<td style="padding:9px 10px;text-align:right;color:#e67e22;">${bvVal.toFixed(1)}</td>` : ''}
-      ${isStaffCopy && profit != null ? `<td style="padding:9px 10px;text-align:right;color:#16a34a;font-weight:600;">${formatCurrency(profit)}</td>` : ''}
+      ${!hideBV && !showNonMemberBreakdown ? `<td style="padding:9px 10px;text-align:right;color:#e67e22;">${bvVal.toFixed(1)}</td>` : ''}
+      ${showNonMemberBreakdown
+        ? `<td style="padding:9px 10px;text-align:right;color:#e67e22;">${bvVal > 0 ? bvVal.toFixed(1) : '—'}</td>
+           <td style="padding:9px 10px;text-align:right;color:#16a34a;font-weight:600;">${distProfit != null ? formatCurrency(distProfit) : '—'}</td>`
+        : ''
+      }
     </tr>`;
   }).join('');
 
-  const bvHeader = !hideBV ? '<th style="padding:9px 10px;text-align:right;color:white;">BV</th>' : '';
-  const profitHeader = isStaffCopy && branchProfit != null ? '<th style="padding:9px 10px;text-align:right;color:#86efac;">Profit</th>' : '';
+  const bvHeader = !hideBV && !showNonMemberBreakdown ? '<th style="padding:9px 10px;text-align:right;color:white;">BV</th>' : '';
 
-  const totalBVDisplay = !hideBV && totalBV > 0
-    ? `<tr style="background:#fffbeb;"><td colspan="${2 + (hideBV ? 0 : 0)}" style="padding:8px 10px;"></td><td style="padding:8px 10px;text-align:right;color:#b45309;font-weight:600;">Total BV</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#e67e22;">${(isNaN(Number(totalBV)) ? 0 : Number(totalBV)).toFixed(1)}</td>${!hideBV ? '' : ''}</tr>`
+  const nonMemberHeaders = showNonMemberBreakdown
+    ? `<th style="padding:9px 10px;text-align:right;color:#93c5fd;">DP (Branch)</th>
+       <th style="padding:9px 10px;text-align:right;color:white;">CP (Customer)</th>`
+    : `<th style="padding:9px 10px;text-align:right;color:white;">Unit Price</th>`;
+
+  const nonMemberExtraHeaders = showNonMemberBreakdown
+    ? `<th style="padding:9px 10px;text-align:right;color:#fde68a;">BV</th>
+       <th style="padding:9px 10px;text-align:right;color:#86efac;">Dist. Profit</th>`
     : '';
 
-  const profitRow = isStaffCopy && branchProfit != null
-    ? `<div style="margin-top:12px;padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
-        ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;margin-bottom:6px;font-weight:600;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#16a34a;"><span>Branch Profit Earned</span><span>${formatCurrency(branchProfit)}</span></div>
+  const calc_distProfit = distributorProfit != null ? distributorProfit
+    : (branchAmount != null ? totalAmount - branchAmount : null);
+
+  const profitRow = showNonMemberBreakdown && branchAmount != null
+    ? `<div style="margin-top:12px;padding:14px 16px;background:#0f172a;border-radius:8px;color:white;">
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);letter-spacing:.08em;margin-bottom:10px;">SALES BREAKDOWN</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+          <span style="color:rgba(255,255,255,0.7);">Customer Paid (CP Total)</span>
+          <span style="font-weight:700;">${formatCurrency(totalAmount)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+          <span style="color:#93c5fd;">Branch Amount (DP Total)</span>
+          <span style="font-weight:700;color:#93c5fd;">${formatCurrency(branchAmount)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;padding:6px 10px;background:rgba(74,222,128,0.12);border-radius:6px;">
+          <span style="color:#4ade80;">Distributor Profit (CP−DP)</span>
+          <span style="font-weight:700;color:#4ade80;">${formatCurrency(calc_distProfit)}</span>
+        </div>
+        ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#fbbf24;margin-bottom:4px;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
+        <div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:8px;font-style:italic;">* Distributor profit is off branch books and not included in branch sales totals</div>
+      </div>`
+    : isStaffCopy && branchProfit != null
+      ? `<div style="margin-top:12px;padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+          ${distributorBV != null && distributorBV > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#e67e22;margin-bottom:6px;font-weight:600;"><span>Distributor BV Earned</span><span>${Number(distributorBV).toFixed(1)} BV</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#16a34a;"><span>Branch Profit Earned</span><span>${formatCurrency(branchProfit)}</span></div>
+        </div>`
+      : '';
+
+  const cashbackSection = (!isMember && isCustomerCopy && cashback > 0)
+    ? `<div style="margin-top:14px;padding:14px;border-radius:8px;background:#fef3c7;border:2px solid #f59e0b;text-align:center;">
+        <div style="font-size:18px;font-weight:900;color:#92400e;">🎁 N$${cashback} CASHBACK</div>
+        <div style="font-size:11px;color:#b45309;margin-top:4px;">Your N$${cashback} cashback has been credited to your account</div>
+      </div>`
+    : '';
+
+  const consultNote = consultFeeAmount > 0 && isStaffCopy
+    ? `<div style="margin-top:10px;padding:10px 14px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:11px;color:#92400e;">
+        💼 <strong>Consultation Fee: N$${consultFeeAmount}</strong> — ${consultFeeMode === 'inclusive' ? 'Collected inclusive with medicines' : 'Billed separately'} · <em>NOT included in branch sales totals</em>
       </div>`
     : '';
 
@@ -240,27 +343,32 @@ export function generateSalesPDFHTML({
   <thead><tr>
     <th>Item Description</th>
     <th style="text-align:center;">Qty</th>
-    <th style="text-align:right;">Unit Price</th>
+    ${nonMemberHeaders}
     <th style="text-align:right;">Line Total</th>
     ${bvHeader}
-    ${profitHeader}
+    ${nonMemberExtraHeaders}
   </tr></thead>
   <tbody>${itemRows}</tbody>
   <tfoot>
     <tr>
-      <td colspan="${2 + (!hideBV ? 1 : 0) + (isStaffCopy && branchProfit != null ? 1 : 0)}" style="text-align:right;color:#64748b;">Subtotal</td>
+      <td colspan="2" style="text-align:right;color:#64748b;">Subtotal</td>
+      ${showNonMemberBreakdown ? '<td></td>' : ''}
       <td style="text-align:right;">${formatCurrency(totalAmount)}</td>
-      ${!hideBV && totalBV > 0 ? `<td style="text-align:right;color:#e67e22;">${(isNaN(Number(totalBV)) ? 0 : Number(totalBV)).toFixed(1)} BV</td>` : ''}
+      <td style="text-align:right;font-weight:700;">${formatCurrency(totalAmount)}</td>
+      ${showNonMemberBreakdown ? `<td></td><td style="text-align:right;color:#16a34a;">${formatCurrency(calc_distProfit)}</td>` : ''}
+      ${!hideBV && !showNonMemberBreakdown && totalBV > 0 ? `<td style="text-align:right;color:#e67e22;">${(isNaN(Number(totalBV)) ? 0 : Number(totalBV)).toFixed(1)} BV</td>` : ''}
     </tr>
   </tfoot>
 </table>
 
 <div class="total-box">
-  <div class="total-label">GRAND TOTAL</div>
+  <div class="total-label">GRAND TOTAL (CP)</div>
   <div class="total-amount">${formatCurrency(totalAmount)}</div>
 </div>
 
 ${profitRow}
+${cashbackSection}
+${consultNote}
 
 <div class="footer">
   <p style="margin:0;font-size:11px;font-weight:600;color:#374151;">Thank you for shopping with Dynapharm International Namibia!</p>
