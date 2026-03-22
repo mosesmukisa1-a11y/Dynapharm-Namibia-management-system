@@ -3,7 +3,120 @@ import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+
+// ── Stock AI Engine ────────────────────────────────────────────────────────────
+const stockAI = {
+  getDailyRate: (productName, movements, branchFilter = null) => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return movements
+      .filter(m => {
+        const isProduct = !productName || m.product_name === productName;
+        const isRecent = m.created_at && new Date(m.created_at) >= thirtyDaysAgo;
+        const isOut = ['out', 'sale', 'sold', 'dispensed', 'transfer_out'].some(t => (m.movement_type || '').toLowerCase().includes(t));
+        const isBranch = !branchFilter || (m.source_location || m.location || '').toLowerCase().replace(/\s+/g, '_') === branchFilter;
+        return isProduct && isRecent && isOut && isBranch;
+      })
+      .reduce((s, m) => s + Number(m.quantity || 0), 0) / 30;
+  },
+
+  getDaysOfStock: (currentQty, dailyRate) => {
+    if (dailyRate <= 0) return 999;
+    return Math.round(currentQty / dailyRate);
+  },
+
+  getPriority: (daysOfStock, qty = 1) => {
+    if (qty <= 0 || daysOfStock <= 0) return { label: 'OUT OF STOCK', color: '#dc2626', bg: '#fef2f2', score: 100 };
+    if (daysOfStock <= 7) return { label: 'CRITICAL', color: '#dc2626', bg: '#fef2f2', score: 90 };
+    if (daysOfStock <= 14) return { label: 'URGENT', color: '#d97706', bg: '#fffbeb', score: 70 };
+    if (daysOfStock <= 30) return { label: 'REORDER SOON', color: '#ca8a04', bg: '#fefce8', score: 40 };
+    return { label: 'OK', color: '#16a34a', bg: '#f0fdf4', score: 0 };
+  },
+
+  getBranchHealth: (branchBatches) => {
+    if (!branchBatches.length) return { score: 50, label: 'No Data', color: '#94a3b8' };
+    const now = new Date();
+    const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const totalQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const expiredQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const expiringSoon = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd).reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const productMap = {};
+    branchBatches.forEach(b => { if (!productMap[b.product_name]) productMap[b.product_name] = 0; productMap[b.product_name] += Number(b.quantity || 0); });
+    const criticalCount = Object.values(productMap).filter(q => q < 5).length;
+    let score = 100;
+    if (totalQty > 0) score -= (expiredQty / totalQty) * 40;
+    if (totalQty > 0) score -= (expiringSoon / totalQty) * 15;
+    score -= criticalCount * 6;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    return {
+      score,
+      label: score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Poor',
+      color: score >= 80 ? '#16a34a' : score >= 60 ? '#ca8a04' : score >= 40 ? '#d97706' : '#dc2626',
+    };
+  },
+
+  generateInsights: (batches, movements, transfers) => {
+    const now = new Date();
+    const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const productMap = {};
+    batches.forEach(b => {
+      if (!productMap[b.product_name]) productMap[b.product_name] = { qty: 0, expiry: null, location: b.location };
+      productMap[b.product_name].qty += Number(b.quantity || 0);
+      if (b.expiry_date && (!productMap[b.product_name].expiry || new Date(b.expiry_date) < new Date(productMap[b.product_name].expiry))) {
+        productMap[b.product_name].expiry = b.expiry_date;
+      }
+    });
+    const insights = [];
+    const criticalItems = Object.entries(productMap).filter(([, d]) => d.qty < 5 && d.qty > 0);
+    const outItems = Object.entries(productMap).filter(([, d]) => d.qty <= 0);
+    const expiringBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+    const expiredBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
+    const pendingTransfers = transfers.filter(t => t.status === 'pending' || t.status === 'requested');
+    const overdueTransfers = transfers.filter(t => {
+      const age = (Date.now() - new Date(t.created_at || 0)) / (1000 * 60 * 60 * 24);
+      return (t.status === 'pending' || t.status === 'in_transit') && age > 3;
+    });
+    if (outItems.length > 0) insights.push({ type: 'critical', icon: '🚨', text: `${outItems.length} product${outItems.length > 1 ? 's are' : ' is'} completely OUT OF STOCK. Immediate sourcing required.` });
+    if (criticalItems.length > 0) insights.push({ type: 'critical', icon: '⚠️', text: `${criticalItems.length} product${criticalItems.length > 1 ? 's are' : ' is'} critically low (under 5 units). ${criticalItems.slice(0,2).map(([n]) => n).join(', ')}${criticalItems.length > 2 ? '…' : ''}.` });
+    if (expiredBatches.length > 0) insights.push({ type: 'danger', icon: '🗑️', text: `${expiredBatches.length} batch${expiredBatches.length > 1 ? 'es have' : ' has'} expired and still hold stock. These should be written off immediately.` });
+    if (expiringBatches.length > 0) insights.push({ type: 'warning', icon: '📅', text: `${expiringBatches.length} batch${expiringBatches.length > 1 ? 'es expire' : ' expires'} within 30 days. Move to high-velocity branches.` });
+    if (overdueTransfers.length > 0) insights.push({ type: 'warning', icon: '🚚', text: `${overdueTransfers.length} transfer${overdueTransfers.length > 1 ? 's are' : ' is'} overdue (pending > 3 days). Follow up with dispatch team.` });
+    if (pendingTransfers.length > 3) insights.push({ type: 'info', icon: '🔄', text: `${pendingTransfers.length} transfers pending dispatch. Consider batching deliveries for efficiency.` });
+    if (insights.length === 0) insights.push({ type: 'success', icon: '✅', text: 'All stock levels are healthy across all locations. Great job maintaining inventory!' });
+    return insights;
+  },
+
+  getReorderRecommendations: (batches, movements, sales) => {
+    const productMap = {};
+    batches.forEach(b => {
+      const key = `${b.product_name}||${b.location || 'unknown'}`;
+      if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
+      productMap[key].qty += Number(b.quantity || 0);
+      if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry))) productMap[key].expiry = b.expiry_date;
+    });
+    return Object.values(productMap).map(p => {
+      const dailyRate = stockAI.getDailyRate(p.product_name, movements);
+      const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
+      const priority = stockAI.getPriority(daysOfStock, p.qty);
+      const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 30) : (p.qty < 5 ? 50 : 0);
+      return { ...p, dailyRate: dailyRate.toFixed(2), daysOfStock, priority, suggestedOrder };
+    }).filter(r => r.priority.score > 0).sort((a, b) => b.priority.score - a.priority.score);
+  },
+};
+
+// ── Location label helper ──────────────────────────────────────────────────────
+const fmtLocation = (loc) => {
+  if (!loc) return '—';
+  if (loc === 'country_stock') return 'Country Stock';
+  if (loc === 'windhoek_warehouse') return 'Windhoek Warehouse';
+  if (loc === 'ondangwa_warehouse') return 'Ondangwa Warehouse';
+  if (loc === 'windhoek_cbd') return 'Windhoek CBD';
+  // General title case with acronym preservation
+  return loc.replace(/_/g, ' ').replace(/\b\w+/g, word =>
+    word.toUpperCase() === word && word.length > 1 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  );
+};
 
 function printDocument(title, bodyHtml, landscape = false) {
   const logoUrl = window.location.origin + '/assets/dynapharm-logo.png';
@@ -264,9 +377,12 @@ function AdjustmentsTab() {
 }
 
 export default function StockPortal() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('aiDashboard');
+  const [globalBranch, setGlobalBranch] = useState(user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : 'all');
 
   const tabs = [
+    { id: 'aiDashboard', label: 'AI Command', icon: '🧠' },
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'branchStock', label: 'Branch Stock', icon: '🏪' },
     { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
@@ -282,47 +398,368 @@ export default function StockPortal() {
     { id: 'countryInventory', label: 'Country Inv.', icon: '🗂️' },
     { id: 'valuation', label: 'Valuation', icon: '💎' },
     { id: 'barcode', label: 'Barcode', icon: '🏷️' },
-    { id: 'reorder', label: 'Reorder', icon: '⚠️' },
+    { id: 'reorder', label: 'AI Reorder', icon: '🤖' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
   ];
 
+  const branchOptions = [
+    { value: 'all', label: '🌍 All Branches' },
+    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: `📍 ${b}` })),
+    { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
+    { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
+    { value: 'country_stock', label: '📦 Country Stock' },
+  ];
+
+  const activeBranchLabel = branchOptions.find(o => o.value === globalBranch)?.label || 'All Branches';
+
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Package size={24} className="text-primary" /> Stock Management
-        </h1>
-        <p className="text-sm text-gray-500">Warehouse management, supplier imports, transfers, and inventory tracking</p>
+      {/* ── Header with Branch Selector ──────────────────────── */}
+      <div className="mb-4 flex flex-wrap gap-4 items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Brain size={24} className="text-primary" /> AI Stock Management System
+          </h1>
+          <p className="text-sm text-gray-500">Intelligent inventory control · Branch-connected · Real-time AI insights</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <MapPin size={16} className="text-primary shrink-0" />
+          <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">Branch Filter:</span>
+          <select value={globalBranch} onChange={e => setGlobalBranch(e.target.value)}
+            style={{ padding: '7px 12px', border: '2px solid #c41e3a', borderRadius: 10, fontWeight: 700, fontSize: '0.85rem', color: '#8b0000', background: '#fff0f3', cursor: 'pointer', minWidth: 180 }}>
+            {branchOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {globalBranch !== 'all' && (
+            <button onClick={() => setGlobalBranch('all')}
+              style={{ padding: '6px 10px', background: '#f1f5f9', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>× All</button>
+          )}
+          {user?.full_name && <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>👤 {user.full_name}</span>}
+        </div>
       </div>
+
+      {/* ── Active filter banner ──────────────────────────────── */}
+      {globalBranch !== 'all' && (
+        <div style={{ marginBottom: 12, padding: '8px 16px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #fecaca', borderRadius: 10, fontSize: '0.82rem', color: '#9b1c2e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <MapPin size={13} /> Showing data for: <strong>{activeBranchLabel}</strong> &nbsp;—&nbsp; All tabs filtered to this location
+        </div>
+      )}
+
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
-        {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'branchStock' && <BranchStockTab />}
-        {activeTab === 'stockReports' && <StockReportsTab />}
+        {activeTab === 'aiDashboard' && <AICommandCenter branch={globalBranch} />}
+        {activeTab === 'overview' && <OverviewTab branch={globalBranch} />}
+        {activeTab === 'branchStock' && <BranchStockTab branch={globalBranch} />}
+        {activeTab === 'stockReports' && <StockReportsTab branch={globalBranch} />}
         {activeTab === 'supplierImport' && <SupplierImportTab />}
         {activeTab === 'countryStock' && <CountryStockTab />}
         {activeTab === 'windhoek' && <WarehouseTab name="Windhoek" />}
         {activeTab === 'ondangwa' && <WarehouseTab name="Ondangwa" />}
-        {activeTab === 'distribution' && <DistributionTab />}
-        {activeTab === 'transfers' && <TransfersTab />}
-        {activeTab === 'inventory' && <InventoryTab />}
-        {activeTab === 'orders' && <OrdersTab />}
-        {activeTab === 'monthlySales' && <MonthlySalesTab />}
+        {activeTab === 'distribution' && <DistributionTab branch={globalBranch} />}
+        {activeTab === 'transfers' && <TransfersTab branch={globalBranch} />}
+        {activeTab === 'inventory' && <InventoryTab branch={globalBranch} />}
+        {activeTab === 'orders' && <OrdersTab branch={globalBranch} />}
+        {activeTab === 'monthlySales' && <MonthlySalesTab branch={globalBranch} />}
         {activeTab === 'countryInventory' && <CountryInventoryTab />}
-        {activeTab === 'valuation' && <ValuationTab />}
+        {activeTab === 'valuation' && <ValuationTab branch={globalBranch} />}
         {activeTab === 'barcode' && <BarcodeTab />}
-        {activeTab === 'reorder' && <ReorderTab />}
-        {activeTab === 'batch' && <BatchTab />}
-        {activeTab === 'realtime' && <RealtimeTab />}
+        {activeTab === 'reorder' && <SmartReorderTab branch={globalBranch} />}
+        {activeTab === 'batch' && <BatchTab branch={globalBranch} />}
+        {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
       </div>
     </div>
   );
 }
 
-function OverviewTab() {
+// ── AI Command Center ─────────────────────────────────────────────────────────
+function AICommandCenter({ branch }) {
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [] });
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [alertFilter, setAlertFilter] = useState('all');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
+      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
+    ]).then(([batches, movements, transfers, sales]) => {
+      setData({ batches, movements, transfers, sales });
+      setLastRefresh(new Date());
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filteredBatches = data.batches.filter(filterBatch);
+
+  // ── Core stats ──────────────────────────────────────────────
+  const now = new Date();
+  const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const ninetyFwd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+  const totalValue = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const expiredBatches = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
+  const expiringBatches = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+
+  const productTotals = {};
+  filteredBatches.forEach(b => {
+    if (!productTotals[b.product_name]) productTotals[b.product_name] = { qty: 0, location: b.location };
+    productTotals[b.product_name].qty += Number(b.quantity || 0);
+  });
+  const criticalProducts = Object.entries(productTotals).filter(([, d]) => d.qty > 0 && d.qty < 5);
+  const outProducts = Object.entries(productTotals).filter(([, d]) => d.qty <= 0);
+
+  const pendingTransfers = data.transfers.filter(t => {
+    const isRelated = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+    return isRelated && (t.status === 'pending' || t.status === 'requested');
+  });
+  const inTransitTransfers = data.transfers.filter(t => {
+    const isRelated = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+    return isRelated && (t.status === 'in_transit' || t.status === 'dispatched');
+  });
+
+  // ── AI Insights ─────────────────────────────────────────────
+  const insights = stockAI.generateInsights(filteredBatches, data.movements, data.transfers);
+
+  // ── AI Reorder Recommendations ──────────────────────────────
+  const reorderRecs = stockAI.getReorderRecommendations(filteredBatches, data.movements, data.sales)
+    .slice(0, 8);
+
+  // ── Branch Health Scores ─────────────────────────────────────
+  const branchHealthScores = BRANCHES.map(brName => {
+    const key = brName.toLowerCase().replace(/\s+/g, '_');
+    const brBatches = data.batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === key);
+    const health = stockAI.getBranchHealth(brBatches);
+    const totalStk = brBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const pendingReqs = data.transfers.filter(t => ((t.to_location || '').toLowerCase().replace(/\s+/g, '_') === key) && (t.status === 'pending' || t.status === 'requested')).length;
+    return { name: brName, key, health, totalStk, pendingReqs };
+  });
+
+  // ── Expiry Timeline ──────────────────────────────────────────
+  const expiry30 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+  const expiry60 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > thirtyFwd && new Date(b.expiry_date) <= ninetyFwd);
+
+  const insightColors = { critical: '#dc2626', danger: '#dc2626', warning: '#d97706', info: '#2563eb', success: '#16a34a' };
+  const insightBgs = { critical: '#fef2f2', danger: '#fef2f2', warning: '#fffbeb', info: '#eff6ff', success: '#f0fdf4' };
+
+  return (
+    <div className="space-y-6">
+      {/* ── Header ──────────────────────────────────── */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 16, padding: '18px 24px', color: '#fff' }}>
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Brain size={20} />
+              <h2 style={{ fontWeight: 900, fontSize: '1.15rem', margin: 0 }}>🧠 AI Stock Command Center</h2>
+            </div>
+            <p style={{ fontSize: '0.82rem', opacity: 0.8, margin: 0 }}>
+              Real-time intelligence · Predictive reorder alerts · Branch health monitoring
+              {branch !== 'all' && ` · Filtered: ${fmtLocation(branch)}`}
+            </p>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{totalQty.toLocaleString()}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Total Units</div>
+            </div>
+            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{formatCurrency(totalValue)}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Stock Value</div>
+            </div>
+            <div style={{ textAlign: 'center', background: outProducts.length > 0 ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{criticalProducts.length + outProducts.length}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Critical Alerts</div>
+            </div>
+            <button onClick={load} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+              <RefreshCw size={14} style={{ display: 'inline', marginRight: 4 }} />Refresh
+            </button>
+          </div>
+        </div>
+        <div style={{ marginTop: 8, fontSize: '0.72rem', opacity: 0.6 }}>Last updated: {formatDateTime(lastRefresh)}</div>
+      </div>
+
+      {/* ── AI Insights Panel ──────────────────────── */}
+      <div>
+        <h3 style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Cpu size={16} className="text-primary" /> AI Insights
+        </h3>
+        <div className="space-y-2">
+          {insights.map((ins, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 10, background: insightBgs[ins.type] || '#f8fafc', border: `1.5px solid ${insightColors[ins.type] || '#94a3b8'}30` }}>
+              <span style={{ fontSize: '1.1rem', lineHeight: 1.2 }}>{ins.icon}</span>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: insightColors[ins.type] || '#374151', fontWeight: 600, lineHeight: 1.4 }}>{ins.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Quick Stats ───────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div style={{ background: outProducts.length > 0 ? '#fef2f2' : '#f0fdf4', border: `1.5px solid ${outProducts.length > 0 ? '#fecaca' : '#bbf7d0'}`, borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: outProducts.length > 0 ? '#dc2626' : '#16a34a' }}>{outProducts.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Out of Stock</div>
+        </div>
+        <div style={{ background: criticalProducts.length > 0 ? '#fef2f2' : '#f0fdf4', border: `1.5px solid ${criticalProducts.length > 0 ? '#fecaca' : '#bbf7d0'}`, borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: criticalProducts.length > 0 ? '#dc2626' : '#16a34a' }}>{criticalProducts.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Critical (&lt;5)</div>
+        </div>
+        <div style={{ background: expiredBatches.length > 0 ? '#fef2f2' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: expiredBatches.length > 0 ? '#dc2626' : '#475569' }}>{expiredBatches.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Expired Batches</div>
+        </div>
+        <div style={{ background: expiry30.length > 0 ? '#fffbeb' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: expiry30.length > 0 ? '#d97706' : '#475569' }}>{expiry30.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Expiring &lt;30d</div>
+        </div>
+        <div style={{ background: pendingTransfers.length > 0 ? '#eff6ff' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: pendingTransfers.length > 0 ? '#2563eb' : '#475569' }}>{pendingTransfers.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Pending Transfers</div>
+        </div>
+        <div style={{ background: inTransitTransfers.length > 0 ? '#f0fdf4' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#7c3aed' }}>{inTransitTransfers.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>In Transit</div>
+        </div>
+      </div>
+
+      {/* ── Branch Health Scores ────────────────────── */}
+      {branch === 'all' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><Shield size={16} className="text-primary" /> Branch Health Scores</h3>
+          </CardHeader>
+          <CardBody>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {branchHealthScores.map(b => (
+                <div key={b.key} style={{ border: `2px solid ${b.health.color}30`, borderRadius: 12, padding: '12px 14px', background: b.health.score >= 80 ? '#f0fdf4' : b.health.score >= 60 ? '#fefce8' : '#fef2f2' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', marginBottom: 4 }}>📍 {b.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 900, color: b.health.color }}>{b.health.score}</span>
+                    <span style={{ fontSize: '0.75rem', color: b.health.color, fontWeight: 700 }}>/100</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: b.health.color, marginBottom: 6 }}>{b.health.label}</div>
+                  {/* Health bar */}
+                  <div style={{ height: 5, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+                    <div style={{ height: '100%', width: `${b.health.score}%`, background: b.health.color, borderRadius: 99, transition: 'width 0.5s' }} />
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{b.totalStk} units {b.pendingReqs > 0 && <span style={{ color: '#2563eb', fontWeight: 700 }}>· {b.pendingReqs} pending</span>}</div>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ── AI Reorder Recommendations ──────────────── */}
+      {reorderRecs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Target size={16} className="text-primary" /> AI Reorder Recommendations</h3>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = reorderRecs.map(r => `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate}/day</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder}</td></tr>`).join('');
+                printDocument('AI Reorder Recommendations', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+            </div>
+          </CardHeader>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['Product', 'Location', 'Priority', 'Current Qty', 'Daily Rate', 'Days Left', 'Suggested Order'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: '0.75rem', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reorderRecs.map((r, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 700, color: '#1e293b' }}>{r.product_name}</td>
+                    <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '0.78rem' }}>{fmtLocation(r.location)}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <span style={{ background: r.priority.bg, color: r.priority.color, borderRadius: 99, padding: '3px 10px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>{r.priority.label}</span>
+                    </td>
+                    <td style={{ padding: '8px 12px', fontWeight: 800, color: r.qty < 5 ? '#dc2626' : '#374151' }}>{r.qty}</td>
+                    <td style={{ padding: '8px 12px', color: '#64748b' }}>{r.dailyRate === '0.00' ? '—' : `${r.dailyRate}/day`}</td>
+                    <td style={{ padding: '8px 12px', fontWeight: 700, color: r.daysOfStock <= 14 ? '#dc2626' : r.daysOfStock <= 30 ? '#d97706' : '#16a34a' }}>
+                      {r.daysOfStock === 999 ? '—' : `${r.daysOfStock}d`}
+                    </td>
+                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#7c3aed' }}>{r.suggestedOrder > 0 ? r.suggestedOrder : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Expiry Risk ─────────────────────────────── */}
+      {(expiry30.length > 0 || expiredBatches.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {expiredBatches.length > 0 && (
+            <Card>
+              <CardHeader><h3 className="font-bold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Expired — Needs Write-off ({expiredBatches.length})</h3></CardHeader>
+              <Table
+                columns={[
+                  { header: 'Product', render: r => <span className="font-semibold text-sm">{r.product_name}</span> },
+                  { header: 'Qty', render: r => <span className="font-bold text-red-600">{r.quantity}</span> },
+                  { header: 'Expired', render: r => <span className="text-xs text-red-500">{formatDate(r.expiry_date)}</span> },
+                  { header: 'Location', render: r => <span className="text-xs text-gray-500">{fmtLocation(r.location)}</span> },
+                ]}
+                data={expiredBatches.slice(0, 8)}
+                emptyMessage="None"
+              />
+            </Card>
+          )}
+          {expiry30.length > 0 && (
+            <Card>
+              <CardHeader><h3 className="font-bold text-amber-700 flex items-center gap-2"><Clock size={16} /> Expiring in 30 Days ({expiry30.length})</h3></CardHeader>
+              <Table
+                columns={[
+                  { header: 'Product', render: r => <span className="font-semibold text-sm">{r.product_name}</span> },
+                  { header: 'Qty', render: r => <span className="font-bold text-amber-600">{r.quantity}</span> },
+                  { header: 'Expires', render: r => <span className="text-xs text-amber-600 font-semibold">{formatDate(r.expiry_date)}</span> },
+                  { header: 'Location', render: r => <span className="text-xs text-gray-500">{fmtLocation(r.location)}</span> },
+                ]}
+                data={expiry30.slice(0, 8)}
+                emptyMessage="None"
+              />
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ── Pending Transfers ─────────────────────── */}
+      {pendingTransfers.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><ArrowLeftRight size={16} /> Pending Transfers Requiring Action</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-semibold text-sm">{r.product_name}</span> },
+              { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.from_location)}</span> },
+              { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.to_location)}</span> },
+              { header: 'Qty', render: r => <span className="font-bold">{r.quantity}</span> },
+              { header: 'Status', render: r => <Badge variant="warning">{r.status}</Badge> },
+              { header: 'Requested', render: r => <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span> },
+            ]}
+            data={pendingTransfers.slice(0, 10)}
+            emptyMessage="No pending transfers"
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Overview Tab (branch-aware) ───────────────────────────────────────────────
+function OverviewTab({ branch }) {
   const [data, setData] = useState({ batches: [], movements: [], transfers: [] });
   const [loading, setLoading] = useState(true);
 
@@ -338,16 +775,33 @@ function OverviewTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const totalItems = data.batches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
-  const totalValue = data.batches.reduce((sum, b) => sum + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
-  const pendingTransfers = data.transfers.filter(t => t.status === 'pending').length;
-  const inTransit = data.transfers.filter(t => t.status === 'in_transit' || t.status === 'dispatched').length;
+  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filteredBatches = data.batches.filter(filterBatch);
+  const filteredMovements = branch === 'all' ? data.movements : data.movements.filter(m =>
+    (m.location || m.source_location || '').toLowerCase().replace(/\s+/g, '_') === branch
+  );
+
+  const totalItems = filteredBatches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
+  const totalValue = filteredBatches.reduce((sum, b) => sum + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const pendingTransfers = data.transfers.filter(t => {
+    const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+    return related && t.status === 'pending';
+  }).length;
+  const inTransit = data.transfers.filter(t => {
+    const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+    return related && (t.status === 'in_transit' || t.status === 'dispatched');
+  }).length;
 
   return (
     <div>
+      {branch !== 'all' && (
+        <div style={{ marginBottom: 16, padding: '8px 14px', background: '#fff0f3', border: '1.5px solid #fecaca', borderRadius: 10, fontSize: '0.82rem', color: '#9b1c2e', fontWeight: 600 }}>
+          📍 Showing overview for: <strong>{fmtLocation(branch)}</strong>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Stock Items" value={totalItems.toLocaleString()} color="blue" icon={<Package size={24} />} />
-        <StatCard title="Total Stock Value (DP)" value={formatCurrency(totalValue)} color="green" icon={<BarChart3 size={24} />} />
+        <StatCard title="Total Stock Units" value={totalItems.toLocaleString()} color="blue" icon={<Package size={24} />} />
+        <StatCard title="Stock Value (CIF)" value={formatCurrency(totalValue)} color="green" icon={<BarChart3 size={24} />} />
         <StatCard title="Pending Transfers" value={pendingTransfers} color="orange" icon={<ArrowLeftRight size={24} />} />
         <StatCard title="In Transit" value={inTransit} color="purple" icon={<Truck size={24} />} />
       </div>
@@ -356,9 +810,9 @@ function OverviewTab() {
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <h3 className="font-bold text-gray-800">Recent Stock Movements</h3>
+              <h3 className="font-bold text-gray-800">Recent Stock Movements {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}</h3>
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = data.movements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td></tr>`).join('');
+                const rows = filteredMovements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td></tr>`).join('');
                 printDocument('Recent Stock Movements', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
@@ -369,9 +823,9 @@ function OverviewTab() {
               { header: 'Product', key: 'product_name' },
               { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
               { header: 'Qty', key: 'quantity' },
-              { header: 'Location', key: 'location' },
+              { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
             ]}
-            data={data.movements.slice(0, 15)}
+            data={filteredMovements.slice(0, 15)}
             emptyMessage="No recent movements"
           />
         </Card>
@@ -381,25 +835,24 @@ function OverviewTab() {
           <CardBody>
             {(() => {
               const byLoc = {};
-              data.batches.forEach(b => {
-                const loc = b.location || 'unknown';
-                const label = loc.includes('windhoek') ? 'Windhoek Warehouse' : loc.includes('ondangwa') ? 'Ondangwa Warehouse' : loc === 'country_stock' ? 'Country Stock' : loc;
+              filteredBatches.forEach(b => {
+                const label = fmtLocation(b.location || 'unknown');
                 if (!byLoc[label]) byLoc[label] = { qty: 0, value: 0 };
                 const qty = Number(b.quantity || 0);
                 byLoc[label].qty += qty;
                 byLoc[label].value += qty * Number(b.unit_price || 0);
               });
-              return Object.entries(byLoc).map(([loc, d]) => (
+              const entries = Object.entries(byLoc).sort((a, b) => b[1].value - a[1].value);
+              return entries.length > 0 ? entries.map(([loc, d]) => (
                 <div key={loc} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
                   <div>
                     <p className="font-medium text-gray-800">{loc}</p>
-                    <p className="text-xs text-gray-500">{d.qty.toLocaleString()} items</p>
+                    <p className="text-xs text-gray-500">{d.qty.toLocaleString()} units</p>
                   </div>
                   <span className="font-bold text-gray-700">{formatCurrency(d.value)}</span>
                 </div>
-              ));
+              )) : <p className="text-sm text-gray-400 text-center py-4">No stock data for this filter</p>;
             })()}
-            {data.batches.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No stock data</p>}
           </CardBody>
         </Card>
       </div>
@@ -945,8 +1398,8 @@ function WarehouseTab({ name }) {
   );
 }
 
-function DistributionTab() {
-  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '' });
+function DistributionTab({ branch }) {
+  const [form, setForm] = useState({ from_location: '', to_location: branch && branch !== 'all' ? branch : '', product_name: '', quantity: '' });
   const [adjRecord, setAdjRecord] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
@@ -1197,7 +1650,7 @@ function ProductMultiCart({ cart, onCartChange }) {
 }
 // ── End ProductMultiCart ────────────────────────────────────────────────────────
 
-function TransfersTab() {
+function TransfersTab({ branch }) {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -1270,16 +1723,23 @@ function TransfersTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const filteredTransfers = branch === 'all' ? transfers : transfers.filter(t =>
+    (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch ||
+    (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch
+  );
+
   return (
     <div>
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Stock Transfers</h3>
+            <h3 className="font-bold text-gray-800">
+              Stock Transfers {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-1">— {fmtLocation(branch)} ({filteredTransfers.length})</span>}
+            </h3>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = transfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.from_location||''}</td><td>${r.to_location||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
+                const rows = filteredTransfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${fmtLocation(r.from_location)}</td><td>${fmtLocation(r.to_location)}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
                 printDocument('Stock Transfers Report', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print Report</Button>
               <Button size="sm" onClick={() => setShowNew(true)}><Plus size={16} /> New Transfer</Button>
@@ -1289,8 +1749,8 @@ function TransfersTab() {
         <Table
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'From', key: 'from_location' },
-            { header: 'To', key: 'to_location' },
+            { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.from_location)}</span> },
+            { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.to_location)}</span> },
             { header: 'Product', key: 'product_name' },
             { header: 'Qty', key: 'quantity' },
             { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
@@ -1305,12 +1765,12 @@ function TransfersTab() {
                 {(r.status === 'dispatched' || r.status === 'in_transit') && (
                   <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')}>Delivered</Button>
                 )}
-                <Button size="sm" variant="ghost" title="Print dispatch note" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td><b>Transfer ID</b></td><td>${r.id||''}</td></tr><tr><td><b>Date</b></td><td>${formatDateTime(r.created_at)}</td></tr><tr><td><b>From</b></td><td>${r.from_location||''}</td></tr><tr><td><b>To</b></td><td>${r.to_location||''}</td></tr><tr><td><b>Product</b></td><td>${r.product_name||''}</td></tr><tr><td><b>Quantity</b></td><td>${r.quantity||''}</td></tr><tr><td><b>Status</b></td><td>${r.status||'Pending'}</td></tr><tr><td><b>Notes</b></td><td>${r.notes||'-'}</td></tr></tbody></table>`)}><Printer size={12} /></Button>
+                <Button size="sm" variant="ghost" title="Print dispatch note" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td><b>Transfer ID</b></td><td>${r.id||''}</td></tr><tr><td><b>Date</b></td><td>${formatDateTime(r.created_at)}</td></tr><tr><td><b>From</b></td><td>${fmtLocation(r.from_location)}</td></tr><tr><td><b>To</b></td><td>${fmtLocation(r.to_location)}</td></tr><tr><td><b>Product</b></td><td>${r.product_name||''}</td></tr><tr><td><b>Quantity</b></td><td>${r.quantity||''}</td></tr><tr><td><b>Status</b></td><td>${r.status||'Pending'}</td></tr><tr><td><b>Notes</b></td><td>${r.notes||'-'}</td></tr></tbody></table>`)}><Printer size={12} /></Button>
               </div>
             )},
           ]}
-          data={transfers}
-          emptyMessage="No transfers recorded"
+          data={filteredTransfers}
+          emptyMessage={branch !== 'all' ? `No transfers for ${fmtLocation(branch)}` : 'No transfers recorded'}
         />
       </Card>
 
@@ -1340,7 +1800,7 @@ function TransfersTab() {
   );
 }
 
-function InventoryTab() {
+function InventoryTab({ branch }) {
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('');
@@ -1355,6 +1815,7 @@ function InventoryTab() {
   }, []);
 
   const filtered = movements.filter(m => {
+    if (branch !== 'all' && (m.location || m.source_location || '').toLowerCase().replace(/\s+/g, '_') !== branch) return false;
     if (filterType && m.movement_type !== filterType) return false;
     if (filterLocation && m.location !== filterLocation) return false;
     if (searchTerm && !(m.product_name || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
@@ -1414,7 +1875,7 @@ function InventoryTab() {
   );
 }
 
-function OrdersTab() {
+function OrdersTab({ branch }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1530,7 +1991,7 @@ function OrdersTab() {
   );
 }
 
-function MonthlySalesTab() {
+function MonthlySalesTab({ branch }) {
   const [salesData, setSalesData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -1761,7 +2222,7 @@ function CountryInventoryTab() {
   );
 }
 
-function ValuationTab() {
+function ValuationTab({ branch }) {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1779,8 +2240,10 @@ function ValuationTab() {
     return prod ? prod.dp : 0;
   };
 
+  const filteredBatches = branch === 'all' ? batches : batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch);
+
   const locationGroups = {};
-  batches.forEach(b => {
+  filteredBatches.forEach(b => {
     const loc = (b.location || 'unknown').includes('windhoek') ? 'Windhoek' : (b.location || 'unknown').includes('ondangwa') ? 'Ondangwa' : 'Country';
     if (!locationGroups[loc]) locationGroups[loc] = { items: 0, value: 0 };
     const qty = Number(b.quantity || 0);
@@ -1789,7 +2252,7 @@ function ValuationTab() {
     locationGroups[loc].value += qty * dp;
   });
 
-  const breakdown = batches.map(b => {
+  const breakdown = filteredBatches.map(b => {
     const qty = Number(b.quantity || 0);
     const dp = getDP(b.product_name) || Number(b.unit_price || 0);
     return { product_name: b.product_name, location: b.location || 'Unknown', quantity: qty, unit_price: dp, total_value: qty * dp };
@@ -2166,90 +2629,267 @@ function BarcodeTab() {
   );
 }
 
-function ReorderTab() {
+function SmartReorderTab({ branch }) {
+  const { user } = useAuth();
   const [batches, setBatches] = useState([]);
+  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [thresholds, setThresholds] = useState({});
   const [editProduct, setEditProduct] = useState(null);
   const [editThreshold, setEditThreshold] = useState('');
-  const defaultReorderLevel = 10;
+  const [viewMode, setViewMode] = useState('ai'); // 'ai' | 'classic'
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [orderModal, setOrderModal] = useState(null);
+  const [orderQty, setOrderQty] = useState('');
+  const [orderNote, setOrderNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [orderAlert, setOrderAlert] = useState(null);
 
-  useEffect(() => {
-    api.stock.batches()
-      .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+    ]).then(([b, m]) => { setBatches(b); setMovements(m); }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <LoadingSpinner />;
 
-  const stockByProduct = {};
-  batches.forEach(b => {
-    const name = b.product_name || 'Unknown';
-    if (!stockByProduct[name]) stockByProduct[name] = 0;
-    stockByProduct[name] += Number(b.quantity || 0);
+  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filteredBatches = batches.filter(filterBatch);
+
+  // ── Aggregate by product+location ─────────────────
+  const productMap = {};
+  filteredBatches.forEach(b => {
+    const key = `${b.product_name}||${b.location || 'unknown'}`;
+    if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
+    productMap[key].qty += Number(b.quantity || 0);
+    if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry))) productMap[key].expiry = b.expiry_date;
   });
 
-  const alerts = Object.entries(stockByProduct).map(([product_name, current_qty]) => {
-    const reorder_level = thresholds[product_name] || defaultReorderLevel;
-    let status = 'OK';
-    if (current_qty < 5) status = 'Critical';
-    else if (current_qty < reorder_level) status = 'Low';
-    return { product_name, current_qty, reorder_level, status };
-  }).sort((a, b) => {
-    const order = { Critical: 0, Low: 1, OK: 2 };
-    return order[a.status] - order[b.status];
-  });
+  const allItems = Object.values(productMap).map(p => {
+    const dailyRate = stockAI.getDailyRate(p.product_name, movements, branch === 'all' ? null : branch);
+    const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
+    const priority = stockAI.getPriority(daysOfStock, p.qty);
+    const threshold = thresholds[p.product_name] || 10;
+    const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 30) : (p.qty < 5 ? 30 : 0);
+    const classicStatus = p.qty < 5 ? 'Critical' : p.qty < threshold ? 'Low' : 'OK';
+    return { ...p, dailyRate, daysOfStock, priority, threshold, suggestedOrder, classicStatus };
+  }).sort((a, b) => b.priority.score - a.priority.score);
 
-  const criticalCount = alerts.filter(a => a.status === 'Critical').length;
-  const lowCount = alerts.filter(a => a.status === 'Low').length;
+  const aiActionable = allItems.filter(i => i.priority.score > 0);
+  const aiFiltered = priorityFilter === 'all' ? aiActionable :
+    priorityFilter === 'critical' ? aiActionable.filter(i => i.priority.score >= 90) :
+    priorityFilter === 'urgent' ? aiActionable.filter(i => i.priority.score >= 70 && i.priority.score < 90) :
+    aiActionable.filter(i => i.priority.score >= 40 && i.priority.score < 70);
 
-  const saveThreshold = () => {
-    if (editProduct && editThreshold) {
-      setThresholds(prev => ({ ...prev, [editProduct]: Number(editThreshold) }));
-      setEditProduct(null);
-      setEditThreshold('');
+  const outCount = allItems.filter(i => i.qty <= 0).length;
+  const critCount = allItems.filter(i => i.qty > 0 && i.qty < 5).length;
+  const urgentCount = allItems.filter(i => i.daysOfStock > 0 && i.daysOfStock <= 14 && i.qty >= 5).length;
+
+  const createOrderRequest = async () => {
+    if (!orderModal || !orderQty) return;
+    setSubmitting(true);
+    try {
+      await api.stock.createTransfer({
+        from_location: 'country_stock',
+        to_location: orderModal.location,
+        product_name: orderModal.product_name,
+        quantity: Number(orderQty),
+        notes: orderNote || `AI Reorder — ${orderModal.priority.label}. Days left: ${orderModal.daysOfStock === 999 ? 'N/A' : orderModal.daysOfStock}`,
+        requested_by: user?.id,
+        requested_by_name: user?.full_name || user?.username,
+      });
+      setOrderAlert({ type: 'success', msg: `Transfer request created: ${Number(orderQty)} × ${orderModal.product_name} from Country Stock → ${fmtLocation(orderModal.location)}` });
+      setOrderModal(null);
+      setOrderQty('');
+      setOrderNote('');
+      load();
+    } catch (err) {
+      setOrderAlert({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard title="Critical Items" value={criticalCount} color="red" icon={<Package size={24} />} />
-        <StatCard title="Low Stock Items" value={lowCount} color="orange" icon={<Package size={24} />} />
-        <StatCard title="OK Items" value={alerts.length - criticalCount - lowCount} color="green" icon={<Package size={24} />} />
+    <div className="space-y-5">
+      {/* ── Header ─────────────────────────────── */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+            🤖 AI-Powered Reorder Intelligence
+          </h3>
+          <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
+            Velocity-based demand forecasting · Predictive stock depletion · Auto-order suggestions
+            {branch !== 'all' && ` · ${fmtLocation(branch)}`}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setViewMode(viewMode === 'ai' ? 'classic' : 'ai')}
+            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+            {viewMode === 'ai' ? '📊 Classic View' : '🤖 AI View'}
+          </button>
+          <button onClick={load}
+            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Reorder Alerts</h3>
-            <Button size="sm" variant="secondary" onClick={() => {
-              const rows = alerts.map(r => `<tr><td>${r.product_name||''}</td><td style="color:${r.status==='Critical'?'#dc2626':r.status==='Low'?'#d97706':'#166534'};font-weight:bold">${r.current_qty}</td><td>${r.reorder_level}</td><td style="font-weight:700;color:${r.status==='Critical'?'#dc2626':r.status==='Low'?'#d97706':'#166534'}">${r.status}</td></tr>`).join('');
-              printDocument('Reorder Alerts Report', `<table><thead><tr><th>Product</th><th>Current Qty</th><th>Reorder Level</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
-            }}><Printer size={14} /> Print</Button>
-          </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Product', key: 'product_name' },
-            { header: 'Current Qty', render: r => <span className={r.status === 'Critical' ? 'text-red-600 font-bold' : r.status === 'Low' ? 'text-amber-600 font-bold' : 'font-medium'}>{r.current_qty}</span> },
-            { header: 'Reorder Level', key: 'reorder_level' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'Critical' ? 'danger' : r.status === 'Low' ? 'warning' : 'success'}>{r.status}</Badge> },
-            { header: 'Actions', render: r => (
-              <Button size="sm" variant="secondary" onClick={() => { setEditProduct(r.product_name); setEditThreshold(String(r.reorder_level)); }}>Set Threshold</Button>
-            )},
-          ]}
-          data={alerts}
-          emptyMessage="No stock data available"
-        />
-      </Card>
+      {orderAlert && <Alert type={orderAlert.type} onClose={() => setOrderAlert(null)}>{orderAlert.msg}</Alert>}
 
+      {/* ── AI Stats ───────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div onClick={() => setPriorityFilter('all')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'all' ? '#fff0f3' : '#f8fafc', border: `2px solid ${priorityFilter === 'all' ? '#c41e3a' : '#e2e8f0'}`, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#374151' }}>{aiActionable.length}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Action Needed</div>
+        </div>
+        <div onClick={() => setPriorityFilter('critical')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'critical' ? '#fef2f2' : '#f8fafc', border: `2px solid ${priorityFilter === 'critical' ? '#dc2626' : '#e2e8f0'}`, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#dc2626' }}>{outCount + critCount}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Critical / OOS</div>
+        </div>
+        <div onClick={() => setPriorityFilter('urgent')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'urgent' ? '#fffbeb' : '#f8fafc', border: `2px solid ${priorityFilter === 'urgent' ? '#d97706' : '#e2e8f0'}`, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#d97706' }}>{urgentCount}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Urgent (&lt;14d)</div>
+        </div>
+        <div onClick={() => setPriorityFilter('soon')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'soon' ? '#fefce8' : '#f8fafc', border: `2px solid ${priorityFilter === 'soon' ? '#ca8a04' : '#e2e8f0'}`, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ca8a04' }}>{aiActionable.length - outCount - critCount - urgentCount}</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Reorder Soon</div>
+        </div>
+      </div>
+
+      {viewMode === 'ai' ? (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Brain size={16} className="text-primary" />
+                AI Reorder Queue {priorityFilter !== 'all' && <Badge variant="warning">{priorityFilter} filter</Badge>}
+                {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}
+              </h3>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = (priorityFilter === 'all' ? aiActionable : aiFiltered).map(r =>
+                  `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td style="color:${r.priority.color};font-weight:800">${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder || '—'}</td></tr>`
+                ).join('');
+                printDocument('AI Reorder Report', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+            </div>
+          </CardHeader>
+          {aiFiltered.length === 0 ? (
+            <CardBody>
+              <EmptyState icon={<CheckCircle size={48} className="text-green-500" />} title="All Stock Levels Healthy" description={`No reorder action needed${branch !== 'all' ? ` for ${fmtLocation(branch)}` : ''}. The AI has analyzed all products.`} />
+            </CardBody>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Product', 'Location', 'AI Priority', 'Qty', 'Daily Rate', 'Days Left', 'Suggested Qty', 'Action'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: '0.73rem', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {aiFiltered.map((r, i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '9px 12px', fontWeight: 700, color: '#1e293b' }}>{r.product_name}</td>
+                      <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.77rem' }}>{fmtLocation(r.location)}</td>
+                      <td style={{ padding: '9px 12px' }}>
+                        <span style={{ background: r.priority.bg, color: r.priority.color, borderRadius: 99, padding: '3px 9px', fontWeight: 800, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{r.priority.label}</span>
+                      </td>
+                      <td style={{ padding: '9px 12px', fontWeight: 900, color: r.qty <= 0 ? '#dc2626' : r.qty < 5 ? '#dc2626' : '#374151' }}>{r.qty}</td>
+                      <td style={{ padding: '9px 12px', color: r.dailyRate > 0 ? '#374151' : '#94a3b8', fontSize: '0.8rem' }}>
+                        {r.dailyRate > 0 ? `${r.dailyRate.toFixed(2)}/d` : <span title="No movement data — estimate based on quantity">—</span>}
+                      </td>
+                      <td style={{ padding: '9px 12px', fontWeight: 700, color: r.daysOfStock === 999 ? '#94a3b8' : r.daysOfStock <= 7 ? '#dc2626' : r.daysOfStock <= 14 ? '#d97706' : '#ca8a04' }}>
+                        {r.daysOfStock === 999 ? '—' : `${r.daysOfStock}d`}
+                      </td>
+                      <td style={{ padding: '9px 12px', fontWeight: 800, color: '#7c3aed' }}>{r.suggestedOrder > 0 ? r.suggestedOrder : '—'}</td>
+                      <td style={{ padding: '9px 12px' }}>
+                        <button onClick={() => { setOrderModal(r); setOrderQty(String(r.suggestedOrder || '')); setOrderNote(''); }}
+                          style={{ padding: '5px 12px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                          + Request Order
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">Classic Threshold View</h3>
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-gray-500">Default threshold: 10 units</span>
+                <Button size="sm" variant="secondary" onClick={() => {
+                  const rows = allItems.map(r => `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.qty}</td><td>${r.threshold}</td><td>${r.classicStatus}</td></tr>`).join('');
+                  printDocument('Reorder Alerts', `<table><thead><tr><th>Product</th><th>Location</th><th>Qty</th><th>Threshold</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+                }}><Printer size={14} /> Print</Button>
+              </div>
+            </div>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-semibold text-sm">{r.product_name}</span> },
+              { header: 'Location', render: r => <span className="text-xs text-gray-500">{fmtLocation(r.location)}</span> },
+              { header: 'Qty', render: r => <span className={`font-bold ${r.classicStatus === 'Critical' ? 'text-red-600' : r.classicStatus === 'Low' ? 'text-amber-600' : 'text-gray-700'}`}>{r.qty}</span> },
+              { header: 'Threshold', key: 'threshold' },
+              { header: 'Status', render: r => <Badge variant={r.classicStatus === 'Critical' ? 'danger' : r.classicStatus === 'Low' ? 'warning' : 'success'}>{r.classicStatus}</Badge> },
+              { header: 'Actions', render: r => (
+                <Button size="sm" variant="secondary" onClick={() => { setEditProduct(r.product_name); setEditThreshold(String(r.threshold)); }}>Set Threshold</Button>
+              )},
+            ]}
+            data={allItems.sort((a, b) => { const o = { Critical: 0, Low: 1, OK: 2 }; return o[a.classicStatus] - o[b.classicStatus]; })}
+            emptyMessage="No stock data"
+          />
+        </Card>
+      )}
+
+      {/* ── Order Request Modal ───────────────────── */}
+      <Modal open={!!orderModal} onClose={() => setOrderModal(null)} title={`🤖 AI Order Request — ${orderModal?.product_name}`} size="md">
+        <div className="p-6 space-y-4">
+          <Alert type="info">
+            AI recommends ordering <strong>{orderModal?.suggestedOrder || '—'} units</strong> based on a daily consumption rate of <strong>{orderModal?.dailyRate > 0 ? `${orderModal?.dailyRate?.toFixed(2)}/day` : 'unavailable'}</strong>. This covers ~30 days of supply.
+          </Alert>
+          {orderAlert && <Alert type={orderAlert.type}>{orderAlert.msg}</Alert>}
+          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px' }}>
+            <div className="text-xs text-gray-500 font-semibold mb-1">Transfer Details</div>
+            <div className="text-sm"><strong>From:</strong> Country Stock</div>
+            <div className="text-sm"><strong>To:</strong> {fmtLocation(orderModal?.location)}</div>
+            <div className="text-sm"><strong>Product:</strong> {orderModal?.product_name}</div>
+            <div className="text-sm"><strong>Current Stock:</strong> {orderModal?.qty} units ({orderModal?.daysOfStock === 999 ? 'demand unknown' : `${orderModal?.daysOfStock} days left`})</div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-gray-700">Quantity to Order <span className="text-red-500">*</span></label>
+            <input type="number" min="1" value={orderQty} onChange={e => setOrderQty(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-gray-700">Notes (optional)</label>
+            <textarea rows={2} value={orderNote} onChange={e => setOrderNote(e.target.value)}
+              placeholder="Additional instructions for this order…"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-none" />
+          </div>
+          <div className="flex gap-3 pt-1">
+            <Button onClick={createOrderRequest} disabled={submitting || !orderQty}><Truck size={15} /> {submitting ? 'Creating…' : 'Create Transfer Request'}</Button>
+            <Button variant="secondary" onClick={() => setOrderModal(null)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Classic Threshold Edit Modal ─────────── */}
       <Modal open={!!editProduct} onClose={() => setEditProduct(null)} title={`Set Reorder Threshold: ${editProduct}`} size="sm">
         <div className="p-6 space-y-4">
-          <Input label="Reorder Threshold" type="number" min="1" value={editThreshold} onChange={e => setEditThreshold(e.target.value)} />
+          <Input label="Reorder Threshold (units)" type="number" min="1" value={editThreshold} onChange={e => setEditThreshold(e.target.value)} />
           <div className="flex gap-3">
-            <Button onClick={saveThreshold}>Save Threshold</Button>
+            <Button onClick={() => { if (editProduct && editThreshold) { setThresholds(prev => ({ ...prev, [editProduct]: Number(editThreshold) })); setEditProduct(null); setEditThreshold(''); } }}>Save</Button>
             <Button variant="secondary" onClick={() => setEditProduct(null)}>Cancel</Button>
           </div>
         </div>
@@ -2258,7 +2898,7 @@ function ReorderTab() {
   );
 }
 
-function BatchTab() {
+function BatchTab({ branch }) {
   const [localBatches, setLocalBatches] = useState([]);
   const [apiBatches, setApiBatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2468,12 +3108,12 @@ function fmtPeriodLabel(from, to) {
 }
 
 // ─── Branch Stock Tab ─────────────────────────────────────────────────────────
-function BranchStockTab() {
+function BranchStockTab({ branch }) {
   const [batches, setBatches] = useState([]);
   const [walkinSales, setWalkinSales] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [viewMode, setViewMode] = useState('dashboard');
   const [productSearch, setProductSearch] = useState('');
   const [period, setPeriod] = useState(getDefaultPeriod);
@@ -2749,12 +3389,12 @@ function BranchStockTab() {
 }
 
 // ─── Stock Reports Tab ─────────────────────────────────────────────────────────
-function StockReportsTab() {
+function StockReportsTab({ branch }) {
   const [batches, setBatches] = useState([]);
   const [walkinSales, setWalkinSales] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [misReport, setMisReport] = useState(null);
   const [period, setPeriod] = useState(getDefaultPeriod);
 
@@ -2939,7 +3579,7 @@ function StockReportsTab() {
   );
 }
 
-function RealtimeTab() {
+function RealtimeTab({ branch }) {
   const [batches, setBatches] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2964,14 +3604,20 @@ function RealtimeTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const filterB = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filterM = (m) => branch === 'all' || (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+
+  const filteredBatches = batches.filter(filterB);
+  const filteredMovements = movements.filter(filterM);
+
   const stockByProduct = {};
-  batches.forEach(b => {
+  filteredBatches.forEach(b => {
     const name = b.product_name || 'Unknown';
-    if (!stockByProduct[name]) stockByProduct[name] = { qty: 0, lastMovement: null };
+    if (!stockByProduct[name]) stockByProduct[name] = { qty: 0, lastMovement: null, location: b.location };
     stockByProduct[name].qty += Number(b.quantity || 0);
   });
 
-  movements.forEach(m => {
+  filteredMovements.forEach(m => {
     const name = m.product_name || 'Unknown';
     if (stockByProduct[name] && (!stockByProduct[name].lastMovement || new Date(m.created_at) > new Date(stockByProduct[name].lastMovement))) {
       stockByProduct[name].lastMovement = m.created_at;
@@ -2979,7 +3625,7 @@ function RealtimeTab() {
   });
 
   const stockCards = Object.entries(stockByProduct).map(([name, data]) => ({ name, ...data }));
-  const recentMovements = [...movements].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
+  const recentMovements = [...filteredMovements].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
 
   return (
     <div className="space-y-6">
