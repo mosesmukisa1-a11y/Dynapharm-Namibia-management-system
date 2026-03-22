@@ -1242,7 +1242,7 @@ function WarehouseTab({ name }) {
     setLoading(true);
     Promise.all([
       api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)),
-      api.stock.transfers(`to_branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
+      api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
     ])
       .then(([batchData, transferData]) => {
         setBatches(batchData);
@@ -1476,6 +1476,20 @@ function DistributionTab({ branch }) {
     }
   };
 
+  // Only warehouse→branch transfers
+  const WAREHOUSE_KEYS = ['country_stock', 'windhoek_warehouse', 'ondangwa_warehouse'];
+  const distTransfers = recentTransfers.filter(t => {
+    const from = (t.from_location || '').toLowerCase().replace(/\s+/g, '_');
+    const to = (t.to_location || '').toLowerCase().replace(/\s+/g, '_');
+    const fromIsWarehouse = WAREHOUSE_KEYS.includes(from);
+    const toIsBranch = !WAREHOUSE_KEYS.includes(to);
+    if (!fromIsWarehouse || !toIsBranch) return false;
+    if (branch !== 'all') {
+      return to === branch || from === branch;
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
@@ -1526,9 +1540,9 @@ function DistributionTab({ branch }) {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Recent Distribution Transfers</h3>
+            <h3 className="font-bold text-gray-800">Recent Distribution Transfers <span className="text-xs font-normal text-gray-400">(Warehouse → Branch)</span></h3>
             <Button size="sm" variant="secondary" onClick={() => {
-              const rows = recentTransfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.from_location||''}</td><td>${r.to_location||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
+              const rows = distTransfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${fmtLocation(r.from_location)||''}</td><td>${fmtLocation(r.to_location)||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
               printDocument('Distribution Transfers', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
             }}><Printer size={14} /> Print Report</Button>
           </div>
@@ -1537,14 +1551,14 @@ function DistributionTab({ branch }) {
           <Table
             columns={[
               { header: 'Date', render: r => formatDateTime(r.created_at) },
-              { header: 'From', key: 'from_location' },
-              { header: 'To', key: 'to_location' },
+              { header: 'From', render: r => <span className="text-xs font-medium">{fmtLocation(r.from_location)}</span> },
+              { header: 'To', render: r => <span className="text-xs font-medium text-blue-700">{fmtLocation(r.to_location)}</span> },
               { header: 'Product', key: 'product_name' },
               { header: 'Qty', key: 'quantity' },
               { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
               { header: '', render: r => (
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${r.from_location||''}</td></tr><tr><td>To</td><td>${r.to_location||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
+                  <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${fmtLocation(r.from_location)||''}</td></tr><tr><td>To</td><td>${fmtLocation(r.to_location)||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
                     <Printer size={12} />
                   </Button>
                   <button onClick={() => setAdjRecord(r)} title="Request correction"
@@ -1554,8 +1568,8 @@ function DistributionTab({ branch }) {
                 </div>
               )},
             ]}
-            data={recentTransfers}
-            emptyMessage="No distribution transfers"
+            data={distTransfers}
+            emptyMessage={branch !== 'all' ? `No distribution transfers for ${fmtLocation(branch)}` : 'No distribution transfers'}
           />
         )}
       </Card>
@@ -1754,6 +1768,10 @@ function TransfersTab({ branch }) {
             { header: 'Product', key: 'product_name' },
             { header: 'Qty', key: 'quantity' },
             { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
+            { header: 'Notes', render: r => {
+              const note = r.notes || (r.metadata && r.metadata.notes) || (typeof r.metadata === 'string' ? (() => { try { return JSON.parse(r.metadata).notes; } catch { return ''; } })() : '');
+              return note ? <span className="text-xs text-gray-500 truncate max-w-[120px] block" title={note}>{note}</span> : <span className="text-xs text-gray-300">—</span>;
+            }},
             { header: 'Actions', render: r => (
               <div className="flex gap-1 flex-wrap">
                 {(!r.status || r.status === 'pending') && (
@@ -1801,18 +1819,33 @@ function TransfersTab({ branch }) {
 }
 
 function InventoryTab({ branch }) {
+  const { user } = useAuth();
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showRecordForm, setShowRecordForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [recordForm, setRecordForm] = useState({
+    product_name: '',
+    movement_type: 'in',
+    quantity: '',
+    location: branch && branch !== 'all' ? branch : 'country_stock',
+    reference: '',
+    notes: '',
+  });
 
-  useEffect(() => {
+  const loadMovements = useCallback(() => {
+    setLoading(true);
     api.stock.movements()
       .then(d => setMovements(Array.isArray(d) ? d : d.movements || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadMovements(); }, [loadMovements]);
 
   const filtered = movements.filter(m => {
     if (branch !== 'all' && (m.location || m.source_location || '').toLowerCase().replace(/\s+/g, '_') !== branch) return false;
@@ -1825,17 +1858,49 @@ function InventoryTab({ branch }) {
   const locations = [...new Set(movements.map(m => m.location).filter(Boolean))];
   const types = [...new Set(movements.map(m => m.movement_type).filter(Boolean))];
 
+  const handleRecordMovement = async (e) => {
+    e.preventDefault();
+    if (!recordForm.product_name || !recordForm.quantity) {
+      setAlert({ type: 'error', msg: 'Product and quantity are required' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.stock.createMovement({
+        product_name: recordForm.product_name,
+        movement_type: recordForm.movement_type,
+        quantity: Number(recordForm.quantity),
+        location: recordForm.location,
+        reference: recordForm.reference,
+        notes: recordForm.notes,
+        recorded_by: user?.full_name || user?.username || 'Stock Manager',
+      });
+      setAlert({ type: 'success', msg: `Movement recorded: ${recordForm.movement_type} ${recordForm.quantity} × ${recordForm.product_name}` });
+      setRecordForm({ product_name: '', movement_type: 'in', quantity: '', location: branch && branch !== 'all' ? branch : 'country_stock', reference: '', notes: '' });
+      setShowRecordForm(false);
+      loadMovements();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to record movement' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
+      {alert && <Alert type={alert.type} className="mb-2">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Stock Movements</h3>
+            <h3 className="font-bold text-gray-800">
+              Stock Movements
+              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
+            </h3>
             <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = filtered.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'-'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td><td>${r.reference||''}</td></tr>`).join('');
+                const rows = filtered.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'-'}</td><td>${r.quantity||''}</td><td>${fmtLocation(r.location)||''}</td><td>${r.reference||''}</td></tr>`).join('');
                 printDocument('Stock Movements Report', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
               <div className="relative">
@@ -1853,8 +1918,11 @@ function InventoryTab({ branch }) {
               </select>
               <select className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm" value={filterLocation} onChange={e => setFilterLocation(e.target.value)}>
                 <option value="">All Locations</option>
-                {locations.map(l => <option key={l} value={l}>{l}</option>)}
+                {locations.map(l => <option key={l} value={l}>{fmtLocation(l)}</option>)}
               </select>
+              <Button size="sm" onClick={() => { setShowRecordForm(true); setAlert(null); }}>
+                <Plus size={16} /> Record Movement
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1862,25 +1930,87 @@ function InventoryTab({ branch }) {
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Product', key: 'product_name' },
-            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : r.movement_type === 'out' ? 'danger' : 'warning'}>{r.movement_type || '-'}</Badge> },
-            { header: 'Quantity', key: 'quantity' },
-            { header: 'Location', key: 'location' },
-            { header: 'Reference', key: 'reference' },
+            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' || r.movement_type === 'received' ? 'success' : r.movement_type === 'out' || r.movement_type === 'dispatched' ? 'danger' : 'warning'}>{r.movement_type || '-'}</Badge> },
+            { header: 'Quantity', render: r => <span className="font-semibold">{r.quantity}</span> },
+            { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
+            { header: 'Reference', render: r => <span className="text-xs text-gray-500">{r.reference || '—'}</span> },
           ]}
           data={filtered}
-          emptyMessage="No stock movements found"
+          emptyMessage={branch !== 'all' ? `No stock movements at ${fmtLocation(branch)}` : 'No stock movements found'}
         />
       </Card>
+
+      <Modal open={showRecordForm} onClose={() => setShowRecordForm(false)} title="Record Stock Movement" size="md">
+        <form onSubmit={handleRecordMovement} className="p-6 space-y-4">
+          {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Product <span className="text-red-500">*</span></label>
+            <select
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
+              value={recordForm.product_name}
+              onChange={e => setRecordForm(f => ({ ...f, product_name: e.target.value }))}
+              required
+            >
+              <option value="">Select product...</option>
+              {getLiveProductList().map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Movement Type</label>
+              <select
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
+                value={recordForm.movement_type}
+                onChange={e => setRecordForm(f => ({ ...f, movement_type: e.target.value }))}
+              >
+                <option value="in">In (Received)</option>
+                <option value="out">Out (Dispatched)</option>
+                <option value="adjustment">Adjustment</option>
+                <option value="return">Return</option>
+                <option value="write_off">Write-off</option>
+              </select>
+            </div>
+            <Input label="Quantity" type="number" min="1" value={recordForm.quantity} onChange={e => setRecordForm(f => ({ ...f, quantity: e.target.value }))} required />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Location</label>
+            <select
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
+              value={recordForm.location}
+              onChange={e => setRecordForm(f => ({ ...f, location: e.target.value }))}
+            >
+              <optgroup label="Warehouses">
+                <option value="country_stock">Country Stock</option>
+                <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+              </optgroup>
+              <optgroup label="Branches">
+                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+              </optgroup>
+            </select>
+          </div>
+          <Input label="Reference (optional)" placeholder="e.g. PO-001, Invoice #123, Transfer ID..." value={recordForm.reference} onChange={e => setRecordForm(f => ({ ...f, reference: e.target.value }))} />
+          <Textarea label="Notes (optional)" value={recordForm.notes} onChange={e => setRecordForm(f => ({ ...f, notes: e.target.value }))} placeholder="Reason for movement, supplier info, etc..." />
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" disabled={submitting || !recordForm.product_name || !recordForm.quantity}>
+              {submitting ? 'Saving...' : 'Record Movement'}
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => setShowRecordForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
 
 function OrdersTab({ branch }) {
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [cart, setCart] = useState([]);
-  const [urgency, setUrgency] = useState('normal');
+  const [priority, setPriority] = useState('normal');
+  const [requestBranch, setRequestBranch] = useState(branch && branch !== 'all' ? fmtLocation(branch) : '');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
@@ -1895,25 +2025,34 @@ function OrdersTab({ branch }) {
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
+  // Update default branch when global filter changes
+  useEffect(() => {
+    if (branch && branch !== 'all') setRequestBranch(fmtLocation(branch));
+  }, [branch]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (cart.length === 0) {
       setAlert({ type: 'error', msg: 'Select at least one product' });
       return;
     }
+    if (!requestBranch) {
+      setAlert({ type: 'error', msg: 'Requesting branch is required' });
+      return;
+    }
     setSubmitting(true);
     try {
-      for (const item of cart) {
-        await api.stock.createRequest({
-          product_name: item.description,
-          quantity: Number(item.qty),
-          urgency,
-          notes,
-        });
-      }
-      setAlert({ type: 'success', msg: `${cart.length} stock request${cart.length !== 1 ? 's' : ''} submitted successfully` });
+      // Submit all items as one request with items array
+      await api.stock.createRequest({
+        requesting_branch: requestBranch,
+        priority,
+        notes,
+        created_by: user?.full_name || user?.username || 'Stock Manager',
+        items: cart.map(item => ({ productId: item.description, productName: item.description, quantity: Number(item.qty), unit: 'units' })),
+      });
+      setAlert({ type: 'success', msg: `Stock request submitted for ${requestBranch} (${cart.length} product${cart.length !== 1 ? 's' : ''})` });
       setCart([]);
-      setUrgency('normal');
+      setPriority('normal');
       setNotes('');
       setShowForm(false);
       loadRequests();
@@ -1926,17 +2065,29 @@ function OrdersTab({ branch }) {
 
   if (loading) return <LoadingSpinner />;
 
+  // Filter by branch
+  const filteredRequests = branch === 'all' ? requests : requests.filter(r => {
+    const rb = (r.requestingBranch || r.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
+    return rb === branch;
+  });
+
   return (
     <div>
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Stock Orders / Requests</h3>
+            <h3 className="font-bold text-gray-800">
+              Stock Orders / Requests
+              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)} ({filteredRequests.length})</span>}
+            </h3>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = requests.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.urgency||'Normal'}</td><td>${r.status||'Pending'}</td><td>${r.notes||''}</td></tr>`).join('');
-                printDocument('Stock Orders / Requests', `<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Urgency</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
+                const rows = filteredRequests.map(r => {
+                  const items = Array.isArray(r.items) ? r.items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join('; ') : (r.product_name || '');
+                  return `<tr><td>${formatDateTime(r.createdAt||r.created_at)}</td><td>${r.requestingBranch||r.requesting_branch||''}</td><td>${items}</td><td>${r.priority||'Normal'}</td><td>${r.status||'Pending'}</td><td>${r.notes||''}</td></tr>`;
+                }).join('');
+                printDocument('Stock Orders / Requests', `<table><thead><tr><th>Date</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
               <Button size="sm" onClick={() => { setShowForm(true); setAlert(null); }}><Plus size={16} /> New Request</Button>
             </div>
@@ -1944,45 +2095,57 @@ function OrdersTab({ branch }) {
         </CardHeader>
         <Table
           columns={[
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Quantity', key: 'quantity' },
-            { header: 'Urgency', render: r => <Badge variant={r.urgency === 'urgent' ? 'danger' : r.urgency === 'high' ? 'warning' : 'default'}>{r.urgency || 'Normal'}</Badge> },
+            { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
+            { header: 'Branch', render: r => <span className="text-xs font-semibold">{r.requestingBranch || r.requesting_branch || '—'}</span> },
+            { header: 'Items', render: r => {
+              const items = Array.isArray(r.items) ? r.items : [];
+              if (items.length === 0) return <span className="text-xs text-gray-400">—</span>;
+              return <span className="text-xs">{items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join(', ')}</span>;
+            }},
+            { header: 'Priority', render: r => <Badge variant={(r.priority||r.urgency) === 'urgent' ? 'danger' : (r.priority||r.urgency) === 'high' ? 'warning' : 'default'}>{r.priority || r.urgency || 'Normal'}</Badge> },
             { header: 'Status', render: r => <Badge variant={r.status === 'approved' || r.status === 'fulfilled' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status || 'Pending'}</Badge> },
-            { header: 'Notes', key: 'notes' },
+            { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-[140px] block">{r.notes || '—'}</span> },
           ]}
-          data={requests}
-          emptyMessage="No stock requests"
+          data={filteredRequests}
+          emptyMessage={branch !== 'all' ? `No requests for ${fmtLocation(branch)}` : 'No stock requests'}
         />
       </Card>
 
       <Modal open={showForm} onClose={() => { setShowForm(false); setCart([]); }} title="New Stock Request" size="xl">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Products <span className="font-normal text-gray-400">(search and click to add)</span></label>
-            <ProductMultiCart cart={cart} onCartChange={setCart} />
-          </div>
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Requesting Branch <span className="text-red-500">*</span></label>
+              <select value={requestBranch} onChange={e => setRequestBranch(e.target.value)} required
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary">
+                <option value="">Select branch...</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
             <Select
-              label="Urgency"
+              label="Priority"
               options={[
                 { value: 'normal', label: 'Normal' },
                 { value: 'high', label: 'High' },
                 { value: 'urgent', label: 'Urgent' },
               ]}
-              value={urgency}
-              onChange={e => setUrgency(e.target.value)}
+              value={priority}
+              onChange={e => setPriority(e.target.value)}
             />
-            <Textarea label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details..." />
           </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Products to Request <span className="font-normal text-gray-400">(search and click to add)</span></label>
+            <ProductMultiCart cart={cart} onCartChange={setCart} />
+          </div>
+          <Textarea label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details or reasons for this request..." />
           {cart.length > 0 && (
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: '0.83rem', color: '#166534' }}>
-              Ready to submit <strong>{cart.length}</strong> product request{cart.length !== 1 ? 's' : ''} — urgency: <strong>{urgency}</strong>
+              Ready to submit <strong>{cart.length}</strong> product request{cart.length !== 1 ? 's' : ''} for <strong>{requestBranch || '—'}</strong> — priority: <strong>{priority}</strong>
             </div>
           )}
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting || cart.length === 0}>{submitting ? `Submitting ${cart.length} request${cart.length !== 1 ? 's' : ''}…` : `Submit ${cart.length || ''} Request${cart.length !== 1 ? 's' : ''}`}</Button>
+            <Button type="submit" disabled={submitting || cart.length === 0 || !requestBranch}>{submitting ? `Submitting…` : `Submit Request`}</Button>
             <Button variant="secondary" type="button" onClick={() => { setShowForm(false); setCart([]); }}>Cancel</Button>
           </div>
         </form>
@@ -2056,7 +2219,14 @@ function MonthlySalesTab({ branch }) {
     // keep selected or fallback
   }
 
-  const monthData = salesData.filter(s => s.month === selectedMonth);
+  const monthData = salesData.filter(s => {
+    if (s.month !== selectedMonth) return false;
+    if (branch !== 'all') {
+      const b = (s.branch || '').toLowerCase().replace(/\s+/g, '_');
+      if (b && b !== '-' && b !== branch) return false;
+    }
+    return true;
+  });
 
   const byProduct = {};
   monthData.forEach(s => {
@@ -2242,9 +2412,11 @@ function ValuationTab({ branch }) {
 
   const filteredBatches = branch === 'all' ? batches : batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch);
 
+  const VALUATION_GROUPS = ['Windhoek', 'Ondangwa', 'Branches & Other'];
   const locationGroups = {};
   filteredBatches.forEach(b => {
-    const loc = (b.location || 'unknown').includes('windhoek') ? 'Windhoek' : (b.location || 'unknown').includes('ondangwa') ? 'Ondangwa' : 'Country';
+    const l = (b.location || 'unknown').toLowerCase();
+    const loc = l.includes('windhoek') ? 'Windhoek' : l.includes('ondangwa') ? 'Ondangwa' : 'Branches & Other';
     if (!locationGroups[loc]) locationGroups[loc] = { items: 0, value: 0 };
     const qty = Number(b.quantity || 0);
     const dp = getDP(b.product_name) || Number(b.unit_price || 0);
@@ -2261,12 +2433,12 @@ function ValuationTab({ branch }) {
   const grandTotal = breakdown.reduce((s, r) => s + r.total_value, 0);
   const grandItems = breakdown.reduce((s, r) => s + r.quantity, 0);
 
-  const colors = { Windhoek: 'blue', Ondangwa: 'orange', Country: 'green' };
+  const colors = { Windhoek: 'blue', Ondangwa: 'orange', 'Branches & Other': 'green' };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {['Windhoek', 'Ondangwa', 'Country'].map(loc => (
+        {VALUATION_GROUPS.map(loc => (
           <StatCard
             key={loc}
             title={`${loc} Stock`}
@@ -2899,12 +3071,12 @@ function SmartReorderTab({ branch }) {
 }
 
 function BatchTab({ branch }) {
-  const [localBatches, setLocalBatches] = useState([]);
   const [apiBatches, setApiBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'country_stock' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: branch && branch !== 'all' ? branch : 'country_stock' });
 
   useEffect(() => {
     api.stock.batches()
@@ -2923,13 +3095,13 @@ function BatchTab({ branch }) {
       await api.stock.createBatch({
         product_name: form.product_name,
         quantity: Number(form.quantity),
-        batch_number: `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(localBatches.length + apiBatches.length + 1).padStart(3, '0')}`,
+        batch_number: `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(apiBatches.length + 1).padStart(3, '0')}`,
         expiry_date: form.expiry_date || null,
         unit_price: getCIFPrice(form.product_name),
         location: form.location,
       });
       setAlert({ type: 'success', msg: 'Batch created and saved' });
-      setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: 'country_stock' });
+      setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: branch && branch !== 'all' ? branch : 'country_stock' });
       setShowForm(false);
       const d = await api.stock.batches().catch(() => []);
       setApiBatches(Array.isArray(d) ? d : d.batches || []);
@@ -2953,14 +3125,16 @@ function BatchTab({ branch }) {
 
   if (loading) return <LoadingSpinner />;
 
-  const allBatches = [...apiBatches.map(b => ({
-    batch_number: b.batch_number || b.barcode || '-',
-    product_name: b.product_name,
-    quantity: b.quantity,
-    manufacture_date: null,
-    expiry_date: b.expiry_date,
-    location: b.location || '-',
-  }))];
+  const allBatches = apiBatches
+    .filter(b => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch)
+    .filter(b => !searchTerm || (b.product_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
+    .map(b => ({
+      batch_number: b.batch_number || b.barcode || '-',
+      product_name: b.product_name,
+      quantity: b.quantity,
+      expiry_date: b.expiry_date,
+      location: b.location || '-',
+    }));
 
   return (
     <div className="space-y-6">
@@ -2968,8 +3142,16 @@ function BatchTab({ branch }) {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Batch Tracking</h3>
-            <div className="flex gap-2">
+            <h3 className="font-bold text-gray-800">
+              Batch Tracking
+              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
+            </h3>
+            <div className="flex gap-2 flex-wrap">
+              <div className="relative">
+                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input className="pl-7 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary"
+                  placeholder="Search product..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = allBatches.map(r => `<tr><td>${r.batch_number||''}</td><td>${r.product_name||''}</td><td>${r.quantity||0}</td><td>${r.expiry_date?formatDate(r.expiry_date):'-'}</td><td>${r.location||''}</td></tr>`).join('');
                 printDocument('Batch Tracking Report', `<table><thead><tr><th>Batch #</th><th>Product</th><th>Qty</th><th>Expiry</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
@@ -2980,16 +3162,16 @@ function BatchTab({ branch }) {
         </CardHeader>
         <Table
           columns={[
-            { header: 'Batch Number', key: 'batch_number' },
+            { header: 'Batch #', render: r => <span className="font-mono text-xs font-bold">{r.batch_number}</span> },
             { header: 'Product', key: 'product_name' },
-            { header: 'Quantity', key: 'quantity' },
+            { header: 'Qty', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
             { header: 'Expiry Date', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
-            { header: 'Location', key: 'location' },
-            { header: 'Days to Expiry', render: r => { const d = getDaysUntilExpiry(r.expiry_date); return d !== null ? d : '-'; } },
+            { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
+            { header: 'Days Left', render: r => { const d = getDaysUntilExpiry(r.expiry_date); return d !== null ? d : '-'; } },
             { header: 'Status', render: r => { const s = getExpiryStatus(getDaysUntilExpiry(r.expiry_date)); return <Badge variant={s.variant}>{s.label}</Badge>; } },
           ]}
           data={allBatches}
-          emptyMessage="No batches tracked"
+          emptyMessage={branch !== 'all' ? `No batches at ${fmtLocation(branch)}` : 'No batches tracked'}
         />
       </Card>
 
@@ -3010,16 +3192,20 @@ function BatchTab({ branch }) {
           <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
           <Input label="Manufacture Date" type="date" value={form.manufacture_date} onChange={e => setForm(f => ({ ...f, manufacture_date: e.target.value }))} />
           <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
-          <Select
-            label="Location"
-            options={[
-              { value: 'country_stock', label: 'Country Stock' },
-              { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
-              { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
-            ]}
-            value={form.location}
-            onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-          />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Location</label>
+            <select className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
+              value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}>
+              <optgroup label="Warehouses">
+                <option value="country_stock">Country Stock (Main)</option>
+                <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+              </optgroup>
+              <optgroup label="Branches">
+                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+              </optgroup>
+            </select>
+          </div>
           <div className="flex gap-3 pt-2">
             <Button type="submit">Create Batch</Button>
             <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
