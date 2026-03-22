@@ -1298,6 +1298,9 @@ function WarehouseTab({ name }) {
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
   const [subTab, setSubTab] = useState('inventory');
+  const [outboundSearch, setOutboundSearch] = useState('');
+  const [outboundStatusFilter, setOutboundStatusFilter] = useState('');
+  const [viewAuditTransfer, setViewAuditTransfer] = useState(null);
   const location = name.toLowerCase() + '_warehouse';
 
   const loadData = useCallback(() => {
@@ -1366,7 +1369,15 @@ function WarehouseTab({ name }) {
     if (dispatchCart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to dispatch' }); return; }
     setSubmitting(true);
     try {
-      const items = dispatchCart.map(c => ({ productName: c.description, quantity: c.qty }));
+      const items = dispatchCart.map(c => {
+        const matchBatch = batches.find(b => (b.product_name || b.description || '').toLowerCase() === c.description.toLowerCase());
+        return {
+          productName: c.description,
+          quantity: c.qty,
+          batchNo: matchBatch?.batch_no || matchBatch?.batch_number || null,
+          expiryDate: matchBatch?.expiry_date || null,
+        };
+      });
       await api.stock.createTransfer({
         from_location: location,
         to_location: dispatchBranch,
@@ -1539,7 +1550,21 @@ function WarehouseTab({ name }) {
         </div>
       )}
 
-      {subTab === 'outbound' && (
+      {subTab === 'outbound' && (() => {
+        const [outSearch, setOutSearch] = [outboundSearch, setOutboundSearch];
+        const [outStatusFilter, setOutStatusFilter] = [outboundStatusFilter, setOutboundStatusFilter];
+        const filteredOutbound = outboundTransfers.filter(r => {
+          if (outStatusFilter && r.status !== outStatusFilter) return false;
+          if (outSearch) {
+            const s = outSearch.toLowerCase();
+            const items = Array.isArray(r.items) ? r.items : [];
+            const itemNames = items.map(i => (i.productName || i.product_name || '').toLowerCase()).join(' ');
+            const dest = (r.toBranch || r.to_location || '').toLowerCase();
+            return itemNames.includes(s) || dest.includes(s) || (r.product_name || '').toLowerCase().includes(s) || (r.dispatchNotes || r.dispatch_notes || '').toLowerCase().includes(s);
+          }
+          return true;
+        });
+        return (
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
@@ -1552,6 +1577,23 @@ function WarehouseTab({ name }) {
               </Button>
             </div>
           </CardHeader>
+          <div className="px-4 pb-3 flex gap-3 flex-wrap items-center">
+            <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+              <input type="text" value={outSearch} onChange={e => setOutSearch(e.target.value)} placeholder="Search products, branch, notes…"
+                style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.83rem', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <select value={outStatusFilter} onChange={e => setOutStatusFilter(e.target.value)}
+              style={{ padding: '7px 12px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.83rem', background: '#fff', cursor: 'pointer' }}>
+              <option value="">All Statuses</option>
+              <option value="pending_approval">Pending Approval</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="returned">Returned</option>
+              <option value="delivered">Delivered</option>
+            </select>
+            <span className="text-xs text-gray-400">{filteredOutbound.length} of {outboundTransfers.length}</span>
+          </div>
           <Table
             columns={[
               { header: 'Products', render: r => {
@@ -1564,15 +1606,35 @@ function WarehouseTab({ name }) {
                 return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
               }},
               { header: 'To Branch', render: r => fmtLocation(r.toBranch || r.to_location) },
-              { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{(r.status || 'pending').replace(/_/g, ' ')}</Badge> },
+              { header: 'Status', render: r => {
+                const meta = r.metadata || {};
+                const isAmended = meta.amended || r.amendedByGm || r.amended_by_gm;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Badge variant={statusColor[r.status] || 'default'}>{(r.status || 'pending').replace(/_/g, ' ')}</Badge>
+                    {isAmended && <span style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: 700 }}>⚠ GM Amended</span>}
+                  </div>
+                );
+              }},
+              { header: 'GM Action', render: r => {
+                const action = r.gmAction || r.gm_action;
+                if (!action) return <span className="text-gray-400 text-xs">—</span>;
+                const colors = { approve: '#16a34a', reject: '#dc2626', amend_approve: '#d97706', return: '#6366f1' };
+                return <span style={{ fontSize: '0.75rem', fontWeight: 700, color: colors[action] || '#64748b' }}>{(action || '').replace(/_/g, ' ')}</span>;
+              }},
               { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-              { header: 'Notes', render: r => <span className="text-xs text-gray-500">{r.dispatchNotes || r.dispatch_notes || '—'}</span> },
+              { header: '', render: r => (
+                <button onClick={() => setViewAuditTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#6366f1' }}>
+                  Audit Trail
+                </button>
+              )},
             ]}
-            data={outboundTransfers}
+            data={filteredOutbound}
             emptyMessage={`No outbound dispatches from ${name} warehouse yet`}
           />
         </Card>
-      )}
+        );
+      })()}
 
       {subTab === 'movements' && (
         <Card>
@@ -1651,6 +1713,106 @@ function WarehouseTab({ name }) {
         open={!!adjRecord} onClose={() => setAdjRecord(null)}
         record={adjRecord} targetType="warehouse" location={location}
       />
+
+      <Modal open={!!viewAuditTransfer} onClose={() => setViewAuditTransfer(null)} title="Dispatch Audit Trail" size="lg">
+        {viewAuditTransfer && (() => {
+          const t = viewAuditTransfer;
+          const meta = t.metadata || {};
+          const items = Array.isArray(t.items) ? t.items : [];
+          const events = [];
+          events.push({ time: t.createdAt || t.created_at, action: 'Created', detail: `Dispatch created by ${t.createdBy || t.created_by || '—'}`, color: '#6366f1' });
+          if (t.gmAction || t.gm_action) {
+            const action = t.gmAction || t.gm_action;
+            const actionLabel = { approve: 'Approved', reject: 'Rejected', amend_approve: 'Amended & Approved', return: 'Returned for Correction' };
+            events.push({ time: t.amendedAt || t.amended_at || t.updatedAt || t.updated_at, action: `GM: ${actionLabel[action] || action}`, detail: t.gmComment || t.gm_comment || '', color: action === 'approve' ? '#16a34a' : action === 'reject' ? '#dc2626' : action === 'amend_approve' ? '#d97706' : '#6366f1' });
+          }
+          if (t.amendedByGm || t.amended_by_gm) {
+            events.push({ time: t.amendedAt || t.amended_at, action: 'GM Amendment', detail: `Amended by ${t.amendedByGm || t.amended_by_gm}`, color: '#d97706' });
+          }
+          if (meta.amendment_log) {
+            const log = Array.isArray(meta.amendment_log) ? meta.amendment_log : [meta.amendment_log];
+            log.forEach((entry, i) => {
+              if (typeof entry === 'string') events.push({ time: null, action: `Amendment Note ${i + 1}`, detail: entry, color: '#d97706' });
+              else if (entry) events.push({ time: entry.date || entry.time, action: `Amendment: ${entry.action || 'change'}`, detail: entry.detail || entry.note || JSON.stringify(entry), color: '#d97706' });
+            });
+          }
+          if (t.receiptStatus || t.receipt_status) {
+            events.push({ time: t.updatedAt || t.updated_at, action: `Branch Receipt: ${(t.receiptStatus || t.receipt_status || '').replace(/_/g, ' ')}`, detail: t.signatureName || t.signature_name ? `Signed by: ${t.signatureName || t.signature_name}` : '', color: '#16a34a' });
+          }
+          if (t.discrepancyFlag || t.discrepancy_flag) {
+            events.push({ time: null, action: 'Discrepancy Reported', detail: t.branchReceiptNote || t.branch_receipt_note || 'Discrepancy flagged during receipt', color: '#dc2626' });
+          }
+          if (t.status === 'delivered' || t.status === 'received') {
+            events.push({ time: t.updatedAt || t.updated_at, action: 'Delivered', detail: 'Transfer completed', color: '#16a34a' });
+          }
+          return (
+            <div className="p-6 space-y-5">
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Transfer ID:</span> <span className="font-mono font-bold">#{t.id}</span></div>
+                  <div><span className="text-gray-500">Status:</span> <Badge variant={statusColor[t.status] || 'default'}>{(t.status || '').replace(/_/g, ' ')}</Badge></div>
+                  <div><span className="text-gray-500">From:</span> <span className="font-semibold">{fmtLocation(t.fromWarehouse || t.from_location)}</span></div>
+                  <div><span className="text-gray-500">To:</span> <span className="font-semibold">{fmtLocation(t.toBranch || t.to_location)}</span></div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-gray-800 mb-2 text-sm">Items</h4>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead><tr style={{ background: '#f8fafc' }}>
+                      <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Product</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Batch</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Expiry</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Qty Sent</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Qty Approved</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Qty Received</th>
+                    </tr></thead>
+                    <tbody>{items.map((it, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '6px 12px', fontWeight: 600 }}>{it.productName || it.product_name}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontSize: '0.78rem' }}>{it.batchNo || it.batch_no || '—'}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '0.78rem' }}>{it.expiryDate || it.expiry_date ? formatDate(it.expiryDate || it.expiry_date) : '—'}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{it.quantity}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityApproved || it.quantity_approved ? '#d97706' : '#64748b' }}>{it.quantityApproved || it.quantity_approved || '—'}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityReceived || it.quantity_received ? '#16a34a' : '#64748b' }}>{it.quantityReceived || it.quantity_received || '—'}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-gray-800 mb-2 text-sm">Timeline</h4>
+                <div style={{ borderLeft: '3px solid #e2e8f0', paddingLeft: 16 }}>
+                  {events.map((ev, idx) => (
+                    <div key={idx} style={{ marginBottom: 14, position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: -24, top: 3, width: 12, height: 12, borderRadius: '50%', background: ev.color, border: '2px solid #fff', boxShadow: '0 0 0 2px ' + ev.color + '40' }} />
+                      <div style={{ fontWeight: 700, fontSize: '0.83rem', color: ev.color }}>{ev.action}</div>
+                      {ev.time && <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 1 }}>{formatDateTime(ev.time)}</div>}
+                      {ev.detail && <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: 2 }}>{ev.detail}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {(t.gmComment || t.gm_comment) && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 14px' }}>
+                  <div className="text-xs font-bold text-yellow-800 mb-1">GM Comment</div>
+                  <div className="text-sm text-yellow-900">{t.gmComment || t.gm_comment}</div>
+                </div>
+              )}
+
+              {(t.dispatchNotes || t.dispatch_notes) && (
+                <div style={{ background: '#f0f9ff', border: '1px solid #93c5fd', borderRadius: 8, padding: '10px 14px' }}>
+                  <div className="text-xs font-bold text-blue-800 mb-1">Dispatch Notes</div>
+                  <div className="text-sm text-blue-900">{t.dispatchNotes || t.dispatch_notes}</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }

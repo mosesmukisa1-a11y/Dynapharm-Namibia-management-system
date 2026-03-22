@@ -41,8 +41,12 @@ function normalizeTransferItem(item) {
   return {
     productId: item.productId || item.id || item.sku || item.description || 'UNKNOWN',
     productName: item.productName || item.description || item.productId || 'Item',
-    batchNo: item.batchNo || item.batch || null,
+    batchNo: item.batchNo || item.batch || item.batch_no || null,
+    expiryDate: item.expiryDate || item.expiry_date || item.expiry || null,
     quantity: Number.isFinite(quantity) ? quantity : 0,
+    quantityApproved: item.quantityApproved != null ? Number(item.quantityApproved) : null,
+    quantityReceived: item.quantityReceived != null ? Number(item.quantityReceived) : null,
+    discrepancyNote: item.discrepancyNote || item.discrepancy_note || null,
     unit: item.unit || item.uom || 'units',
     metadata: item.metadata || null,
   };
@@ -68,14 +72,18 @@ async function replaceTransferItems(transferId, items) {
   const values = [];
   const params = [];
   items.forEach((item, index) => {
-    const position = index * 7;
-    values.push(`($${position + 1}, $${position + 2}, $${position + 3}, $${position + 4}, $${position + 5}, $${position + 6}, $${position + 7})`);
+    const position = index * 11;
+    values.push(`($${position + 1}, $${position + 2}, $${position + 3}, $${position + 4}, $${position + 5}, $${position + 6}, $${position + 7}, $${position + 8}, $${position + 9}, $${position + 10}, $${position + 11})`);
     params.push(
       transferId,
       item.productId,
       item.productName || null,
       item.batchNo || null,
+      item.expiryDate || null,
       item.quantity,
+      item.quantityApproved != null ? item.quantityApproved : null,
+      item.quantityReceived != null ? item.quantityReceived : null,
+      item.discrepancyNote || null,
       item.unit || 'units',
       item.metadata ? JSON.stringify(item.metadata) : null
     );
@@ -84,7 +92,7 @@ async function replaceTransferItems(transferId, items) {
   await query(
     `
       INSERT INTO stock_transfer_items
-        (transfer_id, product_id, product_name, batch_no, quantity, unit, metadata)
+        (transfer_id, product_id, product_name, batch_no, expiry_date, quantity, quantity_approved, quantity_received, discrepancy_note, unit, metadata)
       VALUES ${values.join(', ')}
     `,
     params
@@ -110,7 +118,11 @@ async function loadTransferItems(transferIds) {
       productId: row.product_id,
       productName: row.product_name,
       batchNo: row.batch_no,
+      expiryDate: row.expiry_date instanceof Date ? row.expiry_date.toISOString().split('T')[0] : (row.expiry_date || null),
       quantity: Number(row.quantity || 0),
+      quantityApproved: row.quantity_approved != null ? Number(row.quantity_approved) : null,
+      quantityReceived: row.quantity_received != null ? Number(row.quantity_received) : null,
+      discrepancyNote: row.discrepancy_note || null,
       unit: row.unit || 'units',
       metadata: safeParseJson(row.metadata),
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -231,6 +243,14 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     deliveredAt: row.delivered_at instanceof Date ? row.delivered_at.toISOString() : row.delivered_at,
     receivedBy: row.received_by,
     receivedAt: row.received_at instanceof Date ? row.received_at.toISOString() : row.received_at,
+    gmAction: row.gm_action || meta.gm_action || null,
+    gmComment: row.gm_comment || meta.gm_comment || null,
+    amendedByGm: row.amended_by_gm || meta.amended_by_gm || null,
+    amendedAt: row.amended_at instanceof Date ? row.amended_at.toISOString() : (row.amended_at || null),
+    signatureName: row.signature_name || null,
+    branchReceiptNote: row.branch_receipt_note || null,
+    discrepancyFlag: row.discrepancy_flag || false,
+    receiptStatus: row.receipt_status || null,
     metadata: meta,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     createdBy: row.created_by,
@@ -479,11 +499,51 @@ export default async function handler(req, res) {
         updatePayload.dispatch_notes = updatePayload.decisionNotes || updatePayload.dispatch_notes || null;
         delete updatePayload.decisionNotes;
       }
-      // Store non-schema fields in metadata rather than as direct columns
+
+      if (updatePayload.gmAction || updatePayload.gm_action) {
+        updatePayload.gm_action = updatePayload.gmAction || updatePayload.gm_action;
+        delete updatePayload.gmAction;
+      }
+      if (updatePayload.gmComment || updatePayload.gm_comment) {
+        updatePayload.gm_comment = updatePayload.gmComment || updatePayload.gm_comment;
+        delete updatePayload.gmComment;
+      }
+      if (updatePayload.amendedByGm || updatePayload.amended_by_gm) {
+        updatePayload.amended_by_gm = updatePayload.amendedByGm || updatePayload.amended_by_gm;
+        delete updatePayload.amendedByGm;
+      }
+      if (updatePayload.signatureName || updatePayload.signature_name) {
+        updatePayload.signature_name = updatePayload.signatureName || updatePayload.signature_name;
+        delete updatePayload.signatureName;
+      }
+      if (updatePayload.branchReceiptNote || updatePayload.branch_receipt_note) {
+        updatePayload.branch_receipt_note = updatePayload.branchReceiptNote || updatePayload.branch_receipt_note;
+        delete updatePayload.branchReceiptNote;
+      }
+      if (updatePayload.discrepancyFlag !== undefined || updatePayload.discrepancy_flag !== undefined) {
+        updatePayload.discrepancy_flag = updatePayload.discrepancyFlag ?? updatePayload.discrepancy_flag ?? false;
+        delete updatePayload.discrepancyFlag;
+      }
+      if (updatePayload.receiptStatus || updatePayload.receipt_status) {
+        updatePayload.receipt_status = updatePayload.receiptStatus || updatePayload.receipt_status;
+        delete updatePayload.receiptStatus;
+      }
+
       const metaExtras = {};
       if (updatePayload.approved_by) { metaExtras.approved_by = updatePayload.approved_by; delete updatePayload.approved_by; }
       if (updatePayload.approvedBy) { metaExtras.approved_by = updatePayload.approvedBy; delete updatePayload.approvedBy; }
       if (updatePayload.rejected_by) { metaExtras.rejected_by = updatePayload.rejected_by; delete updatePayload.rejected_by; }
+
+      if (body.gmAction === 'amend_approve' || body.gm_action === 'amend_approve') {
+        updatePayload.amended_by_gm = metaExtras.approved_by || currentUser?.fullName || currentUser?.username || 'GM';
+        updatePayload.amended_at = new Date().toISOString();
+        metaExtras.amended = true;
+        metaExtras.amendment_date = updatePayload.amended_at;
+        if (body.amendmentLog) {
+          metaExtras.amendment_log = body.amendmentLog;
+        }
+      }
+
       if (Object.keys(metaExtras).length > 0) {
         const existingMeta = updatePayload.metadata ? (typeof updatePayload.metadata === 'string' ? JSON.parse(updatePayload.metadata) : updatePayload.metadata) : {};
         updatePayload.metadata = JSON.stringify({ ...existingMeta, ...metaExtras });

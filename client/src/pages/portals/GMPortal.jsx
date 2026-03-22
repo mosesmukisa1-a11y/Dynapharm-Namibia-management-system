@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
+import DispatchNote from '../../components/DispatchNote';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
@@ -432,12 +433,19 @@ function ApprovalsTab() {
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
   const [note, setNote] = useState('');
+  const [viewDispatch, setViewDispatch] = useState(null);
+  const [amendModal, setAmendModal] = useState(null);
+  const [amendItems, setAmendItems] = useState([]);
+  const [amendComment, setAmendComment] = useState('');
+  const [processing, setProcessing] = useState(false);
 
   const fmtLoc = (loc) => {
     if (!loc) return '—';
-    const map = { country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse', windhoek_cbd: 'Windhoek CBD', tsumeb: 'Tsumeb', gobabis: 'Gobabis', swakopmund: 'Swakopmund', rundu: 'Rundu', oshakati: 'Oshakati', ondangwa: 'Ondangwa', katima_mulilo: 'Katima Mulilo', okahandja: 'Okahandja', keetmanshoop: 'Keetmanshoop' };
+    const map = { country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse', windhoek_branch: 'Windhoek Branch', ondangwa_branch: 'Ondangwa Branch', oshakati_branch: 'Oshakati Branch', rundu_branch: 'Rundu Branch', tsumeb_branch: 'Tsumeb Branch', katima_branch: 'Katima Mulilo Branch', walvis_branch: 'Walvis Bay Branch', gobabis_branch: 'Gobabis Branch', otjiwarongo_branch: 'Otjiwarongo Branch', keetmanshoop_branch: 'Keetmanshoop Branch' };
     return map[loc.toLowerCase().replace(/\s+/g, '_')] || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
+
+  const fmtDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return d; } };
 
   const loadData = () => {
     setLoading(true);
@@ -469,7 +477,14 @@ function ApprovalsTab() {
         setStockRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'transfer') {
         const newStatus = action === 'approved' ? 'approved' : 'rejected';
-        await api.stock.updateTransfer(id, { status: newStatus, approved_by: user?.full_name || user?.username, notes: note });
+        const gmName = user?.full_name || user?.username || 'GM';
+        await api.stock.updateTransfer(id, {
+          status: newStatus,
+          approved_by: gmName,
+          notes: note,
+          gmAction: action === 'approved' ? 'approve' : 'reject',
+          gmComment: note || null,
+        });
         setPendingTransfers(prev => prev.filter(r => r.id !== id));
         setMessage(action === 'approved' ? '✅ Transfer approved — branch can now receive the stock.' : '❌ Transfer rejected.');
       }
@@ -479,6 +494,80 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     }
+  };
+
+  const handleAmendApprove = async () => {
+    if (!amendModal) return;
+    setProcessing(true);
+    try {
+      const gmName = user?.full_name || user?.username || 'GM';
+      const originalItems = amendModal.items || [];
+      const amendmentLog = amendItems.map((ai, i) => {
+        const orig = originalItems[i];
+        if (orig && Number(ai.quantityApproved) !== Number(orig.quantity)) {
+          return { product: ai.productName, originalQty: orig.quantity, approvedQty: ai.quantityApproved, removed: Number(ai.quantityApproved) === 0 };
+        }
+        return null;
+      }).filter(Boolean);
+
+      const updatedItems = amendItems.filter(it => Number(it.quantityApproved) > 0).map(it => ({
+        ...it,
+        quantity: it.quantity,
+        quantityApproved: Number(it.quantityApproved),
+      }));
+
+      await api.stock.updateTransfer(amendModal.id, {
+        status: 'approved',
+        approved_by: gmName,
+        gmAction: 'amend_approve',
+        gmComment: amendComment || 'Amended and approved',
+        notes: amendComment || 'Amended and approved by GM',
+        items: updatedItems,
+        amendmentLog,
+      });
+
+      setPendingTransfers(prev => prev.filter(r => r.id !== amendModal.id));
+      setMessage('✅ Transfer amended and approved. Author has been notified of changes.');
+      setAmendModal(null);
+      setAmendItems([]);
+      setAmendComment('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReturnForCorrection = async (transferId) => {
+    setProcessing(true);
+    try {
+      const gmName = user?.full_name || user?.username || 'GM';
+      await api.stock.updateTransfer(transferId, {
+        status: 'returned',
+        gmAction: 'return',
+        gmComment: note || 'Returned for correction',
+        notes: note || 'Returned for correction by GM',
+        approved_by: gmName,
+      });
+      setPendingTransfers(prev => prev.filter(r => r.id !== transferId));
+      setMessage('↩️ Transfer returned for correction. Author has been notified.');
+      setNoteModal(null);
+      setNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const openAmendModal = (t) => {
+    const items = (t.items || []).map(it => ({
+      ...it,
+      quantityApproved: it.quantity,
+    }));
+    setAmendItems(items);
+    setAmendComment('');
+    setAmendModal(t);
   };
 
   if (loading) return <LoadingSpinner />;
@@ -636,9 +725,9 @@ function ApprovalsTab() {
           ) : (
             <>
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                <strong>{pendingTransfers.length}</strong> stock transfer{pendingTransfers.length !== 1 ? 's' : ''} awaiting your approval. These are warehouse-to-branch deliveries submitted by stock managers.
+                <strong>{pendingTransfers.length}</strong> dispatch note{pendingTransfers.length !== 1 ? 's' : ''} awaiting your approval. Review each document carefully before approving, amending, or rejecting.
               </div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {pendingTransfers.map(t => {
                   const items = Array.isArray(t.items) ? t.items : [];
                   const fromLoc = fmtLoc(t.fromWarehouse || t.from_location);
@@ -648,53 +737,92 @@ function ApprovalsTab() {
                     <div key={t.id} style={{ background: '#fff', border: '2px solid #fcd34d', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                       <div style={{ background: 'linear-gradient(90deg,#fffbeb,#fef9e6)', padding: '12px 18px', borderBottom: '1px solid #fcd34d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <span className="font-bold text-gray-800 text-sm">🚚 Stock Transfer</span>
-                          <span className="ml-2 font-mono text-xs text-gray-500">{t.id}</span>
+                          <span className="font-bold text-gray-800 text-sm">📄 Dispatch Note</span>
+                          <span className="ml-2 font-mono text-xs text-gray-500">{t.dispatchReference || t.id}</span>
                         </div>
-                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">⏳ Pending Approval</span>
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">⏳ Pending GM Approval</span>
                       </div>
                       <div className="p-4">
-                        <div className="flex items-center gap-3 mb-3 text-sm">
-                          <div className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-50 border">
-                            <div className="text-xs text-gray-500 font-semibold uppercase">From</div>
-                            <div className="font-bold text-gray-800">{fromLoc}</div>
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div className="px-3 py-2 rounded-lg bg-gray-50 border">
+                            <div className="text-xs text-gray-500 font-semibold uppercase">Source Warehouse</div>
+                            <div className="font-bold text-gray-800 text-sm">{fromLoc}</div>
                           </div>
-                          <div className="text-2xl">→</div>
-                          <div className="flex-1 text-center px-3 py-2 rounded-lg bg-red-50 border border-red-100">
-                            <div className="text-xs text-red-500 font-semibold uppercase">To Branch</div>
-                            <div className="font-bold text-red-800">{toLoc}</div>
+                          <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-100">
+                            <div className="text-xs text-red-500 font-semibold uppercase">Destination Branch</div>
+                            <div className="font-bold text-red-800 text-sm">{toLoc}</div>
+                          </div>
+                          <div className="px-3 py-2 rounded-lg bg-gray-50 border">
+                            <div className="text-xs text-gray-500 font-semibold uppercase">Prepared By</div>
+                            <div className="font-bold text-gray-800 text-sm">{t.createdBy || t.dispatchedBy || '—'}</div>
+                          </div>
+                          <div className="px-3 py-2 rounded-lg bg-gray-50 border">
+                            <div className="text-xs text-gray-500 font-semibold uppercase">Date</div>
+                            <div className="font-bold text-gray-800 text-sm">{fmtDate(t.createdAt || t.created_at)}</div>
                           </div>
                         </div>
-                        {/* Items breakdown */}
-                        {items.length > 0 ? (
-                          <div className="space-y-1.5 mb-3">
-                            <p className="text-xs font-semibold text-gray-500 uppercase">Items ({items.length})</p>
-                            {items.map((it, i) => (
-                              <div key={i} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100">
-                                <span className="text-sm font-medium">{it.productName || it.productId || it.product_name}</span>
-                                <span className="font-bold text-primary">× {it.quantity}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : t.product_name ? (
-                          <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100 mb-3">
-                            <span className="text-sm font-medium">{t.product_name}</span>
-                            <span className="font-bold text-primary">× {t.quantity}</span>
-                          </div>
-                        ) : null}
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                          <span>Requested: {t.createdBy || '—'} · {new Date(t.createdAt || t.created_at).toLocaleDateString('en-NA')}</span>
-                          <span className="font-bold">Total: {totalQty} units</span>
-                        </div>
+
+                        <table className="w-full text-xs border-collapse mb-3">
+                          <thead>
+                            <tr>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-red-200 text-gray-600 bg-red-50">Product</th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-red-200 text-gray-600 bg-red-50">Batch</th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-red-200 text-gray-600 bg-red-50">Expiry</th>
+                              <th className="text-right py-1.5 px-2 border-b-2 border-red-200 text-gray-600 bg-red-50">Qty</th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-red-200 text-gray-600 bg-red-50">Unit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.length > 0 ? items.map((it, i) => (
+                              <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
+                                <td className="py-1.5 px-2 border-b font-medium">{it.productName || it.productId}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-600">{it.batchNo || '—'}</td>
+                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#666' }}>
+                                  {it.expiryDate ? fmtDate(it.expiryDate) : '—'}
+                                </td>
+                                <td className="py-1.5 px-2 border-b text-right font-bold">{it.quantity}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-600">{it.unit || 'units'}</td>
+                              </tr>
+                            )) : (
+                              <tr>
+                                <td className="py-1.5 px-2 border-b font-medium">{t.product_name || '—'}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">—</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">—</td>
+                                <td className="py-1.5 px-2 border-b text-right font-bold">{t.quantity || 0}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">units</td>
+                              </tr>
+                            )}
+                            <tr className="bg-gray-100 font-bold">
+                              <td colSpan={3} className="py-1.5 px-2 border-t-2 border-gray-300">Total</td>
+                              <td className="py-1.5 px-2 border-t-2 border-gray-300 text-right">{totalQty}</td>
+                              <td className="py-1.5 px-2 border-t-2 border-gray-300">units</td>
+                            </tr>
+                          </tbody>
+                        </table>
+
                         {t.dispatchNotes && <p className="text-xs text-gray-500 italic mb-3">Notes: {t.dispatchNotes}</p>}
-                        <div className="flex gap-2">
+                        {t.dispatchNote?.barcode && <p className="text-xs text-gray-400 mb-3">Barcode: <span className="font-mono">{t.dispatchNote.barcode}</span></p>}
+
+                        <div className="flex gap-2 flex-wrap">
+                          <button onClick={() => setViewDispatch(t)}
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
+                            📄 View Full Document
+                          </button>
                           <button onClick={() => setNoteModal({ type: 'transfer', id: t.id, action: 'approved', label: `${fromLoc} → ${toLoc}` })}
-                            className="flex-1 py-2 rounded-lg text-sm font-bold cursor-pointer border-none" style={{ background: '#166534', color: '#fff' }}>
-                            ✓ Approve Transfer
+                            className="flex-1 py-2 rounded-lg text-xs font-bold cursor-pointer border-none" style={{ background: '#166534', color: '#fff' }}>
+                            ✓ Approve
+                          </button>
+                          <button onClick={() => openAmendModal(t)}
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
+                            ✏️ Amend & Approve
                           </button>
                           <button onClick={() => setNoteModal({ type: 'transfer', id: t.id, action: 'rejected', label: `${fromLoc} → ${toLoc}` })}
-                            className="flex-1 py-2 rounded-lg text-sm font-bold cursor-pointer border-none" style={{ background: '#fef2f2', color: '#c41e3a', border: '1.5px solid #fecaca' }}>
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
                             ✕ Reject
+                          </button>
+                          <button onClick={() => setNoteModal({ type: 'return', id: t.id, action: 'returned', label: `${fromLoc} → ${toLoc}` })}
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100">
+                            ↩ Return for Correction
                           </button>
                         </div>
                       </div>
@@ -710,20 +838,95 @@ function ApprovalsTab() {
       {/* Other approval sub-tabs */}
       {approvalTab !== 'transfers' && renderRequests()}
 
-      <Modal open={!!noteModal} onClose={() => { setNoteModal(null); setNote(''); }} title={noteModal?.action === 'approved' ? 'Approve Request' : 'Reject Request'}>
+      {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
+
+      {amendModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 700, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '2px solid #f59e0b', background: '#fffbeb' }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: '#92400e' }}>✏️ Amend Dispatch Note</h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#a16207' }}>
+                {fmtLoc(amendModal.fromWarehouse || amendModal.from_location)} → {fmtLoc(amendModal.toBranch || amendModal.to_location)} · {amendModal.id}
+              </p>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
+                Adjust quantities or remove items. Items with quantity 0 will be removed. Remaining stock will return to warehouse.
+              </p>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Product</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Batch</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Expiry</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Original Qty</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Approved Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {amendItems.map((it, i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500 }}>{it.productName || it.productId}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13 }}>{it.batchNo || '—'}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13 }}>{it.expiryDate ? fmtDate(it.expiryDate) : '—'}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, textAlign: 'center', color: '#9ca3af' }}>{it.quantity}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                        <input type="number" min="0" max={it.quantity} value={it.quantityApproved}
+                          onChange={e => {
+                            const val = Math.max(0, Math.min(Number(e.target.value) || 0, it.quantity));
+                            setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: val } : p));
+                          }}
+                          style={{ width: 70, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Amendment Comment / Reason</label>
+                <textarea value={amendComment} onChange={e => setAmendComment(e.target.value)}
+                  placeholder="Explain what was changed and why..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, minHeight: 80, resize: 'vertical' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); }}
+                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                  Cancel
+                </button>
+                <button onClick={handleAmendApprove} disabled={processing}
+                  style={{ padding: '8px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: processing ? 0.6 : 1 }}>
+                  {processing ? 'Processing...' : '✏️ Amend & Approve'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Modal open={!!noteModal} onClose={() => { setNoteModal(null); setNote(''); }}
+        title={noteModal?.action === 'approved' ? 'Approve Transfer' : noteModal?.action === 'returned' ? 'Return for Correction' : 'Reject Transfer'}>
         <div className="p-6 space-y-4">
+          {noteModal?.label && <p className="text-sm text-gray-600">Transfer: <strong>{noteModal.label}</strong></p>}
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
+            <label className="block text-sm font-medium text-gray-700">
+              {noteModal?.action === 'returned' ? 'Correction Notes (required)' : 'Notes (optional)'}
+            </label>
             <textarea value={note} onChange={e => setNote(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[80px] resize-y"
-              placeholder="Add notes for this decision..." />
+              placeholder={noteModal?.action === 'returned' ? 'Explain what needs to be corrected...' : 'Add notes for this decision...'} />
           </div>
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => { setNoteModal(null); setNote(''); }}>Cancel</Button>
-            <Button variant={noteModal?.action === 'approved' ? 'success' : 'danger'}
-              onClick={() => handleAction(noteModal.type, noteModal.id, noteModal.action)}>
-              {noteModal?.action === 'approved' ? 'Approve' : 'Reject'}
-            </Button>
+            {noteModal?.action === 'returned' ? (
+              <Button variant="warning" onClick={() => handleReturnForCorrection(noteModal.id)} disabled={!note.trim()}>
+                ↩ Return for Correction
+              </Button>
+            ) : (
+              <Button variant={noteModal?.action === 'approved' ? 'success' : 'danger'}
+                onClick={() => handleAction(noteModal.type, noteModal.id, noteModal.action)}>
+                {noteModal?.action === 'approved' ? 'Approve' : 'Reject'}
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

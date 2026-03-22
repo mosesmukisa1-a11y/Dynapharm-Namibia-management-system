@@ -1,0 +1,519 @@
+
+
+# **FOLLOW-UP STOCK CORRECTION SCRIPT – BRANCH RECEIVING, DISPATCH NOTE, GM AMENDMENT, FULL STOCK DETAILS**
+
+## **Important instruction to Replit**
+
+The new stock features are now working well.
+Do **not** rebuild the stock module from scratch.
+Do **not** remove the new working workflow.
+
+This is a **follow-up correction and enhancement script** for the remaining issues only.
+
+Keep the existing correct stock flow intact:
+
+**Supplier Shipment → Country Stock → Distribution to Warehouse → Warehouse Dispatch to Branch → GM Approval → Branch Receipt Confirmation → Inventory Updates**
+
+Now correct the remaining workflow problems and add the missing document and approval features below.
+
+---
+
+# **1. FIX BRANCH STOCK RECEIVING WORKFLOW**
+
+## **Current problem**
+
+The workflow for receiving stock in branches is not accepting receipt properly.
+
+## **Required correction**
+
+Fix the branch receiving workflow so that branch users can successfully receive approved stock.
+
+### The receive action must:
+
+1. Open only for dispatches already approved by GM
+2. Be available only to the **destination branch**
+3. Allow the destination branch to:
+
+   * open dispatch details
+   * confirm receipt
+   * add received notes
+   * e-sign
+   * report discrepancies
+4. Save successfully without freezing or rejecting valid receipts
+5. Update status correctly after submission
+
+### Required statuses
+
+Use clear states such as:
+
+* Pending GM Approval
+* Approved
+* Awaiting Branch Receipt
+* Partially Received
+* Received
+* Discrepancy Reported
+
+---
+
+# **2. ENSURE ONLY THE DESTINATION BRANCH CAN SEE AND RECEIVE STOCK**
+
+This is critical.
+
+## **Required rule**
+
+Stock dispatched to branches must be visible and receivable **only by the destination branch**.
+
+### Example
+
+If stock is dispatched to **Oshakati**, it must:
+
+* appear only on the Oshakati branch dashboard
+* not appear on Ondangwa, Rundu, Tsumeb, or any other branch dashboard
+* only allow receipt action by Oshakati branch users
+
+## **Implementation requirement**
+
+Filter incoming dispatches strictly by:
+
+* destination branch ID
+* destination branch name
+* user role / branch assignment
+
+No other branch should see, confirm, reject, or edit that dispatch.
+
+---
+
+# **3. CREATE A FULL “DISPATCH NOTE” DOCUMENT**
+
+Every warehouse-to-branch dispatch must prepare a full document named:
+
+# **DISPATCH NOTE**
+
+This must not be just a small summary card.
+It must be a proper printable business document.
+
+## **Dispatch Note must include full stock details**
+
+At all times, stock details must show in full:
+
+* Product name
+* Batch number
+* Expiry date
+* Quantity dispatched
+* Unit where applicable
+* Source warehouse
+* Destination branch
+* Dispatch reference number
+* Dispatch date
+* Prepared by
+* Approval status
+* GM approval section
+* Branch receipt section
+* Notes section
+* Barcode
+
+### Expiry date is very important
+
+Do not omit expiry date anywhere in dispatch views, approval views, receiving views, or printed documents.
+
+---
+
+# **4. ADD BARCODE TO DISPATCH NOTE**
+
+Each Dispatch Note must include a barcode.
+
+## **Barcode purpose**
+
+The barcode should represent the dispatch reference number or unique dispatch record ID.
+
+## **Requirements**
+
+1. Barcode must appear on the Dispatch Note PDF and print version
+2. Barcode must be readable and well positioned
+3. Barcode must also appear in on-screen preview
+4. Barcode must remain linked to the dispatch record for lookup if scanning is later added
+
+---
+
+# **5. PDF VIEW AND PRINT FOR DISPATCH NOTE**
+
+The Dispatch Note must support:
+
+* PDF view
+* PDF print
+* standard print layout
+
+## **Requirements**
+
+1. User must be able to preview the full Dispatch Note before printing
+2. The PDF version must show the complete document, not a cut-off summary
+3. The printed layout must be clean and official
+4. Product lines must display:
+
+   * product name
+   * batch
+   * expiry date
+   * quantity
+5. Dispatch note should be suitable for warehouse, GM, and branch operational use
+
+---
+
+# **6. BRANCH CONFIRMATION BY E-SIGNATURE OR NOTES**
+
+When the branch receives stock, the branch user should be able to confirm receipt in either or both of these ways:
+
+## **A. E-signature**
+
+Allow the branch receiving user to e-sign when confirming receipt.
+
+### E-sign may be:
+
+* typed signature name
+* digital signature pad if already supported
+* saved sign-off confirmation tied to user identity
+
+## **B. Notes / discrepancy capture**
+
+Allow the branch receiving user to add notes when what was dispatched does not match what was received.
+
+### Examples of notes:
+
+* quantity short received
+* damaged stock
+* missing item
+* wrong batch
+* near expiry
+* wrong product line
+
+## **Required result**
+
+The receipt workflow must support:
+
+* full receipt with sign-off
+* discrepancy receipt with notes
+* partial receipt if business logic allows
+
+---
+
+# **7. HANDLE DISPATCH MISMATCH / DISCREPANCY PROPERLY**
+
+If the dispatch does not match what the branch receives, the system must not force a false full receipt.
+
+## **Required correction**
+
+Allow branch to record discrepancy against the Dispatch Note.
+
+### Branch should be able to:
+
+* confirm item-by-item receipt if possible
+* record mismatch notes
+* mark receipt as discrepancy reported or partially received
+* submit the receipt with notes and signature
+
+## **System response**
+
+1. Keep a discrepancy log
+2. Notify relevant users
+3. Preserve document history
+4. Prevent silent inventory corruption
+
+---
+
+# **8. GM APPROVES A FULL DOCUMENT, NOT JUST A BUTTON ACTION**
+
+The GM must approve a **full Dispatch Note document**, not only a small action row.
+
+## **Required GM approval screen**
+
+The GM approval view must display the full Dispatch Note including:
+
+* dispatch reference
+* source warehouse
+* destination branch
+* product name
+* batch
+* expiry date
+* quantity
+* prepared by
+* date
+* notes
+* barcode
+* linked PDF preview where possible
+
+The GM must clearly see the exact full document being approved.
+
+---
+
+# **9. GM MUST BE ABLE TO AMEND THE DISPATCH NOTE**
+
+The GM must not only approve or reject.
+The GM must also be able to **amend** the Dispatch Note before approval.
+
+## **Examples of amendment**
+
+* reduce quantity
+* remove wrong item
+* correct wrong batch
+* return dispatch for correction
+* adjust note
+* partially approve lines if your structure supports line-level changes
+
+## **Required actions**
+
+GM actions should include:
+
+* Approve
+* Reject
+* Amend and Approve
+* Return for Correction
+
+---
+
+# **10. IF GM AMENDS, AUTHOR MUST BE NOTIFIED**
+
+If the GM amends the document, the author / preparer must be notified.
+
+## **Author means**
+
+The user who created the dispatch from the warehouse.
+
+## **Required notification**
+
+The author should be notified with:
+
+* dispatch reference number
+* what was amended
+* original values
+* approved amended values
+* GM comment / reason
+* timestamp
+
+## **Notification destinations**
+
+Show this in:
+
+* warehouse dispatch history
+* notification center if available
+* dispatch record audit log
+
+---
+
+# **11. STOCK LEVELS MUST ADJUST AUTOMATICALLY AFTER GM AMENDMENT**
+
+This is critical.
+
+If the GM amends the Dispatch Note, stock levels must be adjusted correctly before the branch receives stock.
+
+## **Examples**
+
+### Example 1
+
+Warehouse prepared 20 units, GM amends to 15 units:
+
+* reserved / pending dispatch quantity must become 15
+* 5 units must return to available warehouse stock
+
+### Example 2
+
+Wrong batch removed:
+
+* removed batch quantity must restore to warehouse available stock
+* approved batch remains pending for branch receipt
+
+## **Required rule**
+
+GM-approved final document is the authoritative quantity for the receiving stage.
+
+Branch must only see the final approved amended stock quantities.
+
+---
+
+# **12. STOCK DETAILS MUST ALWAYS SHOW FULL INFORMATION**
+
+At all times, stock details must display full information everywhere relevant.
+
+## **Required minimum stock details**
+
+* Product name
+* Batch number
+* Expiry date
+* Quantity
+* Source
+* Destination
+* Reference number
+* Status
+
+## **Apply this in**
+
+* warehouse dispatch creation
+* GM approval view
+* branch incoming stock list
+* branch receipt page
+* dispatch note PDF
+* reports
+* stock movement history
+
+### Important
+
+Do not shorten these fields into hidden tooltips only.
+They must be visible in the normal workflow.
+
+---
+
+# **13. IMPROVE BRANCH RECEIVING UI**
+
+Make the receiving page operational and clear.
+
+## **Branch receiving page must show**
+
+* Dispatch Note number
+* Source warehouse
+* Destination branch
+* dispatch date
+* full product table
+* product name
+* batch
+* expiry date
+* quantity sent
+* quantity received
+* discrepancy field / notes
+* e-signature field
+* receive button
+* save discrepancy button if needed
+* PDF preview link/button
+
+---
+
+# **14. REQUIRED DATABASE / LOGIC ENHANCEMENTS**
+
+Repair or extend the dispatch and receipt models to support full document approval and discrepancy handling.
+
+## **Needed fields or related structures**
+
+For dispatch:
+
+* dispatch_reference
+* source_warehouse_id
+* destination_branch_id
+* prepared_by
+* prepared_at
+* status
+* barcode_value
+* gm_action
+* gm_comment
+* amended_by_gm
+* amended_at
+* final_approved_version
+
+For dispatch items:
+
+* product_id
+* product_name_snapshot
+* batch_number
+* expiry_date
+* quantity_prepared
+* quantity_approved
+* quantity_received
+* discrepancy_note
+
+For branch receipt:
+
+* received_by
+* received_at
+* signature_name or signature_image
+* branch_note
+* discrepancy_flag
+* receipt_status
+
+For audit:
+
+* amendment_log
+* approval_log
+* notification_log
+
+---
+
+# **15. AUDIT TRAIL MUST BE COMPLETE**
+
+Do not overwrite silently.
+
+## **Track full history**
+
+The system must keep:
+
+* original dispatch
+* GM amendment history
+* final approved version
+* branch receipt details
+* discrepancy notes
+* signature record
+* timestamps
+* who did each action
+
+This is important for accountability.
+
+---
+
+# **16. REQUIRED REPORTS / SEARCH**
+
+Add or improve reports so users can search and print:
+
+1. Dispatch Notes
+2. GM amended dispatches
+3. Pending branch receipts
+4. Received dispatches
+5. Discrepancy receipts
+6. Dispatches by batch
+7. Dispatches by expiry date
+8. Dispatches by warehouse
+9. Dispatches by branch
+
+Allow PDF print and proper full-document preview.
+
+---
+
+# **17. FINAL BUSINESS RULES TO ENFORCE**
+
+1. Branch receiving must work successfully
+2. Only the destination branch can see and receive incoming stock
+3. Every dispatch must generate a full document called **Dispatch Note**
+4. Every Dispatch Note must include barcode
+5. Every Dispatch Note must be printable and PDF viewable
+6. Full stock details must always show:
+
+   * product name
+   * batch
+   * expiry date
+7. GM must approve the full document
+8. GM must be able to amend before approval
+9. If amended, author must be notified
+10. If amended, stock levels must adjust correctly
+11. Branch must be able to confirm by e-signature
+12. Branch must be able to add notes when dispatched stock does not match received stock
+13. Discrepancies must be logged, not ignored
+
+---
+
+# **18. FINAL INSTRUCTION TO REPLIT**
+
+Please keep the new working stock features as they are and apply only these follow-up corrections:
+
+* Fix branch receiving so approved stock can be received properly
+* Ensure only the destination branch can see and receive its incoming stock
+* Generate a full printable document named **Dispatch Note**
+* Include barcode on the Dispatch Note
+* Allow PDF viewing and printing of the full Dispatch Note
+* Always display full stock details: product name, batch number, expiry date, quantity
+* Let the branch confirm by e-signature and/or notes
+* Let the branch report discrepancies if dispatched stock does not match received stock
+* Make GM approve the full Dispatch Note document
+* Allow GM to amend the document before approval
+* Notify the author if GM amends
+* Automatically adjust stock levels according to the final approved amended document
+
+Do not simplify this into a button-only workflow.
+It must work as a full, traceable stock control document flow.
+
+---
+
+

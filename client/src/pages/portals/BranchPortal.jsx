@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
+import DispatchNote from '../../components/DispatchNote';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
@@ -1677,6 +1678,10 @@ function BranchStockTab() {
   const [receiveItems, setReceiveItems] = useState([]);
   const [receiveDeliveryNote, setReceiveDeliveryNote] = useState('');
   const [receiveReceivedBy, setReceiveReceivedBy] = useState('');
+  const [receiveTransferModal, setReceiveTransferModal] = useState(null);
+  const [receiveSignature, setReceiveSignature] = useState('');
+  const [receiveNotes, setReceiveNotes] = useState('');
+  const [viewDispatchNote, setViewDispatchNote] = useState(null);
   const [transferForm, setTransferForm] = useState({ product_name: '', quantity: '', to_branch: '', notes: '' });
   const [writeOffForm, setWriteOffForm] = useState({ product_name: '', quantity: '', reason: '' });
   const [transferItems, setTransferItems] = useState([]);
@@ -1842,29 +1847,76 @@ function BranchStockTab() {
     } finally { setSubmitting(false); }
   };
 
-  const handleReceiveTransfer = async (transfer) => {
+  const openReceiveTransferModal = (transfer) => {
+    const items = Array.isArray(transfer.items) ? transfer.items : [];
+    const mapped = items.length > 0 ? items.map(it => ({
+      ...it,
+      quantitySent: it.quantityApproved != null ? it.quantityApproved : it.quantity,
+      quantityReceived: it.quantityApproved != null ? it.quantityApproved : it.quantity,
+      discrepancyNote: '',
+    })) : (transfer.product_name ? [{
+      productName: transfer.product_name,
+      productId: transfer.product_name,
+      batchNo: null,
+      expiryDate: null,
+      quantity: transfer.quantity || 0,
+      quantitySent: transfer.quantity || 0,
+      quantityReceived: transfer.quantity || 0,
+      discrepancyNote: '',
+      unit: 'units',
+    }] : []);
+    setReceiveItems(mapped);
+    setReceiveSignature(user?.full_name || user?.username || '');
+    setReceiveNotes('');
+    setReceiveTransferModal(transfer);
+  };
+
+  const handleReceiveTransfer = async () => {
+    const transfer = receiveTransferModal;
     if (!transfer) return;
     setSubmitting(true);
     try {
-      const items = Array.isArray(transfer.items) ? transfer.items : [];
-      const singleProduct = transfer.product_name || (items[0] ? (items[0].productName || items[0].productId) : null);
-      const singleQty = transfer.quantity || (items[0] ? items[0].quantity : 0);
-      const toRecord = items.length > 0 ? items : (singleProduct ? [{ productName: singleProduct, quantity: singleQty }] : []);
-      for (const item of toRecord) {
-        if (Number(item.quantity || 0) > 0) {
+      const hasDiscrepancy = receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent));
+      const allZero = receiveItems.every(it => Number(it.quantityReceived) === 0);
+
+      for (const item of receiveItems) {
+        const qtyReceived = Number(item.quantityReceived || 0);
+        if (qtyReceived > 0) {
           await api.stock.createMovement({
-            product_name: item.productName || item.productId || singleProduct,
-            quantity: Number(item.quantity || item.qty || singleQty),
+            product_name: item.productName || item.productId,
+            quantity: qtyReceived,
             movement_type: 'received',
             source_location: transfer.fromWarehouse || transfer.from_location || 'Warehouse',
             destination_location: user?.branch || 'Branch',
-            notes: `Received warehouse transfer ${transfer.id}`,
+            notes: `Received dispatch ${transfer.id}${item.discrepancyNote ? ` - Note: ${item.discrepancyNote}` : ''}`,
             reference_id: transfer.id,
           });
         }
       }
-      await api.stock.updateTransfer(transfer.id, { status: 'delivered', received_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', message: `Stock received successfully from ${transfer.fromWarehouse || transfer.from_location || 'Warehouse'}` });
+
+      const receiptStatus = allZero ? 'discrepancy_reported' : hasDiscrepancy ? 'partially_received' : 'received';
+      const transferStatus = hasDiscrepancy ? 'partially_received' : 'delivered';
+      const updatedItems = receiveItems.map(it => ({
+        ...it,
+        quantityReceived: Number(it.quantityReceived || 0),
+        discrepancyNote: it.discrepancyNote || null,
+      }));
+
+      await api.stock.updateTransfer(transfer.id, {
+        status: transferStatus,
+        received_by: receiveSignature || user?.full_name || user?.username,
+        signatureName: receiveSignature,
+        branchReceiptNote: receiveNotes || null,
+        discrepancyFlag: hasDiscrepancy,
+        receiptStatus,
+        items: updatedItems,
+      });
+
+      setAlert({ type: 'success', message: hasDiscrepancy
+        ? `Stock received with discrepancies noted. ${receiptStatus === 'partially_received' ? 'Partial receipt recorded.' : 'Discrepancy reported.'}`
+        : `Stock received successfully from ${fmtLocation(transfer.fromWarehouse || transfer.from_location)}`
+      });
+      setReceiveTransferModal(null);
       loadData();
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to receive transfer' });
@@ -1874,14 +1926,22 @@ function BranchStockTab() {
   if (loading) return <LoadingSpinner />;
 
   const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
-  // Incoming warehouse deliveries: transfers TO this branch that are pending/dispatched/in_transit
+  const branchMatchKeys = branchKey ? [
+    branchKey,
+    branchKey.replace(/_branch$/, ''),
+    branchKey + '_branch',
+    user?.branch?.toLowerCase(),
+  ].filter(Boolean) : [];
+  const isBranchMatch = (dest) => {
+    if (!branchKey) return true;
+    const d = (dest || '').toLowerCase().replace(/\s+/g, '_');
+    return branchMatchKeys.some(k => d === k || d.includes(k) || k.includes(d));
+  };
   const incomingDeliveries = transfers.filter(t => {
-    const toB = (t.toBranch || t.to_location || '').toLowerCase().replace(/\s+/g, '_');
+    const dest = t.toBranch || t.to_location || '';
     const st = (t.status || '').toLowerCase();
-    // Only show GM-approved transfers (not pending_approval) and not already delivered/cancelled
     const isApproved = st === 'approved' || st === 'in_transit' || st === 'dispatched';
-    const isForBranch = branchKey ? toB === branchKey : true;
-    return isForBranch && isApproved;
+    return isBranchMatch(dest) && isApproved;
   });
   // Pending requests approved/dispatched by stock management
   const pendingRequests = requests.filter(r => r.status === 'approved' || r.status === 'dispatched');
@@ -1996,45 +2056,105 @@ function BranchStockTab() {
             <button onClick={loadData} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white cursor-pointer font-semibold text-gray-500">↺ Refresh</button>
           </div>
 
-          {/* Incoming Warehouse Transfers */}
           {incomingDeliveries.length > 0 && (
             <div>
               <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                 🚚 Incoming Warehouse Deliveries
                 <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{incomingDeliveries.length}</span>
               </h4>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {incomingDeliveries.map(t => {
                   const fromLoc = fmtLocation(t.fromWarehouse || t.from_location || 'Warehouse');
+                  const toLoc = fmtLocation(t.toBranch || t.to_location || user?.branch);
                   const tItems = Array.isArray(t.items) ? t.items : [];
-                  const singleProd = t.product_name;
-                  const singleQty = t.quantity;
+                  const isAmended = t.gmAction === 'amend_approve' || t.metadata?.amended;
                   return (
-                    <div key={t.id} style={{ background: '#f0f7ff', border: '1.5px solid #93c5fd', borderRadius: 14, padding: 18, boxShadow: '0 2px 8px rgba(30,64,175,0.06)' }}>
-                      <div className="flex justify-between items-start mb-3">
+                    <div key={t.id} style={{ background: '#fff', border: '1.5px solid #93c5fd', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(30,64,175,0.06)' }}>
+                      <div style={{ background: 'linear-gradient(90deg,#eff6ff,#f0f7ff)', padding: '12px 18px', borderBottom: '1px solid #93c5fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div className="font-bold text-gray-800">Warehouse Transfer: <span className="font-mono text-sm">{t.id}</span></div>
-                          <div className="text-sm text-gray-500 mt-1">From: <strong>{fromLoc}</strong> → {fmtLocation(t.toBranch || t.to_location || user?.branch)} · {formatDateTime(t.createdAt || t.created_at)}</div>
-                          {t.dispatchNotes && <div className="text-xs text-gray-400 mt-1">Notes: {t.dispatchNotes}</div>}
+                          <span className="font-bold text-gray-800 text-sm">📄 Dispatch Note</span>
+                          <span className="ml-2 font-mono text-xs text-gray-500">{t.dispatchReference || t.id}</span>
                         </div>
                         <div className="flex gap-2 items-center">
-                          <Badge variant={t.status === 'dispatched' || t.status === 'in_transit' ? 'info' : 'warning'}>{t.status || 'pending'}</Badge>
-                          <button disabled={submitting} onClick={() => handleReceiveTransfer(t)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#1e40af', color: '#fff', opacity: submitting ? 0.6 : 1 }}>
-                            📥 Mark Received
-                          </button>
+                          <Badge variant="success">GM Approved</Badge>
+                          {isAmended && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-semibold">Amended</span>}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {tItems.length > 0
-                          ? tItems.map((it, i) => (
-                              <span key={i} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}>
-                                {it.productName || it.productId} × {it.quantity}
-                              </span>
-                            ))
-                          : singleProd
-                          ? <span className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}>{singleProd} × {singleQty}</span>
-                          : <span className="text-xs text-gray-400">No item details</span>
-                        }
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                          <div>
+                            <span className="text-xs text-gray-500 font-semibold">From:</span>
+                            <span className="ml-2 font-bold text-gray-800">{fromLoc}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-500 font-semibold">To:</span>
+                            <span className="ml-2 font-bold text-gray-800">{toLoc}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-500 font-semibold">Date:</span>
+                            <span className="ml-2 text-gray-700">{formatDateTime(t.createdAt || t.created_at)}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-500 font-semibold">Prepared By:</span>
+                            <span className="ml-2 text-gray-700">{t.createdBy || t.dispatchedBy || '—'}</span>
+                          </div>
+                        </div>
+
+                        {isAmended && t.gmComment && (
+                          <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: 8, marginBottom: 12, fontSize: 12 }}>
+                            <strong>GM Amendment Note:</strong> {t.gmComment}
+                          </div>
+                        )}
+
+                        <table className="w-full text-xs border-collapse mb-3">
+                          <thead>
+                            <tr>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-blue-200 text-gray-600 bg-blue-50">Product</th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-blue-200 text-gray-600 bg-blue-50">Batch</th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-blue-200 text-gray-600 bg-blue-50">Expiry</th>
+                              <th className="text-right py-1.5 px-2 border-b-2 border-blue-200 text-gray-600 bg-blue-50">
+                                {isAmended ? 'Approved Qty' : 'Qty'}
+                              </th>
+                              <th className="text-left py-1.5 px-2 border-b-2 border-blue-200 text-gray-600 bg-blue-50">Unit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tItems.length > 0 ? tItems.map((it, i) => (
+                              <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
+                                <td className="py-1.5 px-2 border-b font-medium">{it.productName || it.productId}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-600">{it.batchNo || '—'}</td>
+                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#666' }}>
+                                  {it.expiryDate ? formatDate(it.expiryDate) : '—'}
+                                </td>
+                                <td className="py-1.5 px-2 border-b text-right font-bold">
+                                  {isAmended && it.quantityApproved != null ? it.quantityApproved : it.quantity}
+                                </td>
+                                <td className="py-1.5 px-2 border-b text-gray-600">{it.unit || 'units'}</td>
+                              </tr>
+                            )) : (
+                              <tr>
+                                <td className="py-1.5 px-2 border-b">{t.product_name || '—'}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">—</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">—</td>
+                                <td className="py-1.5 px-2 border-b text-right font-bold">{t.quantity || 0}</td>
+                                <td className="py-1.5 px-2 border-b text-gray-500">units</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+
+                        {t.dispatchNotes && <p className="text-xs text-gray-500 italic mb-3">Notes: {t.dispatchNotes}</p>}
+
+                        <div className="flex gap-2 flex-wrap">
+                          <button onClick={() => setViewDispatchNote(t)}
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                            📄 View Full Document
+                          </button>
+                          <button disabled={submitting} onClick={() => openReceiveTransferModal(t)}
+                            className="flex-1 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#1e40af', color: '#fff', opacity: submitting ? 0.6 : 1 }}>
+                            📥 Receive Stock
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -2043,7 +2163,6 @@ function BranchStockTab() {
             </div>
           )}
 
-          {/* Approved/Dispatched Stock Requests */}
           {pendingRequests.length > 0 && (
             <div>
               <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
@@ -2081,6 +2200,113 @@ function BranchStockTab() {
           {incomingDeliveries.length === 0 && pendingRequests.length === 0 && (
             <Card><CardBody><p className="text-center text-gray-400 py-8">No incoming stock — warehouse deliveries and approved requests will appear here</p></CardBody></Card>
           )}
+        </div>
+      )}
+
+      {viewDispatchNote && <DispatchNote transfer={viewDispatchNote} onClose={() => setViewDispatchNote(null)} />}
+
+      {receiveTransferModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 800, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '2px solid #1e40af', background: '#eff6ff', position: 'sticky', top: 0, zIndex: 1 }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: '#1e3a5f' }}>📥 Receive Stock — Dispatch Note</h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3b82f6' }}>
+                {fmtLocation(receiveTransferModal.fromWarehouse || receiveTransferModal.from_location)} → {fmtLocation(receiveTransferModal.toBranch || receiveTransferModal.to_location || user?.branch)} · {receiveTransferModal.dispatchReference || receiveTransferModal.id}
+              </p>
+            </div>
+            <div style={{ padding: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                <div style={{ padding: 8, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Dispatch Date</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{formatDateTime(receiveTransferModal.createdAt || receiveTransferModal.created_at)}</div>
+                </div>
+                <div style={{ padding: 8, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Prepared By</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{receiveTransferModal.createdBy || receiveTransferModal.dispatchedBy || '—'}</div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Verify received quantities against dispatched amounts:</p>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Product</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Batch</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Expiry</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Sent</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Received</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Discrepancy Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receiveItems.map((it, i) => {
+                    const mismatch = Number(it.quantityReceived) !== Number(it.quantitySent);
+                    return (
+                      <tr key={i} style={{ background: mismatch ? '#fef2f2' : (i % 2 === 0 ? 'white' : '#f9fafb') }}>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500 }}>{it.productName || it.productId}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>{it.batchNo || '—'}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#6b7280' }}>
+                          {it.expiryDate ? formatDate(it.expiryDate) : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#9ca3af' }}>{it.quantitySent}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                          <input type="number" min="0" max={it.quantitySent * 2} value={it.quantityReceived}
+                            onChange={e => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, quantityReceived: val } : p));
+                            }}
+                            style={{ width: 65, padding: '4px 8px', border: `1px solid ${mismatch ? '#fca5a5' : '#d1d5db'}`, borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600, background: mismatch ? '#fef2f2' : 'white' }} />
+                        </td>
+                        <td style={{ padding: '4px 6px', borderBottom: '1px solid #e5e7eb' }}>
+                          <input type="text" placeholder={mismatch ? 'Explain discrepancy...' : ''}
+                            value={it.discrepancyNote}
+                            onChange={e => setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, discrepancyNote: e.target.value } : p))}
+                            style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12 }} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>E-Signature (Received By)</label>
+                  <input type="text" value={receiveSignature} onChange={e => setReceiveSignature(e.target.value)}
+                    placeholder="Type your full name as signature"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontFamily: 'cursive, serif', fontStyle: 'italic' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Receipt Notes (optional)</label>
+                  <input type="text" value={receiveNotes} onChange={e => setReceiveNotes(e.target.value)}
+                    placeholder="Additional notes..."
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13 }} />
+                </div>
+              </div>
+
+              {receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent)) && (
+                <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 13 }}>
+                  <strong>⚠️ Discrepancy detected:</strong> Some received quantities differ from dispatched amounts. Please add notes explaining each discrepancy above.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setReceiveTransferModal(null)}
+                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                  Cancel
+                </button>
+                <button onClick={() => setViewDispatchNote(receiveTransferModal)}
+                  style={{ padding: '8px 16px', background: '#fff', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#1e40af', fontWeight: 600 }}>
+                  📄 Preview Document
+                </button>
+                <button onClick={handleReceiveTransfer} disabled={submitting || !receiveSignature.trim()}
+                  style={{ padding: '8px 20px', background: '#1e40af', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (submitting || !receiveSignature.trim()) ? 0.6 : 1 }}>
+                  {submitting ? 'Processing...' : '✅ Confirm Receipt'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
