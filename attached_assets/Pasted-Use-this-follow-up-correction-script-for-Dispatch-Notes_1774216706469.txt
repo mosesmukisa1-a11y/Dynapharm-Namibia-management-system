@@ -1,0 +1,498 @@
+Use this **follow-up correction script for Dispatch Notes only**. It addresses the problem that the Dispatch Notes are already being created, but they are missing a lot of **mandatory information**.
+
+---
+
+# **FOLLOW-UP REPLIT SCRIPT – COMPLETE MANDATORY DISPATCH NOTE FIELDS**
+
+## **Important instruction to Replit**
+
+Do not remove the current Dispatch Note feature.
+Do not rebuild the whole stock workflow.
+
+The Dispatch Note is already being created, but it is incomplete.
+
+This correction is to make the **Dispatch Note a full operational stock document** with all mandatory fields, all required sections, and proper visibility for warehouse, GM, and branch use.
+
+---
+
+# **1. DISPATCH NOTE MUST BE A FULL DOCUMENT**
+
+The Dispatch Note must no longer be treated as a short transfer summary.
+
+It must be a **complete stock movement document** that can be:
+
+* viewed on screen
+* approved by GM
+* received by branch
+* printed
+* exported to PDF
+* used for audit and stock reconciliation
+
+The title of the document must remain:
+
+# **DISPATCH NOTE**
+
+---
+
+# **2. MANDATORY HEADER INFORMATION THAT MUST ALWAYS APPEAR**
+
+Every Dispatch Note must show the following mandatory header information at the top of the document:
+
+1. **Document Title:** Dispatch Note
+2. **Dispatch Note Number / Reference Number**
+3. **Dispatch Date**
+4. **Dispatch Status**
+5. **Prepared By**
+6. **Prepared By Role**
+7. **Source Warehouse**
+8. **Destination Branch**
+9. **Destination Branch Code** if branch code exists
+10. **GM Approval Status**
+11. **GM Approval Date** if approved
+12. **Related Transfer / Distribution Reference** if linked upstream
+13. **Barcode** representing the Dispatch Note reference
+
+These fields must be visible in:
+
+* on-screen view
+* GM approval page
+* branch receipt page
+* PDF version
+* print version
+
+---
+
+# **3. COMPANY / LOCATION INFORMATION MUST APPEAR CLEARLY**
+
+The Dispatch Note must clearly show source and destination details.
+
+## **Source section**
+
+Show:
+
+* warehouse name
+* warehouse location if available
+* warehouse contact if available
+
+## **Destination section**
+
+Show:
+
+* branch name
+* branch address
+* branch contact number
+
+Use the official branch list wherever branch details are available.
+
+Do not leave destination as just a short label if full branch information exists.
+
+---
+
+# **4. FULL STOCK ITEM TABLE IS MANDATORY**
+
+Each Dispatch Note must contain a proper item table.
+
+## **Mandatory columns**
+
+Every line item must show:
+
+1. **Line Number**
+2. **Product Name**
+3. **Product Code / SKU** if available
+4. **Barcode** if product barcode exists
+5. **Batch Number**
+6. **Expiry Date**
+7. **Unit of Measure**
+8. **Quantity Prepared / Dispatched**
+9. **Quantity Approved by GM**
+10. **Quantity Received** for branch receiving stage
+11. **Line Notes / Remarks**
+
+### Important
+
+Do not hide batch number and expiry date in expandable rows only.
+They must be visible directly in the normal table or clearly visible in the standard item view.
+
+### Very important
+
+**Product name, batch number, and expiry date are mandatory and must always be shown in full.**
+
+---
+
+# **5. QUANTITY INFORMATION MUST BE CLEAR AND COMPLETE**
+
+The Dispatch Note must distinguish between the following quantities where relevant:
+
+* Quantity Prepared
+* Quantity Approved
+* Quantity Received
+* Quantity Variance / Difference
+
+This is necessary especially where:
+
+* GM amends quantities
+* branch receives less than dispatched
+* discrepancy is reported
+
+If the branch has not yet received stock, the document should still reserve space or fields for later receipt entry.
+
+---
+
+# **6. NOTES AND REMARKS SECTION MUST BE INCLUDED**
+
+The Dispatch Note must have a proper **Notes / Remarks** section.
+
+This section should allow:
+
+* warehouse preparation note
+* GM amendment note
+* GM approval comment
+* branch receipt note
+* discrepancy explanation
+
+This must not be omitted.
+
+---
+
+# **7. APPROVAL SECTION MUST BE A FULL DOCUMENT SECTION**
+
+The GM does not approve only a button action.
+The Dispatch Note must contain a proper **Approval Section**.
+
+## **Mandatory GM approval fields**
+
+Show:
+
+* GM approval status
+* Approved / Rejected / Amended / Returned for Correction
+* GM name
+* GM approval date and time
+* GM comment
+* GM amendment note if any
+
+If GM amends, the document must show both:
+
+* original value
+* final approved value
+
+This is especially important for quantities, batch changes, or removed lines.
+
+---
+
+# **8. BRANCH RECEIPT SECTION MUST BE INCLUDED**
+
+The Dispatch Note must also include a dedicated **Branch Receipt Section**.
+
+## **Mandatory receipt fields**
+
+Show:
+
+* Received By
+* Branch Name
+* Date Received
+* Receipt Status
+* Signature / E-signature
+* Branch Notes
+* Discrepancy Flag
+* Discrepancy Details
+
+This section must appear:
+
+* on branch receipt page
+* on final PDF / printed Dispatch Note once receipt is completed
+
+---
+
+# **9. DISCREPANCY SECTION MUST BE EXPLICIT**
+
+If stock received does not match dispatched stock, the Dispatch Note must support discrepancy recording.
+
+## **Mandatory discrepancy fields**
+
+* discrepancy yes/no
+* affected item
+* quantity variance
+* note on missing / damaged / wrong stock
+* branch user who reported discrepancy
+* date and time reported
+
+Do not force the branch to accept a dispatch without this information.
+
+---
+
+# **10. BARCODE MUST BE CLEARLY PLACED**
+
+Each Dispatch Note must contain a barcode linked to the Dispatch Note reference number.
+
+## **Requirements**
+
+* barcode visible in document header or top-right / top section
+* visible in screen preview
+* visible in PDF
+* visible in print
+* large enough to scan if scanning is added later
+
+Do not omit barcode from PDF or print layout.
+
+---
+
+# **11. PDF AND PRINT VERSION MUST MATCH THE FULL DOCUMENT**
+
+Currently the Dispatch Note may be created, but the printable version must include all mandatory fields.
+
+## **Required correction**
+
+The PDF / print version must include:
+
+* full header information
+* full stock item table
+* batch numbers
+* expiry dates
+* quantities
+* notes
+* approval section
+* receipt section
+* barcode
+
+Do not create a shortened PDF that drops important fields.
+
+---
+
+# **12. DISPATCH NOTE MUST BE VERSIONED IF AMENDED**
+
+If GM amends the document, the Dispatch Note should preserve document integrity.
+
+## **Required behavior**
+
+Either:
+
+* keep one document with amendment history clearly shown, or
+* create versioning internally while showing final approved version plus amendment log
+
+At minimum, the visible document must show:
+
+* original prepared quantities
+* final approved quantities
+* amendment note
+* amendment author
+* amendment timestamp
+
+---
+
+# **13. STOCK DETAILS MUST ALWAYS BE SHOWN IN FULL**
+
+At all times, all stock details must appear in full in the Dispatch Note and related approval/receipt views.
+
+## **Mandatory visible stock details**
+
+* Product name
+* Batch number
+* Expiry date
+* Quantity
+* Source warehouse
+* Destination branch
+* Dispatch Note number
+* Status
+
+This rule applies to:
+
+* warehouse dispatch view
+* GM approval view
+* branch receiving view
+* PDF
+* print
+* history view
+
+---
+
+# **14. REQUIRED DOCUMENT LAYOUT SECTIONS**
+
+The Dispatch Note should have these sections in order:
+
+## **A. Header**
+
+* Dispatch Note title
+* reference number
+* barcode
+* date
+* status
+
+## **B. Source and Destination**
+
+* source warehouse details
+* destination branch details
+
+## **C. Dispatch Item Table**
+
+* full stock lines with mandatory details
+
+## **D. Warehouse Notes**
+
+* preparer comments
+
+## **E. GM Approval Section**
+
+* status
+* comments
+* amendment details
+
+## **F. Branch Receipt Section**
+
+* receiver details
+* e-signature
+* notes
+* discrepancy
+
+## **G. Audit Footer**
+
+* created at
+* updated at
+* created by
+* approved by
+* received by
+
+---
+
+# **15. REQUIRED DATABASE / MODEL SNAPSHOT FIELDS**
+
+Ensure the Dispatch Note uses or stores the required snapshots so the printed document does not lose historical meaning if master data later changes.
+
+## **Dispatch header should store or snapshot**
+
+* dispatch_reference
+* source_warehouse_name
+* destination_branch_name
+* prepared_by_name
+* prepared_by_role
+* gm_name
+* gm_status
+* gm_comment
+* barcode_value
+
+## **Dispatch line should store or snapshot**
+
+* product_name_snapshot
+* product_code_snapshot if available
+* batch_number
+* expiry_date
+* unit_of_measure
+* quantity_prepared
+* quantity_approved
+* quantity_received
+* line_note
+
+This is important so the document remains historically accurate.
+
+---
+
+# **16. MANDATORY VALIDATION RULES**
+
+A Dispatch Note should not be considered complete if it is missing mandatory information.
+
+## **Validation rules**
+
+Do not allow final approval / final document generation if mandatory fields are missing, especially:
+
+* Dispatch Note reference
+* source warehouse
+* destination branch
+* product name
+* batch number
+* expiry date
+* quantity
+* prepared by
+* status
+* barcode
+
+If any is missing, flag it clearly for correction.
+
+---
+
+# **17. FINAL MANDATORY FIELD CHECKLIST**
+
+Every Dispatch Note must contain all of the following:
+
+### **Document details**
+
+* Dispatch Note title
+* Dispatch Note number
+* Dispatch date
+* Dispatch status
+* Barcode
+
+### **People / ownership**
+
+* Prepared by
+* Prepared by role
+* GM approver
+* Branch receiver
+
+### **Locations**
+
+* Source warehouse
+* Destination branch
+* destination branch detail
+
+### **Stock lines**
+
+* Product name
+* Product code if available
+* Batch number
+* Expiry date
+* Unit
+* Quantity prepared
+* Quantity approved
+* Quantity received
+* Remarks
+
+### **Workflow sections**
+
+* Warehouse notes
+* GM approval section
+* GM amendment section if amended
+* Branch receipt section
+* E-signature / signature
+* Discrepancy note
+
+### **Audit**
+
+* created at
+* approved at
+* received at
+
+---
+
+# **18. FINAL INSTRUCTION TO REPLIT**
+
+Please keep the existing Dispatch Note workflow, but correct it so the Dispatch Note becomes a **full mandatory stock document**.
+
+The Dispatch Note is currently being created, but it is missing a lot of required information. Add all mandatory document sections and fields, especially:
+
+* Dispatch Note number
+* barcode
+* source warehouse
+* destination branch
+* prepared by
+* status
+* full item table
+* product name
+* batch number
+* expiry date
+* quantities
+* notes
+* GM approval section
+* GM amendment details
+* branch receipt section
+* signature / e-signature
+* discrepancy section
+* full PDF and print view
+
+At all times, stock details must be shown in full, especially:
+**product name, batch number, expiry date, and quantity.**
+
+Do not keep this as a short summary card.
+It must be a complete operational and printable Dispatch Note document.
+
+---
+
+I can also merge this into the previous follow-up stock correction script as one stronger final version.
