@@ -179,11 +179,52 @@ export function enrichProductsWithPricing(apiProducts) {
   });
 }
 
+// ── Health Check / Full Body Check Up services ─────────────────────────────────
+// Treated as products in the POS cart, priced by customer type.
+// Non-member: distributor cashback = N$50 per checkup, consultant earns the rest.
+// Member: flat N$150 (no cashback).
+export const CHECKUP_SERVICES = [
+  {
+    id: 'checkup-standard',
+    name: 'Full Body Check Up',
+    description: 'Full Body Check Up',
+    isCheckup: true,
+    checkupType: 'standard',
+    cp: 200,          // non-member pays
+    dp: 150,          // base (consultant earns this)
+    memberPrice: 150, // member flat rate
+    cashbackPerUnit: 50,
+    consultantEarns: 150,
+    bv: 0,
+    hasPricing: true,
+    isService: true,
+  },
+  {
+    id: 'checkup-report',
+    name: 'Full Body Check Up (With Report)',
+    description: 'Full Body Check Up (With Report)',
+    isCheckup: true,
+    checkupType: 'report',
+    cp: 250,          // non-member pays
+    dp: 200,          // base
+    memberPrice: 150, // member flat rate
+    cashbackPerUnit: 50,
+    consultantEarns: 200,
+    bv: 0,
+    hasPricing: true,
+    isService: true,
+  },
+];
+// ────────────────────────────────────────────────────────────────────────────────
+
 export function calculateCartTotals(cart, isMember) {
   let totalAmount = 0;
   let totalBV = 0;
   const items = cart.map(item => {
-    const price = isMember ? (item.dp || item.price || 0) : (item.cp || item.price || 0);
+    // For services with a dedicated memberPrice, use that when customer is a member
+    const price = isMember
+      ? (item.memberPrice != null ? item.memberPrice : (item.dp || item.price || 0))
+      : (item.cp || item.price || 0);
     const lineTotal = price * item.qty;
     const lineBV = (item.bv || 0) * item.qty;
     totalAmount += lineTotal;

@@ -75,13 +75,20 @@ export function generateReceiptHTML({
       </div>`;
   }
 
-  /* ── Non-member: TWO slips — customer copy then branch copy ── */
+  /* ── Non-member: THREE slips — Customer → Distributor → Branch ── */
   const calcBranchAmt = branchAmount != null ? branchAmount : items.reduce((s, it) => s + ((it.dpPrice || 0) * (it.quantity || it.qty || 1)), 0);
   const calcDistProfit = distributorProfit != null ? distributorProfit : (totalAmount - calcBranchAmt);
   const bvEarned = Number(totalBV || 0);
   const consultLine2 = consultFeeAmount > 0 ? `<div style="margin-top:5px;padding:4px 7px;border-radius:4px;background:#fffbeb;border:1px solid #fcd34d;font-size:9px;color:#92400e;">💼 Consult Fee: N$${consultFeeAmount} — ${consultFeeMode === 'inclusive' ? 'Inclusive' : 'Billed separately'}</div>` : '';
 
-  /* ── SLIP 1: Customer copy — clean, CP prices only ── */
+  // Compute checkup cashback from items flagged with isCheckup
+  const checkupCashbackTotal = items.reduce((s, it) => {
+    if (it.isCheckup && it.cashbackPerUnit) return s + (it.cashbackPerUnit * Number(it.quantity || it.qty || 1));
+    return s;
+  }, 0);
+  const checkupItems = items.filter(it => it.isCheckup);
+
+  /* ── SLIP 1: Customer copy — clean prices only, no internal figures ── */
   const custRows = items.map(item => {
     const qty = Number(item.quantity || item.qty || 1);
     const cp = item.cpPrice != null ? item.cpPrice : (item.unit_price || item.unitPrice || 0);
@@ -125,13 +132,78 @@ export function generateReceiptHTML({
         <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:bold;">
           <span>TOTAL</span><span style="color:#c41e3a;">${formatCurrency(totalAmount)}</span>
         </div>
-        ${cashback > 0 ? `<div style="margin-top:6px;padding:7px;border-radius:6px;background:#fef3c7;border:1.5px solid #f59e0b;text-align:center;"><div style="font-size:12px;font-weight:900;color:#92400e;">🎁 N$${cashback} CASHBACK</div></div>` : ''}
         ${consultLine2}
       </div>
       ${_footer(COMPANY_INFO)}
     </div>`;
 
-  /* ── SLIP 2: Branch/distributor copy — full internal breakdown ── */
+  /* ── SLIP 2: Distributor copy — shows their cashback from checkup services ── */
+  const distRows = items.map(item => {
+    const qty = Number(item.quantity || item.qty || 1);
+    const cp = item.cpPrice != null ? item.cpPrice : (item.unit_price || item.unitPrice || 0);
+    const lineTotal = item.line_total || item.lineTotal || cp * qty;
+    const cbNote = item.isCheckup && item.cashbackPerUnit ? `<div style="font-size:9px;color:#16a34a;font-weight:700;margin-top:1px;">↳ N$${item.cashbackPerUnit} cashback/unit</div>` : '';
+    return `<tr>
+      <td style="padding:3px 6px;font-size:10px;border-bottom:1px solid #f0f0f0;">
+        <div>${item.product_name || item.name || item.description}</div>
+        ${cbNote}
+      </td>
+      <td style="padding:3px 6px;text-align:center;font-size:10px;border-bottom:1px solid #f0f0f0;">${qty}</td>
+      <td style="padding:3px 6px;text-align:right;font-size:10px;border-bottom:1px solid #f0f0f0;">${formatCurrency(cp)}</td>
+      <td style="padding:3px 6px;text-align:right;font-size:10px;border-bottom:1px solid #f0f0f0;font-weight:600;">${formatCurrency(lineTotal)}</td>
+    </tr>`;
+  }).join('');
+
+  const distSlip = `
+    <div style="max-width:400px;margin:0 auto;font-family:Arial,sans-serif;color:#333;">
+      ${_header(COMPANY_INFO, branchDisplay, branchInfo)}
+      <div style="text-align:center;margin:4px 0;padding:3px 0;border-top:1px dashed #166534;border-bottom:1px dashed #166534;">
+        <span style="font-size:11px;font-weight:900;color:#166534;letter-spacing:2px;">— DISTRIBUTOR COPY —</span>
+      </div>
+      <div style="padding:8px 0;border-bottom:1px dashed #ccc;">
+        <table style="width:100%;font-size:11px;">
+          <tr><td style="color:#888;">Receipt #:</td><td style="text-align:right;font-weight:bold;">${receiptNumber}</td></tr>
+          <tr><td style="color:#888;">Date:</td><td style="text-align:right;">${dateStr} ${timeStr}</td></tr>
+          ${customerName ? `<tr><td style="color:#888;">Referred Client:</td><td style="text-align:right;font-weight:bold;">${customerName}</td></tr>` : ''}
+          <tr><td style="color:#888;">Distributor:</td><td style="text-align:right;font-weight:bold;color:#166534;">${referralName || 'Dynapharm Namibia'}${referralNB ? ` (${referralNB})` : ''}</td></tr>
+          <tr><td style="color:#888;">Payment:</td><td style="text-align:right;">${paymentMethod || ''}</td></tr>
+          ${cashier ? `<tr><td style="color:#888;">Cashier:</td><td style="text-align:right;">${cashier}</td></tr>` : ''}
+        </table>
+      </div>
+      <div style="padding:8px 0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="background:#166534;">
+            <th style="padding:4px 6px;text-align:left;font-size:9px;color:white;">Item</th>
+            <th style="padding:4px 6px;text-align:center;font-size:9px;color:white;">Qty</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:white;">Price</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:white;">Total</th>
+          </tr></thead>
+          <tbody>${distRows}</tbody>
+        </table>
+      </div>
+      <div style="border-top:2px solid #333;padding:8px 0;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin-bottom:4px;">
+          <span>Sale Total</span><span style="color:#c41e3a;">${formatCurrency(totalAmount)}</span>
+        </div>
+        ${checkupCashbackTotal > 0 ? `
+        <div style="margin-top:8px;padding:10px;border-radius:8px;background:#f0fdf4;border:2px solid #86efac;">
+          <div style="font-size:11px;font-weight:900;color:#166534;text-align:center;margin-bottom:6px;">💰 YOUR CASHBACK FROM HEALTH CHECK</div>
+          ${checkupItems.map(it => {
+            const qty = Number(it.quantity || it.qty || 1);
+            const cb = (it.cashbackPerUnit || 0) * qty;
+            return `<div style="display:flex;justify-content:space-between;font-size:10px;color:#166534;margin-bottom:2px;"><span>${it.name || it.product_name} ×${qty}</span><span style="font-weight:700;">N$${cb}</span></div>`;
+          }).join('')}
+          <div style="border-top:1.5px solid #86efac;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:13px;font-weight:900;color:#166534;">
+            <span>Total Cashback</span><span>N$${checkupCashbackTotal}</span>
+          </div>
+          <div style="font-size:9px;color:#166534;margin-top:4px;text-align:center;font-style:italic;">Collect from your branch consultant</div>
+        </div>` : ''}
+        ${bvEarned > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#e67e22;margin-top:6px;"><span>BV Earned on this referral</span><span style="font-weight:700;">${bvEarned.toFixed(1)} BV</span></div>` : ''}
+      </div>
+      ${_footer(COMPANY_INFO)}
+    </div>`;
+
+  /* ── SLIP 3: Branch copy — full internal breakdown ── */
   const branchRows = items.map(item => {
     const bv = Number(item.bv || item.lineBV || 0);
     const qty = Number(item.quantity || item.qty || 1);
@@ -147,6 +219,18 @@ export function generateReceiptHTML({
       <td style="padding:3px 5px;text-align:right;font-size:10px;border-bottom:1px solid #f0f0f0;color:#16a34a;font-weight:600;">${formatCurrency(profit)}</td>
     </tr>`;
   }).join('');
+
+  // Branch copy checkup notes
+  const checkupBranchNote = checkupItems.length > 0 ? `
+    <div style="margin-top:6px;padding:7px 9px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;font-size:9px;color:#92400e;">
+      <div style="font-weight:800;margin-bottom:3px;">🩺 HEALTH CHECK BREAKDOWN</div>
+      ${checkupItems.map(it => {
+        const qty = Number(it.quantity || it.qty || 1);
+        const consultEarns = (it.consultantEarns || 0) * qty;
+        const cashbackAmt = (it.cashbackPerUnit || 0) * qty;
+        return `<div style="display:flex;justify-content:space-between;margin-bottom:1px;"><span>${it.name || it.product_name} ×${qty}</span><span>Consult N$${consultEarns} | Cashback N$${cashbackAmt}</span></div>`;
+      }).join('')}
+    </div>` : '';
 
   const branchSlip = `
     <div style="max-width:400px;margin:0 auto;font-family:Arial,sans-serif;color:#333;">
@@ -189,13 +273,15 @@ export function generateReceiptHTML({
           <span style="color:#16a34a;">Distributor Profit (CP−DP)</span><span style="color:#16a34a;font-weight:bold;">${formatCurrency(calcDistProfit)}</span>
         </div>
         ${bvEarned > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#e67e22;margin-top:3px;"><span>BV Earned</span><span>${bvEarned.toFixed(1)} BV</span></div>` : ''}
+        ${checkupCashbackTotal > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#d97706;margin-top:3px;padding:3px 6px;background:#fffbeb;border-radius:4px;border:1px solid #fcd34d;"><span>Distributor Cashback (checkup)</span><span style="font-weight:700;">N$${checkupCashbackTotal}</span></div>` : ''}
         <div style="font-size:9px;color:#94a3b8;margin-top:3px;font-style:italic;">* Distributor profit is off branch books</div>
+        ${checkupBranchNote}
         ${consultLine2}
       </div>
       ${_footer(COMPANY_INFO)}
     </div>`;
 
-  return `${customerSlip}<div style="page-break-after:always;"></div>${branchSlip}`;
+  return `${customerSlip}<div style="page-break-after:always;"></div>${distSlip}<div style="page-break-after:always;"></div>${branchSlip}`;
 }
 
 /* ────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices, CHECKUP_SERVICES } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
@@ -105,7 +105,8 @@ function WalkInSalesTab() {
       const raw = Array.isArray(productsData) ? productsData : productsData.products || [];
       const enriched = enrichProductsWithPricing(raw);
       const packages = getPackagesForPOS();
-      setProducts([...enriched, ...packages]);
+      // Checkup services are included in the full product list so they can be searched
+      setProducts([...CHECKUP_SERVICES, ...enriched, ...packages]);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -163,6 +164,10 @@ function WalkInSalesTab() {
   const cartData = calculateCartTotals(cart, isMember);
   const branchProfit = !isMember ? cartData.items.reduce((s, item) => s + ((item.cp || 0) - (item.dp || 0)) * item.qty, 0) : 0;
   const branchAmount = !isMember ? cartData.items.reduce((s, item) => s + (item.dp || 0) * item.qty, 0) : 0;
+  // Cashback owed to referring distributor from checkup services (non-member only)
+  const checkupCashbackTotal = !isMember
+    ? cartData.items.filter(i => i.isCheckup).reduce((s, i) => s + (i.cashbackPerUnit || 0) * i.qty, 0)
+    : 0;
 
   const openModal = () => {
     setCustomerType('registered'); setRegSearch(''); setRegResults([]); setSelectedReg(null);
@@ -204,10 +209,15 @@ function WalkInSalesTab() {
         line_total: item.lineTotal,
         bv: item.lineBV,
         lineProfit: !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null,
-        dpPrice: item.dp || 0,
+        dpPrice: isMember ? (item.memberPrice != null ? item.memberPrice : item.dp || 0) : (item.dp || 0),
         cpPrice: item.cp || 0,
         isPackage: item.isPackage || false,
         components: item.isPackage && Array.isArray(item.components) ? item.components : undefined,
+        // Checkup-specific fields (used in receipt distributor copy)
+        isCheckup: item.isCheckup || false,
+        checkupType: item.checkupType || null,
+        cashbackPerUnit: !isMember && item.isCheckup ? (item.cashbackPerUnit || 0) : 0,
+        consultantEarns: item.consultantEarns || null,
       }));
 
       const saleData = {
@@ -555,25 +565,34 @@ function WalkInSalesTab() {
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
                     ) : filteredProducts.slice(0, 80).map(p => {
-                      const price = isMember ? (p.dp || p.price) : (p.cp || p.price);
+                      const price = p.isCheckup
+                        ? (isMember ? p.memberPrice : p.cp)
+                        : (isMember ? (p.dp || p.price) : (p.cp || p.price));
                       const inCart = cart.find(c => c.id === p.id);
                       const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
+                      const borderColor = inCart ? '#c41e3a' : p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#f0e8ea';
+                      const bgColor = inCart ? '#fff0f3' : p.isCheckup ? '#f0fdfa' : p.isPackage ? '#eff6ff' : '#fff';
                       return (
                         <button key={p.id} onClick={() => addToCart(p)} type="button"
-                          style={{ padding: '12px 11px', border: inCart ? '2.5px solid #c41e3a' : p.isPackage ? '1.5px solid #3b82f6' : '1.5px solid #f0e8ea', borderRadius: 13, background: inCart ? '#fff0f3' : p.isPackage ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
+                          style={{ padding: '12px 11px', border: inCart ? `2.5px solid ${borderColor}` : `1.5px solid ${borderColor}`, borderRadius: 13, background: bgColor, cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
                           {inCart && (
                             <div style={{ position: 'absolute', top: 8, right: 8, background: '#c41e3a', color: '#fff', borderRadius: '50%', width: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inCart.qty}</div>
                           )}
-                          {p.isPackage && !inCart && (
+                          {p.isCheckup && !inCart && (
+                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#0d9488', color: '#fff', borderRadius: 6, padding: '1px 5px', fontSize: '0.6rem', fontWeight: 800 }}>CHECK</div>
+                          )}
+                          {p.isPackage && !inCart && !p.isCheckup && (
                             <div style={{ position: 'absolute', top: 8, right: 8, background: '#3b82f6', color: '#fff', borderRadius: 6, padding: '1px 5px', fontSize: '0.6rem', fontWeight: 800 }}>PKG</div>
                           )}
-                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: 28 }}>{p.name || p.description}</div>
-                          {p.isPackage && <div style={{ fontSize: '0.65rem', color: '#1d4ed8', marginBottom: 4 }}>📦 {p.components?.length || 0}-product bundle</div>}
+                          <div style={{ fontWeight: 600, color: p.isCheckup ? '#0d9488' : '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: 28 }}>{p.name || p.description}</div>
+                          {p.isCheckup && <div style={{ fontSize: '0.65rem', color: '#0d9488', marginBottom: 4 }}>🩺 Health Check Service</div>}
+                          {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.65rem', color: '#1d4ed8', marginBottom: 4 }}>📦 {p.components?.length || 0}-product bundle</div>}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                            <span style={{ fontWeight: 900, color: '#c41e3a', fontSize: '0.95rem' }}>{formatCurrency(price)}</span>
+                            <span style={{ fontWeight: 900, color: p.isCheckup ? '#0d9488' : '#c41e3a', fontSize: '0.95rem' }}>{formatCurrency(price)}</span>
                             {p.bv > 0 && <span style={{ fontSize: '0.67rem', color: '#d97706', fontWeight: 700, background: '#fffbeb', padding: '1px 5px', borderRadius: 8 }}>{p.bv} BV</span>}
                           </div>
-                          {!isMember && profit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', marginTop: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
+                          {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.68rem', color: '#166534', marginTop: 4, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback to distributor</div>}
+                          {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', marginTop: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
                         </button>
                       );
                     })}
@@ -707,7 +726,7 @@ function WalkInSalesTab() {
               {!isMember && (
                 <div style={{ background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', borderRadius: 13, padding: '13px 16px', border: '1.5px solid #fecaca' }}>
                   <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#9b1c2e', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Non-Member Sale Summary</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: `1fr 1fr ${checkupCashbackTotal > 0 ? '1fr 1fr' : '1fr'}`, gap: 8, textAlign: 'center' }}>
                     <div style={{ background: '#fff', borderRadius: 9, padding: '9px 6px', border: '1px solid #fecaca' }}>
                       <div style={{ fontSize: '0.65rem', color: '#c41e3a', marginBottom: 3, fontWeight: 700 }}>Customer Pays</div>
                       <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '0.95rem' }}>{formatCurrency(cartData.totalAmount)}</div>
@@ -720,8 +739,14 @@ function WalkInSalesTab() {
                       <div style={{ fontSize: '0.65rem', color: '#d97706', marginBottom: 3, fontWeight: 700 }}>Distributor BV</div>
                       <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '0.95rem' }}>{cartData.totalBV.toFixed(1)}</div>
                     </div>
+                    {checkupCashbackTotal > 0 && (
+                      <div style={{ background: '#f0fdf4', borderRadius: 9, padding: '9px 6px', border: '1px solid #86efac' }}>
+                        <div style={{ fontSize: '0.65rem', color: '#166534', marginBottom: 3, fontWeight: 700 }}>🩺 Check Cashback</div>
+                        <div style={{ fontWeight: 900, color: '#166534', fontSize: '0.95rem' }}>N${checkupCashbackTotal}</div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ marginTop: 10, fontSize: '0.73rem', color: '#9b1c2e', textAlign: 'center', fontWeight: 600 }}>🧾🧾 Two receipts will print: Customer copy → Staff/Distributor copy</div>
+                  <div style={{ marginTop: 10, fontSize: '0.73rem', color: '#9b1c2e', textAlign: 'center', fontWeight: 600 }}>🧾🧾🧾 Three receipts will print: Customer → Distributor → Branch</div>
                 </div>
               )}
             </div>
