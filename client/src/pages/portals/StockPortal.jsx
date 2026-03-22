@@ -1121,6 +1121,7 @@ function CountryStockTab() {
   const [loading, setLoading] = useState(true);
   const [showDetail, setShowDetail] = useState(false);
   const [adjRecord, setAdjRecord] = useState(null);
+  const [search, setSearch] = useState('');
 
   const loadBatches = useCallback(() => {
     setLoading(true);
@@ -1137,11 +1138,21 @@ function CountryStockTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const totalQty = batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const totalValue = batches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const filteredBatches = search.trim()
+    ? batches.filter(b => {
+        const q = search.toLowerCase();
+        return (b.product_name || '').toLowerCase().includes(q) ||
+               (b.batch_number || '').toLowerCase().includes(q) ||
+               (b.notes || '').toLowerCase().includes(q) ||
+               (b.barcode || '').toLowerCase().includes(q);
+      })
+    : batches;
+
+  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+  const totalValue = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
 
   const byProduct = {};
-  batches.forEach(b => {
+  filteredBatches.forEach(b => {
     const name = b.product_name || 'Unknown';
     if (!byProduct[name]) byProduct[name] = { product_name: name, total_qty: 0, total_value: 0, batch_count: 0, earliest_expiry: null };
     byProduct[name].total_qty += Number(b.quantity || 0);
@@ -1154,24 +1165,62 @@ function CountryStockTab() {
   });
   const productRows = Object.values(byProduct).sort((a, b) => b.total_qty - a.total_qty);
 
+  const expiringBatches = batches.filter(b => {
+    if (!b.expiry_date) return false;
+    const days = Math.floor((new Date(b.expiry_date) - new Date()) / 86400000);
+    return days >= 0 && days <= 90;
+  });
+  const lowStockProducts = productRows.filter(p => p.total_qty < 20);
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardBody>
+          <div className="flex items-start gap-4">
+            <Globe size={32} className="text-blue-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-blue-900">Country Stock — National Inventory Pool</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                All imported stock arrives here first. Distribute to warehouses using the Distribution tab.
+                Country Stock is the master source — stock only leaves through Distribution to Warehouses.
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard title="Distinct Products" value={productRows.length} color="blue" icon={<Globe size={24} />} />
         <StatCard title="Total Units" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
         <StatCard title="Total CIF Value" value={formatCurrency(totalValue)} color="purple" icon={<DollarSign size={24} />} />
+        <StatCard title="Low Stock Items" value={lowStockProducts.length} color={lowStockProducts.length > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
+
+      {expiringBatches.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          ⚠️ <strong>{expiringBatches.length}</strong> batch{expiringBatches.length !== 1 ? 'es' : ''} expiring within 90 days. Consider distributing these first.
+        </div>
+      )}
 
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
-              <h3 className="font-bold text-gray-800">Country Stock — Product Summary</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Inventory received via Supplier Import. Use the Supplier Import tab to add new shipments.</p>
+              <h3 className="font-bold text-gray-800">Country Stock — {showDetail ? 'Batch Detail' : 'Product Summary'}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {search ? `Filtered results for "${search}"` : 'Inventory received via Supplier Import. Use the Distribution tab to allocate to warehouses.'}
+              </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <div className="relative">
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search product, batch, barcode..."
+                  className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-52" />
+              </div>
+              <Button size="sm" variant="secondary" onClick={loadBatches}>↺ Refresh</Button>
               <Button size="sm" variant="secondary" onClick={() => setShowDetail(v => !v)}>
-                {showDetail ? 'Show Summary' : 'Show Batch Detail'}
+                {showDetail ? 'Summary View' : 'Batch Detail'}
               </Button>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = productRows.map(r => `<tr><td>${r.product_name||''}</td><td>${r.batch_count||0}</td><td>${r.total_qty||0}</td><td>${r.earliest_expiry?formatDate(r.earliest_expiry):'—'}</td><td>${formatCurrency(r.total_value||0)}</td></tr>`).join('');
@@ -1190,7 +1239,11 @@ function CountryStockTab() {
                   {r.total_qty.toLocaleString()}
                 </span>
               )},
-              { header: 'Earliest Expiry', render: r => r.earliest_expiry ? formatDate(r.earliest_expiry) : '—' },
+              { header: 'Earliest Expiry', render: r => {
+                if (!r.earliest_expiry) return '—';
+                const days = Math.floor((new Date(r.earliest_expiry) - new Date()) / 86400000);
+                return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600 font-semibold' : ''}>{formatDate(r.earliest_expiry)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+              }},
               { header: 'CIF Value', render: r => formatCurrency(r.total_value) },
             ]}
             data={productRows}
@@ -1204,6 +1257,9 @@ function CountryStockTab() {
               { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
               { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
               { header: 'CIF/Unit', render: r => formatCurrency(Number(r.unit_price || 0)) },
+              { header: 'Shipment Ref', render: r => {
+                try { const m = JSON.parse(r.metadata || '{}'); return <span className="font-mono text-xs text-gray-500">{m.shipping_ref || '—'}</span>; } catch { return '—'; }
+              }},
               { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-xs block">{r.notes || '—'}</span> },
               { header: 'Edit', render: r => (
                 <button onClick={() => setAdjRecord(r)} title="Request correction"
@@ -1212,7 +1268,7 @@ function CountryStockTab() {
                 </button>
               )},
             ]}
-            data={batches}
+            data={filteredBatches}
             emptyMessage="No country stock batches found."
           />
         )}
@@ -1233,8 +1289,10 @@ function WarehouseTab({ name }) {
   const [outboundTransfers, setOutboundTransfers] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [form, setForm] = useState({ product_name: '', quantity: '', notes: '' });
+  const [showDispatch, setShowDispatch] = useState(false);
+  const [dispatchCart, setDispatchCart] = useState([]);
+  const [dispatchBranch, setDispatchBranch] = useState('');
+  const [dispatchNote, setDispatchNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [receivingId, setReceivingId] = useState(null);
   const [alert, setAlert] = useState(null);
@@ -1254,7 +1312,6 @@ function WarehouseTab({ name }) {
         setBatches(batchData);
         setIncomingTransfers(inbound.filter(t => t.status !== 'cancelled'));
         setOutboundTransfers(outbound.filter(t => t.status !== 'cancelled'));
-        // Filter movements relevant to this warehouse
         const locKey = location.toLowerCase();
         setMovements(movData.filter(m => {
           const src = (m.source_location || '').toLowerCase();
@@ -1268,7 +1325,7 @@ function WarehouseTab({ name }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleMarkReceived = async (transfer) => {
+  const handleReceiveDistribution = async (transfer) => {
     setReceivingId(transfer.id);
     try {
       const items = Array.isArray(transfer.items) ? transfer.items : [];
@@ -1280,7 +1337,7 @@ function WarehouseTab({ name }) {
               quantity: Number(item.quantity),
               location,
               batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
-              notes: `Received from transfer ${transfer.id}`,
+              notes: `Received from Country Stock — transfer ${transfer.id}`,
             });
           }
         }
@@ -1290,11 +1347,11 @@ function WarehouseTab({ name }) {
           quantity: transfer.quantity,
           location,
           batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
-          notes: `Received from transfer ${transfer.id}`,
+          notes: `Received from Country Stock — transfer ${transfer.id}`,
         });
       }
-      await api.stock.updateTransfer(transfer.id, { status: 'delivered', received_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: `Stock received into ${name} Warehouse` });
+      await api.stock.updateTransfer(transfer.id, { status: 'received', received_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: `Stock received into ${name} Warehouse from Country Stock` });
       loadData();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message || 'Failed to receive transfer' });
@@ -1303,26 +1360,26 @@ function WarehouseTab({ name }) {
     }
   };
 
-  const handleTransferIn = async (e) => {
+  const handleDispatchToBranch = async (e) => {
     e.preventDefault();
-    if (!form.product_name || !form.quantity || Number(form.quantity) <= 0) {
-      setAlert({ type: 'error', msg: 'Product and quantity are required' });
-      return;
-    }
+    if (!dispatchBranch) { setAlert({ type: 'error', msg: 'Please select a destination branch' }); return; }
+    if (dispatchCart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to dispatch' }); return; }
     setSubmitting(true);
     try {
+      const items = dispatchCart.map(c => ({ productName: c.description, quantity: c.qty }));
       await api.stock.createTransfer({
-        from_location: 'country_stock',
-        to_location: location,
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
+        from_location: location,
+        to_location: dispatchBranch,
+        items,
         status: 'pending_approval',
-        notes: form.notes,
+        dispatchNotes: dispatchNote || undefined,
         created_by: user?.full_name || user?.username,
       });
-      setAlert({ type: 'success', msg: `Transfer request submitted to GM for approval. Pending: Country Stock → ${name} Warehouse` });
-      setForm({ product_name: '', quantity: '', notes: '' });
-      setShowTransfer(false);
+      setAlert({ type: 'success', msg: `Dispatch submitted for GM approval. ${dispatchCart.length} product(s) → ${fmtLocation(dispatchBranch)}` });
+      setDispatchCart([]);
+      setDispatchBranch('');
+      setDispatchNote('');
+      setShowDispatch(false);
       loadData();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
@@ -1331,15 +1388,23 @@ function WarehouseTab({ name }) {
     }
   };
 
-  const statusColor = { pending: 'warning', pending_approval: 'warning', approved: 'success', dispatched: 'info', in_transit: 'info', received: 'success', delivered: 'success', rejected: 'danger', cancelled: 'default' };
+  const statusColor = { pending: 'warning', pending_approval: 'warning', submitted: 'info', approved: 'success', dispatched: 'info', in_transit: 'info', received: 'success', delivered: 'success', rejected: 'danger', cancelled: 'default' };
 
-  const pendingApproval = incomingTransfers.filter(t => t.status === 'pending_approval');
-  const approvedIncoming = incomingTransfers.filter(t => t.status === 'approved' || t.status === 'in_transit' || t.status === 'pending');
-  const receivedTransfers = incomingTransfers.filter(t => t.status === 'received' || t.status === 'delivered');
+  const incomingFromCountry = incomingTransfers.filter(t => {
+    const from = (t.fromWarehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
+    return from === 'country_stock';
+  });
+  const pendingReceipt = incomingFromCountry.filter(t => t.status === 'submitted' || t.status === 'in_transit' || t.status === 'pending' || t.status === 'approved');
+  const receivedHistory = incomingFromCountry.filter(t => t.status === 'received' || t.status === 'delivered');
+
+  const branchDestinations = [
+    { value: '', label: 'Select destination branch...' },
+    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: b })),
+  ];
 
   const whSubTabs = [
     { id: 'inventory', label: `📦 Inventory (${batches.length})` },
-    { id: 'incoming', label: `📥 Incoming (${incomingTransfers.filter(t => t.status !== 'received' && t.status !== 'delivered').length})${pendingApproval.length > 0 ? ` ⏳` : ''}` },
+    { id: 'incoming', label: `📥 Incoming (${pendingReceipt.length})${pendingReceipt.length > 0 ? ' 🔔' : ''}` },
     { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
     { id: 'movements', label: `📊 Movements (${movements.length})` },
   ];
@@ -1350,20 +1415,18 @@ function WarehouseTab({ name }) {
     <div className="space-y-5">
       {alert && <Alert type={alert.type} className="mb-2" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
-      {/* Warehouse header */}
-      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>🏭 {name} Warehouse</div>
           <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: 4 }}>
             {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.quantity || 0), 0)} total units in stock
           </div>
         </div>
-        <Button size="sm" onClick={() => setShowTransfer(true)} style={{ background: '#fff', color: '#c41e3a', fontWeight: 700 }}>
-          <Plus size={15} className="mr-1" /> Request Stock In
+        <Button size="sm" onClick={() => setShowDispatch(true)} style={{ background: '#fff', color: '#c41e3a', fontWeight: 700 }}>
+          <Truck size={15} className="mr-1" /> Dispatch to Branch
         </Button>
       </div>
 
-      {/* Sub-tabs */}
       <div className="flex gap-2 flex-wrap">
         {whSubTabs.map(t => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border-none transition-all"
@@ -1373,10 +1436,14 @@ function WarehouseTab({ name }) {
         ))}
       </div>
 
-      {/* Inventory sub-tab */}
       {subTab === 'inventory' && (
         <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3></CardHeader>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3>
+              <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+            </div>
+          </CardHeader>
           <Table
             columns={[
               { header: 'Product', key: 'product_name' },
@@ -1391,85 +1458,122 @@ function WarehouseTab({ name }) {
               )},
             ]}
             data={batches}
-            emptyMessage={`No confirmed stock in ${name} warehouse yet`}
+            emptyMessage={`No confirmed stock in ${name} warehouse yet. Receive incoming distributions from Country Stock to populate inventory.`}
           />
         </Card>
       )}
 
-      {/* Incoming transfers sub-tab */}
       {subTab === 'incoming' && (
         <div className="space-y-4">
-          {pendingApproval.length > 0 && (
+          <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200">
+            <CardBody>
+              <p className="text-sm text-blue-800">
+                <strong>Incoming from Country Stock</strong> — These are distributions allocated to {name} Warehouse.
+                Click "Confirm Receipt" to add the stock to your warehouse inventory.
+              </p>
+            </CardBody>
+          </Card>
+
+          {pendingReceipt.length > 0 && (
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-yellow-700">⏳ Awaiting GM Approval ({pendingApproval.length})</h3>
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">These transfers are waiting for General Manager approval before stock can be received.</p>
+                <h3 className="font-bold text-gray-800">📥 Pending Receipt ({pendingReceipt.length})</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Distributions from Country Stock awaiting your confirmation.</p>
               </CardHeader>
               <Table
                 columns={[
-                  { header: 'Product', render: r => <span className="font-medium">{r.product_name || (r.items?.[0]?.productName)}</span> },
-                  { header: 'Qty', render: r => <span className="font-bold text-orange-600">{r.quantity || r.items?.reduce((s, i) => s + Number(i.quantity), 0) || '—'}</span> },
+                  { header: 'Products', render: r => {
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    if (items.length > 0) return <span className="text-sm">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
+                    return <span className="font-medium">{r.product_name || '—'}</span>;
+                  }},
+                  { header: 'Total Qty', render: r => {
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    const total = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                    return <span className="font-bold text-primary">{total}</span>;
+                  }},
                   { header: 'From', render: r => fmtLocation(r.fromWarehouse || r.from_location) },
-                  { header: 'Status', render: r => <Badge variant="warning">Pending GM Approval</Badge> },
+                  { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{(r.status || 'pending').replace(/_/g, ' ')}</Badge> },
                   { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
+                  { header: 'Action', render: r => (
+                    <Button size="sm" variant="success" onClick={() => handleReceiveDistribution(r)} disabled={receivingId === r.id}>
+                      {receivingId === r.id ? 'Receiving...' : '✓ Confirm Receipt'}
+                    </Button>
+                  )},
                 ]}
-                data={pendingApproval}
-                emptyMessage="No pending approvals"
+                data={pendingReceipt}
+                emptyMessage="No distributions pending receipt"
               />
             </Card>
           )}
-          <Card>
-            <CardHeader>
-              <h3 className="font-bold text-gray-800">{name} Warehouse — Approved Incoming Transfers</h3>
-              <p className="text-xs text-gray-500 mt-0.5">GM-approved transfers ready to receive. Click "Mark Received" to add to inventory.</p>
-            </CardHeader>
-            <Table
-              columns={[
-                { header: 'Product', render: r => <span className="font-medium">{r.product_name || (Array.isArray(r.items) && r.items[0] ? r.items[0].productName : '—')}</span> },
-                { header: 'Qty', render: r => <span className="font-semibold text-primary">{r.quantity || '—'}</span> },
-                { header: 'From', render: r => fmtLocation(r.fromWarehouse || r.from_location) },
-                { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status}</Badge> },
-                { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-                { header: 'Action', render: r => (r.status === 'received' || r.status === 'delivered') ? (
-                  <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Received</span>
-                ) : (
-                  <Button size="sm" variant="success" onClick={() => handleMarkReceived(r)} disabled={receivingId === r.id}>
-                    {receivingId === r.id ? 'Receiving...' : '📥 Mark Received'}
-                  </Button>
-                )},
-              ]}
-              data={[...approvedIncoming, ...receivedTransfers]}
-              emptyMessage={`No approved incoming transfers for ${name} warehouse`}
-            />
-          </Card>
+
+          {receivedHistory.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800">✓ Receipt History</h3>
+              </CardHeader>
+              <Table
+                columns={[
+                  { header: 'Products', render: r => {
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
+                    return <span className="text-sm">{r.product_name || '—'}</span>;
+                  }},
+                  { header: 'Total Qty', render: r => {
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                  }},
+                  { header: 'Status', render: r => <Badge variant="success">Received</Badge> },
+                  { header: 'Received By', render: r => <span className="text-xs">{r.receivedBy || r.received_by || '—'}</span> },
+                  { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
+                ]}
+                data={receivedHistory}
+                emptyMessage="No receipt history yet"
+              />
+            </Card>
+          )}
+
+          {pendingReceipt.length === 0 && receivedHistory.length === 0 && (
+            <EmptyState icon={<Package size={48} />} title="No Incoming Distributions" description={`No stock has been distributed to ${name} Warehouse from Country Stock yet. Use the Distribution tab to allocate stock.`} />
+          )}
         </div>
       )}
 
-      {/* Outbound transfers sub-tab */}
       {subTab === 'outbound' && (
         <Card>
           <CardHeader>
-            <h3 className="font-bold text-gray-800">{name} Warehouse — Outbound Deliveries to Branches</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Stock dispatched from this warehouse to branches.</p>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-gray-800">{name} Warehouse — Outbound to Branches</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Dispatches from this warehouse to branches. Requires GM approval before branch can receive.</p>
+              </div>
+              <Button size="sm" onClick={() => setShowDispatch(true)}>
+                <Truck size={14} className="mr-1" /> New Dispatch
+              </Button>
+            </div>
           </CardHeader>
           <Table
             columns={[
-              { header: 'Product', render: r => <span className="font-medium">{r.product_name || (Array.isArray(r.items) && r.items[0] ? r.items[0].productName : '—')}</span> },
-              { header: 'Qty', render: r => r.quantity || '—' },
+              { header: 'Products', render: r => {
+                const items = Array.isArray(r.items) ? r.items : [];
+                if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
+                return <span className="font-medium">{r.product_name || '—'}</span>;
+              }},
+              { header: 'Total Qty', render: r => {
+                const items = Array.isArray(r.items) ? r.items : [];
+                return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+              }},
               { header: 'To Branch', render: r => fmtLocation(r.toBranch || r.to_location) },
-              { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status?.replace(/_/g, ' ')}</Badge> },
+              { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{(r.status || 'pending').replace(/_/g, ' ')}</Badge> },
               { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-              { header: 'Received By', render: r => r.receivedBy || <span className="text-xs text-gray-400">—</span> },
+              { header: 'Notes', render: r => <span className="text-xs text-gray-500">{r.dispatchNotes || r.dispatch_notes || '—'}</span> },
             ]}
             data={outboundTransfers}
-            emptyMessage={`No outbound deliveries from ${name} warehouse yet`}
+            emptyMessage={`No outbound dispatches from ${name} warehouse yet`}
           />
         </Card>
       )}
 
-      {/* Movements sub-tab */}
       {subTab === 'movements' && (
         <Card>
           <CardHeader>
@@ -1481,10 +1585,9 @@ function WarehouseTab({ name }) {
               <button onClick={() => {
                 const rows = movements.map(m => `<tr><td>${m.product_name||'-'}</td><td>${m.movement_type||'-'}</td><td>${m.quantity||'-'}</td><td>${fmtLocation(m.source_location)}</td><td>${fmtLocation(m.destination_location)}</td><td>${formatDateTime(m.created_at)}</td></tr>`).join('');
                 printDocument(`${name} Warehouse Movements`, `<table><thead><tr><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>🖨️ Print</button>
+              }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print</button>
             </div>
           </CardHeader>
-          {/* Summary cards */}
           <div className="px-4 pb-3 grid grid-cols-3 gap-3">
             {['received','dispatched','adjustment'].map(type => {
               const total = movements.filter(m => (m.movement_type||'').includes(type)).reduce((s, m) => s + Number(m.quantity || 0), 0);
@@ -1512,31 +1615,34 @@ function WarehouseTab({ name }) {
         </Card>
       )}
 
-      {/* Request Transfer In Modal */}
-      <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={`Request Stock Transfer to ${name} Warehouse`} size="md">
-        <form onSubmit={handleTransferIn} className="p-6 space-y-4">
+      <Modal open={showDispatch} onClose={() => setShowDispatch(false)} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
+        <form onSubmit={handleDispatchToBranch} className="p-6 space-y-4">
           <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.83rem', color: '#92400e' }}>
-            ⚠️ This request will be sent to the <strong>General Manager</strong> for approval before stock is moved. Source: <strong>Country Stock → {name} Warehouse</strong>
+            ⚠️ <strong>GM Approval Required:</strong> This dispatch will be sent to the General Manager for approval. Once approved, the branch can confirm receipt.
           </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Product <span className="text-red-500">*</span></label>
-            <select
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              value={form.product_name}
-              onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-              required
-            >
-              <option value="">Select a product...</option>
-              {getLiveProductList().map(p => (
-                <option key={p.description} value={p.description}>{p.description}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Source</label>
+              <div className="px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700">
+                🏭 {name} Warehouse
+              </div>
+            </div>
+            <Select label="Destination Branch" options={branchDestinations} value={dispatchBranch} onChange={e => setDispatchBranch(e.target.value)} />
           </div>
-          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
-          <Textarea label="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Reason for stock request, urgency level, etc..." />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
+            <ProductMultiCart cart={dispatchCart} onCartChange={setDispatchCart} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Notes (optional)</label>
+            <textarea className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 resize-y" rows={2}
+              value={dispatchNote} onChange={e => setDispatchNote(e.target.value)} placeholder="Delivery instructions, urgency, etc..." />
+          </div>
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting...' : '📤 Submit for GM Approval'}</Button>
-            <Button variant="secondary" type="button" onClick={() => setShowTransfer(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting || dispatchCart.length === 0}>
+              {submitting ? 'Submitting...' : `📤 Submit for GM Approval (${dispatchCart.reduce((s, c) => s + c.qty, 0)} units)`}
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => setShowDispatch(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
@@ -1550,76 +1656,74 @@ function WarehouseTab({ name }) {
 }
 
 function DistributionTab({ branch }) {
-  const [form, setForm] = useState({ from_location: '', to_location: branch && branch !== 'all' ? branch : '', product_name: '', quantity: '' });
+  const [cart, setCart] = useState([]);
+  const [destination, setDestination] = useState('');
+  const [transferNote, setTransferNote] = useState('');
   const [adjRecord, setAdjRecord] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [recentTransfers, setRecentTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [barcodeInput, setBarcodeInput] = useState('');
+  const [countryBatches, setCountryBatches] = useState([]);
 
-  useEffect(() => {
-    api.stock.transfers()
-      .then(d => setRecentTransfers(Array.isArray(d) ? d : d.transfers || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [transferData, batchData] = await Promise.allSettled([
+        api.stock.transfers(),
+        api.stock.batches(),
+      ]);
+      if (transferData.status === 'fulfilled') {
+        const all = Array.isArray(transferData.value) ? transferData.value : transferData.value?.transfers || [];
+        setRecentTransfers(all);
+      }
+      if (batchData.status === 'fulfilled') {
+        const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
+        setCountryBatches(all.filter(b => b.location === 'country_stock'));
+      }
+    } catch (_) {}
+    finally { setLoading(false); }
   }, []);
 
-  const warehouses = [
-    { value: '', label: 'Select source...' },
-    { value: 'country_stock', label: 'Country Stock' },
-    { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
-    { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const warehouseDestinations = [
+    { value: '', label: 'Select destination warehouse...' },
+    { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
+    { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
   ];
 
-  const destinations = [
-    { value: '', label: 'Select destination...' },
-    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: b })),
-    { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
-    { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
-  ];
-
-  const handleBarcodeSearch = () => {
-    if (!barcodeInput) return;
-    const code = barcodeInput.toUpperCase().trim();
-    const idx = code.startsWith('DYN-') ? parseInt(code.replace('DYN-', ''), 10) : -1;
-    if (idx >= 0 && idx < PRICE_LIST.length) {
-      setForm(f => ({ ...f, product_name: PRICE_LIST[idx].description }));
-      setAlert({ type: 'success', msg: `Product found: ${PRICE_LIST[idx].description}` });
-    } else {
-      const found = getLiveProductList().find(p => p.description.toLowerCase().includes(barcodeInput.toLowerCase()));
-      if (found) {
-        setForm(f => ({ ...f, product_name: found.description }));
-        setAlert({ type: 'success', msg: `Product found: ${found.description}` });
-      } else {
-        setAlert({ type: 'error', msg: 'Product not found for scanned barcode' });
-      }
-    }
-    setBarcodeInput('');
-  };
+  const availableByProduct = {};
+  countryBatches.forEach(b => {
+    const name = b.product_name || '';
+    if (!availableByProduct[name]) availableByProduct[name] = 0;
+    availableByProduct[name] += Number(b.quantity || 0);
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.from_location || !form.to_location || !form.product_name || !form.quantity) {
-      setAlert({ type: 'error', msg: 'All fields are required' });
-      return;
-    }
-    if (form.from_location === form.to_location) {
-      setAlert({ type: 'error', msg: 'Source and destination must be different' });
+    if (!destination) { setAlert({ type: 'error', msg: 'Please select a destination warehouse' }); return; }
+    if (cart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to distribute' }); return; }
+    const overAllocated = cart.filter(c => c.qty > (availableByProduct[c.description] || 0));
+    if (overAllocated.length > 0) {
+      setAlert({ type: 'error', msg: `Insufficient Country Stock for: ${overAllocated.map(c => `${c.description} (need ${c.qty}, available ${availableByProduct[c.description] || 0})`).join(', ')}` });
       return;
     }
     setSubmitting(true);
     try {
+      const items = cart.map(c => ({ productName: c.description, quantity: c.qty }));
       await api.stock.createTransfer({
-        from_location: form.from_location,
-        to_location: form.to_location,
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
+        from_location: 'country_stock',
+        to_location: destination,
+        items,
+        status: 'submitted',
+        dispatchNotes: transferNote || undefined,
       });
-      setAlert({ type: 'success', msg: 'Distribution transfer created successfully' });
-      setForm({ from_location: '', to_location: '', product_name: '', quantity: '' });
-      const d = await api.stock.transfers().catch(() => []);
-      setRecentTransfers(Array.isArray(d) ? d : d.transfers || []);
+      setAlert({ type: 'success', msg: `Distribution of ${cart.length} product(s) to ${fmtLocation(destination)} submitted successfully` });
+      setCart([]);
+      setDestination('');
+      setTransferNote('');
+      await loadData();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally {
@@ -1627,63 +1731,95 @@ function DistributionTab({ branch }) {
     }
   };
 
-  // Only warehouse→branch transfers
-  const WAREHOUSE_KEYS = ['country_stock', 'windhoek_warehouse', 'ondangwa_warehouse'];
+  const WAREHOUSE_KEYS = ['windhoek_warehouse', 'ondangwa_warehouse'];
   const distTransfers = recentTransfers.filter(t => {
-    const from = (t.from_location || '').toLowerCase().replace(/\s+/g, '_');
-    const to = (t.to_location || '').toLowerCase().replace(/\s+/g, '_');
-    const fromIsWarehouse = WAREHOUSE_KEYS.includes(from);
-    const toIsBranch = !WAREHOUSE_KEYS.includes(to);
-    if (!fromIsWarehouse || !toIsBranch) return false;
-    if (branch !== 'all') {
-      return to === branch || from === branch;
-    }
-    return true;
+    const from = (t.fromWarehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
+    const to = (t.toBranch || t.to_location || '').toLowerCase().replace(/\s+/g, '_');
+    return from === 'country_stock' && WAREHOUSE_KEYS.includes(to);
   });
+
+  const statusBadge = (status) => {
+    const s = (status || 'pending').toLowerCase();
+    if (s === 'received') return <Badge variant="success">Received</Badge>;
+    if (s === 'in_transit' || s === 'submitted') return <Badge variant="info">{s === 'submitted' ? 'Submitted' : 'In Transit'}</Badge>;
+    if (s === 'cancelled' || s === 'rejected') return <Badge variant="danger">{s === 'cancelled' ? 'Cancelled' : 'Rejected'}</Badge>;
+    return <Badge variant="warning">{status || 'Pending'}</Badge>;
+  };
+
+  const totalCartQty = cart.reduce((s, c) => s + c.qty, 0);
 
   return (
     <div className="space-y-6">
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
 
+      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+        <CardBody>
+          <div className="flex items-start gap-4">
+            <Truck size={32} className="text-green-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-green-900">Distribution — Country Stock → Warehouses</h3>
+              <p className="text-sm text-green-700 mt-1">
+                Distribute imported stock from the national Country Stock pool to Windhoek or Ondangwa Warehouse.
+                Warehouse managers will confirm receipt, then dispatch to branches.
+              </p>
+              <p className="text-xs text-green-600 mt-1 font-semibold">
+                Flow: Country Stock → Warehouse Receipt → Warehouse Dispatch to Branch → GM Approval → Branch Receipt
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Create Distribution Transfer</h3></CardHeader>
         <CardBody>
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <label className="text-sm font-medium text-blue-800 block mb-1">Barcode Scan / Search</label>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 px-3 py-2 rounded-lg border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                placeholder="Scan barcode or type product code (e.g. DYN-0001)..."
-                value={barcodeInput}
-                onChange={e => setBarcodeInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeSearch(); } }}
-              />
-              <Button type="button" size="sm" onClick={handleBarcodeSearch}>Search</Button>
-            </div>
-          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select label="Source Warehouse" options={warehouses} value={form.from_location} onChange={e => setForm(f => ({ ...f, from_location: e.target.value }))} />
-              <Select label="Destination" options={destinations} value={form.to_location} onChange={e => setForm(f => ({ ...f, to_location: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Product (or use barcode scan above)</label>
-                <select
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                  value={form.product_name}
-                  onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-                  required
-                >
-                  <option value="">Select product...</option>
-                  {getLiveProductList().map(p => (
-                    <option key={p.description} value={p.description}>{p.description}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700">Source</label>
+                <div className="px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700">
+                  🌍 Country Stock
+                </div>
               </div>
-              <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
+              <Select label="Destination Warehouse" options={warehouseDestinations} value={destination} onChange={e => setDestination(e.target.value)} />
             </div>
-            <Button type="submit" disabled={submitting}><Truck size={16} /> {submitting ? 'Creating...' : 'Create Distribution'}</Button>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
+              <ProductMultiCart cart={cart} onCartChange={setCart} />
+              {cart.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {cart.map(c => {
+                    const avail = availableByProduct[c.description] || 0;
+                    const over = c.qty > avail;
+                    return (
+                      <div key={c.description} className={`flex items-center justify-between px-3 py-1.5 rounded text-xs ${over ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-100'}`}>
+                        <span className="font-medium">{c.description}</span>
+                        <span className={over ? 'text-red-600 font-bold' : 'text-gray-500'}>
+                          Qty: {c.qty} / Available: {avail}{over ? ' ⚠️ OVER' : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Transfer Note (optional)</label>
+              <textarea
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 resize-y"
+                rows={2} value={transferNote} onChange={e => setTransferNote(e.target.value)}
+                placeholder="Add notes for this distribution..."
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <Button type="submit" disabled={submitting || cart.length === 0}>
+                <Truck size={16} /> {submitting ? 'Distributing...' : `Distribute ${totalCartQty} Unit${totalCartQty !== 1 ? 's' : ''} to Warehouse`}
+              </Button>
+              {cart.length > 0 && <span className="text-sm text-gray-500">{cart.length} product(s), {totalCartQty} total units</span>}
+            </div>
           </form>
         </CardBody>
       </Card>
@@ -1691,25 +1827,46 @@ function DistributionTab({ branch }) {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Recent Distribution Transfers <span className="text-xs font-normal text-gray-400">(Warehouse → Branch)</span></h3>
-            <Button size="sm" variant="secondary" onClick={() => {
-              const rows = distTransfers.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${fmtLocation(r.from_location)||''}</td><td>${fmtLocation(r.to_location)||''}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.status||'Pending'}</td></tr>`).join('');
-              printDocument('Distribution Transfers', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
-            }}><Printer size={14} /> Print Report</Button>
+            <h3 className="font-bold text-gray-800">Distribution History <span className="text-xs font-normal text-gray-400">(Country Stock → Warehouses)</span></h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = distTransfers.map(r => {
+                  const items = Array.isArray(r.items) ? r.items : [];
+                  const prodList = items.length > 0 ? items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ') : (r.product_name || '—');
+                  const totalQ = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                  return `<tr><td>${formatDateTime(r.created_at)}</td><td>${fmtLocation(r.fromWarehouse || r.from_location)}</td><td>${fmtLocation(r.toBranch || r.to_location)}</td><td>${prodList}</td><td>${totalQ}</td><td>${r.status || 'Pending'}</td></tr>`;
+                }).join('');
+                printDocument('Distribution History — Country Stock → Warehouses', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Products</th><th>Total Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+            </div>
           </div>
         </CardHeader>
         {loading ? <LoadingSpinner /> : (
           <Table
             columns={[
               { header: 'Date', render: r => formatDateTime(r.created_at) },
-              { header: 'From', render: r => <span className="text-xs font-medium">{fmtLocation(r.from_location)}</span> },
-              { header: 'To', render: r => <span className="text-xs font-medium text-blue-700">{fmtLocation(r.to_location)}</span> },
-              { header: 'Product', key: 'product_name' },
-              { header: 'Qty', key: 'quantity' },
-              { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
+              { header: 'To Warehouse', render: r => <span className="text-xs font-medium text-blue-700">{fmtLocation(r.toBranch || r.to_location)}</span> },
+              { header: 'Products', render: r => {
+                const items = Array.isArray(r.items) ? r.items : [];
+                if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
+                return <span className="text-xs">{r.product_name || '—'}</span>;
+              }},
+              { header: 'Total Qty', render: r => {
+                const items = Array.isArray(r.items) ? r.items : [];
+                return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+              }},
+              { header: 'Status', render: r => statusBadge(r.status) },
+              { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-[120px] block">{r.dispatchNotes || r.dispatch_notes || '—'}</span> },
               { header: '', render: r => (
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>${fmtLocation(r.from_location)||''}</td></tr><tr><td>To</td><td>${fmtLocation(r.to_location)||''}</td></tr><tr><td>Product</td><td>${r.product_name||''}</td></tr><tr><td>Quantity</td><td>${r.quantity||''}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table>`)}>
+                  <Button size="sm" variant="ghost" onClick={() => {
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    const prodRows = items.length > 0
+                      ? items.map(i => `<tr><td>${i.productName || i.product_name}</td><td>${i.quantity}</td></tr>`).join('')
+                      : `<tr><td>${r.product_name || '—'}</td><td>${r.quantity || 0}</td></tr>`;
+                    printDocument(`Distribution Note — ${r.id}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>Country Stock</td></tr><tr><td>To</td><td>${fmtLocation(r.toBranch || r.to_location)}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table><br/><h3>Products</h3><table><thead><tr><th>Product</th><th>Qty</th></tr></thead><tbody>${prodRows}</tbody></table>`);
+                  }}>
                     <Printer size={12} />
                   </Button>
                   <button onClick={() => setAdjRecord(r)} title="Request correction"
@@ -1720,7 +1877,7 @@ function DistributionTab({ branch }) {
               )},
             ]}
             data={distTransfers}
-            emptyMessage={branch !== 'all' ? `No distribution transfers for ${fmtLocation(branch)}` : 'No distribution transfers'}
+            emptyMessage="No distribution transfers yet. Use the form above to distribute Country Stock to warehouses."
           />
         )}
       </Card>

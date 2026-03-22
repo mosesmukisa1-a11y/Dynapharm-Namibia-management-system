@@ -72,11 +72,25 @@ The Consultant Portal (`/consultant`) provides comprehensive client management, 
 - Reports saved via consultant portal include `consultation_fee`, `consultant_credit`, `referral_credit`, and `referral_distributor` fields
 - `api.reports.update(id, data)` now available for updating report dispensing state
 
-## Stock Portal Transfers
-- **Transfer API** (`/api/stock/transfers`): Accepts all field name variants — `from_location`/`to_location`, `fromWarehouse`/`toBranch`, `toWarehouse`/`to_warehouse`, `fromLocation` — all normalized to DB columns `from_warehouse`/`to_branch`
-- **No mandatory branch requirement** for warehouse-to-warehouse or country-to-warehouse transfers — only destination is required
-- **Frontend sends** `from_location` and `to_location` for all transfer types (Distribution, Transfers, Warehouse tabs)
-- **`updateTransfer`** sends `id` in request body (not URL path) matching the PUT handler contract
-- **Distribution tab**: Destination dropdown labeled "Destination" (not "Destination Branch") since it includes warehouses and branches
-- **Transfer response** includes `from_location`, `to_location`, `product_name`, `quantity` at top level for table display
+## Stock Management Workflow (Correct Flow)
+The stock management system follows this exact business process:
+
+1. **Supplier Import** → Stock arrives from Malaysia, recorded via Supplier Import tab → goes into **Country Stock**
+2. **Country Stock** → National inventory pool. All imported stock lands here first. Searchable by product, batch, barcode. Shows low stock alerts and expiry warnings.
+3. **Distribution** (Country Stock → Warehouses ONLY) → User distributes stock from Country Stock to either Windhoek Warehouse or Ondangwa Warehouse. Multi-product cart support. Status: submitted → received.
+4. **Warehouse Receipt** → Warehouse managers see incoming distributions in their Incoming sub-tab and click "Confirm Receipt" to add stock to warehouse inventory.
+5. **Warehouse Dispatch to Branch** (requires GM approval) → Warehouse managers use "Dispatch to Branch" to create transfers from warehouse → branch. Status: `pending_approval`. Multi-product cart, branch destination selection.
+6. **GM Approval** → GM Portal Approvals → Transfer Approvals sub-tab shows pending dispatches. GM approves → `approved` or rejects → `rejected`.
+7. **Branch Receipt** → Branch Portal Receive tab shows GM-approved transfers. Branch confirms receipt → `delivered`. Branch inventory increases.
+
+### Transfer Status Flow
+- **Distribution (Country→Warehouse)**: `submitted` → `received`
+- **Warehouse→Branch Dispatch**: `pending_approval` → `approved` (GM) → `delivered` (Branch receipt)
+- **Rejected**: `pending_approval` → `rejected`
+
+### Key Architecture
+- **Transfer API** (`/api/stock/transfers`): Accepts all field name variants — `from_location`/`to_location`, `fromWarehouse`/`toBranch` — all normalized to DB columns `from_warehouse`/`to_branch`
+- **PATCH handler** maps `notes` → `dispatch_notes`, stores `approved_by`/`rejected_by` in `metadata` JSONB
+- **Distribution tab**: Source fixed to Country Stock, destinations ONLY warehouses (not branches)
+- **Warehouse tabs**: "Dispatch to Branch" button (replaces old "Request Stock In"), 4 sub-tabs: Inventory, Incoming, Outbound, Movements
 - **Dispatch notes** table has unique index on `transfer_id` for ON CONFLICT upsert support

@@ -1,0 +1,541 @@
+Use this **corrected Replit implementation script**. It reflects the **actual stock workflow** you have now clarified and should be used to **redesign the stock management portal properly**.
+
+---
+
+# **REPLIT SCRIPT – REDESIGN STOCK MANAGEMENT PORTAL WITH CORRECT WORKFLOW**
+
+## **Important instruction**
+
+Do not rebuild this as a simplified demo.
+Do not use placeholder logic.
+Do not keep the old incorrect flow.
+
+**You must redesign the stock management portal using this exact business process:**
+
+## **Correct stock flow**
+
+1. **Supplier shipment arrives**
+2. Shipment is received into **Country Stock**
+3. User goes to **Distribution**
+4. User selects:
+
+   * **Source:** Country Stock
+   * **Destination:** either
+
+     * Ondangwa Warehouse, or
+     * Windhoek Warehouse
+5. Distribution transfer is created
+6. Warehouse managers then log into their respective warehouse portals
+7. Warehouse managers dispatch stock from warehouse to branches
+8. Dispatched order must wait for **GM approval**
+9. Once GM approves:
+
+   * it reflects on the **Branch Dashboard**
+   * branch confirms receipt of stock
+10. After branch confirmation:
+
+* warehouse inventory updates
+* branch inventory updates
+* country stock updates correctly where applicable
+
+11. Entire process must be traceable, auditable, and reflected in reports
+
+---
+
+# **1. REDESIGN THE STOCK MANAGEMENT MODULE STRUCTURE**
+
+Create the stock management workflow in these levels:
+
+## **A. Supplier Shipment / Import Receiving**
+
+This is the first level.
+
+### Required function
+
+Create a module called **Supplier Shipment** or **Import Receiving**.
+
+### It must allow:
+
+* shipment reference number
+* supplier name
+* shipment date
+* product list
+* batch number
+* expiry date
+* quantities
+* CIF cost
+* landed cost if available
+* barcode
+* notes
+* upload supporting documents if available
+
+### Result
+
+When shipment is confirmed received:
+
+* stock must automatically go into **Country Stock**
+* this must not go directly to branches
+* this must not go directly to warehouses
+* this is the master national stock pool
+
+---
+
+## **B. Country Stock**
+
+Create a visible stock level called **Country Stock**.
+
+### Country Stock must:
+
+* hold all imported stock first
+* show current national inventory before redistribution
+* reduce only when stock is distributed to warehouses
+* be searchable by:
+
+  * product
+  * batch
+  * expiry
+  * barcode
+  * shipment reference
+* generate stock reports
+* show available, reserved, dispatched, and received quantities where needed
+
+---
+
+## **C. Distribution Module**
+
+This is the second major step.
+
+Create a **Distribution** section where user can initiate transfers.
+
+### In Distribution, user must select:
+
+* **Source:** Country Stock
+* **Destination:**
+
+  * Ondangwa Warehouse
+  * Windhoek Warehouse
+
+### Required fields
+
+* transfer reference number
+* date
+* source
+* destination
+* products
+* quantities
+* transfer note
+* status
+
+### Workflow
+
+1. User selects stock from Country Stock
+2. User allocates quantities to one warehouse only per transaction unless multi-line transfers are supported properly
+3. System validates that enough stock exists
+4. Once distribution is submitted:
+
+   * Country Stock should move that quantity into an allocated / in-transit state
+   * receiving warehouse must see incoming stock
+5. When warehouse confirms receipt:
+
+   * warehouse inventory increases
+   * Country Stock reduces accordingly from actual available stock
+   * movement history is recorded
+
+### Statuses for this level
+
+Use statuses such as:
+
+* Draft
+* Submitted
+* In Transit
+* Received
+* Cancelled
+
+---
+
+# **2. CREATE TWO WAREHOUSE PORTALS**
+
+Create separate warehouse operational views for:
+
+* **Ondangwa Warehouse**
+* **Windhoek Warehouse**
+
+These may sit under one warehouse management module, but operationally each warehouse manager must only see their own warehouse stock and actions unless user role allows both.
+
+---
+
+## **Warehouse manager functions**
+
+Warehouse managers must be able to:
+
+1. View received stock from Country Stock
+2. View current warehouse inventory
+3. Search by:
+
+   * product
+   * batch
+   * expiry
+   * barcode
+4. Dispatch stock to branches
+5. View pending dispatches
+6. Print dispatch notes
+7. Track stock movements
+8. See low stock alerts
+9. See expiry alerts
+10. View branch transfer history
+
+---
+
+# **3. BRANCH DISPATCH WORKFLOW FROM WAREHOUSE**
+
+This is the next correct stage.
+
+Warehouse managers must dispatch stock **from warehouse to branches**, not directly from country stock.
+
+## Branch dispatch flow
+
+1. Warehouse manager opens warehouse portal
+2. Selects branch destination
+3. Selects products and quantities
+4. Creates dispatch order
+5. Dispatch order is submitted
+6. Dispatch order waits for **GM approval**
+7. If GM approves:
+
+   * branch dashboard shows incoming stock pending receipt
+8. Branch must confirm receipt
+9. After branch confirms:
+
+   * warehouse inventory reduces
+   * branch inventory increases
+   * dispatch status changes to received
+   * stock movement reports update
+
+---
+
+## **Branch destinations**
+
+Use the official branches already in the system for dispatch destinations.
+
+---
+
+# **4. GM APPROVAL LAYER**
+
+This approval is mandatory.
+
+Create a **GM Approval Queue** for stock dispatches from warehouse to branches.
+
+## GM must be able to:
+
+* view dispatch reference
+* view source warehouse
+* view destination branch
+* view product list
+* view quantities
+* approve
+* reject
+* add note/comment
+
+## Approval logic
+
+### Before GM approval:
+
+* branch must not receive inventory
+* warehouse stock may be marked as reserved / pending dispatch, but not fully deducted as received by branch
+* dispatch should remain in pending approval state
+
+### After GM approval:
+
+* branch dashboard must show pending incoming stock
+* branch can confirm receipt
+
+### If rejected:
+
+* dispatch returns to warehouse queue
+* reserved quantities are released back correctly
+* status updates clearly
+
+### Suggested statuses
+
+* Draft
+* Submitted
+* Pending GM Approval
+* Approved
+* Rejected
+* Awaiting Branch Receipt
+* Received
+
+---
+
+# **5. BRANCH RECEIPT CONFIRMATION**
+
+This is the last operational step.
+
+On the **Branch Dashboard**, create an **Incoming Stock / Pending Receipt** section.
+
+## Branch must be able to:
+
+* view approved incoming dispatches
+* open dispatch details
+* confirm receipt
+* optionally record:
+
+  * date received
+  * receiver name
+  * condition note
+  * discrepancy note if any
+
+## After branch confirms receipt:
+
+* branch inventory increases
+* warehouse inventory decreases finally
+* dispatch marked received
+* movement history updates
+* reports update
+* stock balances update across the system
+
+---
+
+# **6. INVENTORY UPDATE RULES**
+
+This is critical. Apply proper inventory rules.
+
+## A. Supplier shipment received
+
+* increases **Country Stock**
+
+## B. Country Stock distributed to warehouse
+
+* reduces Country Stock
+* increases warehouse inventory after warehouse receipt confirmation
+* if using in-transit logic, mark properly before final receipt
+
+## C. Warehouse dispatch to branch
+
+* does **not** immediately increase branch stock before approval and receipt
+* after GM approval, dispatch becomes visible to branch
+* after branch confirms receipt:
+
+  * warehouse stock reduces
+  * branch stock increases
+
+## D. Country stock visibility
+
+Country stock must represent the national source stock and remain mathematically accurate after all allocations and receipts.
+
+## E. Inventory consistency
+
+At all times the system must keep consistent totals for:
+
+* Country Stock
+* Ondangwa Warehouse
+* Windhoek Warehouse
+* each Branch
+* stock movement logs
+* reports
+
+---
+
+# **7. REQUIRED DATABASE / LOGIC DESIGN**
+
+Rework the stock data structure so it supports real movement stages.
+
+## Core entities to create or repair
+
+1. **SupplierShipment**
+2. **SupplierShipmentItem**
+3. **CountryStockLedger**
+4. **WarehouseTransfer**
+5. **WarehouseTransferItem**
+6. **WarehouseInventory**
+7. **BranchDispatch**
+8. **BranchDispatchItem**
+9. **BranchInventory**
+10. **StockMovementLog**
+11. **ApprovalLog**
+12. **GoodsReceipt / BranchReceiptConfirmation**
+
+## Every movement must capture:
+
+* reference number
+* source location
+* destination location
+* product
+* batch
+* expiry
+* quantity
+* status
+* created by
+* approved by
+* received by
+* timestamps
+
+---
+
+# **8. PORTALS / DASHBOARDS TO UPDATE**
+
+## **Stock Management Portal**
+
+Must include:
+
+* Supplier Shipment
+* Country Stock
+* Distribution
+* Warehouse inventory visibility
+* stock movement reports
+* low stock alerts
+* expiry alerts
+
+## **Warehouse Portal**
+
+Must include:
+
+* warehouse stock
+* incoming transfers from country stock
+* dispatch to branches
+* dispatch history
+* stock reports
+
+## **GM Portal**
+
+Must include:
+
+* pending approvals for warehouse-to-branch dispatch
+* approval history
+* stock movement summary
+
+## **Branch Dashboard**
+
+Must include:
+
+* incoming approved stock
+* receipt confirmation button
+* branch inventory
+* stock receipt history
+
+---
+
+# **9. REQUIRED REPORTS**
+
+Build printable and filterable reports for:
+
+1. Supplier shipments
+2. Country stock balance
+3. Country-to-warehouse transfers
+4. Warehouse stock balance
+5. Warehouse-to-branch dispatches
+6. Pending GM approvals
+7. Branch receipt confirmations
+8. Full stock movement trail
+9. Batch and expiry report
+10. Low stock report
+11. Write-off report if already existing in code
+
+Allow:
+
+* PDF print
+* export where already supported
+* date filters
+* location filters
+* product filters
+
+---
+
+# **10. USER ROLE RULES**
+
+Restrict actions properly.
+
+## Stock Management users
+
+Can:
+
+* receive supplier shipment
+* manage country stock
+* distribute to warehouses
+* view national stock reports
+
+## Warehouse managers
+
+Can:
+
+* see only their warehouse
+* receive from country stock
+* dispatch to branches
+* track dispatches
+
+## GM
+
+Can:
+
+* approve or reject warehouse-to-branch dispatches
+* view stock summaries
+
+## Branch users
+
+Can:
+
+* view approved incoming stock
+* confirm stock receipt
+* view branch stock
+
+---
+
+# **11. UI FLOW TO IMPLEMENT**
+
+## Main stock menu should be:
+
+1. Supplier Shipment
+2. Country Stock
+3. Distribution
+4. Warehouses
+
+   * Ondangwa Warehouse
+   * Windhoek Warehouse
+5. Branch Dispatches
+6. GM Approvals
+7. Branch Receipts
+8. Reports
+
+---
+
+# **12. IMPORTANT CORRECTIONS TO OLD WRONG LOGIC**
+
+Remove the wrong assumption that stock moves directly from import to branch workflow.
+
+The correct chain is:
+
+**Supplier Shipment → Country Stock → Distribution to Warehouse → Warehouse Dispatch to Branch → GM Approval → Branch Receipt Confirmation → Inventory Updates**
+
+That exact order must drive the portal logic.
+
+---
+
+# **13. BUSINESS RULES TO ENFORCE**
+
+1. No branch should receive stock directly from supplier shipment
+2. No branch should receive stock directly from country stock
+3. Only warehouses dispatch to branches
+4. Every warehouse-to-branch dispatch must wait for GM approval
+5. Branch inventory must only increase after branch confirms receipt
+6. Warehouse inventory must reflect actual dispatch and final receipt correctly
+7. Country stock must reduce only through approved distribution to warehouse
+8. Every step must be logged
+9. Every step must have status tracking
+10. Every step must be printable and auditable
+
+---
+
+# **14. FINAL INSTRUCTION TO REPLIT**
+
+Please redesign the stock management portal based on the exact workflow below and remove the previous incorrect logic:
+
+**Supplier Shipment → Country Stock → Distribution from Country Stock to Ondangwa Warehouse or Windhoek Warehouse → Warehouse Manager Dispatch to Branch → GM Approval → Branch Receipt Confirmation → Automatic inventory updates for Country Stock, Warehouse, and Branch**
+
+Do not simplify this.
+Do not leave any stage static.
+Do not skip approval logic.
+Do not skip receipt confirmation logic.
+Use proper inventory ledgers, movement logs, statuses, and dashboards so the whole process works end-to-end.
+
+
+
