@@ -370,10 +370,10 @@ const STATIC_PRICE_LIST = [
   {description:"BEE POLLEN CAPSULE (100's)",dp:320,cp:390,bv:75,cif:136},
   {description:"BODY CONTOUR CREAM",dp:290,cp:377,bv:75,cif:123},
   {description:"COMPACT POWDER 12g",dp:190,cp:247,bv:55,cif:81},
-  {description:"D.I GROW (GREEN) (1 LITER)",dp:300,cp:390,bv:38,cif:128},
-  {description:"D.I GROW (GREEN) (4LITERS)",dp:650,cp:780,bv:115,cif:276},
-  {description:"D.I GROW (RED) (1 LITER)",dp:240,cp:312,bv:38,cif:102},
-  {description:"D.I GROW (RED) (4LITERS)",dp:560,cp:728,bv:115,cif:238},
+  {description:"D.I GROW (GREEN) (1 LITER)",dp:300,cp:400,bv:38,cif:128},
+  {description:"D.I GROW (GREEN) (4LITERS)",dp:800,cp:1000,bv:115,cif:340},
+  {description:"D.I GROW (RED) (1 LITER)",dp:300,cp:400,bv:38,cif:128},
+  {description:"D.I GROW (RED) (4LITERS)",dp:650,cp:800,bv:115,cif:276},
   {description:"D.I GROW BIO-8 1 LTR",dp:220,cp:286,bv:27,cif:94},
   {description:"D.I GROW K 1 LTR",dp:220,cp:286,bv:30,cif:94},
   {description:"D.I. INSTANT GOAT'S MILK POWDER PREMIX 20's x 21g",dp:325,cp:400,bv:43,cif:138},
@@ -412,6 +412,10 @@ const STATIC_PRICE_LIST = [
   {description:"INSTANT CEREAL 15's x 32g",dp:325,cp:423,bv:48,cif:138},
   {description:"INSTANT CEREAL 30's x 32g",dp:510,cp:610,bv:95,cif:217},
   {description:"INSTANT CHOC W/ GANO 30's x 30g",dp:325,cp:423,bv:43,cif:138},
+  {description:"INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP",dp:260,cp:320,bv:38,cif:110},
+  {description:"INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)",dp:250,cp:300,bv:38,cif:107},
+  {description:"INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20's x 21g)",dp:260,cp:320,bv:38,cif:110},
+  {description:"INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g",dp:260,cp:320,bv:38,cif:110},
   {description:"INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g",dp:260,cp:320,bv:38,cif:110},
   {description:"INSTANT COFFEE W/ TONGKAT ALI 20's x 21g",dp:260,cp:320,bv:38,cif:110},
   {description:"INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30's x 5g",dp:276,cp:359,bv:59,cif:117},
@@ -498,15 +502,19 @@ async function initProductPricesTable() {
       )
     `);
     await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
-    let inserted = 0;
+    let inserted = 0, updated = 0;
     for (const p of STATIC_PRICE_LIST) {
       const res = await query(
-        `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (description) DO NOTHING`,
+        `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (description) DO UPDATE
+           SET dp=EXCLUDED.dp, cp=EXCLUDED.cp, cif=EXCLUDED.cif, bv=EXCLUDED.bv
+           WHERE product_prices.updated_by = 'system'`,
         [p.description, p.dp, p.cp, p.cif, p.bv]
       );
-      if (res.rowCount > 0) inserted++;
+      if (res.rowCount > 0) { if (res.command === 'INSERT') inserted++; else updated++; }
     }
     if (inserted > 0) console.log(`Seeded ${inserted} new products into product_prices`);
+    if (updated > 0) console.log(`Corrected prices for ${updated} system-seeded products`);
     for (const pkg of STATIC_PACKAGE_LIST) {
       await query(
         `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
