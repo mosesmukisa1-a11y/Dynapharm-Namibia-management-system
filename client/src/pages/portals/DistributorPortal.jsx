@@ -264,23 +264,56 @@ function DashboardTab() {
             {myOrders.length === 0 ? (
               <p className="text-gray-400 text-sm text-center py-6">No orders yet. Visit the Shop tab to place your first order.</p>
             ) : (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {myOrders.slice(0, 10).map((order, idx) => (
-                  <div key={order.id || idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{order.order_number || `Order #${idx + 1}`}</p>
-                      <p className="text-xs text-gray-400">{formatDate(order.created_at)}</p>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {myOrders.slice(0, 10).map((order, idx) => {
+                  const items = (() => { try { return typeof order.items === 'string' ? JSON.parse(order.items) : (Array.isArray(order.items) ? order.items : []); } catch { return []; } })();
+                  const orderBV = items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
+                  return (
+                    <div key={order.id || idx} className="border border-gray-100 rounded-lg overflow-hidden">
+                      <div className="flex justify-between items-center p-3 bg-gray-50">
+                        <div>
+                          <p className="text-sm font-bold text-gray-800">{order.order_number || `Order #${idx + 1}`}</p>
+                          <p className="text-xs text-gray-400">{formatDate(order.created_at)}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {items.length} product{items.length !== 1 ? 's' : ''} · BV: <span className="font-semibold text-blue-600">{orderBV.toFixed(1)}</span>
+                            {order.delivery_method && <span className="ml-2">· {order.delivery_method}</span>}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-primary">{formatCurrency(order.total_amount || order.subtotal || 0)}</p>
+                          <Badge variant={
+                            order.status === 'delivered' ? 'success' :
+                            order.status === 'shipped' ? 'info' :
+                            order.status === 'processing' ? 'warning' : 'default'
+                          }>{order.status || 'pending'}</Badge>
+                          {order.payment_status === 'paid'
+                            ? <p className="text-xs text-green-600 font-semibold mt-0.5">✓ Paid</p>
+                            : <p className="text-xs text-orange-500 font-semibold mt-0.5">⏳ Pending</p>}
+                        </div>
+                      </div>
+                      {items.length > 0 && (
+                        <table className="w-full text-xs border-collapse">
+                          <tbody>
+                            {items.map((item, j) => {
+                              const qty = Number(item.quantity || 1);
+                              const price = Number(item.unit_price || item.dp || 0);
+                              const bv = Number(item.bv || 0);
+                              return (
+                                <tr key={j} className={j % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
+                                  <td className="py-1 px-3 font-medium text-gray-800">{item.product_name || item.name || '-'}</td>
+                                  <td className="py-1 px-2 text-center text-gray-600">×{qty}</td>
+                                  <td className="py-1 px-2 text-right text-gray-600">{formatCurrency(price)}</td>
+                                  <td className="py-1 px-2 text-right text-blue-600 text-xs">{(bv * qty).toFixed(1)} BV</td>
+                                  <td className="py-1 px-3 text-right font-bold text-green-700">{formatCurrency(price * qty)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-primary">{formatCurrency(order.total_amount || order.subtotal || 0)}</p>
-                      <Badge variant={
-                        order.status === 'delivered' ? 'success' :
-                        order.status === 'shipped' ? 'info' :
-                        order.status === 'processing' ? 'warning' : 'default'
-                      }>{order.status || 'pending'}</Badge>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardBody>

@@ -463,30 +463,105 @@ function ApprovalsTab() {
   const filteredItems = getFilteredItems();
   const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length;
 
+  const renderStockItems = (r) => {
+    let items = [];
+    try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+    if (!items.length) return <span className="text-xs text-gray-400 italic">No item detail</span>;
+    const totalVal = items.reduce((s, i) => s + Number(i.quantity || i.qty || 0) * Number(i.unit_price || i.dp || i.cif || 0), 0);
+    return (
+      <div>
+        <table className="w-full text-xs border-collapse mt-1">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="text-left py-1 px-2 border-b text-gray-500">Product</th>
+              <th className="text-center py-1 px-2 border-b text-gray-500">Qty</th>
+              <th className="text-right py-1 px-2 border-b text-gray-500">Unit</th>
+              <th className="text-right py-1 px-2 border-b text-gray-500">DP Price</th>
+              <th className="text-right py-1 px-2 border-b text-gray-500">Line Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, i) => {
+              const qty = Number(item.quantity || item.qty || 0);
+              const dp = Number(item.unit_price || item.dp || 0);
+              return (
+                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="py-1 px-2 border-b font-medium">{item.product_name || item.name || item.description || '-'}</td>
+                  <td className="py-1 px-2 border-b text-center font-bold">{qty}</td>
+                  <td className="py-1 px-2 border-b text-right text-gray-500">{item.unit || 'pcs'}</td>
+                  <td className="py-1 px-2 border-b text-right">{dp > 0 ? formatCurrency(dp) : '—'}</td>
+                  <td className="py-1 px-2 border-b text-right font-bold text-green-700">{dp > 0 ? formatCurrency(dp * qty) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {totalVal > 0 && (
+            <tfoot>
+              <tr className="bg-red-50">
+                <td colSpan={4} className="py-1 px-2 text-right font-bold text-gray-700 border-t">Total Value:</td>
+                <td className="py-1 px-2 text-right font-bold text-red-700 border-t">{formatCurrency(totalVal)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    );
+  };
+
   const renderRequests = () => {
     if (filteredItems.length === 0) {
       return <EmptyState icon={<CheckCircle size={48} />} title="No Pending Approvals" description={`No pending ${approvalTab === 'all' ? '' : approvalTab + ' '}requests require your approval.`} />;
     }
 
     return (
-      <Card>
-        <Table
-          columns={[
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Type', render: r => <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : 'success'}>{r._type || 'other'}</Badge> },
-            { header: 'Requester', render: r => r.employee_name || r.requested_by || r.user || '-' },
-            { header: 'Details', render: r => r.reason || r.description || r.product_name || '-' },
-            { header: 'Amount/Qty', render: r => r.amount ? formatCurrency(r.amount) : (r.quantity || '-') },
-            { header: 'Actions', render: r => (
-              <div className="flex gap-1">
-                <Button size="sm" variant="success" onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'approved' })}>Approve</Button>
-                <Button size="sm" variant="danger" onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'rejected' })}>Reject</Button>
+      <div className="space-y-3">
+        {filteredItems.map(r => (
+          <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-4">
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : 'success'}>
+                      {r._type === 'cash' ? '💵 Cash' : r._type === 'leave' ? '📅 Leave' : '📦 Stock'}
+                    </Badge>
+                    <span className="font-bold text-gray-800">{r.request_number || r.id}</span>
+                    <span className="text-xs text-gray-500">{formatDateTime(r.created_at)}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {r.employee_name || r.requested_by || r.user || '—'}
+                    {r.branch && <span className="ml-2 text-xs text-gray-400 font-normal">({r.branch || r.requesting_branch})</span>}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {r.reason || r.description || r.notes || r.product_name || ''}
+                  </p>
+                  {r.amount && (
+                    <p className="text-base font-bold text-red-700 mt-1">{formatCurrency(r.amount)}</p>
+                  )}
+                </div>
+                <div className="flex gap-2 ml-2">
+                  <button onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'approved' })}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer">
+                    ✓ Approve
+                  </button>
+                  <button onClick={() => setNoteModal({ type: r._type, id: r.id, action: 'rejected' })}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 cursor-pointer">
+                    ✕ Reject
+                  </button>
+                </div>
               </div>
-            )},
-          ]}
-          data={filteredItems}
-        />
-      </Card>
+
+              {r._type === 'stock' && r.items && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Product Line Items {r.requesting_branch && `· From: ${r.requesting_branch}`} {r.request_type && `· Type: ${r.request_type}`}
+                  </p>
+                  {renderStockItems(r)}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     );
   };
 

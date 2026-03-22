@@ -1329,20 +1329,159 @@ function printReceivingStockReport(requests, branch) {
   printStockDocument('Receiving Stock Report', `<table><thead><tr><th>Request #</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No receiving records</td></tr>'}</tbody></table>`, branch);
 }
 
-function printSalesReportDoc(sales, period, branch) {
-  const filtered = period === 'today'
-    ? sales.filter(s => new Date(s.created_at||s.timestamp).toDateString() === new Date().toDateString())
-    : sales.filter(s => { const d = new Date(s.created_at||s.timestamp); const n = new Date(); return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear(); });
-  const total = filtered.reduce((s, r) => s + Number(r.total||r.totalAmount||r.total_amount||0), 0);
-  const memberCount = filtered.filter(r => (r.customerType||r.customer_type)==='member').length;
-  const walkinCount = filtered.length - memberCount;
-  const rows = filtered.map(r => `<tr><td>${r.receipt_number||r.saleNumber||r.id||'-'}</td><td>${(r.customerType||r.customer_type)==='member'?'Member':'Walk-in'}</td><td>${r.distributor_name||r.customer_name||r.customerName||'Walk-in'}</td><td>${r.paymentMethod||r.payment_method||'-'}</td><td style="font-weight:700;color:#166534">N$ ${Number(r.total||r.totalAmount||r.total_amount||0).toFixed(2)}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`).join('');
-  const summary = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">${[
-    ['Total Sales',`N$ ${total.toFixed(2)}`,'#c41e3a'],
-    ['Transactions',filtered.length,'#1e40af'],
-    ['Members / Walk-in',`${memberCount} / ${walkinCount}`,'#166534']
-  ].map(([l,v,c])=>`<div style="background:#f9f5f5;border:1.5px solid #f0e8ea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">${l}</div><div style="font-size:14px;font-weight:900;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>`;
-  printStockDocument(`Sales Report — ${period==='today'?'Daily':'Monthly'}`, `<p style="color:#64748b;margin-bottom:12px;font-size:10px">Period: <strong>${period==='today'?new Date().toDateString():new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})}</strong></p>${summary}<table><thead><tr><th>Receipt #</th><th>Type</th><th>Customer</th><th>Payment</th><th>Amount</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No sales in this period</td></tr>'}</tbody>${filtered.length>0?`<tfoot><tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td><strong>N$ ${total.toFixed(2)}</strong></td><td></td></tr></tfoot>`:''}</table>`, branch);
+function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions) {
+  const now = new Date();
+  const periodLabel = period === 'today' ? now.toDateString() : now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+
+  const inPeriod = (dateStr) => {
+    const d = new Date(dateStr);
+    return period === 'today'
+      ? d.toDateString() === now.toDateString()
+      : d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  };
+
+  // Walk-in sales breakdown
+  const filtered = (Array.isArray(sales) ? sales : []).filter(s => inPeriod(s.created_at || s.timestamp));
+  const memberSales = filtered.filter(r => (r.customerType || r.customer_type) === 'member');
+  const nonMemberSales = filtered.filter(r => (r.customerType || r.customer_type) !== 'member');
+  const memberTotal = memberSales.reduce((s, r) => s + Number(r.total || r.totalAmount || r.total_amount || 0), 0);
+  const nonMemberTotal = nonMemberSales.reduce((s, r) => s + Number(r.total || r.totalAmount || r.total_amount || 0), 0);
+  const walkinTotal = memberTotal + nonMemberTotal;
+
+  // Payment method breakdown
+  const cashSales = filtered.filter(r => (r.paymentMethod || r.payment_method || '').toLowerCase().includes('cash'));
+  const cardSales = filtered.filter(r => (r.paymentMethod || r.payment_method || '').toLowerCase().includes('card') || (r.paymentMethod || r.payment_method || '').toLowerCase().includes('eft'));
+  const cashTotal = cashSales.reduce((s, r) => s + Number(r.total || r.total_amount || 0), 0);
+  const cardTotal = cardSales.reduce((s, r) => s + Number(r.total || r.total_amount || 0), 0);
+
+  // Online orders breakdown
+  const filteredOnline = (Array.isArray(onlineOrders) ? onlineOrders : []).filter(o => inPeriod(o.created_at));
+  const onlineMember = filteredOnline.filter(o => o.customer_type === 'member');
+  const onlineNonMember = filteredOnline.filter(o => o.customer_type !== 'member');
+  const onlineMemberTotal = onlineMember.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+  const onlineNonMemberTotal = onlineNonMember.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+  const onlineTotal = onlineMemberTotal + onlineNonMemberTotal;
+
+  // Prescription sales
+  const filteredRx = (Array.isArray(prescriptions) ? prescriptions : []).filter(p => inPeriod(p.created_at || p.updated_at));
+  const rxMember = filteredRx.filter(p => p.membership_status === 'member' || p.customer_type === 'member');
+  const rxNonMember = filteredRx.filter(p => p.membership_status !== 'member' && p.customer_type !== 'member');
+
+  const grandTotal = walkinTotal + onlineTotal;
+
+  const fmtC = n => `N$ ${Number(n || 0).toFixed(2)}`;
+  const statCard = (label, value, sub, color) =>
+    `<div style="background:#fff;border:1.5px solid #f0e8ea;border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.06em">${label}</div>
+      <div style="font-size:15px;font-weight:900;color:${color || '#c41e3a'};margin-top:4px">${value}</div>
+      ${sub ? `<div style="font-size:9px;color:#94a3b8;margin-top:3px">${sub}</div>` : ''}
+    </div>`;
+
+  const sectionTitle = t => `<div style="font-size:10px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.1em;border-bottom:2px solid #fecaca;padding-bottom:4px;margin:18px 0 10px">${t}</div>`;
+
+  const tableRow = (cols, bold) => `<tr>${cols.map((c, i) => `<td style="${bold ? 'font-weight:800;background:#fff0f3;' : ''}${i === cols.length - 1 ? 'text-align:right;font-weight:700;color:#166534;' : ''}">${c}</td>`).join('')}</tr>`;
+
+  const walkinRows = filtered.map(r => {
+    const isM = (r.customerType || r.customer_type) === 'member';
+    return `<tr>
+      <td>${r.receipt_number || r.saleNumber || r.id || '-'}</td>
+      <td><span style="color:${isM ? '#1d4ed8' : '#374151'};font-weight:600">${isM ? '👤 Member' : '🚶 Walk-in'}</span></td>
+      <td>${r.distributor_name || r.customer_name || r.customerName || 'Walk-in'}</td>
+      <td>${r.paymentMethod || r.payment_method || '-'}</td>
+      <td style="font-weight:700;color:#166534;text-align:right">${fmtC(r.total || r.totalAmount || r.total_amount || 0)}</td>
+      <td>${r.created_at ? new Date(r.created_at).toLocaleDateString('en-NA') : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  const onlineRows = filteredOnline.map(o => {
+    const isM = o.customer_type === 'member';
+    return `<tr>
+      <td>${o.order_number || o.id || '-'}</td>
+      <td><span style="color:${isM ? '#1d4ed8' : '#374151'};font-weight:600">${isM ? '👤 Member (DP)' : '🚶 Non-Member (CP)'}</span></td>
+      <td>${o.customer_name || '-'}</td>
+      <td>${o.payment_method || o.delivery_method || '-'}</td>
+      <td style="font-weight:700;color:#166534;text-align:right">${fmtC(o.total_amount || 0)}</td>
+      <td>${o.created_at ? new Date(o.created_at).toLocaleDateString('en-NA') : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Sales Report — ${branch}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:Arial,sans-serif; font-size:11px; color:#1e293b; padding:24px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #c41e3a; padding-bottom:10px; margin-bottom:16px; }
+  .company { color:#c41e3a; font-weight:900; font-size:15px; }
+  .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+  .grid-5 { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px; }
+  table { width:100%; border-collapse:collapse; margin-top:4px; }
+  th { background:#c41e3a; color:#fff; font-weight:700; padding:6px 8px; text-align:left; font-size:9.5px; }
+  td { padding:5px 8px; border-bottom:1px solid #f1f5f9; font-size:9.5px; }
+  tr:nth-child(even) td { background:#fdf7f8; }
+  .total-row td { font-weight:800; background:#fff0f3 !important; border-top:2px solid #fecaca; }
+  .meta { text-align:right; color:#64748b; font-size:10px; line-height:1.6; }
+  .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; }
+  @media print { .print-btn { display:none; } body { padding:10px; } }
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Print / PDF</button>
+<div class="header">
+  <div>
+    <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📊 Sales Report — ${period === 'today' ? 'Daily' : 'Monthly'}</div>
+    <div style="color:#64748b;font-size:10px;margin-top:3px">${branch} Branch &nbsp;·&nbsp; Period: ${periodLabel}</div>
+  </div>
+  <div class="meta">Date: ${now.toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}<br>Time: ${now.toLocaleTimeString('en-NA', { hour: '2-digit', minute: '2-digit' })}</div>
+</div>
+
+<div style="background:#fff0f3;border:1.5px solid #fecaca;border-radius:10px;padding:14px;margin-bottom:16px">
+  <div style="font-size:12px;font-weight:900;color:#c41e3a;margin-bottom:10px">GRAND TOTAL REVENUE</div>
+  <div class="grid-4">
+    ${statCard('Walk-in Sales Total', fmtC(walkinTotal), `${filtered.length} transactions`, '#c41e3a')}
+    ${statCard('Online Orders Total', fmtC(onlineTotal), `${filteredOnline.length} orders`, '#1e40af')}
+    ${statCard('Prescription Sales', `${filteredRx.length} Rx`, `${rxMember.length} member · ${rxNonMember.length} non-member`, '#166534')}
+    ${statCard('GRAND TOTAL', fmtC(grandTotal), 'Walk-in + Online', '#7c2d12')}
+  </div>
+</div>
+
+${sectionTitle('Walk-in Sales Breakdown')}
+<div class="grid-5">
+  ${statCard('Member Sales', fmtC(memberTotal), `${memberSales.length} transactions`, '#1d4ed8')}
+  ${statCard('Non-Member Sales', fmtC(nonMemberTotal), `${nonMemberSales.length} transactions`, '#374151')}
+  ${statCard('Cash Payments', fmtC(cashTotal), `${cashSales.length} transactions`, '#166534')}
+  ${statCard('Card / EFT', fmtC(cardTotal), `${cardSales.length} transactions`, '#0891b2')}
+  ${statCard('Other Payments', fmtC(walkinTotal - cashTotal - cardTotal), `${filtered.length - cashSales.length - cardSales.length} transactions`, '#92400e')}
+</div>
+<table>
+  <thead><tr><th>Receipt #</th><th>Customer Type</th><th>Customer</th><th>Payment</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
+  <tbody>${walkinRows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:12px">No walk-in sales in this period</td></tr>'}</tbody>
+  ${filtered.length > 0 ? `<tfoot><tr class="total-row"><td colspan="3"><strong>WALK-IN TOTAL</strong></td><td></td><td style="text-align:right"><strong>${fmtC(walkinTotal)}</strong></td><td></td></tr></tfoot>` : ''}
+</table>
+
+${sectionTitle('Online Orders Breakdown')}
+<div class="grid-4" style="margin-bottom:10px">
+  ${statCard('Member Orders (DP)', fmtC(onlineMemberTotal), `${onlineMember.length} orders`, '#1d4ed8')}
+  ${statCard('Non-Member Orders (CP)', fmtC(onlineNonMemberTotal), `${onlineNonMember.length} orders`, '#374151')}
+  ${statCard('Total Orders', filteredOnline.length, '', '#c41e3a')}
+  ${statCard('Online Revenue', fmtC(onlineTotal), '', '#166534')}
+</div>
+<table>
+  <thead><tr><th>Order #</th><th>Customer Type</th><th>Customer</th><th>Method</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
+  <tbody>${onlineRows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:12px">No online orders in this period</td></tr>'}</tbody>
+  ${filteredOnline.length > 0 ? `<tfoot><tr class="total-row"><td colspan="3"><strong>ONLINE TOTAL</strong></td><td></td><td style="text-align:right"><strong>${fmtC(onlineTotal)}</strong></td><td></td></tr></tfoot>` : ''}
+</table>
+
+${sectionTitle('Prescription Sales')}
+<div class="grid-4" style="margin-bottom:10px">
+  ${statCard('Total Prescriptions', filteredRx.length, 'Consultations', '#c41e3a')}
+  ${statCard('Member Prescriptions', rxMember.length, 'N$150 consult fee', '#1d4ed8')}
+  ${statCard('Non-Member Prescriptions', rxNonMember.length, 'N$200 consult fee', '#374151')}
+  ${statCard('Consult Fee Revenue', fmtC(rxMember.length * 150 + rxNonMember.length * 200), 'estimated', '#166534')}
+</div>
+${filteredRx.length === 0 ? '<p style="color:#94a3b8;text-align:center;padding:12px">No prescriptions in this period</p>' : ''}
+
+</body></html>`);
+  win.document.close();
 }
 function printStockFormulaReport(inventory, movements, sales, branch) {
   const now = new Date();
@@ -1796,8 +1935,8 @@ function BranchStockTab() {
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
-              { icon: '📊', title: 'Daily Sales Report', desc: "Today's walk-in sales summary", action: () => printSalesReportDoc(sales, 'today', user?.branch||'') },
-              { icon: '📈', title: 'Monthly Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} sales summary`, action: () => printSalesReportDoc(sales, 'month', user?.branch||'') },
+              { icon: '📊', title: 'Daily Sales Report', desc: "Today's complete sales — walk-in, online & prescription breakdown", action: () => printSalesReportDoc(sales, 'today', user?.branch||'', [], []) },
+              { icon: '📈', title: 'Monthly Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — walk-in, online & prescription breakdown`, action: () => printSalesReportDoc(sales, 'month', user?.branch||'', [], []) },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch & expiry', action: () => printPhysicalStockReport(inventory, user?.branch||'') },
               { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued − Sales − Returns − Expiring − Promotions = Closing', action: () => printStockFormulaReport(inventory, movements, sales, user?.branch||'') },
               { icon: '🔄', title: 'Stock Movements Report', desc: 'All stock movements: sales, received, write-offs', action: () => printStockMovementsReport(movements, user?.branch||'') },
@@ -2546,26 +2685,198 @@ function BranchPaymentsTab() {
   );
 }
 
+function parseOrderItems(raw) {
+  try { return typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []); } catch { return []; }
+}
+
+function OrderItemsTable({ items, customerType }) {
+  if (!items || items.length === 0) return <p className="text-xs text-gray-400 italic">No product details available.</p>;
+  const isMember = customerType === 'member';
+  const subtotal = items.reduce((s, i) => s + Number(i.unit_price || i.dp || i.cp || 0) * Number(i.quantity || 1), 0);
+  return (
+    <table className="w-full text-xs border-collapse mt-2">
+      <thead>
+        <tr style={{ background: '#f8fafc' }}>
+          <th className="text-left py-1 px-2 border-b text-gray-500 font-semibold">Product</th>
+          <th className="text-center py-1 px-2 border-b text-gray-500 font-semibold">Qty</th>
+          <th className="text-right py-1 px-2 border-b text-gray-500 font-semibold">Unit Price</th>
+          <th className="text-right py-1 px-2 border-b text-gray-500 font-semibold">BV</th>
+          <th className="text-right py-1 px-2 border-b text-gray-500 font-semibold">Line Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item, i) => {
+          const qty = Number(item.quantity || 1);
+          const price = Number(item.unit_price || (isMember ? item.dp : item.cp) || 0);
+          const bv = Number(item.bv || 0);
+          return (
+            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
+              <td className="py-1 px-2 border-b font-medium text-gray-800">{item.product_name || item.name || item.description || '-'}</td>
+              <td className="py-1 px-2 border-b text-center text-gray-700">{qty}</td>
+              <td className="py-1 px-2 border-b text-right text-gray-700">{formatCurrency(price)}</td>
+              <td className="py-1 px-2 border-b text-right text-blue-600">{(bv * qty).toFixed(1)}</td>
+              <td className="py-1 px-2 border-b text-right font-bold text-green-700">{formatCurrency(price * qty)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+      <tfoot>
+        <tr style={{ background: '#fff8f8' }}>
+          <td colSpan={4} className="py-1 px-2 border-t-2 font-bold text-right text-gray-700">Subtotal:</td>
+          <td className="py-1 px-2 border-t-2 font-bold text-right text-green-800">{formatCurrency(subtotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  );
+}
+
+function OrderPaymentModal({ order, onClose, onPaid }) {
+  const [method, setMethod] = useState('cash');
+  const [cashGiven, setCashGiven] = useState('');
+  const [cardRef, setCardRef] = useState('');
+  const [partialCash, setPartialCash] = useState('');
+  const [partialCard, setPartialCard] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const total = Number(order.total_amount || order.total || 0);
+  const cashChange = method === 'cash' ? Math.max(0, Number(cashGiven || 0) - total) : 0;
+  const partialTotal = Number(partialCash || 0) + Number(partialCard || 0);
+  const partialValid = Math.abs(partialTotal - total) < 0.01;
+
+  const handlePay = async () => {
+    setErr('');
+    if (method === 'cash' && Number(cashGiven || 0) < total) { setErr(`Cash given must be at least ${formatCurrency(total)}`); return; }
+    if (method === 'card' && !cardRef.trim()) { setErr('Please enter card/EFT reference number.'); return; }
+    if (method === 'partial' && !partialValid) { setErr(`Partial amounts must total exactly ${formatCurrency(total)} (currently ${formatCurrency(partialTotal)})`); return; }
+    setSaving(true);
+    try {
+      await api.orders.update(order.id, {
+        payment_status: 'paid',
+        payment_method: method === 'partial' ? `Cash N$${partialCash} + Card N$${partialCard}` : method,
+        status: 'delivered',
+      });
+      onPaid(order.id, method);
+      onClose();
+    } catch (e) { setErr(e.message || 'Payment failed'); }
+    setSaving(false);
+  };
+
+  const btnStyle = (m) => ({
+    flex: 1, padding: '10px 8px', borderRadius: 8, border: method === m ? '2px solid #c41e3a' : '2px solid #e5e7eb',
+    background: method === m ? '#fff5f5' : '#fff', fontWeight: 700, fontSize: '0.82rem',
+    cursor: 'pointer', color: method === m ? '#c41e3a' : '#374151',
+  });
+
+  return (
+    <Modal title={`💳 Process Payment — ${order.order_number || order.id}`} onClose={onClose}>
+      <div className="p-5 space-y-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm">
+          <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-semibold">{order.customer_name || '-'}</span></div>
+          <div className="flex justify-between mt-1"><span className="text-gray-500">Type</span>
+            <span className={`font-semibold ${order.customer_type === 'member' ? 'text-blue-600' : 'text-gray-700'}`}>
+              {order.customer_type === 'member' ? '👤 Member (DP)' : '🚶 Non-Member (CP)'}
+            </span>
+          </div>
+          {order.delivery_method && <div className="flex justify-between mt-1"><span className="text-gray-500">Delivery</span><span className="font-semibold capitalize">{order.delivery_method}</span></div>}
+          {Number(order.delivery_fee) > 0 && <div className="flex justify-between mt-1"><span className="text-gray-500">Delivery Fee</span><span className="font-semibold">{formatCurrency(order.delivery_fee)}</span></div>}
+          <div className="flex justify-between mt-2 pt-2 border-t border-gray-200">
+            <span className="font-bold text-gray-700">TOTAL DUE</span>
+            <span className="font-bold text-lg text-red-700">{formatCurrency(total)}</span>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Payment Method</p>
+          <div className="flex gap-2">
+            <button style={btnStyle('cash')} onClick={() => setMethod('cash')}>💵 Cash</button>
+            <button style={btnStyle('card')} onClick={() => setMethod('card')}>💳 Card / EFT</button>
+            <button style={btnStyle('partial')} onClick={() => setMethod('partial')}>⚖️ Partial</button>
+          </div>
+        </div>
+
+        {method === 'cash' && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Cash Given (N$)</label>
+            <input type="number" min={total} step="0.01" value={cashGiven} onChange={e => setCashGiven(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" placeholder="0.00" />
+            {Number(cashGiven) >= total && (
+              <div className="bg-green-50 border border-green-200 rounded p-2 text-sm font-bold text-green-700">
+                Change to give: {formatCurrency(cashChange)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {method === 'card' && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Card / EFT Reference #</label>
+            <input type="text" value={cardRef} onChange={e => setCardRef(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" placeholder="e.g. TXN123456" />
+          </div>
+        )}
+
+        {method === 'partial' && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Cash + Card split must equal {formatCurrency(total)}</p>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cash (N$)</label>
+                <input type="number" min="0" step="0.01" value={partialCash} onChange={e => setPartialCash(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Card / EFT (N$)</label>
+                <input type="number" min="0" step="0.01" value={partialCard} onChange={e => setPartialCard(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+              </div>
+            </div>
+            <div className={`text-xs font-bold ${partialValid ? 'text-green-700' : 'text-red-600'}`}>
+              Total: {formatCurrency(partialTotal)} {partialValid ? '✓ Matches' : `(need ${formatCurrency(total - partialTotal)} more)`}
+            </div>
+          </div>
+        )}
+
+        {err && <div className="bg-red-50 border border-red-200 rounded p-2 text-sm text-red-700">{err}</div>}
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={handlePay} disabled={saving}
+            className="flex-1 py-2.5 rounded-lg text-white font-bold text-sm disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg,#27ae60,#1e8449)' }}>
+            {saving ? 'Processing…' : `✓ Confirm Payment ${formatCurrency(total)}`}
+          </button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-medium text-sm hover:bg-gray-50">Cancel</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function OnlineOrdersTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
   const [alert, setAlert] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [paymentOrder, setPaymentOrder] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('active');
 
-  useEffect(() => {
-    api.orders.list()
-      .then(d => {
-        const all = Array.isArray(d) ? d : d.orders || [];
-        const branchOrders = user?.branch
-          ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === user.branch.toLowerCase()
-              || (o.branch_name || '').toLowerCase().includes(user.branch.toLowerCase()))
-          : all;
-        setOrders(branchOrders);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const d = await api.orders.list();
+      const all = Array.isArray(d) ? d : d.orders || [];
+      const branchOrders = user?.branch
+        ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === user.branch.toLowerCase()
+            || (o.branch_name || '').toLowerCase().includes(user.branch.toLowerCase()))
+        : all;
+      setOrders(branchOrders);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { loadOrders(); }, []);
 
   const updateStatus = async (id, status) => {
     setUpdating(id);
@@ -2573,16 +2884,15 @@ function OnlineOrdersTab() {
     try {
       await api.orders.update(id, { status });
       setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
-      if (status === 'delivered' || status === 'completed') {
-        setAlert({ type: 'success', message: `Order completed. Income recorded and stock updated.` });
-      } else {
-        setAlert({ type: 'success', message: `Order status updated to ${status}` });
-      }
+      setAlert({ type: 'success', message: status === 'delivered' ? 'Order marked delivered.' : `Order status updated to ${status}.` });
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to update order' });
-    } finally {
-      setUpdating(null);
-    }
+    } finally { setUpdating(null); }
+  };
+
+  const onPaid = (id, method) => {
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, payment_status: 'paid', payment_method: method, status: 'delivered' } : o));
+    setAlert({ type: 'success', message: 'Payment processed. Order marked as delivered.' });
   };
 
   const statusBadge = (status) => {
@@ -2590,68 +2900,148 @@ function OnlineOrdersTab() {
     return <Badge variant={map[status] || 'default'}>{status}</Badge>;
   };
 
+  const payBadge = (ps) => {
+    if (ps === 'paid') return <span className="text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">✓ Paid</span>;
+    return <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">⏳ Unpaid</span>;
+  };
+
   if (loading) return <LoadingSpinner />;
 
-  const receivingOrders = orders.filter(o => ['pending', 'processing'].includes(o.status));
-  const dispensingOrders = orders.filter(o => ['shipped', 'delivered', 'completed'].includes(o.status));
+  const filterMap = {
+    active: orders.filter(o => ['pending','processing','shipped'].includes(o.status)),
+    completed: orders.filter(o => ['delivered','completed'].includes(o.status)),
+    cancelled: orders.filter(o => o.status === 'cancelled'),
+    all: orders,
+  };
+
+  const displayed = filterMap[statusFilter] || orders;
+
+  const stats = {
+    pending: orders.filter(o => o.status === 'pending').length,
+    processing: orders.filter(o => o.status === 'processing').length,
+    delivered: orders.filter(o => ['delivered','completed'].includes(o.status)).length,
+    unpaid: orders.filter(o => o.payment_status !== 'paid' && ['shipped','delivered'].includes(o.status)).length,
+  };
 
   return (
     <div>
       <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>
-            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` - ${user.branch}` : ''}</h3>
-            <p className="text-white/75 text-sm mt-1 m-0">Receive and dispense online orders assigned to this branch.</p>
+            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` — ${user.branch}` : ''}</h3>
+            <p className="text-white/75 text-sm mt-1 m-0">Full order details, product breakdown, and payment processing.</p>
           </div>
-          <button onClick={async () => { setLoading(true); try { const d = await api.orders.list(); const all = Array.isArray(d) ? d : d.orders || []; setOrders(user?.branch ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === user.branch.toLowerCase() || (o.branch_name || '').toLowerCase().includes(user.branch.toLowerCase())) : all); } catch {} setLoading(false); }} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
+          <button onClick={loadOrders} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+          {[['Pending',stats.pending,'#fbbf24'],['Processing',stats.processing,'#60a5fa'],['Delivered',stats.delivered,'#4ade80'],['Unpaid',stats.unpaid,'#f87171']].map(([l,v,c]) => (
+            <div key={l} className="bg-white/10 rounded-lg p-3 text-center">
+              <p className="text-white/70 text-xs mb-0.5">{l}</p>
+              <p className="text-2xl font-bold" style={{ color: c }}>{v}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h4 className="text-gray-800 font-bold m-0 mb-3">📥 Receiving</h4>
-          <div className="max-h-[420px] overflow-auto">
-            {receivingOrders.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm py-4">No orders to receive</p>
-            ) : receivingOrders.map(r => (
-              <div key={r.id} className="p-3 mb-2 rounded-lg border border-gray-100 bg-gray-50">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-semibold text-sm">{r.order_number || r.id}</span>
-                  {statusBadge(r.status)}
-                </div>
-                <p className="text-xs text-gray-600 m-0">{r.customer_name || r.distributor_name || '-'}</p>
-                <p className="text-xs text-gray-500 m-0">{formatDateTime(r.created_at)}</p>
-                <div className="flex gap-1 mt-2">
-                  {(!r.status || r.status === 'pending') && <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'processing')} disabled={updating === r.id}>Process</Button>}
-                  {r.status === 'processing' && <Button size="sm" variant="primary" onClick={() => updateStatus(r.id, 'shipped')} disabled={updating === r.id}>Ship</Button>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h4 className="text-gray-800 font-bold m-0 mb-3">📦 Dispensing</h4>
-          <div className="max-h-[420px] overflow-auto">
-            {dispensingOrders.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm py-4">No orders to dispense</p>
-            ) : dispensingOrders.map(r => (
-              <div key={r.id} className="p-3 mb-2 rounded-lg border border-gray-100 bg-gray-50">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-semibold text-sm">{r.order_number || r.id}</span>
-                  {statusBadge(r.status)}
-                </div>
-                <p className="text-xs text-gray-600 m-0">{r.customer_name || r.distributor_name || '-'}</p>
-                <p className="text-xs font-bold m-0">{formatCurrency(r.total_amount || r.total || 0)}</p>
-                <div className="flex gap-1 mt-2">
-                  {r.status === 'shipped' && <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')} disabled={updating === r.id}>Delivered</Button>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {[['active','Active Orders'],['completed','Completed'],['cancelled','Cancelled'],['all','All']].map(([key,lbl]) => (
+          <button key={key} onClick={() => setStatusFilter(key)}
+            className="px-4 py-1.5 rounded-full text-sm font-semibold border cursor-pointer transition-all"
+            style={{ background: statusFilter === key ? '#1e3a5f' : '#f1f5f9', color: statusFilter === key ? '#fff' : '#475569', borderColor: statusFilter === key ? '#1e3a5f' : '#e2e8f0' }}>
+            {lbl} {key === 'active' && stats.pending + stats.processing > 0 && <span className="ml-1 bg-yellow-400 text-yellow-900 rounded-full px-1.5 text-xs">{stats.pending + stats.processing}</span>}
+          </button>
+        ))}
       </div>
+
+      {displayed.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-gray-100">
+          <p className="text-lg">📭 No {statusFilter === 'all' ? '' : statusFilter} orders</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {displayed.map(order => {
+            const items = parseOrderItems(order.items);
+            const isExpanded = expandedId === order.id;
+            const totalBV = items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
+
+            return (
+              <div key={order.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-4">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-800">{order.order_number || order.id}</span>
+                        {statusBadge(order.status)}
+                        {payBadge(order.payment_status)}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${order.customer_type === 'member' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                          {order.customer_type === 'member' ? '👤 Member (DP)' : '🚶 Non-Member (CP)'}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700 mt-1">{order.customer_name || '-'}</p>
+                      <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                        <span>📅 {formatDateTime(order.created_at)}</span>
+                        {order.delivery_method && <span>🚚 {order.delivery_method}</span>}
+                        {order.payment_method && <span>💳 {order.payment_method}</span>}
+                        {order.distributor_code && order.distributor_code !== 'NB005676' && <span>🔗 Ref: {order.distributor_code}</span>}
+                        <span>📦 {items.length} product{items.length !== 1 ? 's' : ''} · BV: {totalBV.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    <div className="text-right ml-3">
+                      <p className="text-lg font-bold text-green-700">{formatCurrency(order.total_amount || order.total || 0)}</p>
+                      {Number(order.delivery_fee) > 0 && <p className="text-xs text-gray-500">incl. delivery {formatCurrency(order.delivery_fee)}</p>}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <button onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer">
+                      {isExpanded ? '▲ Hide Products' : `▼ Show Products (${items.length})`}
+                    </button>
+                    {order.status === 'pending' && (
+                      <button onClick={() => updateStatus(order.id, 'processing')} disabled={updating === order.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer border-none"
+                        style={{ background: '#d97706' }}>⚙️ Process</button>
+                    )}
+                    {order.status === 'processing' && (
+                      <button onClick={() => updateStatus(order.id, 'shipped')} disabled={updating === order.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer border-none"
+                        style={{ background: '#2563eb' }}>🚚 Ship</button>
+                    )}
+                    {order.status === 'shipped' && order.payment_status !== 'paid' && (
+                      <button onClick={() => setPaymentOrder(order)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer border-none"
+                        style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}>💳 Process Payment</button>
+                    )}
+                    {order.status === 'shipped' && order.payment_status === 'paid' && (
+                      <button onClick={() => updateStatus(order.id, 'delivered')} disabled={updating === order.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer border-none"
+                        style={{ background: '#16a34a' }}>✓ Mark Delivered</button>
+                    )}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60">
+                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Order Items — Price shown is {order.customer_type === 'member' ? 'Distributor Price (DP)' : 'Consumer Price (CP)'}</p>
+                    <OrderItemsTable items={items} customerType={order.customer_type} />
+                    {order.notes && <p className="text-xs text-gray-500 mt-2"><strong>Notes:</strong> {order.notes}</p>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {paymentOrder && (
+        <OrderPaymentModal
+          order={paymentOrder}
+          onClose={() => setPaymentOrder(null)}
+          onPaid={onPaid}
+        />
+      )}
     </div>
   );
 }
