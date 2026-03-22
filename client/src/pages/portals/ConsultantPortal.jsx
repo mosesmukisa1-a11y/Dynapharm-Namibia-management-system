@@ -93,6 +93,168 @@ function escHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* keyword map: symptom text fragment → RECOMMENDATION_DATABASE key */
+const SYMPTOM_KEYWORD_MAP = [
+  { keys: ['fatigue','tired','exhaustion','lethargy'], rec: 'fatigue' },
+  { keys: ['headache','migraine','head pain'], rec: 'headache' },
+  { keys: ['nausea','vomit','sick to stomach'], rec: 'nausea' },
+  { keys: ['dizzy','dizziness','vertigo','lightheaded'], rec: 'dizziness' },
+  { keys: ['breath','breathing','respiratory','breathless'], rec: 'shortness_breath' },
+  { keys: ['vision','blurred','eye strain','eyesight'], rec: 'blurred_vision' },
+  { keys: ['joint','arthritis','stiff'], rec: 'joint_pain' },
+  { keys: ['cough','wheeze','wheezing'], rec: 'cough' },
+  { keys: ['digest','bloat','constipat','diarrhea','indigestion','heartburn','stomach'], rec: 'digestive_issues' },
+  { keys: ['appetite','hunger'], rec: 'loss_appetite' },
+  { keys: ['fever','temperature','chills'], rec: 'fever' },
+  { keys: ['throat','sore throat','tonsil'], rec: 'sore_throat' },
+  { keys: ['skin','rash','acne','eczema','dermatitis','itch'], rec: 'skin_rash' },
+  { keys: ['chest','palpitat','heart'], rec: 'chest_pain' },
+  { keys: ['back pain','neck','spine','lumbar'], rec: 'lower_back' },
+  { keys: ['weight','obesity','overweight','underweight'], rec: 'weight_changes' },
+  { keys: ['sleep','insomnia','awake','restless'], rec: 'insomnia' },
+  { keys: ['confusion','memory','focus','concentrate','brain fog','cognitive'], rec: 'confusion' },
+  { keys: ['swelling','edema','swollen','puffy'], rec: 'swelling' },
+  { keys: ['menstrual','menopause','fertility','sexual','libido','erectile','hormonal','reproductive'], rec: 'weight_changes' },
+  { keys: ['urinary','frequent urinat','bladder','kidney'], rec: 'foot_edema' },
+  { keys: ['muscle','cramp','spasm'], rec: 'joint_pain' },
+  { keys: ['allerg','immune','infection','cold'], rec: 'fever' },
+  { keys: ['anxiety','stress','depress','mood','mental'], rec: 'insomnia' },
+];
+
+/* map form system IDs → BODY_SYSTEMS_DATABASE keys */
+const FORM_SYSTEM_TO_DB = {
+  nervous: 'Nervous System',
+  cardiovascular: 'Cardiovascular System',
+  digestive: 'Digestive System',
+  respiratory: 'Respiratory System',
+  immune: 'Immune System',
+  endocrine: 'Endocrine System',
+  musculoskeletal: 'Musculoskeletal System',
+  urinary: 'Urinary System',
+  reproductive: 'Reproductive System',
+  skin: 'Integumentary System (Skin, Hair, Nails)',
+  integumentary: 'Integumentary System (Skin, Hair, Nails)',
+  lymphatic: 'Lymphatic System',
+  sensory: 'Sensory System (Eyes, Ears, Nose)',
+};
+
+/* keyword match symptom text → BODY_SYSTEMS_DATABASE symptom key */
+const DB_SYMPTOM_KEYWORDS = {
+  'Nervous System': {
+    'Frequent headaches or migraines': ['headache','migraine','head pain'],
+    'Difficulty concentrating or brain fog': ['focus','brain fog','concentrate','memory','confusion','cognitive'],
+    'Tingling or numbness in limbs': ['numb','tingle','tingling'],
+  },
+  'Cardiovascular System': {
+    'Palpitations or irregular heartbeat': ['palpitat','irregular heart','chest','heart rate'],
+    'Shortness of breath': ['breath','breathless','short of breath'],
+    'Cold hands and feet or fatigue': ['fatigue','tired','cold hands','cold feet','circulation'],
+  },
+  'Digestive System': {
+    'Bloating and indigestion': ['bloat','indigestion','heartburn','gas'],
+    'Constipation or diarrhea': ['constipat','diarrhea','bowel'],
+    'Loss of appetite or heartburn': ['appetite','hunger','heartburn','stomach'],
+  },
+  'Respiratory System': {
+    'Frequent cough or shortness of breath': ['cough','wheeze','breath','respiratory'],
+    'Chest tightness': ['chest','tight'],
+    'Low lung endurance': ['lung','endurance','asthma'],
+  },
+  'Immune System': {
+    'Frequent colds or infections': ['cold','infection','flu','fever','allerg'],
+    'Slow wound healing': ['wound','heal'],
+    'Allergic reactions or fatigue': ['allerg','fatigue','tired'],
+  },
+  'Endocrine System': {
+    'Weight fluctuations': ['weight','obesity','overweight','underweight'],
+    'Mood swings or irritability': ['mood','irritab','anxiety','stress','depress'],
+    'Irregular menstruation or libido changes': ['menstrual','menopause','libido','hormonal'],
+  },
+  'Musculoskeletal System': {
+    'Muscle stiffness or pain': ['muscle','stiff','cramp','spasm'],
+    'Joint aches': ['joint','arthritis','knees','aches'],
+    'Back or neck discomfort': ['back','neck','spine','lumbar'],
+  },
+  'Urinary System': {
+    'Frequent urination or urgency': ['urinat','bladder','frequent bathroom'],
+    'Lower back pain': ['back pain','kidney','lumbar'],
+    'Swelling in legs or feet': ['swelling','edema','swollen','puffy legs'],
+  },
+  'Reproductive System': {
+    'Reduced sexual desire': ['libido','sexual desire','erectile'],
+    'Irregular cycles or erectile issues': ['menstrual','irregular','erectile','cycle'],
+    'Hormonal imbalances': ['hormonal','menopause','hormone'],
+  },
+  'Integumentary System (Skin, Hair, Nails)': {
+    'Dry or dull skin': ['dry skin','dull skin','skin'],
+    'Hair loss or brittleness': ['hair loss','hair','brittle'],
+    'Acne or skin sensitivity': ['acne','rash','itch','eczema','skin sensitive'],
+  },
+  'Lymphatic System': {
+    'Swollen lymph nodes': ['lymph','swollen gland'],
+    'Puffy face or limbs': ['puffy','swelling','edema'],
+    'Chronic fatigue': ['fatigue','tired','exhaustion','lethargy'],
+  },
+  'Sensory System (Eyes, Ears, Nose)': {
+    'Eye fatigue or blurred vision': ['vision','eye','blurred','eyesight'],
+    'Ringing in the ears (tinnitus)': ['ear','tinnitus','ringing'],
+    'Sensitivity to light or sound': ['light','sound','sensitivity'],
+  },
+};
+
+function autoPopulateBodyChecks(data) {
+  const newSystems = {};
+  const newChecks = {};
+  const formSymptoms = data.symptoms && typeof data.symptoms === 'object' && !Array.isArray(data.symptoms)
+    ? data.symptoms : {};
+
+  /* 1. Map form system IDs → DB systems, then match symptom texts by keyword */
+  Object.entries(formSymptoms).forEach(([formSysId, syms]) => {
+    if (!Array.isArray(syms) || syms.length === 0) return;
+    const dbSystemName = FORM_SYSTEM_TO_DB[formSysId.toLowerCase()] || null;
+    syms.forEach(symptomText => {
+      const lower = (symptomText || '').toLowerCase();
+      /* Try exact DB system first, then all systems */
+      const systemsToSearch = dbSystemName
+        ? { [dbSystemName]: DB_SYMPTOM_KEYWORDS[dbSystemName] }
+        : DB_SYMPTOM_KEYWORDS;
+      Object.entries(systemsToSearch).forEach(([sysName, sympMap]) => {
+        if (!sympMap) return;
+        const sysId = sysName.replace(/[^a-zA-Z0-9]/g, '_');
+        Object.entries(sympMap).forEach(([dbSymptom, kws]) => {
+          if (kws.some(kw => lower.includes(kw))) {
+            newSystems[sysId] = true;
+            newChecks[`${sysId}__${dbSymptom}`] = true;
+          }
+        });
+      });
+    });
+  });
+
+  /* 2. Lifestyle auto-checks */
+  if (data.sleepHours === '<5' || data.sleepHours === '5-6') {
+    const sysId = 'Nervous_System';
+    newSystems[sysId] = true;
+    newChecks[`${sysId}__Difficulty concentrating or brain fog`] = true;
+  }
+  if (parseInt(data.stressLevel) >= 7) {
+    const sysId = 'Endocrine_System';
+    newSystems[sysId] = true;
+    newChecks[`${sysId}__Mood swings or irritability`] = true;
+  }
+  if (data.exerciseFreq === 'never' || data.exerciseFreq === '1-2') {
+    const sysId = 'Cardiovascular_System';
+    newSystems[sysId] = true;
+    newChecks[`${sysId}__Cold hands and feet or fatigue`] = true;
+  }
+  if (data.waterIntake === 'less1') {
+    const sysId = 'Urinary_System';
+    newSystems[sysId] = true;
+    newChecks[`${sysId}__Lower back pain`] = true;
+  }
+  return { newSystems, newChecks };
+}
+
 function generateRecommendations(client) {
   const recommendations = new Set();
   const reasonsMap = new Map();
@@ -101,6 +263,8 @@ function generateRecommendations(client) {
     if (!reasonsMap.has(med)) reasonsMap.set(med, []);
     reasonsMap.get(med).push(reason);
   };
+
+  /* 1. Direct key matches (legacy snake_case keys) */
   if (client.symptoms && client.symptoms.length > 0) {
     client.symptoms.forEach(s => {
       if (s !== 'none' && RECOMMENDATION_DATABASE.symptoms[s]) {
@@ -108,6 +272,20 @@ function generateRecommendations(client) {
       }
     });
   }
+
+  /* 2. Keyword match from raw symptom strings (full text from form) */
+  const rawStrings = client.rawSymptomStrings || [];
+  rawStrings.forEach(symptomText => {
+    const lower = (symptomText || '').toLowerCase();
+    SYMPTOM_KEYWORD_MAP.forEach(({ keys, rec }) => {
+      if (keys.some(k => lower.includes(k))) {
+        const meds = RECOMMENDATION_DATABASE.symptoms[rec];
+        if (meds) meds.forEach(m => addRec(m, symptomText));
+      }
+    });
+  });
+
+  /* 3. Medical history */
   if (client.medicalHistory && Array.isArray(client.medicalHistory)) {
     client.medicalHistory.forEach(c => {
       if (c !== 'na' && RECOMMENDATION_DATABASE.medicalHistory[c]) {
@@ -115,10 +293,14 @@ function generateRecommendations(client) {
       }
     });
   }
+
+  /* 4. Gender */
   const gender = (client.gender || '').toLowerCase();
   if (gender && RECOMMENDATION_DATABASE.gender[gender]) {
     RECOMMENDATION_DATABASE.gender[gender].forEach(m => addRec(m, `Gender-specific (${gender})`));
   }
+
+  /* 5. Lifestyle */
   if (client.sleepHours === '<5' || client.sleepHours === '5-6') {
     RECOMMENDATION_DATABASE.lifestyle.poorSleep.forEach(m => addRec(m, 'Poor sleep quality'));
   }
@@ -187,8 +369,15 @@ function CheckupsSection() {
       : (rawSymptoms && typeof rawSymptoms === 'object')
         ? Object.values(rawSymptoms).flat()
         : [];
+    /* All symptom strings from the form (for keyword-based matching) */
+    const rawSymptomStrings = Array.isArray(rawSymptoms)
+      ? rawSymptoms
+      : (rawSymptoms && typeof rawSymptoms === 'object')
+        ? Object.values(rawSymptoms).flat()
+        : [];
     const client = {
       symptoms: flatSymptoms,
+      rawSymptomStrings,
       medicalHistory: data.medicalHistory || [],
       gender: data.gender || apt.gender || '',
       age: data.age || apt.age || '',
@@ -199,6 +388,10 @@ function CheckupsSection() {
     };
     const recs = generateRecommendations(client);
     setCurrentRecommendations(recs);
+    /* Auto-populate body system checkboxes from form symptom data */
+    const { newSystems, newChecks } = autoPopulateBodyChecks(data);
+    setSelectedSystems(newSystems);
+    setSelectedSymptomChecks(newChecks);
     setShowReport(true);
   };
 
@@ -317,53 +510,185 @@ function CheckupsSection() {
       }
     }
     const bmiStored = data.bmi ? `${data.bmi}${data.bmi_category ? ` (${data.bmi_category})` : ''}` : bmiDisplay;
-    const w = window.open('', '_blank', 'width=820,height=700');
-    w.document.write(`<!DOCTYPE html><html><head><title>Report - ${esc(apt.full_name || '')}</title>
+
+    /* Presenting symptoms */
+    const rawSym = data.symptoms;
+    const flatSym = Array.isArray(rawSym) ? rawSym
+      : (rawSym && typeof rawSym === 'object') ? Object.values(rawSym).flat() : [];
+    const symptomsBySystem = (rawSym && typeof rawSym === 'object' && !Array.isArray(rawSym))
+      ? rawSym : null;
+
+    /* Lifestyle findings (body system checks the consultant confirmed) */
+    const lifestyleRecs = getLifestyleRecommendations();
+
+    /* AI product recommendations */
+    const aiRecs = currentRecommendations
+      ? Array.from(currentRecommendations.recommendations).map(med => ({
+          med, reasons: [...new Set(currentRecommendations.reasonsMap.get(med) || [])],
+        }))
+      : [];
+
+    /* Referral / membership */
+    const rawMemberType = data.membershipStatus || data.membership_status || data.customer_type || 'referred';
+    const isMember = rawMemberType === 'member';
+    const referralName = data.referral_name || data.referralName || data.distributorName || '';
+    const referralNB = data.referral_nb || data.referralNB || data.distributorNB || '';
+
+    const w = window.open('', '_blank', 'width=900,height=750');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Health Report — ${esc(apt.full_name || '')}</title>
 <style>
-  body{font-family:Arial,sans-serif;padding:28px;color:#222;}
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;padding:28px;color:#222;font-size:13px;line-height:1.5;}
   .header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c41e3a;padding-bottom:14px;margin-bottom:18px;}
-  .logo{height:58px;}
-  .company{font-size:1.25rem;font-weight:900;color:#c41e3a;}
-  .subtitle{font-size:0.88rem;color:#555;}
-  h3{color:#c41e3a;border-bottom:1.5px solid #e0b0b8;padding-bottom:5px;margin:16px 0 10px;font-size:1rem;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;}
-  .field{font-size:0.9rem;padding:3px 0;}
-  .section{margin:14px 0;padding:12px;border:1px solid #ddd;border-radius:6px;}
-  .med{padding:4px 10px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px;font-size:0.85rem;}
-  .bmi-pill{display:inline-block;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:4px 14px;font-weight:800;font-size:0.92rem;color:#15803d;}
-  .footer{margin-top:30px;border-top:1.5px solid #c41e3a;padding-top:10px;font-size:0.76rem;color:#888;display:flex;justify-content:space-between;}
-  @media print{body{padding:16px;}}
-</style></head><body>
+  .logo{height:62px;background:#fff;border-radius:8px;padding:4px;}
+  .company{font-size:1.3rem;font-weight:900;color:#c41e3a;}
+  .subtitle{font-size:0.88rem;color:#555;margin-top:2px;}
+  .report-title{font-size:1.05rem;font-weight:800;color:#7b0000;letter-spacing:1px;margin-top:4px;}
+  h3{color:#c41e3a;border-bottom:2px solid #fecaca;padding-bottom:5px;margin:18px 0 10px;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 16px;}
+  .field{font-size:0.88rem;padding:3px 0;border-bottom:1px dotted #eee;}
+  .section{margin:14px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;}
+  .tag{padding:3px 10px;background:#e3f2fd;color:#1565c0;border-radius:20px;display:inline-block;margin:2px;font-size:0.8rem;font-weight:600;}
+  .med{padding:4px 12px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px;font-size:0.85rem;color:#166534;font-weight:600;border:1px solid #bbf7d0;}
+  .rec-item{margin-bottom:10px;padding:10px 12px;background:#e8f5e9;border-left:4px solid #27ae60;border-radius:6px;}
+  .rec-item .rec-name{font-weight:700;color:#15803d;font-size:0.92rem;}
+  .rec-item .rec-reason{font-size:0.78rem;color:#555;margin-top:3px;}
+  .lifestyle-item{margin-bottom:8px;padding:8px 12px;background:#e3f2fd;border-left:4px solid #2196f3;border-radius:6px;}
+  .lifestyle-sym{font-weight:700;color:#1565c0;font-size:0.88rem;}
+  .lifestyle-advice{font-size:0.85rem;color:#333;margin-top:3px;line-height:1.5;}
+  .bmi-pill{display:inline-block;background:#f0fdf4;border:2px solid #86efac;border-radius:8px;padding:5px 18px;font-weight:800;font-size:1rem;color:#15803d;}
+  .sig-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:8px;}
+  .sig-box{border-top:2px solid #333;padding-top:6px;min-width:180px;}
+  .sig-label{font-size:0.8rem;color:#666;}
+  .sig-name{font-weight:700;font-size:0.95rem;color:#1e293b;margin-top:4px;}
+  .footer{margin-top:28px;border-top:2px solid #c41e3a;padding-top:10px;font-size:0.76rem;color:#888;display:flex;justify-content:space-between;}
+  .confidential{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:4px 12px;border-radius:20px;font-size:0.76rem;font-weight:700;}
+  @media print{body{padding:14px;} @page{size:A4;margin:12mm;}}
+</style>
+</head><body>
+
 <div class="header">
   <img class="logo" src="${logo}" onerror="this.style.display='none'" />
   <div>
     <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
-    <div class="subtitle">Summary Analysis Report Card</div>
+    <div class="subtitle">Health, Wealth &amp; Freedom</div>
+    <div class="report-title">SUMMARY ANALYSIS HEALTH REPORT CARD</div>
+  </div>
+  <div style="margin-left:auto;text-align:right;">
+    <div style="font-size:0.85rem;color:#555;">Ref: <strong>${esc(String(apt.id || ''))}</strong></div>
+    <div style="font-size:0.85rem;color:#555;">Date: <strong>${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</strong></div>
+    <span class="confidential">CONFIDENTIAL</span>
   </div>
 </div>
+
 <h3>Patient Details</h3>
-<div class="grid2">
-  <div class="field"><strong>Name:</strong> ${esc(apt.full_name || '')}</div>
-  <div class="field"><strong>Phone:</strong> ${esc(data.phone || apt.phone || '')}</div>
-  <div class="field"><strong>Gender:</strong> ${esc(data.gender || '')}</div>
-  <div class="field"><strong>DOB:</strong> ${esc(data.dob || '')}</div>
-  <div class="field"><strong>Branch:</strong> ${esc(data.branch || apt.branch || '')}</div>
-  <div class="field"><strong>Date:</strong> ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div>
-  <div class="field"><strong>Height:</strong> ${heightVal ? esc(heightVal) + ' cm' : 'N/A'}</div>
-  <div class="field"><strong>Weight:</strong> ${weightVal ? esc(weightVal) + ' kg' : 'N/A'}</div>
+<div class="section">
+  <div class="grid3">
+    <div class="field"><strong>Full Name:</strong> ${esc(apt.full_name || data.fullName || '')}</div>
+    <div class="field"><strong>Gender:</strong> ${esc(data.gender || 'N/A')}</div>
+    <div class="field"><strong>Date of Birth:</strong> ${esc(data.dob || 'N/A')}</div>
+    <div class="field"><strong>Phone:</strong> ${esc(data.phone || apt.phone || 'N/A')}</div>
+    <div class="field"><strong>Email:</strong> ${esc(data.email || apt.email || 'N/A')}</div>
+    <div class="field"><strong>Branch:</strong> ${esc(data.branch || apt.branch || 'N/A')}</div>
+    <div class="field"><strong>Height:</strong> ${heightVal ? esc(heightVal)+' cm' : 'N/A'}</div>
+    <div class="field"><strong>Weight:</strong> ${weightVal ? esc(weightVal)+' kg' : 'N/A'}</div>
+    <div class="field"><strong>Client Type:</strong> ${isMember ? '🏅 Registered Member' : '👤 Non-Member (Referred)'}</div>
+  </div>
+  ${bmiStored ? `<div style="margin-top:10px"><span class="bmi-pill">BMI: ${esc(bmiStored)}</span></div>` : ''}
+  ${!isMember && referralName ? `<div style="margin-top:8px;font-size:0.88rem;color:#666;"><strong>Referred by:</strong> ${esc(referralName)}${referralNB ? ` (${esc(referralNB)})` : ''}</div>` : ''}
 </div>
-${bmiStored ? `<div style="margin-top:8px"><span class="bmi-pill">BMI: ${esc(bmiStored)}</span></div>` : ''}
-${consultantNotes ? `<div class="section"><h3>Consultant Notes</h3><p>${esc(consultantNotes)}</p></div>` : ''}
-${meds.length > 0 ? `<div class="section"><h3>Prescription / Recommended Products</h3>${meds.map(m => `<span class="med">${esc(m)}</span>`).join('')}</div>` : ''}
-${followUpDate ? `<div class="section"><strong>Follow-up Date:</strong> ${new Date(followUpDate).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>` : ''}
-<div class="section"><strong>Consultant:</strong> ${esc(user?.full_name || user?.username || '')}</div>
+
+<h3>Lifestyle &amp; Health Profile</h3>
+<div class="section">
+  <div class="grid3">
+    <div class="field"><strong>Primary Reason:</strong> ${esc(data.primaryReason || data.reason || 'N/A')}</div>
+    <div class="field"><strong>Water Intake:</strong> ${esc(data.waterIntake || 'N/A')}</div>
+    <div class="field"><strong>Exercise Frequency:</strong> ${esc(data.exerciseFreq || 'N/A')}</div>
+    <div class="field"><strong>Sleep Hours:</strong> ${esc(data.sleepHours || 'N/A')}</div>
+    <div class="field"><strong>Stress Level:</strong> ${esc(data.stressLevel || 'N/A')}/10</div>
+    <div class="field"><strong>Medications:</strong> ${esc(data.currentMedications || 'None')}</div>
+    <div class="field"><strong>Allergies:</strong> ${esc(data.allergies || 'None')}</div>
+    <div class="field"><strong>Medical History:</strong> ${Array.isArray(data.medicalHistory) ? esc(data.medicalHistory.join(', ')) : esc(data.medicalHistory || 'None')}</div>
+  </div>
+</div>
+
+${flatSym.length > 0 ? `
+<h3>Reported Symptoms</h3>
+<div class="section">
+  ${symptomsBySystem
+    ? Object.entries(symptomsBySystem).filter(([,v]) => Array.isArray(v) && v.length > 0).map(([sys, syms]) =>
+        `<div style="margin-bottom:6px;"><strong style="color:#374151;text-transform:capitalize;">${esc(sys)}:</strong> ${syms.map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div>`
+      ).join('')
+    : flatSym.map(s => `<span class="tag">${esc(s)}</span>`).join('')
+  }
+</div>` : ''}
+
+${lifestyleRecs.length > 0 ? `
+<h3>🌿 Healthy Lifestyle Recommendations</h3>
+<div class="section">
+  ${lifestyleRecs.map(item => `
+    <div class="lifestyle-item">
+      <div class="lifestyle-sym">✓ ${esc(item.symptom)} <span style="font-weight:400;font-size:0.8rem;color:#555;">(${esc(item.system)})</span></div>
+      <div class="lifestyle-advice">${esc(item.recommendation)}</div>
+    </div>`).join('')}
+</div>` : ''}
+
+${aiRecs.length > 0 ? `
+<h3>🎯 AI-Recommended Dynapharm Products</h3>
+<div class="section">
+  <p style="font-size:0.82rem;color:#666;margin:0 0 10px;">Recommended based on symptoms, health history, gender and lifestyle factors:</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    ${aiRecs.map(({med, reasons}) => `
+      <div class="rec-item">
+        <div class="rec-name">✓ ${esc(med)}</div>
+        <div class="rec-reason">${reasons.slice(0,2).map(r => `🎯 ${esc(r)}`).join(' &nbsp;')}</div>
+      </div>`).join('')}
+  </div>
+</div>` : ''}
+
+${meds.length > 0 ? `
+<h3>💊 Prescription / Recommended Products</h3>
+<div class="section">
+  ${meds.map(m => `<span class="med">✓ ${esc(m)}</span>`).join('')}
+</div>` : ''}
+
+${consultantNotes ? `
+<h3>📋 Consultant's Notes &amp; Diagnosis</h3>
+<div class="section" style="background:#fffbeb;border-color:#fcd34d;">
+  <p style="margin:0;white-space:pre-wrap;">${esc(consultantNotes)}</p>
+</div>` : ''}
+
+<h3>Consultant &amp; Follow-up</h3>
+<div class="section">
+  <div class="sig-row">
+    <div>
+      <div class="sig-box">
+        <div class="sig-label">Consulting Health Practitioner</div>
+        <div class="sig-name">${esc(user?.full_name || user?.username || '')}</div>
+        <div style="font-size:0.8rem;color:#555;margin-top:3px;">Tel: ${esc(user?.phone || '061-300877')}</div>
+        <div style="font-size:0.8rem;color:#555;">Email: ${esc(user?.email || 'info@dynapharm.com.na')}</div>
+      </div>
+    </div>
+    <div>
+      <div class="sig-box">
+        <div class="sig-label">Recommended Follow-up Date</div>
+        <div class="sig-name" style="color:#c41e3a;font-size:1.1rem;">${followUpDate ? new Date(followUpDate).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '________________'}</div>
+        ${followUpNotes ? `<div style="font-size:0.82rem;color:#555;margin-top:4px;">${esc(followUpNotes)}</div>` : ''}
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="footer">
-  <span>Generated: ${new Date().toLocaleString('en-NA')}</span>
-  <span>Dynapharm International Namibia — Confidential</span>
+  <span>Generated: ${new Date().toLocaleString('en-NA')} &nbsp;|&nbsp; Dynapharm International Namibia</span>
+  <span>This report is confidential and intended solely for the named patient.</span>
 </div>
+
+<script>window.onload = function(){ window.print(); }<\/script>
 </body></html>`);
     w.document.close();
-    w.print();
   };
 
   const updateStatus = async (apt, newStatus) => {
