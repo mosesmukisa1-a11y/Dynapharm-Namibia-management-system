@@ -111,7 +111,7 @@ export const api = {
     transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`),
     createTransfer: (data) => api.post('/stock/transfers', data),
     updateTransfer: (id, data) => api.put('/stock/transfers', { ...data, id }),
-    requests: () => api.get('/stock-requests'),
+    requests: (params = '') => api.get(`/stock-requests${params ? '?' + params : ''}`),
     createRequest: (data) => api.post('/stock-requests', data),
     updateRequest: (id, data) => api.put('/stock-requests', { ...data, id }),
   },

@@ -2008,11 +2008,15 @@ function OrdersTab({ branch }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [viewRequest, setViewRequest] = useState(null);
+  const [dispatchRequest, setDispatchRequest] = useState(null);
+  const [dispatchWH, setDispatchWH] = useState('country_stock');
   const [cart, setCart] = useState([]);
   const [priority, setPriority] = useState('normal');
   const [requestBranch, setRequestBranch] = useState(branch && branch !== 'all' ? fmtLocation(branch) : '');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
   const [alert, setAlert] = useState(null);
 
   const loadRequests = useCallback(() => {
@@ -2025,24 +2029,54 @@ function OrdersTab({ branch }) {
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
-  // Update default branch when global filter changes
   useEffect(() => {
     if (branch && branch !== 'all') setRequestBranch(fmtLocation(branch));
   }, [branch]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (cart.length === 0) {
-      setAlert({ type: 'error', msg: 'Select at least one product' });
-      return;
+  const handleAction = async (reqId, action, extra = {}) => {
+    setActionLoading(prev => ({ ...prev, [reqId]: action }));
+    try {
+      await api.stock.updateRequest(reqId, { status: action, ...extra, updated_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: `Request ${action === 'approved' ? 'approved' : action === 'rejected' ? 'rejected' : action === 'dispatched' ? 'dispatched to branch' : 'updated'} successfully` });
+      loadRequests();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setActionLoading(prev => { const n = { ...prev }; delete n[reqId]; return n; });
     }
-    if (!requestBranch) {
-      setAlert({ type: 'error', msg: 'Requesting branch is required' });
-      return;
-    }
+  };
+
+  const handleDispatchAsTransfer = async () => {
+    if (!dispatchRequest) return;
     setSubmitting(true);
     try {
-      // Submit all items as one request with items array
+      const items = Array.isArray(dispatchRequest.items) ? dispatchRequest.items : [];
+      const branchName = dispatchRequest.requestingBranch || dispatchRequest.requesting_branch || '';
+      for (const item of items) {
+        await api.stock.createTransfer({
+          from_location: dispatchWH,
+          to_location: branchName.toLowerCase().replace(/\s+/g, '_'),
+          product_name: item.productName || item.productId,
+          quantity: Number(item.quantity),
+          notes: `Fulfilling request ${dispatchRequest.requestNumber || dispatchRequest.id}`,
+        });
+      }
+      await api.stock.updateRequest(dispatchRequest.id, { status: 'dispatched', updated_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: `Dispatched ${items.length} item(s) from ${fmtLocation(dispatchWH)} → ${branchName}. Branch can now receive this delivery.` });
+      setDispatchRequest(null);
+      loadRequests();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false); }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (cart.length === 0) { setAlert({ type: 'error', msg: 'Select at least one product' }); return; }
+    if (!requestBranch) { setAlert({ type: 'error', msg: 'Requesting branch is required' }); return; }
+    setSubmitting(true);
+    try {
       await api.stock.createRequest({
         requesting_branch: requestBranch,
         priority,
@@ -2050,67 +2084,195 @@ function OrdersTab({ branch }) {
         created_by: user?.full_name || user?.username || 'Stock Manager',
         items: cart.map(item => ({ productId: item.description, productName: item.description, quantity: Number(item.qty), unit: 'units' })),
       });
-      setAlert({ type: 'success', msg: `Stock request submitted for ${requestBranch} (${cart.length} product${cart.length !== 1 ? 's' : ''})` });
-      setCart([]);
-      setPriority('normal');
-      setNotes('');
-      setShowForm(false);
+      setAlert({ type: 'success', msg: `Stock request submitted for ${requestBranch}` });
+      setCart([]); setPriority('normal'); setNotes(''); setShowForm(false);
       loadRequests();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
   if (loading) return <LoadingSpinner />;
 
-  // Filter by branch
   const filteredRequests = branch === 'all' ? requests : requests.filter(r => {
     const rb = (r.requestingBranch || r.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
     return rb === branch;
   });
 
+  const pending = filteredRequests.filter(r => !r.status || r.status === 'pending');
+  const approved = filteredRequests.filter(r => r.status === 'approved');
+  const dispatched = filteredRequests.filter(r => r.status === 'dispatched');
+  const completed = filteredRequests.filter(r => r.status === 'received' || r.status === 'fulfilled' || r.status === 'rejected');
+
+  const RequestCard = ({ r }) => {
+    const items = Array.isArray(r.items) ? r.items : [];
+    const isLoading = actionLoading[r.id];
+    const branchName = r.requestingBranch || r.requesting_branch || '—';
+    return (
+      <div style={{ background: '#fff', border: '1.5px solid #f0f0f0', borderRadius: 12, padding: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+        <div className="flex justify-between items-start gap-2 mb-2">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-sm text-gray-800">{branchName}</span>
+              <Badge variant={(r.priority||r.urgency) === 'urgent' ? 'danger' : (r.priority||r.urgency) === 'high' ? 'warning' : 'default'}>{r.priority || 'normal'}</Badge>
+              <Badge variant={r.status === 'approved' ? 'success' : r.status === 'dispatched' ? 'info' : r.status === 'received' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status || 'pending'}</Badge>
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">{formatDateTime(r.createdAt || r.created_at)} · {r.requestNumber || r.id}</div>
+          </div>
+          <button onClick={() => setViewRequest(r)} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 font-semibold border-none cursor-pointer">👁 View</button>
+        </div>
+        <div className="flex flex-wrap gap-1 mb-3">
+          {items.length === 0 ? <span className="text-xs text-gray-400">No items listed</span> : items.slice(0, 4).map((it, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-800 border border-red-100">{it.productName || it.productId} ×{it.quantity}</span>
+          ))}
+          {items.length > 4 && <span className="text-xs text-gray-400">+{items.length - 4} more</span>}
+        </div>
+        {r.notes && <div className="text-xs text-gray-500 italic mb-3">{r.notes}</div>}
+        <div className="flex gap-2 flex-wrap">
+          {(!r.status || r.status === 'pending') && (<>
+            <button disabled={!!isLoading} onClick={() => handleAction(r.id, 'approved')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#166534', color: '#fff', opacity: isLoading ? 0.6 : 1 }}>{isLoading === 'approved' ? '...' : '✓ Approve'}</button>
+            <button disabled={!!isLoading} onClick={() => handleAction(r.id, 'rejected')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#fef2f2', color: '#c41e3a', border: '1px solid #fecaca' }}>{isLoading === 'rejected' ? '...' : '✗ Reject'}</button>
+          </>)}
+          {r.status === 'approved' && (
+            <button disabled={!!isLoading} onClick={() => { setDispatchRequest(r); setDispatchWH('country_stock'); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#1e40af', color: '#fff' }}>🚚 Dispatch to Branch</button>
+          )}
+          {r.status === 'dispatched' && (
+            <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">📦 Awaiting branch receipt</span>
+          )}
+          {(r.status === 'received' || r.status === 'fulfilled') && (
+            <span className="text-xs text-green-700 font-semibold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">✅ Received by branch</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div>
+    <div className="space-y-5">
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-yellow-800">{pending.length}</div>
+          <div className="text-xs font-semibold text-yellow-700">Pending Approval</div>
+        </div>
+        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-green-800">{approved.length}</div>
+          <div className="text-xs font-semibold text-green-700">Approved — Ready to Dispatch</div>
+        </div>
+        <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-blue-800">{dispatched.length}</div>
+          <div className="text-xs font-semibold text-blue-700">Dispatched — In Transit</div>
+        </div>
+        <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-gray-700">{completed.length}</div>
+          <div className="text-xs font-semibold text-gray-500">Completed / Rejected</div>
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">
-              Stock Orders / Requests
-              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)} ({filteredRequests.length})</span>}
+              Branch Stock Requests
+              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
             </h3>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = filteredRequests.map(r => {
-                  const items = Array.isArray(r.items) ? r.items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join('; ') : (r.product_name || '');
-                  return `<tr><td>${formatDateTime(r.createdAt||r.created_at)}</td><td>${r.requestingBranch||r.requesting_branch||''}</td><td>${items}</td><td>${r.priority||'Normal'}</td><td>${r.status||'Pending'}</td><td>${r.notes||''}</td></tr>`;
+                  const items = Array.isArray(r.items) ? r.items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join('; ') : '';
+                  return `<tr><td>${formatDateTime(r.createdAt||r.created_at)}</td><td>${r.requestingBranch||r.requesting_branch||''}</td><td>${items}</td><td>${r.priority||'normal'}</td><td>${r.status||'pending'}</td><td>${r.notes||''}</td></tr>`;
                 }).join('');
-                printDocument('Stock Orders / Requests', `<table><thead><tr><th>Date</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
+                printDocument('Branch Stock Requests', `<table><thead><tr><th>Date</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
+              <Button size="sm" onClick={loadRequests} variant="secondary">↺ Refresh</Button>
               <Button size="sm" onClick={() => { setShowForm(true); setAlert(null); }}><Plus size={16} /> New Request</Button>
             </div>
           </div>
         </CardHeader>
-        <Table
-          columns={[
-            { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
-            { header: 'Branch', render: r => <span className="text-xs font-semibold">{r.requestingBranch || r.requesting_branch || '—'}</span> },
-            { header: 'Items', render: r => {
-              const items = Array.isArray(r.items) ? r.items : [];
-              if (items.length === 0) return <span className="text-xs text-gray-400">—</span>;
-              return <span className="text-xs">{items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join(', ')}</span>;
-            }},
-            { header: 'Priority', render: r => <Badge variant={(r.priority||r.urgency) === 'urgent' ? 'danger' : (r.priority||r.urgency) === 'high' ? 'warning' : 'default'}>{r.priority || r.urgency || 'Normal'}</Badge> },
-            { header: 'Status', render: r => <Badge variant={r.status === 'approved' || r.status === 'fulfilled' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status || 'Pending'}</Badge> },
-            { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-[140px] block">{r.notes || '—'}</span> },
-          ]}
-          data={filteredRequests}
-          emptyMessage={branch !== 'all' ? `No requests for ${fmtLocation(branch)}` : 'No stock requests'}
-        />
+        <div className="p-4 space-y-3">
+          {filteredRequests.length === 0
+            ? <p className="text-center text-gray-400 py-8">{branch !== 'all' ? `No requests for ${fmtLocation(branch)}` : 'No stock requests'}</p>
+            : filteredRequests.map(r => <RequestCard key={r.id} r={r} />)
+          }
+        </div>
       </Card>
 
+      {/* View Request Detail Modal */}
+      <Modal open={!!viewRequest} onClose={() => setViewRequest(null)} title={`Request — ${viewRequest?.requestingBranch || viewRequest?.requesting_branch || ''}`} size="lg">
+        {viewRequest && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">Request #:</span> <span className="font-mono font-bold">{viewRequest.requestNumber || viewRequest.id}</span></div>
+              <div><span className="text-gray-500">Branch:</span> <span className="font-bold">{viewRequest.requestingBranch || viewRequest.requesting_branch}</span></div>
+              <div><span className="text-gray-500">Priority:</span> <Badge variant={(viewRequest.priority) === 'urgent' ? 'danger' : viewRequest.priority === 'high' ? 'warning' : 'default'}>{viewRequest.priority || 'normal'}</Badge></div>
+              <div><span className="text-gray-500">Status:</span> <Badge variant={viewRequest.status === 'approved' ? 'success' : viewRequest.status === 'rejected' ? 'danger' : 'info'}>{viewRequest.status || 'pending'}</Badge></div>
+              <div className="col-span-2"><span className="text-gray-500">Created:</span> {formatDateTime(viewRequest.createdAt || viewRequest.created_at)} {viewRequest.createdBy && `by ${viewRequest.createdBy}`}</div>
+              {viewRequest.notes && <div className="col-span-2"><span className="text-gray-500">Notes:</span> {viewRequest.notes}</div>}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Items Requested:</p>
+              <div className="space-y-1.5">
+                {(Array.isArray(viewRequest.items) ? viewRequest.items : []).map((it, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-red-50 border border-red-100">
+                    <span className="text-sm font-medium">{it.productName || it.productId}</span>
+                    <span className="font-bold text-red-700">×{it.quantity} {it.unit||'units'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              {(!viewRequest.status || viewRequest.status === 'pending') && (<>
+                <Button onClick={() => { handleAction(viewRequest.id, 'approved'); setViewRequest(null); }}>✓ Approve</Button>
+                <Button variant="danger" onClick={() => { handleAction(viewRequest.id, 'rejected'); setViewRequest(null); }}>✗ Reject</Button>
+              </>)}
+              {viewRequest.status === 'approved' && (
+                <Button onClick={() => { setDispatchRequest(viewRequest); setViewRequest(null); setDispatchWH('country_stock'); }}>🚚 Dispatch to Branch</Button>
+              )}
+              <Button variant="secondary" onClick={() => setViewRequest(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Dispatch Transfer Modal */}
+      <Modal open={!!dispatchRequest} onClose={() => setDispatchRequest(null)} title="Dispatch Stock to Branch" size="md">
+        {dispatchRequest && (
+          <div className="p-6 space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+              <p className="font-semibold text-blue-800 mb-1">Fulfilling: {dispatchRequest.requestNumber || dispatchRequest.id}</p>
+              <p className="text-blue-700">→ Destination: <strong>{dispatchRequest.requestingBranch || dispatchRequest.requesting_branch}</strong></p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-gray-700 mb-1">Items to dispatch:</p>
+              {(Array.isArray(dispatchRequest.items) ? dispatchRequest.items : []).map((it, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+                  <span className="text-sm">{it.productName || it.productId}</span>
+                  <span className="font-bold">×{it.quantity}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-semibold text-gray-700">Dispatching From Warehouse <span className="text-red-500">*</span></label>
+              <select value={dispatchWH} onChange={e => setDispatchWH(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2">
+                <option value="country_stock">Country Stock (Main)</option>
+                <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+              </select>
+            </div>
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+              This will create a stock transfer from <strong>{fmtLocation(dispatchWH)}</strong> → <strong>{dispatchRequest.requestingBranch || dispatchRequest.requesting_branch}</strong> and mark the request as "dispatched". The branch will see this as an incoming delivery to receive.
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleDispatchAsTransfer} disabled={submitting}>{submitting ? 'Dispatching...' : '🚚 Confirm Dispatch'}</Button>
+              <Button variant="secondary" onClick={() => setDispatchRequest(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* New Request Modal */}
       <Modal open={showForm} onClose={() => { setShowForm(false); setCart([]); }} title="New Stock Request" size="xl">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
@@ -2123,29 +2285,20 @@ function OrdersTab({ branch }) {
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
-            <Select
-              label="Priority"
-              options={[
-                { value: 'normal', label: 'Normal' },
-                { value: 'high', label: 'High' },
-                { value: 'urgent', label: 'Urgent' },
-              ]}
-              value={priority}
-              onChange={e => setPriority(e.target.value)}
-            />
+            <Select label="Priority" options={[{ value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }, { value: 'urgent', label: 'Urgent' }]} value={priority} onChange={e => setPriority(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Products to Request <span className="font-normal text-gray-400">(search and click to add)</span></label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Products <span className="font-normal text-gray-400">(search and click to add)</span></label>
             <ProductMultiCart cart={cart} onCartChange={setCart} />
           </div>
-          <Textarea label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details or reasons for this request..." />
+          <Textarea label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details..." />
           {cart.length > 0 && (
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: '0.83rem', color: '#166534' }}>
-              Ready to submit <strong>{cart.length}</strong> product request{cart.length !== 1 ? 's' : ''} for <strong>{requestBranch || '—'}</strong> — priority: <strong>{priority}</strong>
+              Ready to submit <strong>{cart.length}</strong> product{cart.length !== 1 ? 's' : ''} for <strong>{requestBranch || '—'}</strong> — priority: <strong>{priority}</strong>
             </div>
           )}
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting || cart.length === 0 || !requestBranch}>{submitting ? `Submitting…` : `Submit Request`}</Button>
+            <Button type="submit" disabled={submitting || cart.length === 0 || !requestBranch}>{submitting ? 'Submitting…' : 'Submit Request'}</Button>
             <Button variant="secondary" type="button" onClick={() => { setShowForm(false); setCart([]); }}>Cancel</Button>
           </div>
         </form>

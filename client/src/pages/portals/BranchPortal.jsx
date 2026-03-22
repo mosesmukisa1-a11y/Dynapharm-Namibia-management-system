@@ -11,6 +11,17 @@ import { MembershipAgreementForm } from '../../components/MembershipAgreementFor
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
+const fmtLocation = (loc) => {
+  if (!loc) return '—';
+  const map = {
+    country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse',
+    windhoek_cbd: 'Windhoek CBD', windhoek: 'Windhoek CBD', tsumeb: 'Tsumeb', gobabis: 'Gobabis',
+    swakopmund: 'Swakopmund', rundu: 'Rundu', oshakati: 'Oshakati', ondangwa: 'Ondangwa', katima_mulilo: 'Katima Mulilo', okahandja: 'Okahandja',
+    keetmanshoop: 'Keetmanshoop', luderitz: 'Lüderitz', mariental: 'Mariental', otjiwarongo: 'Otjiwarongo',
+  };
+  return map[loc.toLowerCase().replace(/\s+/g, '_')] || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
 export default function BranchPortal() {
   const [activeTab, setActiveTab] = useState('walkIn');
   const tabs = [
@@ -1681,10 +1692,11 @@ function BranchStockTab() {
     setLoading(true);
     try {
       const branchParam = user?.branch ? `branch=${encodeURIComponent(user.branch)}` : '';
+      const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
         api.branch.inventory(branchParam).catch(() => []),
-        api.stock.requests().catch(() => ({ requests: [] })),
-        api.stock.transfers().catch(() => ({ transfers: [] })),
+        api.stock.requests(branchParam).catch(() => ({ requests: [] })),
+        api.stock.transfers(branchKey ? `branch=${encodeURIComponent(branchKey)}` : '').catch(() => ({ transfers: [] })),
         api.get('/stock-movements').catch(() => []),
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),
@@ -1830,14 +1842,53 @@ function BranchStockTab() {
     } finally { setSubmitting(false); }
   };
 
+  const handleReceiveTransfer = async (transfer) => {
+    if (!transfer) return;
+    setSubmitting(true);
+    try {
+      const items = Array.isArray(transfer.items) ? transfer.items : [];
+      const singleProduct = transfer.product_name || (items[0] ? (items[0].productName || items[0].productId) : null);
+      const singleQty = transfer.quantity || (items[0] ? items[0].quantity : 0);
+      const toRecord = items.length > 0 ? items : (singleProduct ? [{ productName: singleProduct, quantity: singleQty }] : []);
+      for (const item of toRecord) {
+        if (Number(item.quantity || 0) > 0) {
+          await api.stock.createMovement({
+            product_name: item.productName || item.productId || singleProduct,
+            quantity: Number(item.quantity || item.qty || singleQty),
+            movement_type: 'received',
+            source_location: transfer.fromWarehouse || transfer.from_location || 'Warehouse',
+            destination_location: user?.branch || 'Branch',
+            notes: `Received warehouse transfer ${transfer.id}`,
+            reference_id: transfer.id,
+          });
+        }
+      }
+      await api.stock.updateTransfer(transfer.id, { status: 'delivered', received_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', message: `Stock received successfully from ${transfer.fromWarehouse || transfer.from_location || 'Warehouse'}` });
+      loadData();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to receive transfer' });
+    } finally { setSubmitting(false); }
+  };
+
   if (loading) return <LoadingSpinner />;
 
-  const pendingReceive = requests.filter(r => r.status === 'approved' || r.status === 'dispatched');
+  const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
+  // Incoming warehouse deliveries: transfers TO this branch that are pending/dispatched/in_transit
+  const incomingDeliveries = transfers.filter(t => {
+    const toB = (t.toBranch || t.to_location || '').toLowerCase().replace(/\s+/g, '_');
+    const st = (t.status || '').toLowerCase();
+    return (branchKey ? toB === branchKey : true) && st !== 'delivered' && st !== 'cancelled';
+  });
+  // Pending requests approved/dispatched by stock management
+  const pendingRequests = requests.filter(r => r.status === 'approved' || r.status === 'dispatched');
+  const pendingReceive = pendingRequests; // keep for backward compat badge count
+  const totalPendingReceive = incomingDeliveries.length + pendingRequests.length;
   const stockSubTabs = [
     { id: 'inventory', label: '📦 Inventory' },
     { id: 'alerts', label: `⚠️ Alerts (${lowStock.length + expiringItems.length + expiredItems.length + outOfStock.length})` },
     { id: 'requests', label: '📋 Requests' },
-    { id: 'receive', label: `📥 Receive Stock${pendingReceive.length > 0 ? ` (${pendingReceive.length})` : ''}` },
+    { id: 'receive', label: `📥 Receive Stock${totalPendingReceive > 0 ? ` (${totalPendingReceive})` : ''}` },
     { id: 'transfers', label: '↔ Transfers' },
     { id: 'movements', label: '📊 Movements' },
     { id: 'reports', label: '🖨️ Reports' },
@@ -1881,7 +1932,8 @@ function BranchStockTab() {
               { header: 'Qty', render: r => { const q = Number(r.quantity || 0); return <span style={{ fontWeight: 700, color: q<=0?'#c41e3a':q<10?'#d97706':'#166534' }}>{q}</span>; }},
               { header: 'Batch', render: r => r.batch_no || r.batch_number || '-' },
               { header: 'Expiry', render: r => { if (!r.expiry_date) return '-'; const exp = new Date(r.expiry_date); const isExp = exp < now; const isExpiring = exp <= thirtyDays; return <span style={{ color: isExp?'#c41e3a':isExpiring?'#d97706':'inherit', fontWeight: (isExp||isExpiring)?700:400 }}>{formatDate(r.expiry_date)}{isExp?' (EXPIRED)':isExpiring?' ⚠️':''}</span>; }},
-              { header: 'Unit Price', render: r => formatCurrency(r.unit_price || 0) },
+              { header: 'DP Price', render: r => { const p = findProductPrice(r.product_name || r.description); return p?.dp ? <span className="font-semibold text-green-700">N$ {Number(p.dp).toFixed(2)}</span> : <span className="text-gray-400">—</span>; }},
+              { header: 'SP Price', render: r => { const p = findProductPrice(r.product_name || r.description); return p?.cp ? <span className="font-semibold">N$ {Number(p.cp).toFixed(2)}</span> : formatCurrency(r.unit_price || 0); }},
             ]}
             data={inventory}
             emptyMessage="No inventory data for this branch"
@@ -1912,9 +1964,12 @@ function BranchStockTab() {
           </CardHeader>
           <Table
             columns={[
-              { header: 'Request #', render: r => <span className="font-mono text-xs">{r.request_number || r.id}</span> },
-              { header: 'Branch', render: r => <span className="font-semibold text-xs">{r.requesting_branch || user?.branch || '-'}</span> },
-              { header: 'Items', render: r => { const items = parseItems(r); return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.product_name} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>; }},
+              { header: 'Request #', render: r => <span className="font-mono text-xs">{r.requestNumber || r.request_number || r.id}</span> },
+              { header: 'Branch', render: r => <span className="font-semibold text-xs">{r.requestingBranch || r.requesting_branch || user?.branch || '-'}</span> },
+              { header: 'Items', render: r => {
+                const items = Array.isArray(r.items) ? r.items : (() => { try { return typeof r.items==='string'?JSON.parse(r.items):[]; } catch { return []; } })();
+                return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.productName||i.product_name||i.productId} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>;
+              }},
               { header: 'Priority', render: r => <Badge variant={r.priority==='urgent'?'danger':r.priority==='high'?'warning':'info'}>{r.priority||'normal'}</Badge> },
               { header: 'Status', render: r => <Badge variant={r.status==='approved'?'success':r.status==='received'?'success':r.status==='rejected'?'danger':'warning'}>{r.status||'pending'}</Badge> },
               { header: 'Date', render: r => formatDateTime(r.created_at) },
@@ -1932,38 +1987,96 @@ function BranchStockTab() {
       )}
 
       {subTab === 'receive' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-gray-800 text-lg m-0">📥 Receive Stock from Warehouse</h3>
+        <div className="space-y-5">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800 text-lg m-0">📥 Receive Incoming Stock</h3>
+            <button onClick={loadData} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white cursor-pointer font-semibold text-gray-500">↺ Refresh</button>
           </div>
-          {pendingReceive.length === 0 ? (
-            <Card><CardBody><p className="text-center text-gray-400 py-8">No stock ready to receive — requests must be approved or dispatched by Stock Management first</p></CardBody></Card>
-          ) : (
-            <div className="space-y-4">
-              {pendingReceive.map(req => {
-                const items = (() => { try { return typeof req.items==='string'?JSON.parse(req.items):(req.items||[]); } catch { return []; } })();
-                return (
-                  <div key={req.id} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: 18, boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <div className="font-bold text-gray-800">Request: <span className="font-mono text-sm">{req.request_number || req.id}</span></div>
-                        <div className="text-sm text-gray-500 mt-1">From: Warehouse → {req.requesting_branch || 'Branch'} · {formatDateTime(req.created_at)}</div>
-                        {req.notes && <div className="text-xs text-gray-400 mt-1">Notes: {req.notes}</div>}
+
+          {/* Incoming Warehouse Transfers */}
+          {incomingDeliveries.length > 0 && (
+            <div>
+              <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                🚚 Incoming Warehouse Deliveries
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{incomingDeliveries.length}</span>
+              </h4>
+              <div className="space-y-3">
+                {incomingDeliveries.map(t => {
+                  const fromLoc = fmtLocation(t.fromWarehouse || t.from_location || 'Warehouse');
+                  const tItems = Array.isArray(t.items) ? t.items : [];
+                  const singleProd = t.product_name;
+                  const singleQty = t.quantity;
+                  return (
+                    <div key={t.id} style={{ background: '#f0f7ff', border: '1.5px solid #93c5fd', borderRadius: 14, padding: 18, boxShadow: '0 2px 8px rgba(30,64,175,0.06)' }}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="font-bold text-gray-800">Warehouse Transfer: <span className="font-mono text-sm">{t.id}</span></div>
+                          <div className="text-sm text-gray-500 mt-1">From: <strong>{fromLoc}</strong> → {fmtLocation(t.toBranch || t.to_location || user?.branch)} · {formatDateTime(t.createdAt || t.created_at)}</div>
+                          {t.dispatchNotes && <div className="text-xs text-gray-400 mt-1">Notes: {t.dispatchNotes}</div>}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <Badge variant={t.status === 'dispatched' || t.status === 'in_transit' ? 'info' : 'warning'}>{t.status || 'pending'}</Badge>
+                          <button disabled={submitting} onClick={() => handleReceiveTransfer(t)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#1e40af', color: '#fff', opacity: submitting ? 0.6 : 1 }}>
+                            📥 Mark Received
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <Badge variant={req.status==='dispatched'?'info':'success'}>{req.status}</Badge>
-                        <button onClick={() => openReceiveForm(req)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📥 Receive</button>
+                      <div className="flex flex-wrap gap-2">
+                        {tItems.length > 0
+                          ? tItems.map((it, i) => (
+                              <span key={i} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}>
+                                {it.productName || it.productId} × {it.quantity}
+                              </span>
+                            ))
+                          : singleProd
+                          ? <span className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}>{singleProd} × {singleQty}</span>
+                          : <span className="text-xs text-gray-400">No item details</span>
+                        }
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {items.map((item, i) => (
-                        <span key={i} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#f9f5f5', border: '1px solid #f0e8ea', color: '#374151' }}>{item.product_name} × {item.quantity}</span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
+          )}
+
+          {/* Approved/Dispatched Stock Requests */}
+          {pendingRequests.length > 0 && (
+            <div>
+              <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                📋 Approved Branch Requests
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{pendingRequests.length}</span>
+              </h4>
+              <div className="space-y-3">
+                {pendingRequests.map(req => {
+                  const items = (() => { try { return typeof req.items==='string'?JSON.parse(req.items):(req.items||[]); } catch { return []; } })();
+                  return (
+                    <div key={req.id} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: 18, boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="font-bold text-gray-800">Request: <span className="font-mono text-sm">{req.requestNumber || req.request_number || req.id}</span></div>
+                          <div className="text-sm text-gray-500 mt-1">Approved by Stock Management · {formatDateTime(req.createdAt || req.created_at)}</div>
+                          {req.notes && <div className="text-xs text-gray-400 mt-1">Notes: {req.notes}</div>}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <Badge variant={req.status === 'dispatched' ? 'info' : 'success'}>{req.status}</Badge>
+                          <button onClick={() => openReceiveForm(req)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📥 Receive</button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map((item, i) => (
+                          <span key={i} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#f9f5f5', border: '1px solid #f0e8ea', color: '#374151' }}>{item.productName || item.product_name} × {item.quantity}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {incomingDeliveries.length === 0 && pendingRequests.length === 0 && (
+            <Card><CardBody><p className="text-center text-gray-400 py-8">No incoming stock — warehouse deliveries and approved requests will appear here</p></CardBody></Card>
           )}
         </div>
       )}
@@ -1979,11 +2092,15 @@ function BranchStockTab() {
           </CardHeader>
           <Table
             columns={[
-              { header: 'From Branch', render: r => <span className="font-semibold text-xs">{r.from_warehouse || user?.branch || '-'}</span> },
-              { header: 'To Branch', render: r => <span className="font-semibold text-xs">{r.to_branch || '-'}</span> },
-              { header: 'Items', render: r => { const items = parseItems(r); return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.product_name} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>; }},
+              { header: 'From', render: r => <span className="font-semibold text-xs">{fmtLocation(r.fromWarehouse || r.from_location || user?.branch)}</span> },
+              { header: 'To', render: r => <span className="font-semibold text-xs">{fmtLocation(r.toBranch || r.to_location)}</span> },
+              { header: 'Product', render: r => {
+                const items = Array.isArray(r.items) ? r.items : [];
+                if (items.length > 0) return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.productName||i.productId} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}</span>;
+                return <span className="text-xs text-gray-600">{r.product_name ? `${r.product_name} ×${r.quantity}` : '-'}</span>;
+              }},
               { header: 'Status', render: r => <Badge variant={r.status==='delivered'?'success':r.status==='dispatched'?'info':'warning'}>{r.status||'pending'}</Badge> },
-              { header: 'Date', render: r => formatDateTime(r.created_at) },
+              { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
               { header: '', render: r => <button onClick={() => setViewTransfer(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>👁 View</button> },
             ]}
             data={transfers}
@@ -2337,11 +2454,11 @@ function BranchStockTab() {
             <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                 {[
-                  { label: 'From Branch', value: viewTransfer.from_warehouse || user?.branch || '-' },
-                  { label: 'To Branch', value: viewTransfer.to_branch || '-' },
+                  { label: 'From', value: fmtLocation(viewTransfer.fromWarehouse || viewTransfer.from_location || user?.branch) },
+                  { label: 'To', value: fmtLocation(viewTransfer.toBranch || viewTransfer.to_location) },
                   { label: 'Status', value: viewTransfer.status || 'pending' },
-                  { label: 'Date', value: formatDateTime(viewTransfer.created_at) },
-                  { label: 'Created By', value: viewTransfer.created_by || '-' },
+                  { label: 'Date', value: formatDateTime(viewTransfer.createdAt || viewTransfer.created_at) },
+                  { label: 'Created By', value: viewTransfer.createdBy || viewTransfer.created_by || '-' },
                 ].map(f => (
                   <div key={f.label} style={{ background: '#f4f7fb', padding: '10px 14px', borderRadius: 10 }}>
                     <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 3 }}>{f.label}</div>
