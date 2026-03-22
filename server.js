@@ -363,6 +363,27 @@ app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
 });
 // ── End Stock Adjustment Routes ────────────────────────────────────────────────
 
+// ── Stock Request Status Update (GM Approval) ──────────────────────────────────
+app.put('/api/stock-requests/:id', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const id = req.params.id;
+    const { status, notes } = req.body || {};
+    if (!status) return res.status(400).json({ error: 'status is required' });
+    const actorName = req.user?.name || req.user?.sub || 'gm';
+    await query(
+      `UPDATE stock_requests SET status=$1, notes=COALESCE($2, notes), approved_by=$3, approved_at=NOW(), updated_at=NOW(), last_status_change=NOW() WHERE id=$4`,
+      [status, notes || null, actorName, id]
+    );
+    const updated = await getOne('SELECT * FROM stock_requests WHERE id=$1', [id]);
+    res.json({ success: true, request: updated });
+  } catch (err) {
+    console.error('stock-requests PUT/:id', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ── End Stock Request Update Route ─────────────────────────────────────────────
+
 // ── Product Price Routes ────────────────────────────────────────────────────────
 const STATIC_PRICE_LIST = [
   {description:"ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's",dp:260,cp:320,bv:43,cif:110},

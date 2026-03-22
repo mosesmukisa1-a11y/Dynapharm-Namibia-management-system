@@ -181,20 +181,52 @@ function StockAdjustmentsTab({ onCountChange }) {
         title={actionModal?._action === 'approve' ? '✓ Approve Stock Adjustment' : '✕ Reject Stock Adjustment'}>
         <div className="p-6 space-y-4">
           {actionModal && (
-            <div style={{ background: actionModal._action === 'approve' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${actionModal._action === 'approve' ? '#86efac' : '#fca5a5'}`, borderRadius: 10, padding: '12px 16px' }}>
-              <p className="text-sm font-bold text-gray-800 mb-1">{actionModal.product_name || 'Unknown product'}</p>
-              <p className="text-xs text-gray-600">
-                Change <strong>{(actionModal.field_to_adjust||'').replace(/_/g,' ')}</strong> from{' '}
-                <span className="line-through text-gray-400">{actionModal.old_value || '—'}</span> to{' '}
-                <span className="font-bold text-primary">{actionModal.new_value}</span>
-              </p>
-              <p className="text-xs text-gray-500 mt-1 italic">Reason: {actionModal.reason}</p>
-              {actionModal._action === 'approve' && (
-                <Alert type="warning" className="mt-2 text-xs">
-                  Approving will immediately update the actual stock record and cannot be undone.
-                </Alert>
-              )}
-            </div>
+            <>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Request Details</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  <div>
+                    <p className="text-xs text-gray-500">Reference</p>
+                    <p className="text-sm font-mono font-bold text-primary">{actionModal.adj_number || actionModal.id}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Submitted</p>
+                    <p className="text-sm font-medium text-gray-700">{actionModal.created_at ? new Date(actionModal.created_at).toLocaleString() : '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Requested By</p>
+                    <p className="text-sm font-semibold text-gray-800">{actionModal.requested_by_name || actionModal.requested_by || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Target Type</p>
+                    <p className="text-sm font-medium text-gray-700 capitalize">{(actionModal.target_type || '—').replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Location</p>
+                    <p className="text-sm font-medium text-gray-700 capitalize">{(actionModal.location || '—').replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Record ID</p>
+                    <p className="text-sm font-mono text-gray-500">{actionModal.target_id ? actionModal.target_id.slice(-10) : '—'}</p>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: actionModal._action === 'approve' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${actionModal._action === 'approve' ? '#86efac' : '#fca5a5'}`, borderRadius: 10, padding: '12px 16px' }}>
+                <p className="text-sm font-bold text-gray-800 mb-1">📦 {actionModal.product_name || 'Unknown product'}</p>
+                <p className="text-sm text-gray-700 mt-1">
+                  Change <strong className="capitalize">{(actionModal.field_to_adjust||'').replace(/_/g,' ')}</strong>:{' '}
+                  <span className="line-through text-gray-400 mr-1">{actionModal.old_value || '—'}</span>
+                  <span className="font-bold text-gray-500 mr-1">→</span>
+                  <span className="font-bold text-primary">{actionModal.new_value}</span>
+                </p>
+                <p className="text-xs text-gray-600 mt-2 bg-white/60 rounded p-2 italic">💬 {actionModal.reason}</p>
+                {actionModal._action === 'approve' && (
+                  <Alert type="warning" className="mt-2 text-xs">
+                    Approving will immediately update the actual stock record and cannot be undone.
+                  </Alert>
+                )}
+              </div>
+            </>
           )}
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">GM Notes (optional)</label>

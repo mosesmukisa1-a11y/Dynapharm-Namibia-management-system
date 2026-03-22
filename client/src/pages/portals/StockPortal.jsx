@@ -1115,11 +1115,95 @@ function DistributionTab() {
   );
 }
 
+// ── Reusable multi-product cart picker ─────────────────────────────────────────
+function ProductMultiCart({ cart, onCartChange }) {
+  const [search, setSearch] = useState('');
+  const allProducts = getLiveProductList();
+  const filtered = search.trim()
+    ? allProducts.filter(p => p.description.toLowerCase().includes(search.toLowerCase()))
+    : allProducts;
+
+  const addItem = (p) => {
+    const existing = cart.find(c => c.description === p.description);
+    if (existing) {
+      onCartChange(cart.map(c => c.description === p.description ? { ...c, qty: c.qty + 1 } : c));
+    } else {
+      onCartChange([...cart, { description: p.description, qty: 1, dp: p.dp, cif: p.cif }]);
+    }
+  };
+
+  const setQty = (desc, qty) => {
+    if (qty < 1) { onCartChange(cart.filter(c => c.description !== desc)); return; }
+    onCartChange(cart.map(c => c.description === desc ? { ...c, qty } : c));
+  };
+
+  const removeItem = (desc) => onCartChange(cart.filter(c => c.description !== desc));
+
+  return (
+    <div style={{ display: 'flex', gap: 12, minHeight: 340 }}>
+      {/* Left: product search list */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+            <input
+              type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search products by name…"
+              style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          {filtered.slice(0, 100).map(p => {
+            const inCart = cart.find(c => c.description === p.description);
+            return (
+              <div key={p.description} onClick={() => addItem(p)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 9px', borderRadius: 7, marginBottom: 3, cursor: 'pointer', background: inCart ? '#fff0f3' : '#fff', border: inCart ? '1.5px solid #fecdd3' : '1px solid #f1f5f9', transition: 'background 0.1s' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: inCart ? 700 : 500, color: inCart ? '#c41e3a' : '#1e293b', flex: 1, paddingRight: 8 }}>{p.description}</span>
+                {inCart
+                  ? <span style={{ background: '#c41e3a', color: '#fff', borderRadius: 99, padding: '2px 9px', fontSize: '0.75rem', fontWeight: 800 }}>{inCart.qty} ✓</span>
+                  : <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>+ Add</span>}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem', paddingTop: 24 }}>No products found</p>}
+        </div>
+        <div style={{ padding: '6px 12px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#94a3b8' }}>
+          Showing {Math.min(filtered.length, 100)} of {filtered.length} products
+        </div>
+      </div>
+      {/* Right: cart */}
+      <div style={{ width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.83rem', color: '#374151' }}>📋 Selected ({cart.length})</p>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          {cart.length === 0
+            ? <p style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center', paddingTop: 20 }}>Click products to add them</p>
+            : cart.map(item => (
+              <div key={item.description} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ flex: 1, fontSize: '0.77rem', fontWeight: 600, color: '#1e293b', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description}>{item.description}</span>
+                <button onClick={() => setQty(item.description, item.qty - 1)} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                <input type="number" min="1" value={item.qty} onChange={e => setQty(item.description, Number(e.target.value))}
+                  style={{ width: 36, textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700, padding: '1px 2px' }} />
+                <button onClick={() => setQty(item.description, item.qty + 1)} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                <button onClick={() => removeItem(item.description)} style={{ width: 18, height: 18, border: 'none', borderRadius: 4, background: '#fef2f2', cursor: 'pointer', color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ── End ProductMultiCart ────────────────────────────────────────────────────────
+
 function TransfersTab() {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ from_location: '', to_location: '', product_name: '', quantity: '' });
+  const [fromLocation, setFromLocation] = useState('');
+  const [toLocation, setToLocation] = useState('');
+  const [cart, setCart] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
 
@@ -1143,20 +1227,28 @@ function TransfersTab() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!form.from_location || !form.to_location || !form.product_name || !form.quantity) {
-      setAlert({ type: 'error', msg: 'All fields are required' });
+    if (!fromLocation || !toLocation) {
+      setAlert({ type: 'error', msg: 'From and To locations are required' });
+      return;
+    }
+    if (cart.length === 0) {
+      setAlert({ type: 'error', msg: 'Select at least one product' });
       return;
     }
     setSubmitting(true);
     try {
-      await api.stock.createTransfer({
-        from_location: form.from_location,
-        to_location: form.to_location,
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
-      });
-      setAlert({ type: 'success', msg: 'Transfer created successfully' });
-      setForm({ from_location: '', to_location: '', product_name: '', quantity: '' });
+      for (const item of cart) {
+        await api.stock.createTransfer({
+          from_location: fromLocation,
+          to_location: toLocation,
+          product_name: item.description,
+          quantity: Number(item.qty),
+        });
+      }
+      setAlert({ type: 'success', msg: `${cart.length} transfer${cart.length !== 1 ? 's' : ''} created successfully` });
+      setCart([]);
+      setFromLocation('');
+      setToLocation('');
       setShowNew(false);
       loadTransfers();
     } catch (err) {
@@ -1222,28 +1314,25 @@ function TransfersTab() {
         />
       </Card>
 
-      <Modal open={showNew} onClose={() => setShowNew(false)} title="New Stock Transfer" size="md">
+      <Modal open={showNew} onClose={() => { setShowNew(false); setCart([]); }} title="New Stock Transfer" size="xl">
         <form onSubmit={handleCreate} className="p-6 space-y-4">
-          <Select label="From Location" options={locations} value={form.from_location} onChange={e => setForm(f => ({ ...f, from_location: e.target.value }))} />
-          <Select label="To Location" options={locations} value={form.to_location} onChange={e => setForm(f => ({ ...f, to_location: e.target.value }))} />
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Product</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              value={form.product_name}
-              onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-              required
-            >
-              <option value="">Select product...</option>
-              {getLiveProductList().map(p => (
-                <option key={p.description} value={p.description}>{p.description}</option>
-              ))}
-            </select>
+          {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="From Location" options={locations} value={fromLocation} onChange={e => setFromLocation(e.target.value)} />
+            <Select label="To Location" options={locations} value={toLocation} onChange={e => setToLocation(e.target.value)} />
           </div>
-          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Products <span className="font-normal text-gray-400">(search and click to add)</span></label>
+            <ProductMultiCart cart={cart} onCartChange={setCart} />
+          </div>
+          {cart.length > 0 && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: '0.83rem', color: '#166534' }}>
+              Ready to create <strong>{cart.length}</strong> transfer{cart.length !== 1 ? 's' : ''} from <strong>{fromLocation.replace(/_/g,' ')}</strong> → <strong>{toLocation.replace(/_/g,' ')}</strong>
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Transfer'}</Button>
-            <Button variant="secondary" type="button" onClick={() => setShowNew(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting || cart.length === 0}>{submitting ? `Creating ${cart.length} transfer${cart.length !== 1 ? 's' : ''}…` : `Create ${cart.length || ''} Transfer${cart.length !== 1 ? 's' : ''}`}</Button>
+            <Button variant="secondary" type="button" onClick={() => { setShowNew(false); setCart([]); }}>Cancel</Button>
           </div>
         </form>
       </Modal>
@@ -1329,7 +1418,9 @@ function OrdersTab() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ product_name: '', quantity: '', urgency: 'normal', notes: '' });
+  const [cart, setCart] = useState([]);
+  const [urgency, setUrgency] = useState('normal');
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
 
@@ -1345,20 +1436,24 @@ function OrdersTab() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.product_name || !form.quantity) {
-      setAlert({ type: 'error', msg: 'Product and quantity are required' });
+    if (cart.length === 0) {
+      setAlert({ type: 'error', msg: 'Select at least one product' });
       return;
     }
     setSubmitting(true);
     try {
-      await api.stock.createRequest({
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
-        urgency: form.urgency,
-        notes: form.notes,
-      });
-      setAlert({ type: 'success', msg: 'Stock request submitted successfully' });
-      setForm({ product_name: '', quantity: '', urgency: 'normal', notes: '' });
+      for (const item of cart) {
+        await api.stock.createRequest({
+          product_name: item.description,
+          quantity: Number(item.qty),
+          urgency,
+          notes,
+        });
+      }
+      setAlert({ type: 'success', msg: `${cart.length} stock request${cart.length !== 1 ? 's' : ''} submitted successfully` });
+      setCart([]);
+      setUrgency('normal');
+      setNotes('');
       setShowForm(false);
       loadRequests();
     } catch (err) {
@@ -1382,7 +1477,7 @@ function OrdersTab() {
                 const rows = requests.map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.quantity||''}</td><td>${r.urgency||'Normal'}</td><td>${r.status||'Pending'}</td><td>${r.notes||''}</td></tr>`).join('');
                 printDocument('Stock Orders / Requests', `<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Urgency</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
-              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Request</Button>
+              <Button size="sm" onClick={() => { setShowForm(true); setAlert(null); }}><Plus size={16} /> New Request</Button>
             </div>
           </div>
         </CardHeader>
@@ -1400,37 +1495,34 @@ function OrdersTab() {
         />
       </Card>
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Stock Request" size="md">
+      <Modal open={showForm} onClose={() => { setShowForm(false); setCart([]); }} title="New Stock Request" size="xl">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Product</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              value={form.product_name}
-              onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-              required
-            >
-              <option value="">Select product...</option>
-              {getLiveProductList().map(p => (
-                <option key={p.description} value={p.description}>{p.description}</option>
-              ))}
-            </select>
+          {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Products <span className="font-normal text-gray-400">(search and click to add)</span></label>
+            <ProductMultiCart cart={cart} onCartChange={setCart} />
           </div>
-          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
-          <Select
-            label="Urgency"
-            options={[
-              { value: 'normal', label: 'Normal' },
-              { value: 'high', label: 'High' },
-              { value: 'urgent', label: 'Urgent' },
-            ]}
-            value={form.urgency}
-            onChange={e => setForm(f => ({ ...f, urgency: e.target.value }))}
-          />
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional details..." />
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Urgency"
+              options={[
+                { value: 'normal', label: 'Normal' },
+                { value: 'high', label: 'High' },
+                { value: 'urgent', label: 'Urgent' },
+              ]}
+              value={urgency}
+              onChange={e => setUrgency(e.target.value)}
+            />
+            <Textarea label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details..." />
+          </div>
+          {cart.length > 0 && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: '0.83rem', color: '#166534' }}>
+              Ready to submit <strong>{cart.length}</strong> product request{cart.length !== 1 ? 's' : ''} — urgency: <strong>{urgency}</strong>
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Request'}</Button>
-            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting || cart.length === 0}>{submitting ? `Submitting ${cart.length} request${cart.length !== 1 ? 's' : ''}…` : `Submit ${cart.length || ''} Request${cart.length !== 1 ? 's' : ''}`}</Button>
+            <Button variant="secondary" type="button" onClick={() => { setShowForm(false); setCart([]); }}>Cancel</Button>
           </div>
         </form>
       </Modal>
