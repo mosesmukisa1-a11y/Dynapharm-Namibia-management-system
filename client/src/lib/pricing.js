@@ -392,56 +392,56 @@ export const BODY_SYSTEMS_DATABASE = {
 
 export const RECOMMENDATION_DATABASE = {
   symptoms: {
-    fatigue: ['Spirulina Tabs', 'Dyna Tonic 780ml', 'Bee Pollen Capsule 100\'s', 'Ginseng Capsule', 'Yeeginako Tabs'],
-    headache: ['Dyna C- 150\'s', 'Spirulina Tabs', 'Ginkgo & Ginseng - C', 'Nutmeg Ointment'],
-    nausea: ['Ginger capsule', 'Soybean & Ginger', 'Noni 1 Ltr', 'Spirulina Tabs'],
-    dizziness: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Bee Pollen Capsule 100\'s'],
-    shortness_breath: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Ginkgo & Ginseng - C'],
-    blurred_vision: ['Ginkgo & Ginseng - C', 'Dyna C- 150\'s', 'Spirulina Tabs'],
-    joint_pain: ['Healthy Joints Pack', 'Nutmeg Ointment', 'Dyna \'S\' Tablet 120\'s', 'Sea Cucumber 500ml'],
-    cough: ['Dyna Tonic 780ml', 'Noni 1 Ltr', 'Spirulina Tabs'],
-    digestive_issues: ['Spirulina Tabs', 'Pro LSB', 'Gastritus Package', 'High Fiber'],
-    loss_appetite: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Dyna Tonic 780ml'],
-    fever: ['Dyna C- 150\'s', 'Spirulina Tabs', 'Noni 1 Ltr'],
-    sore_throat: ['Ganoderma Toothpaste', 'Noni 1 Ltr', 'Dyna C- 150\'s'],
-    skin_rash: ['E. Vita Cream 50g', 'Spirulina Tabs', 'Dyna C- 150\'s'],
-    chest_pain: ['Ginkgo & Ginseng - C', 'Blood Circulation Package', 'Noni 1 Ltr'],
-    lower_back: ['Nutmeg Ointment', 'Healthy Joints Pack', 'Sea Cucumber 500ml'],
-    weight_changes: ['Diet & Weight Management Pack', 'Spirulina Tabs', 'High Fiber'],
-    insomnia: ['Gano & Green Tea - C', 'Spirulina Tabs', 'Maharani'],
-    confusion: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Bee Pollen Capsule 100\'s'],
-    foot_edema: ['Blood Circulation Package', 'Spirulina Tabs'],
-    swelling: ['Blood Circulation Package', 'Spirulina Tabs', 'Sea Cucumber 500ml']
+    fatigue: ["SPIRULINA TABLET (100's)", "DYNA TONIC (780ml)", "BEE POLLEN CAPSULE (100's)", "GINSENG CAPSULE 9 x 10's", "Yeeginako Tabs 90's , 30's"],
+    headache: ["DYNA C- 100 TABLET 150's", "SPIRULINA TABLET (100's)", "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "NUTMEG OINTMENT (2's x 20g)"],
+    nausea: ["INSTANT GINSENG HONEY GINGER 500g", "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'", "DI NONI JUICE 1 L", "SPIRULINA TABLET (100's)"],
+    dizziness: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)"],
+    shortness_breath: ["SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)", "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g"],
+    blurred_vision: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "DYNA C- 100 TABLET 150's", "SPIRULINA TABLET (100's)"],
+    joint_pain: ['Healthy Joints Package', "NUTMEG OINTMENT (2's x 20g)", "DYNA 'S' TABLET 120's", "SEA CUCUMBER JELLY (500ml)"],
+    cough: ["DYNA TONIC (780ml)", "DI NONI JUICE 1 L", "SPIRULINA TABLET (100's)"],
+    digestive_issues: ["SPIRULINA TABLET (100's)", "PRO- LSB TABLET 150's", 'Gastric Package', "HIGH FIBER NUTRITION FOOD 30'sx25g"],
+    loss_appetite: ["SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)", "DYNA TONIC (780ml)"],
+    fever: ["DYNA C- 100 TABLET 150's", "SPIRULINA TABLET (100's)", "DI NONI JUICE 1 L"],
+    sore_throat: ["GANODERMA TOOTHPASTE (150g)", "DI NONI JUICE 1 L", "DYNA C- 100 TABLET 150's"],
+    skin_rash: ["E-VITA CREAM (50g)", "SPIRULINA TABLET (100's)", "DYNA C- 100 TABLET 150's"],
+    chest_pain: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", 'Blood Circulation Pack', "DI NONI JUICE 1 L"],
+    lower_back: ["NUTMEG OINTMENT (2's x 20g)", 'Healthy Joints Package', "SEA CUCUMBER JELLY (500ml)"],
+    weight_changes: ['Weight Management Pack', "SPIRULINA TABLET (100's)", "HIGH FIBER NUTRITION FOOD 30'sx25g"],
+    insomnia: ["INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g", "SPIRULINA TABLET (100's)", "HERBA WARISAN MAHARANI 6 x 10g"],
+    confusion: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)"],
+    foot_edema: ['Blood Circulation Pack', "SPIRULINA TABLET (100's)"],
+    swelling: ['Blood Circulation Pack', "SPIRULINA TABLET (100's)", "SEA CUCUMBER JELLY (500ml)"]
   },
   medicalHistory: {
-    highBloodPressure: ['Blood Circulation Package', 'Spirulina Tabs', 'Ginkgo & Ginseng - C', 'Noni 1 Ltr'],
-    diabetes: ['Spirulina Tabs', 'Noni 1 Ltr', 'Bitter Gourd Tea', 'Balanced Body System Package'],
-    heartDisease: ['Blood Circulation Package', 'Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Noni 1 Ltr'],
-    asthma: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Noni 1 Ltr'],
-    digestiveDisorders: ['Gastritus Package', 'Spirulina Tabs', 'Pro LSB', 'High Fiber'],
-    thyroid: ['Spirulina Tabs', 'Balanced Body System Package', 'Sea Cucumber 500ml'],
-    kidneyLiver: ['Cleansing & Detoxification Package', 'Spirulina Tabs', 'Milk Thistle Tablet 120\'s'],
-    chronicFatigue: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Dyna Tonic 780ml', 'Ginseng Capsule'],
-    arthritis: ['Healthy Joints Pack', 'Nutmeg Ointment', 'Sea Cucumber 500ml', 'Spirulina Tabs'],
-    skinConditions: ['E. Vita Cream 50g', 'Spirulina Tabs', 'Dyna C- 150\'s', 'Cleansing & Detoxification Package'],
-    mentalHealth: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Gano & Green Tea - C'],
-    autoimmune: ['Spirulina Tabs', 'Balanced Body System Package', 'Noni 1 Ltr'],
-    cancer: ['Spirulina Tabs', 'Noni 1 Ltr', 'Total Health Pack']
+    highBloodPressure: ['Blood Circulation Pack', "SPIRULINA TABLET (100's)", "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "DI NONI JUICE 1 L"],
+    diabetes: ["SPIRULINA TABLET (100's)", "DI NONI JUICE 1 L", "NONI PLUS TEA 30's x 3g", 'Cleansing And Detoxification Package'],
+    heartDisease: ['Blood Circulation Pack', "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "SPIRULINA TABLET (100's)", "DI NONI JUICE 1 L"],
+    asthma: ["SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)", "DI NONI JUICE 1 L"],
+    digestiveDisorders: ['Gastric Package', "SPIRULINA TABLET (100's)", "PRO- LSB TABLET 150's", "HIGH FIBER NUTRITION FOOD 30'sx25g"],
+    thyroid: ["SPIRULINA TABLET (100's)", 'Cleansing And Detoxification Package', "SEA CUCUMBER JELLY (500ml)"],
+    kidneyLiver: ['Cleansing And Detoxification Package', "SPIRULINA TABLET (100's)", "MILK THISTLE TABLET 120's"],
+    chronicFatigue: ["SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)", "DYNA TONIC (780ml)", "GINSENG CAPSULE 9 x 10's"],
+    arthritis: ['Healthy Joints Package', "NUTMEG OINTMENT (2's x 20g)", "SEA CUCUMBER JELLY (500ml)", "SPIRULINA TABLET (100's)"],
+    skinConditions: ["E-VITA CREAM (50g)", "SPIRULINA TABLET (100's)", "DYNA C- 100 TABLET 150's", 'Cleansing And Detoxification Package'],
+    mentalHealth: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "SPIRULINA TABLET (100's)", "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g"],
+    autoimmune: ["SPIRULINA TABLET (100's)", 'Cleansing And Detoxification Package', "DI NONI JUICE 1 L"],
+    cancer: ["SPIRULINA TABLET (100's)", "DI NONI JUICE 1 L", 'Blood Circulation Pack']
   },
   gender: {
-    female: ['Women\'s Package', 'Kacip Fatimah', 'Collagen & Kacip- C', 'Maharani'],
-    male: ['Men\'s Package', 'Tongkat Ali & Maca - C', 'Dyna Serenoa Tablet 100\'s']
+    female: ['Womens Package', "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP", "HERBA WARISAN MAHARANI 6 x 10g"],
+    male: ['Mens Health Package', "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)", "DYNA SERENOA TABLET 100's"]
   },
   lifestyle: {
-    poorSleep: ['Gano & Green Tea - C', 'Maharani', 'Spirulina Tabs'],
-    highStress: ['Ginkgo & Ginseng - C', 'Spirulina Tabs', 'Gano & Green Tea - C'],
-    lowExercise: ['Spirulina Tabs', 'Bee Pollen Capsule 100\'s', 'Total Health Pack'],
-    poorWater: ['High Fiber', 'Spirulina Tabs']
+    poorSleep: ["INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g", "HERBA WARISAN MAHARANI 6 x 10g", "SPIRULINA TABLET (100's)"],
+    highStress: ["INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", "SPIRULINA TABLET (100's)", "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g"],
+    lowExercise: ["SPIRULINA TABLET (100's)", "BEE POLLEN CAPSULE (100's)", 'Blood Circulation Pack'],
+    poorWater: ["HIGH FIBER NUTRITION FOOD 30'sx25g", "SPIRULINA TABLET (100's)"]
   },
   age: {
-    elderly: ['Elderly Package (Female)', 'Elderly Package (Male)', 'Spirulina Tabs', 'Ginkgo & Ginseng - C']
+    elderly: ['Womens Package', 'Mens Health Package', "SPIRULINA TABLET (100's)", "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g"]
   },
-  general: ['Spirulina Tabs', 'Dyna C- 150\'s', 'Bee Pollen Capsule 100\'s']
+  general: ["SPIRULINA TABLET (100's)", "DYNA C- 100 TABLET 150's", "BEE POLLEN CAPSULE (100's)"]
 };
 
 export function getConsultationFee(membershipStatus) {
