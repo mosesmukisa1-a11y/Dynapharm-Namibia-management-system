@@ -50,17 +50,47 @@ function normalizeClient(row) {
     id: row.id || payload.id || row.reference_number || payload.referenceNumber || `CLT-${Date.now()}`,
     referenceNumber: row.reference_number || payload.referenceNumber || row.id,
     reference_number: row.reference_number || payload.referenceNumber || row.id,
+    reference: row.reference_number || payload.referenceNumber || row.id,
     fullName: row.full_name || payload.fullName || '',
     full_name: row.full_name || payload.fullName || '',
     phone: row.phone || payload.phone || '',
     email: row.email || payload.email || '',
     gender: row.gender || payload.gender || null,
+    dob: row.date_of_birth || payload.dob || payload.dateOfBirth || payload.date_of_birth || null,
     dateOfBirth: row.date_of_birth || payload.dateOfBirth || payload.date_of_birth || null,
+    date_of_birth: row.date_of_birth || payload.dateOfBirth || payload.date_of_birth || null,
     address: row.address || payload.address || '',
     city: row.city || payload.city || '',
     branch: row.branch || payload.branch || null,
+    height: row.height || payload.height || null,
+    weight: row.weight || payload.weight || null,
+    membershipStatus: payload.membershipStatus || payload.customer_type || null,
+    membership_status: payload.membershipStatus || payload.customer_type || null,
+    referralName: payload.referralName || payload.referral_name || null,
+    referral_name: payload.referralName || payload.referral_name || null,
+    referralNbNumber: payload.referralNbNumber || payload.referral_nb || null,
+    referral_nb: payload.referralNbNumber || payload.referral_nb || null,
+    primaryReason: row.primary_reason || payload.primaryReason || payload.primary_reason || null,
+    primary_reason: row.primary_reason || payload.primaryReason || payload.primary_reason || null,
+    waterIntake: row.water_intake || payload.waterIntake || payload.water_intake || null,
+    water_intake: row.water_intake || payload.waterIntake || payload.water_intake || null,
+    exerciseFreq: row.exercise_freq || payload.exerciseFreq || payload.exercise_freq || null,
+    exercise_freq: row.exercise_freq || payload.exerciseFreq || payload.exercise_freq || null,
+    sleepHours: row.sleep_hours || payload.sleepHours || payload.sleep_hours || null,
+    sleep_hours: row.sleep_hours || payload.sleepHours || payload.sleep_hours || null,
+    stressLevel: row.stress_level || payload.stressLevel || payload.stress_level || null,
+    stress_level: row.stress_level || payload.stressLevel || payload.stress_level || null,
+    currentMedications: row.current_medications || payload.currentMedications || payload.current_medications || null,
+    medications: row.current_medications || payload.currentMedications || payload.medications || null,
+    allergies: row.allergies || payload.allergies || null,
+    medicalHistory: row.medical_history || payload.medicalHistory || payload.medical_history || null,
+    medical_history: row.medical_history || payload.medicalHistory || payload.medical_history || null,
+    symptoms: payload.symptoms || null,
+    nbNumber: payload.nbNumber || payload.nb_number || null,
+    nb_number: payload.nbNumber || payload.nb_number || null,
     createdAt: row.created_at || payload.createdAt || new Date().toISOString(),
     created_at: row.created_at || payload.createdAt || new Date().toISOString(),
+    timestamp: row.created_at || payload.createdAt || new Date().toISOString(),
     updatedAt: row.updated_at || payload.updatedAt || null,
     data: payload
   };
@@ -192,6 +222,24 @@ export default async function handler(req, res) {
       if (!body?.id) {
         return res.status(400).json({ success: false, error: 'Client id is required' });
       }
+
+      // Fetch existing record to merge data JSON
+      const existing = await getOne('SELECT * FROM clients WHERE id = $1', [body.id]);
+      const existingData = existing
+        ? (typeof existing.data === 'string' ? (() => { try { return JSON.parse(existing.data); } catch { return {}; } })() : existing.data || {})
+        : {};
+
+      // Build merged data JSON including health assessment fields
+      const healthFields = ['primaryReason', 'waterIntake', 'exerciseFreq', 'sleepHours', 'stressLevel',
+        'currentMedications', 'allergies', 'medicalHistory', 'primary_reason', 'water_intake',
+        'exercise_freq', 'sleep_hours', 'stress_level', 'medical_history', 'current_medications',
+        'membershipStatus', 'membership_status', 'referralName', 'referral_name',
+        'referralNbNumber', 'referral_nb', 'nbNumber', 'nb_number', 'symptoms', 'height', 'weight',
+        'dob', 'bmi', 'bmi_category', 'customer_type'];
+      const mergedData = { ...existingData };
+      healthFields.forEach(f => { if (body[f] !== undefined) mergedData[f] = body[f]; });
+      if (body.data && typeof body.data === 'object') Object.assign(mergedData, body.data);
+
       const clientPayload = {
         ...(body.referenceNumber !== undefined && { reference_number: body.referenceNumber }),
         ...(body.reference_number !== undefined && { reference_number: body.reference_number }),
@@ -200,12 +248,13 @@ export default async function handler(req, res) {
         ...(body.phone !== undefined && { phone: body.phone }),
         ...(body.email !== undefined && { email: body.email }),
         ...(body.gender !== undefined && { gender: body.gender }),
+        ...(body.dob !== undefined && { date_of_birth: body.dob }),
         ...(body.dateOfBirth !== undefined && { date_of_birth: body.dateOfBirth }),
         ...(body.date_of_birth !== undefined && { date_of_birth: body.date_of_birth }),
         ...(body.address !== undefined && { address: body.address }),
         ...(body.city !== undefined && { city: body.city }),
         ...(body.branch !== undefined && { branch: body.branch }),
-        ...(body.data !== undefined && { data: typeof body.data === 'string' ? body.data : JSON.stringify(body.data) }),
+        data: JSON.stringify(mergedData),
         updated_at: new Date().toISOString(),
       };
       const client = await update('clients', body.id, clientPayload, 'id');

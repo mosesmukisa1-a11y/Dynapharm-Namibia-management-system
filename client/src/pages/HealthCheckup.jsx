@@ -31,6 +31,8 @@ export default function HealthCheckup() {
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD',
     weight: '', height: '',
+    primaryReason: '', waterIntake: '', exerciseFreq: '', sleepHours: '', stressLevel: '',
+    currentMedications: '', allergies: '', medicalHistory: '',
     symptoms: {}, notes: '', declaration: false,
   });
   const [submitted, setSubmitted] = useState(false);
@@ -115,6 +117,14 @@ export default function HealthCheckup() {
           weight: form.weight,
           bmi: bmiValue,
           bmi_category: bmiCategory(bmiValue),
+          primary_reason: form.primaryReason,
+          water_intake: form.waterIntake,
+          exercise_freq: form.exerciseFreq,
+          sleep_hours: form.sleepHours,
+          stress_level: form.stressLevel,
+          current_medications: form.currentMedications,
+          allergies: form.allergies,
+          medical_history: form.medicalHistory,
           symptoms: form.symptoms,
           referral_name: effectiveReferralName,
           referral_nb: effectiveReferralNB,
@@ -136,7 +146,7 @@ export default function HealthCheckup() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-3">Checkup Submitted!</h2>
         <p className="text-gray-500 mb-6">Your full body checkup form has been received. A consultant will review your submission shortly.</p>
-        <Button onClick={() => { setSubmitted(false); setCustomerType(null); setSelectedDistributor(null); setForm({ fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD', weight: '', height: '', symptoms: {}, notes: '', declaration: false }); }}>
+        <Button onClick={() => { setSubmitted(false); setCustomerType(null); setSelectedDistributor(null); setForm({ fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD', weight: '', height: '', primaryReason: '', waterIntake: '', exerciseFreq: '', sleepHours: '', stressLevel: '', currentMedications: '', allergies: '', medicalHistory: '', symptoms: {}, notes: '', declaration: false }); }}>
           Submit Another
         </Button>
       </div>
@@ -325,7 +335,83 @@ export default function HealthCheckup() {
         </Card>
 
         <Card className="mb-6">
-          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Heart size={18} /> Health Assessment</h3></CardHeader>
+          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2">🩺 Lifestyle &amp; Health History</h3></CardHeader>
+          <CardBody>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Primary Reason for Visit</label>
+                <input type="text" value={form.primaryReason} onChange={e => updateField('primaryReason', e.target.value)}
+                  placeholder="e.g. Weight management, Joint pain, Fatigue..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Water Intake per Day</label>
+                <select value={form.waterIntake} onChange={e => updateField('waterIntake', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="">— Select —</option>
+                  <option value="Less than 1L/day">Less than 1L/day</option>
+                  <option value="1–2L/day">1–2L/day</option>
+                  <option value="2–3L/day">2–3L/day</option>
+                  <option value="More than 3L/day">More than 3L/day</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Exercise Frequency</label>
+                <select value={form.exerciseFreq} onChange={e => updateField('exerciseFreq', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="">— Select —</option>
+                  <option value="None">None</option>
+                  <option value="1–2x per week">1–2x per week</option>
+                  <option value="3–4x per week">3–4x per week</option>
+                  <option value="Daily">Daily</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Sleep (hours per night)</label>
+                <select value={form.sleepHours} onChange={e => updateField('sleepHours', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="">— Select —</option>
+                  <option value="Less than 5">Less than 5 hours</option>
+                  <option value="5–6">5–6 hours</option>
+                  <option value="6–7">6–7 hours</option>
+                  <option value="7–8">7–8 hours</option>
+                  <option value="More than 8">More than 8 hours</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Stress Level <span className="text-gray-400 font-normal">(1 = Low · 10 = Very High)</span></label>
+                <select value={form.stressLevel} onChange={e => updateField('stressLevel', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="">— Select —</option>
+                  {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                    <option key={n} value={n}>{n} — {n <= 3 ? 'Low' : n <= 6 ? 'Moderate' : n <= 8 ? 'High' : 'Very High'}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Current Medications</label>
+                <input type="text" value={form.currentMedications} onChange={e => updateField('currentMedications', e.target.value)}
+                  placeholder="e.g. Metformin 500mg, Aspirin..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Known Allergies</label>
+                <input type="text" value={form.allergies} onChange={e => updateField('allergies', e.target.value)}
+                  placeholder="e.g. Penicillin, Peanuts, Sulfa drugs..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Medical History</label>
+                <input type="text" value={form.medicalHistory} onChange={e => updateField('medicalHistory', e.target.value)}
+                  placeholder="e.g. Diabetes, Hypertension, Asthma, previous surgeries..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Heart size={18} /> Symptom Checklist</h3></CardHeader>
           <CardBody>
             <div className="space-y-6">
               {BODY_SYSTEMS.map(system => (
@@ -404,6 +490,21 @@ export default function HealthCheckup() {
               </div>
             )}
           </div>
+          {(form.primaryReason || form.waterIntake || form.exerciseFreq || form.sleepHours || form.stressLevel || form.currentMedications || form.allergies || form.medicalHistory) && (
+            <div className="border-t pt-3 mt-2">
+              <strong className="text-xs uppercase tracking-wide text-gray-500">Lifestyle &amp; Health History</strong>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {form.primaryReason && <div className="col-span-2"><strong>Primary Reason:</strong> {form.primaryReason}</div>}
+                {form.waterIntake && <div><strong>Water Intake:</strong> {form.waterIntake}</div>}
+                {form.exerciseFreq && <div><strong>Exercise:</strong> {form.exerciseFreq}</div>}
+                {form.sleepHours && <div><strong>Sleep:</strong> {form.sleepHours}</div>}
+                {form.stressLevel && <div><strong>Stress Level:</strong> {form.stressLevel}/10</div>}
+                {form.currentMedications && <div><strong>Medications:</strong> {form.currentMedications}</div>}
+                {form.allergies && <div><strong>Allergies:</strong> {form.allergies}</div>}
+                {form.medicalHistory && <div className="col-span-2"><strong>Medical History:</strong> {form.medicalHistory}</div>}
+              </div>
+            </div>
+          )}
           {Object.entries(form.symptoms).filter(([, v]) => v.length > 0).map(([system, symptoms]) => (
             <div key={system}>
               <strong className="capitalize">{system}:</strong> {symptoms.join(', ')}
@@ -462,7 +563,8 @@ export default function HealthCheckup() {
   <div class="field"><span class="label">Weight:</span> ${esc(form.weight ? form.weight + ' kg' : 'Not provided')}</div>
 </div>
 ${bmiValue ? `<div class="bmi-box">BMI: ${esc(bmi)}</div>` : ''}
-${allSymptoms.length > 0 ? `<h3>Health Assessment — Reported Symptoms</h3>${allSymptoms.map(([sys, sxs]) => `<div class="symptom-section"><span class="symptom-label">${esc(sys)}:</span> <span class="symptom-list">${sxs.map(esc).join(', ')}</span></div>`).join('')}` : ''}
+${(form.primaryReason || form.waterIntake || form.exerciseFreq || form.sleepHours || form.stressLevel || form.currentMedications || form.allergies || form.medicalHistory) ? `<h3>Lifestyle &amp; Health History</h3><div class="grid2">${form.primaryReason ? `<div class="field" style="grid-column:1/-1"><span class="label">Primary Reason:</span> ${esc(form.primaryReason)}</div>` : ''}${form.waterIntake ? `<div class="field"><span class="label">Water Intake:</span> ${esc(form.waterIntake)}</div>` : ''}${form.exerciseFreq ? `<div class="field"><span class="label">Exercise:</span> ${esc(form.exerciseFreq)}</div>` : ''}${form.sleepHours ? `<div class="field"><span class="label">Sleep:</span> ${esc(form.sleepHours)}</div>` : ''}${form.stressLevel ? `<div class="field"><span class="label">Stress Level:</span> ${esc(form.stressLevel)}/10</div>` : ''}${form.currentMedications ? `<div class="field"><span class="label">Medications:</span> ${esc(form.currentMedications)}</div>` : ''}${form.allergies ? `<div class="field"><span class="label">Allergies:</span> ${esc(form.allergies)}</div>` : ''}${form.medicalHistory ? `<div class="field" style="grid-column:1/-1"><span class="label">Medical History:</span> ${esc(form.medicalHistory)}</div>` : ''}</div>` : ''}
+${allSymptoms.length > 0 ? `<h3>Symptom Checklist — Reported Symptoms</h3>${allSymptoms.map(([sys, sxs]) => `<div class="symptom-section"><span class="symptom-label">${esc(sys)}:</span> <span class="symptom-list">${sxs.map(esc).join(', ')}</span></div>`).join('')}` : ''}
 ${form.notes ? `<h3>Additional Notes</h3><p style="font-size:0.9rem;color:#333">${esc(form.notes)}</p>` : ''}
 <div class="declaration">I declare that all information provided is accurate and true. I consent to the processing of my health data for consultation purposes.</div>
 <div class="footer">

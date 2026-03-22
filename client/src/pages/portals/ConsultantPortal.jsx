@@ -838,24 +838,112 @@ function ClientsSection() {
   };
 
   const printClientDetails = (client) => {
-    const w = window.open('', '_blank', 'width=800,height=600');
+    const w = window.open('', '_blank', 'width=850,height=700');
     if (!w) return;
     const name = client.full_name || client.fullName || client.name || '';
-    w.document.write(`<html><head><title>Client Details - ${escHtml(name)}</title><style>body{font-family:Arial,sans-serif;padding:20px;} h2{color:#c41e3a;} .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;} .field{margin-bottom:6px;font-size:14px;} .label{font-weight:bold;}</style></head><body>`);
-    w.document.write(`<h2>Client Details</h2>`);
-    w.document.write(`<div class="grid">`);
-    w.document.write(`<div class="field"><span class="label">Name:</span> ${escHtml(name)}</div>`);
-    w.document.write(`<div class="field"><span class="label">Phone:</span> ${escHtml(client.phone || '')}</div>`);
-    w.document.write(`<div class="field"><span class="label">Reference:</span> ${escHtml(client.reference || client.referenceNumber || '')}</div>`);
-    w.document.write(`<div class="field"><span class="label">Branch:</span> ${escHtml(client.branch || '')}</div>`);
-    w.document.write(`<div class="field"><span class="label">DOB:</span> ${escHtml(client.dob || 'Not provided')}</div>`);
-    w.document.write(`<div class="field"><span class="label">Gender:</span> ${escHtml(client.gender || 'Not provided')}</div>`);
-    w.document.write(`<div class="field"><span class="label">Email:</span> ${escHtml(client.email || 'Not provided')}</div>`);
-    w.document.write(`<div class="field"><span class="label">Membership:</span> ${escHtml(client.membershipStatus === 'member' ? 'Registered Member' : 'Referred')}</div>`);
-    w.document.write(`</div>`);
-    w.document.write(`</body></html>`);
+    const memberStatus = client.membershipStatus || client.membership_status || 'referred';
+    const symptoms = Array.isArray(client.symptoms) ? client.symptoms : [];
+    const medHistory = Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history || 'None');
+    const e = (v) => escHtml(String(v || ''));
+    w.document.write(`<!DOCTYPE html><html><head><title>Client Form — ${e(name)}</title>
+    <style>
+      @media print { body{margin:0;} @page{size:A4;margin:14mm;} .no-print{display:none;} }
+      * { box-sizing:border-box; }
+      body { font-family:Arial,sans-serif; font-size:12px; color:#1e293b; margin:20px; line-height:1.5; }
+      .header { display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid #c41e3a; padding-bottom:12px; margin-bottom:18px; }
+      .logo-area h2 { color:#c41e3a; font-size:18px; margin:0; }
+      .logo-area p { color:#64748b; font-size:11px; margin:2px 0 0; }
+      .ref-box { text-align:right; }
+      .ref-box .ref-num { font-size:20px; font-weight:900; color:#1e293b; }
+      .ref-box .ref-label { font-size:10px; color:#94a3b8; text-transform:uppercase; letter-spacing:.08em; }
+      .section { margin-bottom:16px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; }
+      .section-title { background:#1e3a5f; color:white; padding:7px 14px; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+      .section-body { padding:12px 14px; }
+      .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; }
+      .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px 20px; }
+      .field { margin-bottom:5px; }
+      .field-label { font-size:10px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+      .field-value { font-size:12px; color:#1e293b; font-weight:600; }
+      .tag { display:inline-block; padding:2px 10px; background:#fee2e2; color:#c41e3a; border-radius:12px; font-size:11px; margin:2px 3px 2px 0; }
+      .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; }
+      .badge-member { background:#dcfce7; color:#16a34a; }
+      .badge-referred { background:#fef9c3; color:#b45309; }
+      .sig-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; margin-top:30px; }
+      .sig-line { border-top:1px solid #aaa; padding-top:4px; font-size:10px; color:#666; text-align:center; }
+      .print-btn { background:#1e3a5f; color:white; border:none; padding:9px 20px; border-radius:7px; font-size:12px; cursor:pointer; margin-bottom:14px; }
+    </style></head><body>
+    <button class="no-print print-btn" onclick="window.print()">🖨️ Print Form</button>
+    <div class="header">
+      <div class="logo-area">
+        <h2>Dynapharm International Namibia</h2>
+        <p>Health · Wealth · Freedom</p>
+        ${client.branch ? `<p style="color:#c41e3a;font-weight:600;margin-top:4px;">${e(client.branch)} Branch</p>` : ''}
+      </div>
+      <div class="ref-box">
+        <div class="ref-label">Client Reference</div>
+        <div class="ref-num">${e(client.reference || client.referenceNumber || client.id || 'N/A')}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">Registered: ${client.timestamp ? new Date(client.timestamp).toLocaleDateString('en-GB') : (client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : 'N/A')}</div>
+        <div style="margin-top:6px;"><span class="badge ${memberStatus === 'member' ? 'badge-member' : 'badge-referred'}">${memberStatus === 'member' ? '🏅 Registered Member' : '🤝 Referred Client'}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Personal Information</div>
+      <div class="section-body">
+        <div class="grid2">
+          <div class="field"><div class="field-label">Full Name</div><div class="field-value">${e(name)}</div></div>
+          <div class="field"><div class="field-label">Namibian ID (NB#)</div><div class="field-value">${e(client.nbNumber || client.nb_number || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Date of Birth</div><div class="field-value">${e(client.dob || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Age</div><div class="field-value">${e(client.age || 'Not provided')} ${client.age ? 'years' : ''}</div></div>
+          <div class="field"><div class="field-label">Gender</div><div class="field-value">${e(client.gender || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Phone</div><div class="field-value">${e(client.phone || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Email</div><div class="field-value">${e(client.email || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Height</div><div class="field-value">${e(client.height || 'Not provided')} ${client.height ? 'cm' : ''}</div></div>
+          <div class="field"><div class="field-label">Weight</div><div class="field-value">${e(client.weight || 'Not provided')} ${client.weight ? 'kg' : ''}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Member / Referral Information</div>
+      <div class="section-body">
+        <div class="grid2">
+          ${memberStatus === 'member' ? `
+          <div class="field"><div class="field-label">Member ID</div><div class="field-value">${e(client.memberId || client.member_id || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Member Since</div><div class="field-value">${e(client.memberSince || client.member_since || 'Not provided')}</div></div>
+          ` : `
+          <div class="field"><div class="field-label">Referred By</div><div class="field-value">${e(client.referralName || client.referral_name || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Referral NB#</div><div class="field-value">${e(client.referralNbNumber || client.referral_nb || 'Not provided')}</div></div>
+          `}
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Health Assessment</div>
+      <div class="section-body">
+        <div class="grid3" style="margin-bottom:10px;">
+          <div class="field"><div class="field-label">Primary Reason for Visit</div><div class="field-value">${e(client.primaryReason || client.primary_reason || 'Not provided')}</div></div>
+          <div class="field"><div class="field-label">Water Intake</div><div class="field-value">${e(client.waterIntake || client.water_intake || 'Not specified')}</div></div>
+          <div class="field"><div class="field-label">Exercise Frequency</div><div class="field-value">${e(client.exerciseFreq || client.exercise_freq || 'Not specified')}</div></div>
+          <div class="field"><div class="field-label">Sleep (hours/night)</div><div class="field-value">${e(client.sleepHours || client.sleep_hours || 'Not specified')}</div></div>
+          <div class="field"><div class="field-label">Stress Level (1–10)</div><div class="field-value">${e(client.stressLevel || client.stress_level || 'Not specified')}${(client.stressLevel || client.stress_level) ? '/10' : ''}</div></div>
+          <div class="field"><div class="field-label">Current Medications</div><div class="field-value">${e(client.currentMedications || client.medications || 'None')}</div></div>
+          <div class="field"><div class="field-label">Allergies</div><div class="field-value">${e(client.allergies || 'None')}</div></div>
+        </div>
+        <div class="field"><div class="field-label">Medical History</div><div class="field-value">${e(medHistory)}</div></div>
+        ${symptoms.length > 0 ? `<div style="margin-top:10px;"><div class="field-label" style="margin-bottom:6px;">Symptoms / Complaints</div><div>${symptoms.map(s => `<span class="tag">${e(s)}</span>`).join('')}</div></div>` : ''}
+      </div>
+    </div>
+
+    <div class="sig-grid">
+      <div class="sig-line">Client Signature: ___________________</div>
+      <div class="sig-line">Consultant: ___________________</div>
+      <div class="sig-line">Date: ___________________</div>
+    </div>
+
+    </body></html>`);
     w.document.close();
-    w.print();
   };
 
   return (
@@ -997,13 +1085,17 @@ function ClientViewDetails({ client }) {
         </div>
       </div>
       <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Health Information</h4>
-        <div style={gridStyle}>
+        <h4 style={sectionTitleStyle}>Health Assessment</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
           <div style={fieldStyle}><strong>Primary Reason:</strong> {client.primaryReason || client.primary_reason || 'Not provided'}</div>
+          <div style={fieldStyle}><strong>Water Intake:</strong> {client.waterIntake || client.water_intake || 'Not specified'}</div>
+          <div style={fieldStyle}><strong>Exercise:</strong> {client.exerciseFreq || client.exercise_freq || 'Not specified'}</div>
+          <div style={fieldStyle}><strong>Sleep:</strong> {client.sleepHours || client.sleep_hours ? `${client.sleepHours || client.sleep_hours} hrs/night` : 'Not specified'}</div>
+          <div style={fieldStyle}><strong>Stress Level:</strong> {client.stressLevel || client.stress_level ? `${client.stressLevel || client.stress_level}/10` : 'Not specified'}</div>
           <div style={fieldStyle}><strong>Current Medications:</strong> {client.currentMedications || client.medications || 'None'}</div>
           <div style={fieldStyle}><strong>Allergies:</strong> {client.allergies || 'None'}</div>
-          <div style={fieldStyle}><strong>Medical History:</strong> {Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history || 'None')}</div>
         </div>
+        <div style={fieldStyle}><strong>Medical History:</strong> {Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history || 'None')}</div>
       </div>
       {symptoms.length > 0 && (
         <div style={sectionStyle}>
@@ -1073,19 +1165,61 @@ function ClientEditForm({ form, setForm }) {
           <input style={inputStyle} value={form.weight || ''} onChange={e => update('weight', e.target.value)} />
         </div>
       </div>
-      <h4 style={{ color: '#2c3e50', marginBottom: '16px' }}>Health Information</h4>
+      <h4 style={{ color: '#2c3e50', marginBottom: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>Health Assessment</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div style={groupStyle}>
-          <label style={labelStyle}>Primary Reason</label>
-          <input style={inputStyle} value={form.primaryReason || form.primary_reason || ''} onChange={e => update('primaryReason', e.target.value)} />
+          <label style={labelStyle}>Primary Reason for Visit</label>
+          <input style={inputStyle} placeholder="e.g. Weight management, Joint pain..." value={form.primaryReason || form.primary_reason || ''} onChange={e => update('primaryReason', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Water Intake</label>
+          <select style={inputStyle} value={form.waterIntake || form.water_intake || ''} onChange={e => update('waterIntake', e.target.value)}>
+            <option value="">— Select —</option>
+            <option value="Less than 1L/day">Less than 1L/day</option>
+            <option value="1–2L/day">1–2L/day</option>
+            <option value="2–3L/day">2–3L/day</option>
+            <option value="More than 3L/day">More than 3L/day</option>
+          </select>
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Exercise Frequency</label>
+          <select style={inputStyle} value={form.exerciseFreq || form.exercise_freq || ''} onChange={e => update('exerciseFreq', e.target.value)}>
+            <option value="">— Select —</option>
+            <option value="None">None</option>
+            <option value="1–2x per week">1–2x per week</option>
+            <option value="3–4x per week">3–4x per week</option>
+            <option value="Daily">Daily</option>
+          </select>
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Sleep (hours per night)</label>
+          <select style={inputStyle} value={form.sleepHours || form.sleep_hours || ''} onChange={e => update('sleepHours', e.target.value)}>
+            <option value="">— Select —</option>
+            <option value="Less than 5">Less than 5 hours</option>
+            <option value="5–6">5–6 hours</option>
+            <option value="6–7">6–7 hours</option>
+            <option value="7–8">7–8 hours</option>
+            <option value="More than 8">More than 8 hours</option>
+          </select>
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Stress Level (1 = Low, 10 = Very High)</label>
+          <select style={inputStyle} value={form.stressLevel || form.stress_level || ''} onChange={e => update('stressLevel', e.target.value)}>
+            <option value="">— Select —</option>
+            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n} — {n <= 3 ? 'Low' : n <= 6 ? 'Moderate' : n <= 8 ? 'High' : 'Very High'}</option>)}
+          </select>
         </div>
         <div style={groupStyle}>
           <label style={labelStyle}>Current Medications</label>
-          <input style={inputStyle} value={form.currentMedications || form.medications || ''} onChange={e => update('currentMedications', e.target.value)} />
+          <input style={inputStyle} placeholder="e.g. Metformin 500mg, Aspirin..." value={form.currentMedications || form.medications || ''} onChange={e => update('currentMedications', e.target.value)} />
         </div>
         <div style={groupStyle}>
           <label style={labelStyle}>Allergies</label>
-          <input style={inputStyle} value={form.allergies || ''} onChange={e => update('allergies', e.target.value)} />
+          <input style={inputStyle} placeholder="e.g. Penicillin, Peanuts..." value={form.allergies || ''} onChange={e => update('allergies', e.target.value)} />
+        </div>
+        <div style={groupStyle}>
+          <label style={labelStyle}>Medical History</label>
+          <input style={inputStyle} placeholder="e.g. Diabetes, Hypertension, Asthma..." value={Array.isArray(form.medicalHistory) ? form.medicalHistory.join(', ') : (form.medicalHistory || form.medical_history || '')} onChange={e => update('medicalHistory', e.target.value)} />
         </div>
       </div>
     </div>
