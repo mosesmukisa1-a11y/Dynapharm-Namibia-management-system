@@ -3,7 +3,7 @@ import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
-import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF } from '../../lib/receipt';
+import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -255,27 +255,13 @@ function WalkInSalesTab() {
         cashier: user?.full_name || user?.username || null,
       };
 
-      if (isMember) {
-        printReceipt(generateReceiptHTML({ ...commonReceiptParams, showBV: true }));
-      } else {
-        printReceipt(generateReceiptHTML({
-          ...commonReceiptParams,
-          showBV: false,
-          copyType: 'customer',
-          cashback: 50,
-        }));
-        setTimeout(() => {
-          printReceipt(generateReceiptHTML({
-            ...commonReceiptParams,
-            showBV: true,
-            copyType: 'staff',
-            branchProfit,
-            distributorBV: cartData.totalBV,
-            branchAmount,
-            distributorProfit: branchProfit,
-          }));
-        }, 800);
-      }
+      printReceipt(generateReceiptHTML({
+        ...commonReceiptParams,
+        showBV: true,
+        cashback: !isMember ? 50 : 0,
+        branchAmount: !isMember ? branchAmount : null,
+        distributorProfit: !isMember ? branchProfit : null,
+      }));
 
       setShowConfirmModal(false);
       setShowModal(false);
@@ -352,11 +338,14 @@ function WalkInSalesTab() {
           <div className="divide-y">
             {sales.slice(0, 10).map((s, i) => {
               const sIsM = (s.customerType || s.customer_type) === 'member';
+              const saleItems = s.products || s.items || [];
+              const sBranchAmt = !sIsM ? saleItems.reduce((sum, it) => sum + ((it.dpPrice || it.dp || 0) * (Number(it.quantity || it.qty || 1))), 0) : null;
+              const sTotalAmt = s.total || s.totalAmount || s.total_amount || 0;
               const saleParams = {
                 receiptNumber: s.receipt_number || s.saleNumber || s.id,
                 branch: s.branch || user?.branch || '',
-                items: s.products || s.items || [],
-                totalAmount: s.total || s.totalAmount || s.total_amount || 0,
+                items: saleItems,
+                totalAmount: sTotalAmt,
                 totalBV: s.totalBV || s.total_bv || 0,
                 paymentMethod: s.paymentMethod || s.payment_method || '',
                 customerType: s.customerType || s.customer_type || 'non_member',
@@ -366,6 +355,8 @@ function WalkInSalesTab() {
                 referralNB: !sIsM ? (s.referral_nb || s.distributorReferral?.nb_number || null) : null,
                 cashier: s.soldBy || '',
                 saleDate: s.created_at || s.timestamp,
+                branchAmount: sBranchAmt,
+                distributorProfit: !sIsM && sBranchAmt != null ? sTotalAmt - sBranchAmt : null,
               };
               return (
                 <div key={i} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-gray-50 transition-colors gap-3 flex-wrap">
@@ -379,19 +370,10 @@ function WalkInSalesTab() {
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
                     <span className="text-xs text-gray-400 hidden sm:inline">{formatDate(s.created_at || s.timestamp)}</span>
-                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: sIsM })); }}
+                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, cashback: sIsM ? 0 : 50 })); }}
                       title="Print 80mm thermal receipt"
                       className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#374151', borderColor: '#e2e8f0', background: '#fff' }}>🖨️ Thermal</button>
-                    {!sIsM && (
-                      <button onClick={(e) => {
-                        e.stopPropagation();
-                        printReceipt(generateReceiptHTML({ ...saleParams, showBV: false, copyType: 'customer' }));
-                        setTimeout(() => printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, copyType: 'staff' })), 900);
-                      }}
-                        title="Print customer copy + staff copy"
-                        className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#1e40af', borderColor: '#93c5fd', background: '#eff6ff' }}>🧾🧾 Both</button>
-                    )}
-                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM }); }}
+                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM, cashback: sIsM ? 0 : 50 }); }}
                       title="Open A4 PDF invoice"
                       className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#fff', borderColor: '#c41e3a', background: '#c41e3a', fontWeight: 600 }}>📄 PDF</button>
                   </div>
@@ -824,182 +806,94 @@ function PrescriptionsTab() {
     return { dp: 0, cp: 0, bv: 0, isPackage: false };
   };
 
+  /* ── Prescription QUOTE (Thermal) ─────────────────────────────
+     Goes to the customer BEFORE dispensing.
+     Member = DP price only | Non-member = CP price only + consult fee
+  ────────────────────────────────────────────────────────────── */
+  const printPrescriptionQuoteThermal = (report, consultMode) => {
+    const meds = getMedicines(report);
+    const membershipStatus = report.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
+    const consultFee = getConsultationFee(membershipStatus);
+    const items = meds.map(m => {
+      const p = getEffectivePrice(m.name);
+      return { name: m.name, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: m.dispensed };
+    });
+    printReceipt(generatePrescriptionQuoteHTML({
+      rxId: report.id,
+      branch: user?.branch || '',
+      patientName: report.client_name || report.full_name || 'Patient',
+      membershipStatus,
+      consultantName: report.consultant || null,
+      items,
+      consultFeeTotal: consultFee.total,
+      consultFeeLabel: consultFee.label,
+      consultMode: consultMode || (isMember ? 'inclusive' : 'separate'),
+      date: report.created_at || report.date,
+    }));
+  };
+
+  /* ── Prescription QUOTE (A4 PDF) ───────────────────────────── */
   const printPrescriptionPDF = (report, consultMode) => {
     const meds = getMedicines(report);
     const membershipStatus = report.membership_status || 'referred';
-    const isMember = membershipStatus === 'member';
     const consultFee = getConsultationFee(membershipStatus);
-    const totals = calculatePrescriptionTotals(meds, membershipStatus);
-    const isInclusive = consultMode === 'inclusive';
-    const medTotal = isMember ? totals.total.dp : totals.total.cp;
-    const grandTotal = medTotal + (isInclusive ? consultFee.total : 0);
-    const dateStr = new Date(report.created_at || report.date || Date.now()).toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
-    const branchInfo = BRANCH_DETAILS.find(b => b.name === (user?.branch || '')) || {};
-    const pdfBranchAmount = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
-    const pdfDistProfit = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
-
-    const rows = meds.map(m => {
+    const items = meds.map(m => {
       const p = getEffectivePrice(m.name);
-      if (isMember) {
-        return `<tr style="border-bottom:1px solid #eee;">
-          <td style="padding:8px 10px;">${m.name}${p.isPackage ? ' <span style="font-size:10px;background:#e8f5e9;color:#27ae60;padding:1px 5px;border-radius:3px;">Package</span>' : ''}</td>
-          <td style="padding:8px 10px;text-align:center;">${m.dispensed ? '<span style="color:#27ae60;">✅ Dispensed</span>' : '<span style="color:#e67e22;">⏳ Pending</span>'}</td>
-          <td style="padding:8px 10px;text-align:right;">N$ ${p.dp}</td>
-          <td style="padding:8px 10px;text-align:right;color:#e67e22;">${p.bv}</td>
-        </tr>`;
-      } else {
-        const distProfit = (p.cp || 0) - (p.dp || 0);
-        return `<tr style="border-bottom:1px solid #eee;">
-          <td style="padding:8px 10px;">${m.name}${p.isPackage ? ' <span style="font-size:10px;background:#e8f5e9;color:#27ae60;padding:1px 5px;border-radius:3px;">Package</span>' : ''}</td>
-          <td style="padding:8px 10px;text-align:center;">${m.dispensed ? '<span style="color:#27ae60;">✅ Dispensed</span>' : '<span style="color:#e67e22;">⏳ Pending</span>'}</td>
-          <td style="padding:8px 10px;text-align:right;color:#1e40af;font-weight:600;">N$ ${p.dp}</td>
-          <td style="padding:8px 10px;text-align:right;">N$ ${p.cp}</td>
-          <td style="padding:8px 10px;text-align:right;color:#e67e22;">${p.bv > 0 ? p.bv : '—'}</td>
-          <td style="padding:8px 10px;text-align:right;color:#16a34a;font-weight:600;">N$ ${distProfit}</td>
-        </tr>`;
-      }
-    }).join('');
-
+      return { name: m.name, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: m.dispensed };
+    });
     const w = window.open('', '_blank', 'width=900,height=700');
-    w.document.write(`<!DOCTYPE html><html><head><title>Prescription Quote — ${report.client_name || report.id}</title>
-    <style>
-      @media print { body { margin:0; } @page { size:A4; margin:15mm; } .no-print{display:none;} }
-      * { box-sizing:border-box; }
-      body { font-family:Arial,sans-serif; font-size:12px; color:#333; margin:20px; }
-      .header { text-align:center; padding-bottom:16px; margin-bottom:20px; border-bottom:3px solid #c41e3a; }
-      .logo { height:55px; margin-bottom:6px; }
-      .co-name { color:#c41e3a; font-size:18px; font-weight:bold; margin:0; }
-      .co-tag { color:#888; font-size:11px; margin:2px 0; }
-      .rx-title { background:#c41e3a; color:white; font-size:14px; font-weight:bold; letter-spacing:2px; padding:5px 20px; border-radius:20px; display:inline-block; margin-top:8px; }
-      .patient-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px; }
-      .patient-grid .field { font-size:11px; color:#64748b; }
-      .patient-grid .value { font-weight:bold; color:#1e293b; font-size:12px; }
-      table { width:100%; border-collapse:collapse; margin-bottom:16px; }
-      thead tr { background:#1e3a5f; }
-      thead th { color:white; padding:9px 10px; text-align:left; font-size:11px; font-weight:600; letter-spacing:0.5px; }
-      tbody tr:nth-child(even) { background:#f8fafc; }
-      .consult-box { border:2px solid #f59e0b; border-radius:8px; padding:14px; background:#fffbeb; margin-bottom:16px; }
-      .consult-title { font-weight:bold; color:#92400e; font-size:13px; margin-bottom:6px; }
-      .consult-row { display:flex; justify-content:space-between; font-size:11px; color:#78350f; padding:2px 0; }
-      .summary-box { background:#0f172a; color:white; border-radius:8px; padding:16px 20px; margin-bottom:20px; }
-      .sum-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:rgba(255,255,255,0.8); }
-      .sum-row.total { font-size:15px; font-weight:bold; color:#4ade80; border-top:1px solid rgba(255,255,255,0.2); padding-top:8px; margin-top:4px; }
-      .sig { margin-top:40px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:30px; }
-      .sig-line { border-top:1px solid #aaa; padding-top:4px; font-size:10px; color:#666; text-align:center; }
-      .print-btn { background:#1e3a5f; color:white; border:none; padding:10px 24px; border-radius:8px; font-size:13px; cursor:pointer; margin-bottom:16px; }
-    </style></head><body>
-    <button class="no-print print-btn" onclick="window.print()">🖨️ Print PDF</button>
-    <div class="header">
-      <img class="logo" src="${COMPANY_INFO.logo}" onerror="this.style.display='none'" />
-      <div class="co-name">${COMPANY_INFO.name}</div>
-      <div class="co-tag">${COMPANY_INFO.tagline}</div>
-      ${branchInfo.name ? `<div style="font-size:11px;color:#555;margin-top:2px;">${branchInfo.name} Branch${branchInfo.address ? ' · ' + branchInfo.address : ''}</div>` : ''}
-      <div class="rx-title">PRESCRIPTION QUOTE</div>
-    </div>
-
-    <div class="patient-grid">
-      <div><div class="field">Patient Name</div><div class="value">${report.client_name || report.full_name || '—'}</div></div>
-      <div><div class="field">Prescription #</div><div class="value">${report.id}</div></div>
-      <div><div class="field">Membership</div><div class="value">${isMember ? '🏅 Member (DP Price)' : '👤 Non-Member (CP Price)'}</div></div>
-      <div><div class="field">Date</div><div class="value">${dateStr}</div></div>
-      <div><div class="field">Consultant</div><div class="value">${report.consultant || '—'}</div></div>
-      <div><div class="field">Branch</div><div class="value">${user?.branch || '—'}</div></div>
-    </div>
-
-    <table>
-      <thead><tr>
-        <th>Prescribed Item</th>
-        <th style="text-align:center;">Status</th>
-        ${isMember
-          ? `<th style="text-align:right;">DP Price</th><th style="text-align:right;">BV</th>`
-          : `<th style="text-align:right;background:#1e40af;">DP (Branch)</th>
-             <th style="text-align:right;">CP (Customer)</th>
-             <th style="text-align:right;color:#fde68a;">BV</th>
-             <th style="text-align:right;color:#86efac;">Dist. Profit</th>`
-        }
-      </tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr style="background:#f1f5f9;font-weight:bold;">
-        <td colspan="2" style="padding:9px 10px;">Medicines Subtotal</td>
-        ${isMember
-          ? `<td style="padding:9px 10px;text-align:right;">N$ ${medTotal}</td>
-             <td style="padding:9px 10px;text-align:right;color:#e67e22;">${totals.total.bv}</td>`
-          : `<td style="padding:9px 10px;text-align:right;color:#1e40af;">N$ ${pdfBranchAmount}</td>
-             <td style="padding:9px 10px;text-align:right;">N$ ${medTotal}</td>
-             <td style="padding:9px 10px;text-align:right;color:#e67e22;">${totals.total.bv}</td>
-             <td style="padding:9px 10px;text-align:right;color:#16a34a;">N$ ${pdfDistProfit}</td>`
-        }
-      </tr></tfoot>
-    </table>
-
-    <div class="summary-box">
-      <div class="sum-row"><span>Medicines Subtotal (${isMember ? 'DP' : 'CP'}):</span><span>N$ ${medTotal}</span></div>
-      ${isMember
-        ? `<div class="sum-row"><span>BV Earned:</span><span style="color:#fbbf24;">${totals.total.bv} BV</span></div>`
-        : `<div class="sum-row"><span style="color:#93c5fd;">Branch Amount (DP):</span><span style="color:#93c5fd;font-weight:bold;">N$ ${pdfBranchAmount}</span></div>
-           <div class="sum-row"><span style="color:#86efac;">Distributor Profit (CP−DP):</span><span style="color:#86efac;font-weight:bold;">N$ ${pdfDistProfit}</span></div>
-           <div class="sum-row" style="font-size:10px;color:rgba(255,255,255,0.35);font-style:italic;"><span>* Distributor profit is off branch books</span></div>`
-      }
-      ${isInclusive
-        ? `<div class="sum-row"><span>Consultation Fee (${consultFee.label}):</span><span style="color:#fbbf24;">N$ ${consultFee.total}</span></div>
-           <div class="sum-row" style="font-size:10px;color:rgba(255,255,255,0.35);font-style:italic;"><span>* Consult fee collected but NOT in branch sales</span></div>`
-        : `<div class="sum-row" style="color:rgba(255,255,255,0.5);font-size:11px;"><span>Consultation Fee (${consultFee.label}) — billed separately:</span><span>N$ ${consultFee.total}</span></div>`
-      }
-      <div class="sum-row total"><span>GRAND TOTAL (${isMember ? 'DP' : 'CP'}):</span><span>N$ ${grandTotal}</span></div>
-    </div>
-
-    ${!isMember ? `
-    <div style="margin-bottom:20px;padding:14px;border-radius:8px;background:#fef3c7;border:2px solid #f59e0b;text-align:center;">
-      <div style="font-size:16px;font-weight:900;color:#92400e;">🎁 N$50 CASHBACK</div>
-      <div style="font-size:11px;color:#b45309;margin-top:4px;">Patient is entitled to N$50 cashback for this non-member purchase</div>
-    </div>` : ''}
-
-    <div class="sig">
-      <div class="sig-line">Dispensed by: ___________________</div>
-      <div class="sig-line">Patient / Guardian Signature</div>
-      <div class="sig-line">Date: ___________________________</div>
-    </div>
-    <script>/* auto-print removed so user can review first */<\/script>
-    </body></html>`);
+    if (!w) return;
+    w.document.write(generatePrescriptionQuotePDFHTML({
+      rxId: report.id,
+      branch: user?.branch || '',
+      patientName: report.client_name || report.full_name || 'Patient',
+      membershipStatus,
+      consultantName: report.consultant || null,
+      items,
+      consultFeeTotal: consultFee.total,
+      consultFeeLabel: consultFee.label,
+      consultMode: consultMode || (membershipStatus === 'member' ? 'inclusive' : 'separate'),
+      date: report.created_at || report.date,
+    }));
     w.document.close();
   };
 
-  const printPrescriptionReceipt = (report, consultMode, copyType) => {
+  /* ── Prescription RECEIPT (after dispensing, for billing) ─────
+     Member: simple — DP price, BV, total
+     Non-member: comprehensive — CP, DP, BV, profit, referral,
+                 branch amount, N$50 cashback
+  ────────────────────────────────────────────────────────────── */
+  const printPrescriptionReceipt = (report, consultMode) => {
     const meds = getMedicines(report);
     const membershipStatus = report.membership_status || 'referred';
     const isMember = membershipStatus === 'member';
     const consultFee = getConsultationFee(membershipStatus);
     const totals = calculatePrescriptionTotals(meds, membershipStatus);
     const isInclusive = consultMode === 'inclusive';
-    const medTotal = isMember ? totals.total.dp : totals.total.cp;
 
     const items = meds.map(m => {
       const p = getEffectivePrice(m.name);
-      const price = isMember ? p.dp : p.cp;
       return {
         product_name: m.name,
         quantity: 1,
-        unit_price: price,
-        line_total: price,
+        unit_price: isMember ? p.dp : p.cp,
+        line_total: isMember ? p.dp : p.cp,
         bv: p.bv,
         lineBV: p.bv,
         dpPrice: p.dp || 0,
         cpPrice: p.cp || 0,
-        lineProfit: !isMember ? ((p.cp || 0) - (p.dp || 0)) : null,
       };
     });
 
-    if (isInclusive) {
-      items.push({ product_name: `Consultation Fee (${consultFee.label})`, quantity: 1, unit_price: consultFee.total, line_total: consultFee.total, bv: 0, lineBV: 0, dpPrice: 0, cpPrice: 0, lineProfit: null });
-    }
-
-    const totalAmount = items.filter(it => it.product_name !== `Consultation Fee (${consultFee.label})` || isInclusive).reduce((s, it) => s + it.line_total, 0);
-    const totalBV = totals.total.bv;
+    const medTotal = isMember ? totals.total.dp : totals.total.cp;
     const rxBranchAmount = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
     const rxDistProfit = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
+    const totalBV = totals.total.bv;
+    const totalAmount = medTotal + (isInclusive ? consultFee.total : 0);
 
-    const commonParams = {
-      receiptNumber: report.id || ('RX-' + Date.now()),
+    printReceipt(generateReceiptHTML({
+      receiptNumber: 'RX-' + (report.id || Date.now()),
       branch: user?.branch || '',
       items,
       totalAmount,
@@ -1008,37 +902,16 @@ function PrescriptionsTab() {
       customerType: isMember ? 'member' : 'non_member',
       customerName: report.client_name || report.full_name || 'Patient',
       nbNumber: report.nb_number || null,
+      referralName: !isMember ? (report.referral_name || null) : null,
+      referralNB: !isMember ? (report.referral_nb || null) : null,
       cashier: user?.full_name || user?.username || null,
-    };
-
-    if (isMember) {
-      printReceipt(generateReceiptHTML({ ...commonParams, showBV: true }));
-    } else {
-      if (copyType === 'customer' || copyType === 'both') {
-        printReceipt(generateReceiptHTML({
-          ...commonParams,
-          showBV: false,
-          copyType: 'customer',
-          cashback: 50,
-        }));
-      }
-      if (copyType === 'staff' || copyType === 'both') {
-        const delay = copyType === 'both' ? 900 : 0;
-        setTimeout(() => {
-          printReceipt(generateReceiptHTML({
-            ...commonParams,
-            showBV: true,
-            copyType: 'staff',
-            branchProfit: rxDistProfit,
-            distributorBV: totalBV,
-            branchAmount: rxBranchAmount,
-            distributorProfit: rxDistProfit,
-            consultFeeAmount: consultFee.total,
-            consultFeeMode: consultMode,
-          }));
-        }, delay);
-      }
-    }
+      showBV: true,
+      cashback: !isMember ? 50 : 0,
+      branchAmount: !isMember ? rxBranchAmount : null,
+      distributorProfit: !isMember ? rxDistProfit : null,
+      consultFeeAmount: consultFee.total,
+      consultFeeMode: consultMode,
+    }));
   };
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -1342,29 +1215,25 @@ function PrescriptionsTab() {
               </div>
 
               <div className="flex gap-2 flex-wrap justify-end">
-                {isMember ? (
-                  <button onClick={() => printPrescriptionReceipt(report, consultMode, 'member')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-                    🖨️ Thermal Receipt
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', alignSelf: 'center' }}>QUOTE:</span>
+                  <button onClick={() => printPrescriptionQuoteThermal(report, consultMode)}
+                    style={{ padding: '7px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    🖨️ Thermal Quote
                   </button>
-                ) : (<>
-                  <button onClick={() => printPrescriptionReceipt(report, consultMode, 'customer')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #86efac', borderRadius: 8, background: '#f0fdf4', color: '#166534', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-                    🧾 Customer Copy
+                  <button onClick={() => printPrescriptionPDF(report, consultMode)}
+                    style={{ padding: '7px 12px', border: '1.5px solid #93c5fd', borderRadius: 8, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    📄 PDF Quote
                   </button>
-                  <button onClick={() => printPrescriptionReceipt(report, consultMode, 'staff')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #fcd34d', borderRadius: 8, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-                    📊 Distributor Copy
+                </div>
+                <div style={{ width: 1, background: 'rgba(255,255,255,0.15)', margin: '0 4px', alignSelf: 'stretch' }} />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', alignSelf: 'center' }}>RECEIPT:</span>
+                  <button onClick={() => printPrescriptionReceipt(report, consultMode)}
+                    style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#c41e3a,#991b1b)', color: '#fff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(196,30,58,0.3)' }}>
+                    🧾 Print Receipt
                   </button>
-                  <button onClick={() => printPrescriptionReceipt(report, consultMode, 'both')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #93c5fd', borderRadius: 8, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-                    🧾🧾 Both Copies
-                  </button>
-                </>)}
-                <button onClick={() => printPrescriptionPDF(report, consultMode)}
-                  style={{ padding: '8px 14px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#c41e3a,#991b1b)', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(196,30,58,0.3)' }}>
-                  📄 PDF Quote
-                </button>
+                </div>
               </div>
             </div>
           </div>
