@@ -471,6 +471,24 @@ export default async function handler(req, res) {
         }
       }
 
+      if (updatePayload.notes !== undefined) {
+        updatePayload.dispatch_notes = updatePayload.dispatch_notes || updatePayload.notes || null;
+        delete updatePayload.notes;
+      }
+      if (updatePayload.decisionNotes !== undefined) {
+        updatePayload.dispatch_notes = updatePayload.decisionNotes || updatePayload.dispatch_notes || null;
+        delete updatePayload.decisionNotes;
+      }
+      // Store non-schema fields in metadata rather than as direct columns
+      const metaExtras = {};
+      if (updatePayload.approved_by) { metaExtras.approved_by = updatePayload.approved_by; delete updatePayload.approved_by; }
+      if (updatePayload.approvedBy) { metaExtras.approved_by = updatePayload.approvedBy; delete updatePayload.approvedBy; }
+      if (updatePayload.rejected_by) { metaExtras.rejected_by = updatePayload.rejected_by; delete updatePayload.rejected_by; }
+      if (Object.keys(metaExtras).length > 0) {
+        const existingMeta = updatePayload.metadata ? (typeof updatePayload.metadata === 'string' ? JSON.parse(updatePayload.metadata) : updatePayload.metadata) : {};
+        updatePayload.metadata = JSON.stringify({ ...existingMeta, ...metaExtras });
+      }
+
       if (updatePayload.metadata && typeof updatePayload.metadata === 'object') {
         updatePayload.metadata = JSON.stringify(updatePayload.metadata);
       }

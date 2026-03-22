@@ -1227,15 +1227,19 @@ function CountryStockTab() {
 }
 
 function WarehouseTab({ name }) {
+  const { user } = useAuth();
   const [batches, setBatches] = useState([]);
   const [incomingTransfers, setIncomingTransfers] = useState([]);
+  const [outboundTransfers, setOutboundTransfers] = useState([]);
+  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showTransfer, setShowTransfer] = useState(false);
-  const [form, setForm] = useState({ product_name: '', quantity: '' });
+  const [form, setForm] = useState({ product_name: '', quantity: '', notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [receivingId, setReceivingId] = useState(null);
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
+  const [subTab, setSubTab] = useState('inventory');
   const location = name.toLowerCase() + '_warehouse';
 
   const loadData = useCallback(() => {
@@ -1243,29 +1247,54 @@ function WarehouseTab({ name }) {
     Promise.all([
       api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)),
       api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
+      api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []),
     ])
-      .then(([batchData, transferData]) => {
+      .then(([batchData, inbound, outbound, movData]) => {
         setBatches(batchData);
-        setIncomingTransfers(transferData.filter(t => t.status !== 'cancelled'));
+        setIncomingTransfers(inbound.filter(t => t.status !== 'cancelled'));
+        setOutboundTransfers(outbound.filter(t => t.status !== 'cancelled'));
+        // Filter movements relevant to this warehouse
+        const locKey = location.toLowerCase();
+        setMovements(movData.filter(m => {
+          const src = (m.source_location || '').toLowerCase();
+          const dst = (m.destination_location || '').toLowerCase();
+          return src.includes(locKey) || dst.includes(locKey) || src.includes(name.toLowerCase()) || dst.includes(name.toLowerCase());
+        }));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [location]);
+  }, [location, name]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleMarkReceived = async (transfer) => {
     setReceivingId(transfer.id);
     try {
-      await api.stock.createBatch({
-        product_name: transfer.product_name,
-        quantity: transfer.quantity,
-        location,
-        batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
-        notes: `Received from transfer ${transfer.id}`,
-      });
-      await api.stock.updateTransfer(transfer.id, { status: 'received' });
-      setAlert({ type: 'success', msg: `${transfer.product_name} (qty ${transfer.quantity}) received into ${name} warehouse` });
+      const items = Array.isArray(transfer.items) ? transfer.items : [];
+      if (items.length > 0) {
+        for (const item of items) {
+          if (Number(item.quantity) > 0) {
+            await api.stock.createBatch({
+              product_name: item.productName || item.productId || transfer.product_name,
+              quantity: Number(item.quantity),
+              location,
+              batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
+              notes: `Received from transfer ${transfer.id}`,
+            });
+          }
+        }
+      } else if (transfer.product_name) {
+        await api.stock.createBatch({
+          product_name: transfer.product_name,
+          quantity: transfer.quantity,
+          location,
+          batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
+          notes: `Received from transfer ${transfer.id}`,
+        });
+      }
+      await api.stock.updateTransfer(transfer.id, { status: 'delivered', received_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: `Stock received into ${name} Warehouse` });
       loadData();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message || 'Failed to receive transfer' });
@@ -1287,9 +1316,12 @@ function WarehouseTab({ name }) {
         to_location: location,
         product_name: form.product_name,
         quantity: Number(form.quantity),
+        status: 'pending_approval',
+        notes: form.notes,
+        created_by: user?.full_name || user?.username,
       });
-      setAlert({ type: 'success', msg: `Transfer to ${name} warehouse initiated` });
-      setForm({ product_name: '', quantity: '' });
+      setAlert({ type: 'success', msg: `Transfer request submitted to GM for approval. Pending: Country Stock → ${name} Warehouse` });
+      setForm({ product_name: '', quantity: '', notes: '' });
       setShowTransfer(false);
       loadData();
     } catch (err) {
@@ -1299,77 +1331,195 @@ function WarehouseTab({ name }) {
     }
   };
 
-  const statusColor = { pending: 'warning', dispatched: 'info', received: 'success', cancelled: 'default' };
+  const statusColor = { pending: 'warning', pending_approval: 'warning', approved: 'success', dispatched: 'info', in_transit: 'info', received: 'success', delivered: 'success', rejected: 'danger', cancelled: 'default' };
+
+  const pendingApproval = incomingTransfers.filter(t => t.status === 'pending_approval');
+  const approvedIncoming = incomingTransfers.filter(t => t.status === 'approved' || t.status === 'in_transit' || t.status === 'pending');
+  const receivedTransfers = incomingTransfers.filter(t => t.status === 'received' || t.status === 'delivered');
+
+  const whSubTabs = [
+    { id: 'inventory', label: `📦 Inventory (${batches.length})` },
+    { id: 'incoming', label: `📥 Incoming (${incomingTransfers.filter(t => t.status !== 'received' && t.status !== 'delivered').length})${pendingApproval.length > 0 ? ` ⏳` : ''}` },
+    { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
+    { id: 'movements', label: `📊 Movements (${movements.length})` },
+  ];
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {alert && <Alert type={alert.type} className="mb-2" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3>
-            <Button size="sm" onClick={() => setShowTransfer(true)}><Plus size={16} className="mr-1" /> Request Transfer In</Button>
+      {/* Warehouse header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>🏭 {name} Warehouse</div>
+          <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: 4 }}>
+            {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.quantity || 0), 0)} total units in stock
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Product', key: 'product_name' },
-            { header: 'Batch Ref', key: 'batch_number' },
-            { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
-            { header: 'Expiry', render: r => r.expiry_date ? formatDateTime(r.expiry_date) : '—' },
-            { header: 'Edit', render: r => (
-              <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
-                style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Edit2 size={12} /> Edit
-              </button>
-            )},
-          ]}
-          data={batches}
-          emptyMessage={`No confirmed stock in ${name} warehouse yet`}
-        />
-      </Card>
+        </div>
+        <Button size="sm" onClick={() => setShowTransfer(true)} style={{ background: '#fff', color: '#c41e3a', fontWeight: 700 }}>
+          <Plus size={15} className="mr-1" /> Request Stock In
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <h3 className="font-bold text-gray-800">{name} Warehouse — Incoming Transfers</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Stock transferred to this warehouse. Click "Mark Received" to add it to inventory.</p>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Product', render: r => <span className="font-medium">{r.product_name}</span> },
-            { header: 'Qty', render: r => <span className="font-semibold text-primary">{r.quantity}</span> },
-            { header: 'From', render: r => <span className="text-xs text-gray-600">{(r.from_location || r.fromWarehouse || '—').replace(/_/g, ' ')}</span> },
-            { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status}</Badge> },
-            { header: 'Date', render: r => formatDate(r.created_at || r.createdAt) },
-            {
-              header: 'Action',
-              render: r => r.status === 'received' ? (
-                <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Received</span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="success"
-                  onClick={() => handleMarkReceived(r)}
-                  disabled={receivingId === r.id}
-                >
-                  {receivingId === r.id ? 'Receiving...' : 'Mark Received'}
-                </Button>
-              ),
-            },
-          ]}
-          data={incomingTransfers}
-          emptyMessage={`No incoming transfers for ${name} warehouse`}
-        />
-      </Card>
+      {/* Sub-tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {whSubTabs.map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border-none transition-all"
+            style={subTab === t.id ? { background: '#fff0f3', color: '#c41e3a', border: '2px solid #fecaca' } : { background: '#f8fafc', color: '#64748b', border: '2px solid #f1f5f9' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
+      {/* Inventory sub-tab */}
+      {subTab === 'inventory' && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Product', key: 'product_name' },
+              { header: 'Batch Ref', key: 'batch_number' },
+              { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
+              { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
+              { header: 'Edit', render: r => (
+                <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
+                  style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Edit2 size={12} /> Edit
+                </button>
+              )},
+            ]}
+            data={batches}
+            emptyMessage={`No confirmed stock in ${name} warehouse yet`}
+          />
+        </Card>
+      )}
+
+      {/* Incoming transfers sub-tab */}
+      {subTab === 'incoming' && (
+        <div className="space-y-4">
+          {pendingApproval.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-yellow-700">⏳ Awaiting GM Approval ({pendingApproval.length})</h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">These transfers are waiting for General Manager approval before stock can be received.</p>
+              </CardHeader>
+              <Table
+                columns={[
+                  { header: 'Product', render: r => <span className="font-medium">{r.product_name || (r.items?.[0]?.productName)}</span> },
+                  { header: 'Qty', render: r => <span className="font-bold text-orange-600">{r.quantity || r.items?.reduce((s, i) => s + Number(i.quantity), 0) || '—'}</span> },
+                  { header: 'From', render: r => fmtLocation(r.fromWarehouse || r.from_location) },
+                  { header: 'Status', render: r => <Badge variant="warning">Pending GM Approval</Badge> },
+                  { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
+                ]}
+                data={pendingApproval}
+                emptyMessage="No pending approvals"
+              />
+            </Card>
+          )}
+          <Card>
+            <CardHeader>
+              <h3 className="font-bold text-gray-800">{name} Warehouse — Approved Incoming Transfers</h3>
+              <p className="text-xs text-gray-500 mt-0.5">GM-approved transfers ready to receive. Click "Mark Received" to add to inventory.</p>
+            </CardHeader>
+            <Table
+              columns={[
+                { header: 'Product', render: r => <span className="font-medium">{r.product_name || (Array.isArray(r.items) && r.items[0] ? r.items[0].productName : '—')}</span> },
+                { header: 'Qty', render: r => <span className="font-semibold text-primary">{r.quantity || '—'}</span> },
+                { header: 'From', render: r => fmtLocation(r.fromWarehouse || r.from_location) },
+                { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status}</Badge> },
+                { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
+                { header: 'Action', render: r => (r.status === 'received' || r.status === 'delivered') ? (
+                  <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Received</span>
+                ) : (
+                  <Button size="sm" variant="success" onClick={() => handleMarkReceived(r)} disabled={receivingId === r.id}>
+                    {receivingId === r.id ? 'Receiving...' : '📥 Mark Received'}
+                  </Button>
+                )},
+              ]}
+              data={[...approvedIncoming, ...receivedTransfers]}
+              emptyMessage={`No approved incoming transfers for ${name} warehouse`}
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* Outbound transfers sub-tab */}
+      {subTab === 'outbound' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">{name} Warehouse — Outbound Deliveries to Branches</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Stock dispatched from this warehouse to branches.</p>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-medium">{r.product_name || (Array.isArray(r.items) && r.items[0] ? r.items[0].productName : '—')}</span> },
+              { header: 'Qty', render: r => r.quantity || '—' },
+              { header: 'To Branch', render: r => fmtLocation(r.toBranch || r.to_location) },
+              { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{r.status?.replace(/_/g, ' ')}</Badge> },
+              { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
+              { header: 'Received By', render: r => r.receivedBy || <span className="text-xs text-gray-400">—</span> },
+            ]}
+            data={outboundTransfers}
+            emptyMessage={`No outbound deliveries from ${name} warehouse yet`}
+          />
+        </Card>
+      )}
+
+      {/* Movements sub-tab */}
+      {subTab === 'movements' && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-gray-800">{name} Warehouse — Stock Movements</h3>
+                <p className="text-xs text-gray-500 mt-0.5">All stock movements in and out of {name} Warehouse.</p>
+              </div>
+              <button onClick={() => {
+                const rows = movements.map(m => `<tr><td>${m.product_name||'-'}</td><td>${m.movement_type||'-'}</td><td>${m.quantity||'-'}</td><td>${fmtLocation(m.source_location)}</td><td>${fmtLocation(m.destination_location)}</td><td>${formatDateTime(m.created_at)}</td></tr>`).join('');
+                printDocument(`${name} Warehouse Movements`, `<table><thead><tr><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>🖨️ Print</button>
+            </div>
+          </CardHeader>
+          {/* Summary cards */}
+          <div className="px-4 pb-3 grid grid-cols-3 gap-3">
+            {['received','dispatched','adjustment'].map(type => {
+              const total = movements.filter(m => (m.movement_type||'').includes(type)).reduce((s, m) => s + Number(m.quantity || 0), 0);
+              return (
+                <div key={type} style={{ background: type === 'received' ? '#f0fdf4' : type === 'dispatched' ? '#eff6ff' : '#fffbeb', border: `1px solid ${type === 'received' ? '#86efac' : type === 'dispatched' ? '#93c5fd' : '#fcd34d'}`, borderRadius: 10, padding: '10px 14px' }}>
+                  <div className="text-lg font-bold">{total}</div>
+                  <div className="text-xs font-semibold capitalize" style={{ color: type === 'received' ? '#166534' : type === 'dispatched' ? '#1e40af' : '#92400e' }}>{type}</div>
+                </div>
+              );
+            })}
+          </div>
+          <Table
+            columns={[
+              { header: 'Product', render: r => r.product_name || '-' },
+              { header: 'Type', render: r => <Badge variant={r.movement_type==='received'?'success':r.movement_type==='dispatched'||r.movement_type==='out'?'info':r.movement_type==='write_off'?'danger':'warning'}>{(r.movement_type||'').replace(/_/g,' ')}</Badge> },
+              { header: 'Qty', render: r => <span className="font-bold">{r.quantity}</span> },
+              { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location)}</span> },
+              { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location)}</span> },
+              { header: 'Reference', render: r => <span className="font-mono text-xs text-gray-500">{r.reference || r.reference_id || '—'}</span> },
+              { header: 'Date', render: r => formatDate(r.created_at) },
+            ]}
+            data={movements}
+            emptyMessage={`No stock movements recorded for ${name} warehouse`}
+          />
+        </Card>
+      )}
+
+      {/* Request Transfer In Modal */}
       <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={`Request Stock Transfer to ${name} Warehouse`} size="md">
         <form onSubmit={handleTransferIn} className="p-6 space-y-4">
-          <Alert type="info">This will create a transfer request from Country Stock to {name} Warehouse.</Alert>
+          <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.83rem', color: '#92400e' }}>
+            ⚠️ This request will be sent to the <strong>General Manager</strong> for approval before stock is moved. Source: <strong>Country Stock → {name} Warehouse</strong>
+          </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Product</label>
+            <label className="block text-sm font-medium text-gray-700">Product <span className="text-red-500">*</span></label>
             <select
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
               value={form.product_name}
@@ -1383,8 +1533,9 @@ function WarehouseTab({ name }) {
             </select>
           </div>
           <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
+          <Textarea label="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Reason for stock request, urgency level, etc..." />
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Requesting...' : 'Initiate Transfer'}</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting...' : '📤 Submit for GM Approval'}</Button>
             <Button variant="secondary" type="button" onClick={() => setShowTransfer(false)}>Cancel</Button>
           </div>
         </form>
@@ -2058,11 +2209,13 @@ function OrdersTab({ branch }) {
           to_location: branchName.toLowerCase().replace(/\s+/g, '_'),
           product_name: item.productName || item.productId,
           quantity: Number(item.quantity),
+          status: 'pending_approval',
           notes: `Fulfilling request ${dispatchRequest.requestNumber || dispatchRequest.id}`,
+          created_by: user?.full_name || user?.username,
         });
       }
       await api.stock.updateRequest(dispatchRequest.id, { status: 'dispatched', updated_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: `Dispatched ${items.length} item(s) from ${fmtLocation(dispatchWH)} → ${branchName}. Branch can now receive this delivery.` });
+      setAlert({ type: 'success', msg: `Transfer submitted for GM approval: ${fmtLocation(dispatchWH)} → ${branchName}. Once approved, branch can receive the delivery.` });
       setDispatchRequest(null);
       loadRequests();
     } catch (err) {
@@ -2261,11 +2414,12 @@ function OrdersTab({ branch }) {
                 <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
               </select>
             </div>
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
-              This will create a stock transfer from <strong>{fmtLocation(dispatchWH)}</strong> → <strong>{dispatchRequest.requestingBranch || dispatchRequest.requesting_branch}</strong> and mark the request as "dispatched". The branch will see this as an incoming delivery to receive.
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+              ⚠️ <strong>GM Approval Required:</strong> This transfer will be sent to the General Manager for approval before the branch can receive it. Once the GM approves, the branch will see it in their Receive tab.
+              <br /><br />Route: <strong>{fmtLocation(dispatchWH)}</strong> → <strong>{dispatchRequest.requestingBranch || dispatchRequest.requesting_branch}</strong>
             </div>
             <div className="flex gap-3 pt-2">
-              <Button onClick={handleDispatchAsTransfer} disabled={submitting}>{submitting ? 'Dispatching...' : '🚚 Confirm Dispatch'}</Button>
+              <Button onClick={handleDispatchAsTransfer} disabled={submitting}>{submitting ? 'Submitting...' : '📤 Submit for GM Approval'}</Button>
               <Button variant="secondary" onClick={() => setDispatchRequest(null)}>Cancel</Button>
             </div>
           </div>

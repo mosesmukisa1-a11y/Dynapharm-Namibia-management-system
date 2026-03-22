@@ -1878,7 +1878,10 @@ function BranchStockTab() {
   const incomingDeliveries = transfers.filter(t => {
     const toB = (t.toBranch || t.to_location || '').toLowerCase().replace(/\s+/g, '_');
     const st = (t.status || '').toLowerCase();
-    return (branchKey ? toB === branchKey : true) && st !== 'delivered' && st !== 'cancelled';
+    // Only show GM-approved transfers (not pending_approval) and not already delivered/cancelled
+    const isApproved = st === 'approved' || st === 'in_transit' || st === 'dispatched';
+    const isForBranch = branchKey ? toB === branchKey : true;
+    return isForBranch && isApproved;
   });
   // Pending requests approved/dispatched by stock management
   const pendingRequests = requests.filter(r => r.status === 'approved' || r.status === 'dispatched');

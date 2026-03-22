@@ -422,35 +422,39 @@ function DashboardTab() {
 }
 
 function ApprovalsTab() {
-  const [approvalTab, setApprovalTab] = useState('all');
+  const { user } = useAuth();
+  const [approvalTab, setApprovalTab] = useState('transfers');
   const [cashRequests, setCashRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [stockRequests, setStockRequests] = useState([]);
+  const [pendingTransfers, setPendingTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
   const [note, setNote] = useState('');
 
-  const subTabs = [
-    { id: 'all', label: 'All Requests' },
-    { id: 'cash', label: 'Cash Requests' },
-    { id: 'leave', label: 'Leave Requests' },
-    { id: 'stock', label: 'Stock Movements' },
-    { id: 'other', label: 'Other Requests' },
-  ];
+  const fmtLoc = (loc) => {
+    if (!loc) return '—';
+    const map = { country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse', windhoek_cbd: 'Windhoek CBD', tsumeb: 'Tsumeb', gobabis: 'Gobabis', swakopmund: 'Swakopmund', rundu: 'Rundu', oshakati: 'Oshakati', ondangwa: 'Ondangwa', katima_mulilo: 'Katima Mulilo', okahandja: 'Okahandja', keetmanshoop: 'Keetmanshoop' };
+    return map[loc.toLowerCase().replace(/\s+/g, '_')] || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
-  useEffect(() => {
+  const loadData = () => {
     setLoading(true);
     Promise.all([
       api.branch.cashMovements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.get('/employees/leaves').then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
       api.stock.requests().then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock]) => {
+      api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
+      setPendingTransfers(transfers);
     }).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const handleAction = async (type, id, action) => {
     try {
@@ -463,8 +467,13 @@ function ApprovalsTab() {
       } else if (type === 'stock') {
         await api.put(`/stock-requests/${id}`, { status: action, notes: note });
         setStockRequests(prev => prev.filter(r => r.id !== id));
+      } else if (type === 'transfer') {
+        const newStatus = action === 'approved' ? 'approved' : 'rejected';
+        await api.stock.updateTransfer(id, { status: newStatus, approved_by: user?.full_name || user?.username, notes: note });
+        setPendingTransfers(prev => prev.filter(r => r.id !== id));
+        setMessage(action === 'approved' ? '✅ Transfer approved — branch can now receive the stock.' : '❌ Transfer rejected.');
       }
-      setMessage(`Request ${action} successfully!`);
+      if (type !== 'transfer') setMessage(`Request ${action} successfully!`);
       setNoteModal(null);
       setNote('');
     } catch (err) {
@@ -494,6 +503,15 @@ function ApprovalsTab() {
 
   const filteredItems = getFilteredItems();
   const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length;
+
+  const subTabs = [
+    { id: 'transfers', label: `🚚 Transfer Approvals${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
+    { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
+    { id: 'cash', label: 'Cash Requests' },
+    { id: 'leave', label: 'Leave Requests' },
+    { id: 'stock', label: 'Stock Movements' },
+    { id: 'other', label: 'Other' },
+  ];
 
   const renderStockItems = (r) => {
     let items = [];
@@ -599,20 +617,98 @@ function ApprovalsTab() {
 
   return (
     <div>
-      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4" onClose={() => setMessage('')}>{message}</Alert>}
       <div className="flex gap-2 mb-4 flex-wrap">
         {subTabs.map(t => (
           <button key={t.id} onClick={() => setApprovalTab(t.id)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${approvalTab === t.id ? 'bg-primary text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all border-none ${approvalTab === t.id ? 'bg-primary text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {t.label}
-            {t.id === 'all' && totalCount > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{totalCount}</span>}
-            {t.id === 'cash' && cashRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{cashRequests.length}</span>}
-            {t.id === 'leave' && leaveRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{leaveRequests.length}</span>}
-            {t.id === 'stock' && stockRequests.length > 0 && <span className="ml-1.5 bg-white/20 px-1.5 rounded-full text-xs">{stockRequests.length}</span>}
           </button>
         ))}
+        <button onClick={loadData} className="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer border border-gray-200 bg-white text-gray-500">↺ Refresh</button>
       </div>
-      {renderRequests()}
+
+      {/* Transfer Approvals sub-tab */}
+      {approvalTab === 'transfers' && (
+        <div className="space-y-4">
+          {pendingTransfers.length === 0 ? (
+            <EmptyState icon={<CheckCircle size={48} />} title="No Pending Transfer Approvals" description="All stock transfer requests have been reviewed. New requests from warehouse managers will appear here." />
+          ) : (
+            <>
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                <strong>{pendingTransfers.length}</strong> stock transfer{pendingTransfers.length !== 1 ? 's' : ''} awaiting your approval. These are warehouse-to-branch deliveries submitted by stock managers.
+              </div>
+              <div className="space-y-3">
+                {pendingTransfers.map(t => {
+                  const items = Array.isArray(t.items) ? t.items : [];
+                  const fromLoc = fmtLoc(t.fromWarehouse || t.from_location);
+                  const toLoc = fmtLoc(t.toBranch || t.to_location);
+                  const totalQty = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (t.quantity || 0);
+                  return (
+                    <div key={t.id} style={{ background: '#fff', border: '2px solid #fcd34d', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                      <div style={{ background: 'linear-gradient(90deg,#fffbeb,#fef9e6)', padding: '12px 18px', borderBottom: '1px solid #fcd34d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span className="font-bold text-gray-800 text-sm">🚚 Stock Transfer</span>
+                          <span className="ml-2 font-mono text-xs text-gray-500">{t.id}</span>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">⏳ Pending Approval</span>
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-center gap-3 mb-3 text-sm">
+                          <div className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-50 border">
+                            <div className="text-xs text-gray-500 font-semibold uppercase">From</div>
+                            <div className="font-bold text-gray-800">{fromLoc}</div>
+                          </div>
+                          <div className="text-2xl">→</div>
+                          <div className="flex-1 text-center px-3 py-2 rounded-lg bg-red-50 border border-red-100">
+                            <div className="text-xs text-red-500 font-semibold uppercase">To Branch</div>
+                            <div className="font-bold text-red-800">{toLoc}</div>
+                          </div>
+                        </div>
+                        {/* Items breakdown */}
+                        {items.length > 0 ? (
+                          <div className="space-y-1.5 mb-3">
+                            <p className="text-xs font-semibold text-gray-500 uppercase">Items ({items.length})</p>
+                            {items.map((it, i) => (
+                              <div key={i} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100">
+                                <span className="text-sm font-medium">{it.productName || it.productId || it.product_name}</span>
+                                <span className="font-bold text-primary">× {it.quantity}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : t.product_name ? (
+                          <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100 mb-3">
+                            <span className="text-sm font-medium">{t.product_name}</span>
+                            <span className="font-bold text-primary">× {t.quantity}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                          <span>Requested: {t.createdBy || '—'} · {new Date(t.createdAt || t.created_at).toLocaleDateString('en-NA')}</span>
+                          <span className="font-bold">Total: {totalQty} units</span>
+                        </div>
+                        {t.dispatchNotes && <p className="text-xs text-gray-500 italic mb-3">Notes: {t.dispatchNotes}</p>}
+                        <div className="flex gap-2">
+                          <button onClick={() => setNoteModal({ type: 'transfer', id: t.id, action: 'approved', label: `${fromLoc} → ${toLoc}` })}
+                            className="flex-1 py-2 rounded-lg text-sm font-bold cursor-pointer border-none" style={{ background: '#166534', color: '#fff' }}>
+                            ✓ Approve Transfer
+                          </button>
+                          <button onClick={() => setNoteModal({ type: 'transfer', id: t.id, action: 'rejected', label: `${fromLoc} → ${toLoc}` })}
+                            className="flex-1 py-2 rounded-lg text-sm font-bold cursor-pointer border-none" style={{ background: '#fef2f2', color: '#c41e3a', border: '1.5px solid #fecaca' }}>
+                            ✕ Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Other approval sub-tabs */}
+      {approvalTab !== 'transfers' && renderRequests()}
 
       <Modal open={!!noteModal} onClose={() => { setNoteModal(null); setNote(''); }} title={noteModal?.action === 'approved' ? 'Approve Request' : 'Reject Request'}>
         <div className="p-6 space-y-4">
