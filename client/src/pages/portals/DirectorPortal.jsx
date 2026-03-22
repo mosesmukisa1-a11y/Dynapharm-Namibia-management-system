@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
-import { PRICE_LIST, getCIFPrice, findProductPrice } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, StatCard, LoadingSpinner, EmptyState, Table, Badge, Alert, Select, Modal } from '../../components/ui';
 import { Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package, ClipboardList, Target, Globe, Ship, AlertTriangle } from 'lucide-react';
@@ -433,7 +433,7 @@ function ProfitAnalysisTab() {
     byProduct[s.product_name] += s.quantity;
   });
 
-  const profitRows = PRICE_LIST.map(p => {
+  const profitRows = getLiveProductList().map(p => {
     const qtySold = byProduct[p.description] || 0;
     const campaign = campaignPrices[p.description];
     const sellingPrice = campaign || p.dp;
@@ -517,7 +517,7 @@ function ProfitAnalysisTab() {
       </Card>
       <Modal open={!!editingCampaign} onClose={() => setEditingCampaign(null)} title={`Campaign Price: ${editingCampaign}`} size="sm">
         <div className="p-6 space-y-4">
-          {editingCampaign && (() => { const prod = PRICE_LIST.find(p => p.description === editingCampaign); return prod ? <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded"><p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p></div> : null; })()}
+          {editingCampaign && (() => { const prod = getLiveProductList().find(p => p.description === editingCampaign); return prod ? <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded"><p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p></div> : null; })()}
           <Input label="Campaign Selling Price (N$)" type="number" min="0" step="0.01" value={campaignPrice} onChange={e => setCampaignPrice(e.target.value)} />
           <div className="flex gap-3">
             <Button onClick={saveCampaign}>Apply Campaign Price</Button>

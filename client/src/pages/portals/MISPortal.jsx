@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
-import { PRICE_LIST } from '../../lib/pricing';
+import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle } from 'lucide-react';
 
@@ -266,12 +266,12 @@ function EncodedSalesTab() {
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">Product *</label>
                 <select value={form.product} onChange={e => {
-                  const prod = PRICE_LIST.find(p => p.description === e.target.value);
+                  const prod = getLiveProductList().find(p => p.description === e.target.value);
                   setForm({ ...form, product: e.target.value, price: prod ? String(prod.cp) : form.price });
                 }}
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                   <option value="">Select Product</option>
-                  {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+                  {getLiveProductList().map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-3 gap-4">
@@ -701,7 +701,7 @@ function MISStockTab() {
 function CatalogsTab() {
   const [search, setSearch] = useState('');
 
-  const filtered = PRICE_LIST.filter(p =>
+  const filtered = getLiveProductList().filter(p =>
     !search || p.description.toLowerCase().includes(search.toLowerCase())
   );
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
-import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle } from 'lucide-react';
@@ -924,7 +924,7 @@ function WarehouseTab({ name }) {
               required
             >
               <option value="">Select a product...</option>
-              {PRICE_LIST.map(p => (
+              {getLiveProductList().map(p => (
                 <option key={p.description} value={p.description}>{p.description}</option>
               ))}
             </select>
@@ -983,7 +983,7 @@ function DistributionTab() {
       setForm(f => ({ ...f, product_name: PRICE_LIST[idx].description }));
       setAlert({ type: 'success', msg: `Product found: ${PRICE_LIST[idx].description}` });
     } else {
-      const found = PRICE_LIST.find(p => p.description.toLowerCase().includes(barcodeInput.toLowerCase()));
+      const found = getLiveProductList().find(p => p.description.toLowerCase().includes(barcodeInput.toLowerCase()));
       if (found) {
         setForm(f => ({ ...f, product_name: found.description }));
         setAlert({ type: 'success', msg: `Product found: ${found.description}` });
@@ -1058,7 +1058,7 @@ function DistributionTab() {
                   required
                 >
                   <option value="">Select product...</option>
-                  {PRICE_LIST.map(p => (
+                  {getLiveProductList().map(p => (
                     <option key={p.description} value={p.description}>{p.description}</option>
                   ))}
                 </select>
@@ -1235,7 +1235,7 @@ function TransfersTab() {
               required
             >
               <option value="">Select product...</option>
-              {PRICE_LIST.map(p => (
+              {getLiveProductList().map(p => (
                 <option key={p.description} value={p.description}>{p.description}</option>
               ))}
             </select>
@@ -1411,7 +1411,7 @@ function OrdersTab() {
               required
             >
               <option value="">Select product...</option>
-              {PRICE_LIST.map(p => (
+              {getLiveProductList().map(p => (
                 <option key={p.description} value={p.description}>{p.description}</option>
               ))}
             </select>
@@ -1683,7 +1683,7 @@ function ValuationTab() {
   if (loading) return <LoadingSpinner />;
 
   const getDP = (productName) => {
-    const prod = PRICE_LIST.find(p => p.description === productName);
+    const prod = getLiveProductList().find(p => p.description === productName);
     return prod ? prod.dp : 0;
   };
 
@@ -2272,7 +2272,7 @@ function BatchTab() {
               required
             >
               <option value="">Select product...</option>
-              {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+              {getLiveProductList().map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
             </select>
           </div>
           <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />

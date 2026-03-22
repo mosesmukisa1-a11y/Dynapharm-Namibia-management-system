@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
-import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice } from '../../lib/pricing';
+import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -663,7 +663,7 @@ ${followUpDate ? `<div class="section"><strong>Follow-up Date:</strong> ${new Da
                         </label>
                       </div>
                     ))}
-                    {PRICE_LIST.map((product, idx) => (
+                    {getLiveProductList().map((product, idx) => (
                       <div key={`prod-${idx}`} style={{ padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: '1px solid #f0f0f0' }}>
                         <input type="checkbox" checked={selectedMedicines.has(product.description)} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
                         <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(product.description)}>
