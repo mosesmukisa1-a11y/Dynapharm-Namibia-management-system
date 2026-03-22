@@ -417,15 +417,34 @@ function SupplierImportTab() {
   const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
   const [errors, setErrors] = useState({});
+  const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
 
   useEffect(() => {
-    api.stock.batches()
-      .then(d => {
-        const all = Array.isArray(d) ? d : d.batches || [];
-        setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const loadData = async () => {
+      try {
+        const [batchData, priceData, prodData] = await Promise.allSettled([
+          api.stock.batches(),
+          api.prices.list(),
+          api.products.list(),
+        ]);
+        if (batchData.status === 'fulfilled') {
+          const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
+          setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+        }
+        const namesSet = new Set(PRICE_LIST.map(p => p.description));
+        if (priceData.status === 'fulfilled') {
+          const prices = Array.isArray(priceData.value) ? priceData.value : [];
+          prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
+        }
+        if (prodData.status === 'fulfilled') {
+          const prods = Array.isArray(prodData.value) ? prodData.value : prodData.value?.products || [];
+          prods.filter(p => p.name).forEach(p => namesSet.add(p.name));
+        }
+        setProductOptions([...namesSet].sort());
+      } catch (_) {}
+      finally { setLoading(false); }
+    };
+    loadData();
   }, []);
 
   const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
@@ -585,14 +604,17 @@ function SupplierImportTab() {
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-12 md:col-span-4">
                       <label className="text-xs text-gray-500 mb-1 block">Product/Description *</label>
-                      <select
+                      <input
+                        list={`prod-list-${idx}`}
                         className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 ${errors[`${idx}_product`] ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}
                         value={item.product_name}
                         onChange={e => updateItem(idx, 'product_name', e.target.value)}
-                      >
-                        <option value="">Select product...</option>
-                        {PRICE_LIST.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
-                      </select>
+                        placeholder="Type to search products..."
+                        autoComplete="off"
+                      />
+                      <datalist id={`prod-list-${idx}`}>
+                        {productOptions.map(name => <option key={name} value={name} />)}
+                      </datalist>
                     </div>
                     <div className="col-span-4 md:col-span-2">
                       <label className="text-xs text-gray-500 mb-1 block">Carton No *</label>

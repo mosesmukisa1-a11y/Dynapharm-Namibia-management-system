@@ -457,6 +457,19 @@ const STATIC_PRICE_LIST = [
   {description:"YEEGINKGO TABLETS 90's",dp:420,cp:500,bv:80,cif:179},
   {description:"YEEYANGYEN TABLET 30's",dp:195,cp:254,bv:32,cif:83},
   {description:"YEEYANGYEN TABLET 90's",dp:370,cp:455,bv:90,cif:157},
+  {description:"INSTANT COFFEE MIX 20's x 30g",dp:260,cp:320,bv:38,cif:110},
+  {description:"KOPI ARING (6 x 10g)",dp:260,cp:320,bv:38,cif:110},
+  {description:"LINGZHI 3 IN 1 COFFEE W/GANO 20's x 22g",dp:260,cp:320,bv:38,cif:110},
+  {description:"LINGZHI BLACK COFFEE 2 IN 1 20's x 4.5g",dp:260,cp:320,bv:38,cif:110},
+  {description:"LINGZHI CAPSULE (30's)",dp:195,cp:254,bv:32,cif:83},
+  {description:"LINGZHI CAPSULE (100's)",dp:403,cp:493,bv:80,cif:171},
+  {description:"LINGZHI CAPSULE 6 x 10 BLST",dp:546,cp:655,bv:115,cif:232},
+  {description:"LINGZHI TABLET (100's)",dp:403,cp:493,bv:80,cif:171},
+  {description:"LINGZHI TABLET (300's)",dp:751,cp:900,bv:150,cif:319},
+  {description:"LION'S MANE CAPSULE 30's",dp:195,cp:254,bv:32,cif:83},
+  {description:"LION'S MANE CAPSULE 100's",dp:403,cp:493,bv:80,cif:171},
+  {description:"MEGA LINGZHI CAPSULE 30's",dp:195,cp:254,bv:32,cif:83},
+  {description:"MEGA LINGZHI CAPSULE 90's",dp:364,cp:454,bv:75,cif:155},
 ];
 
 const STATIC_PACKAGE_LIST = [
@@ -485,16 +498,15 @@ async function initProductPricesTable() {
       )
     `);
     await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
-    const { rows } = await query('SELECT COUNT(*) FROM product_prices');
-    if (parseInt(rows[0].count) === 0) {
-      for (const p of STATIC_PRICE_LIST) {
-        await query(
-          `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (description) DO NOTHING`,
-          [p.description, p.dp, p.cp, p.cif, p.bv]
-        );
-      }
-      console.log(`Seeded ${STATIC_PRICE_LIST.length} products into product_prices`);
+    let inserted = 0;
+    for (const p of STATIC_PRICE_LIST) {
+      const res = await query(
+        `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (description) DO NOTHING`,
+        [p.description, p.dp, p.cp, p.cif, p.bv]
+      );
+      if (res.rowCount > 0) inserted++;
     }
+    if (inserted > 0) console.log(`Seeded ${inserted} new products into product_prices`);
     for (const pkg of STATIC_PACKAGE_LIST) {
       await query(
         `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
