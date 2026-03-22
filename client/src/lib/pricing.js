@@ -266,6 +266,26 @@ export const PACKAGE_DATABASE = {
   }
 };
 
+export function getPackagesForPOS() {
+  const liveList = getLiveProductList();
+  return Object.entries(PACKAGE_DATABASE).map(([name, pkg], idx) => {
+    const liveOverride = liveList.find(p => p.description?.toLowerCase() === name.toLowerCase());
+    return {
+      id: `pkg-${idx}-${name.replace(/\s+/g, '-').toLowerCase()}`,
+      name,
+      description: name,
+      dp: liveOverride ? Number(liveOverride.dp) || pkg.price.dp : pkg.price.dp,
+      cp: liveOverride ? Number(liveOverride.cp) || pkg.price.cp : pkg.price.cp,
+      bv: liveOverride ? Number(liveOverride.bv) || pkg.price.bv : pkg.price.bv,
+      cif: 0,
+      price: liveOverride ? Number(liveOverride.cp) || pkg.price.cp : pkg.price.cp,
+      isPackage: true,
+      components: pkg.products,
+      hasPricing: true,
+    };
+  });
+}
+
 export const BODY_SYSTEMS_DATABASE = {
   'Nervous System': {
     symptoms: {

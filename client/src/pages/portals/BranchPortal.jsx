@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
@@ -97,12 +97,16 @@ function WalkInSalesTab() {
 
   useEffect(() => {
     Promise.all([
-      api.products.list().then(d => {
-        const raw = Array.isArray(d) ? d : d.products || [];
-        setProducts(enrichProductsWithPricing(raw));
-      }),
+      api.prices.list().catch(() => []),
+      api.products.list().catch(() => []),
       loadSales(),
-    ]).finally(() => setLoading(false));
+    ]).then(([priceData, productsData]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
+      const raw = Array.isArray(productsData) ? productsData : productsData.products || [];
+      const enriched = enrichProductsWithPricing(raw);
+      const packages = getPackagesForPOS();
+      setProducts([...enriched, ...packages]);
+    }).finally(() => setLoading(false));
   }, []);
 
   const normalizeDistributor = (d) => ({
@@ -201,6 +205,8 @@ function WalkInSalesTab() {
         lineProfit: !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null,
         dpPrice: item.dp || 0,
         cpPrice: item.cp || 0,
+        isPackage: item.isPackage || false,
+        components: item.isPackage && Array.isArray(item.components) ? item.components : undefined,
       }));
 
       const saleData = {
@@ -547,17 +553,21 @@ function WalkInSalesTab() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 10 }}>
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
-                    ) : filteredProducts.slice(0, 60).map(p => {
+                    ) : filteredProducts.slice(0, 80).map(p => {
                       const price = isMember ? (p.dp || p.price) : (p.cp || p.price);
                       const inCart = cart.find(c => c.id === p.id);
                       const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
                       return (
                         <button key={p.id} onClick={() => addToCart(p)} type="button"
-                          style={{ padding: '12px 11px', border: inCart ? '2.5px solid #c41e3a' : '1.5px solid #f0e8ea', borderRadius: 13, background: inCart ? '#fff0f3' : '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
+                          style={{ padding: '12px 11px', border: inCart ? '2.5px solid #c41e3a' : p.isPackage ? '1.5px solid #3b82f6' : '1.5px solid #f0e8ea', borderRadius: 13, background: inCart ? '#fff0f3' : p.isPackage ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
                           {inCart && (
                             <div style={{ position: 'absolute', top: 8, right: 8, background: '#c41e3a', color: '#fff', borderRadius: '50%', width: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inCart.qty}</div>
                           )}
-                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: inCart ? 24 : 0 }}>{p.name || p.description}</div>
+                          {p.isPackage && !inCart && (
+                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#3b82f6', color: '#fff', borderRadius: 6, padding: '1px 5px', fontSize: '0.6rem', fontWeight: 800 }}>PKG</div>
+                          )}
+                          <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: 28 }}>{p.name || p.description}</div>
+                          {p.isPackage && <div style={{ fontSize: '0.65rem', color: '#1d4ed8', marginBottom: 4 }}>📦 {p.components?.length || 0}-product bundle</div>}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
                             <span style={{ fontWeight: 900, color: '#c41e3a', fontSize: '0.95rem' }}>{formatCurrency(price)}</span>
                             {p.bv > 0 && <span style={{ fontSize: '0.67rem', color: '#d97706', fontWeight: 700, background: '#fffbeb', padding: '1px 5px', borderRadius: 8 }}>{p.bv} BV</span>}

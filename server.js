@@ -459,6 +459,16 @@ const STATIC_PRICE_LIST = [
   {description:"YEEYANGYEN TABLET 90's",dp:370,cp:455,bv:90,cif:157},
 ];
 
+const STATIC_PACKAGE_LIST = [
+  { description: 'Gastric Package', dp: 2054, cp: 2432, cif: 0, bv: 381 },
+  { description: 'Womens Package', dp: 2543, cp: 2950, cif: 0, bv: 481 },
+  { description: 'Mens Health Package', dp: 2033, cp: 2362, cif: 0, bv: 388 },
+  { description: 'Blood Circulation Pack', dp: 3290, cp: 3854, cif: 0, bv: 657 },
+  { description: 'Cleansing And Detoxification Package', dp: 2183, cp: 2596, cif: 0, bv: 447 },
+  { description: 'Weight Management Pack', dp: 2283, cp: 2680, cif: 0, bv: 448 },
+  { description: 'Healthy Joints Package', dp: 3538, cp: 4177, cif: 0, bv: 687.5 },
+];
+
 async function initProductPricesTable() {
   try {
     const { query } = await import('./api/db.js');
@@ -474,6 +484,7 @@ async function initProductPricesTable() {
         updated_by TEXT DEFAULT 'system'
       )
     `);
+    await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
     const { rows } = await query('SELECT COUNT(*) FROM product_prices');
     if (parseInt(rows[0].count) === 0) {
       for (const p of STATIC_PRICE_LIST) {
@@ -484,6 +495,14 @@ async function initProductPricesTable() {
       }
       console.log(`Seeded ${STATIC_PRICE_LIST.length} products into product_prices`);
     }
+    for (const pkg of STATIC_PACKAGE_LIST) {
+      await query(
+        `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
+         ON CONFLICT (description) DO UPDATE SET dp=$2, cp=$3, bv=$5, is_package=TRUE`,
+        [pkg.description, pkg.dp, pkg.cp, pkg.cif, pkg.bv]
+      );
+    }
+    console.log(`Ensured ${STATIC_PACKAGE_LIST.length} packages in product_prices`);
   } catch (err) {
     console.error('initProductPricesTable error:', err.message);
   }

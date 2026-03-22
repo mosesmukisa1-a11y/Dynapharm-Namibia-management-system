@@ -260,23 +260,35 @@ export default async function handler(req, res) {
 
       const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
       const branchId = record.branch_id;
+
+      const deductStock = async (productName, qty) => {
+        if (!productName || qty <= 0 || !branchId) return;
+        try {
+          await query(
+            `UPDATE branch_inventory_batches SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
+             WHERE id = (
+               SELECT id FROM branch_inventory_batches
+               WHERE branch_id = $2 AND product_name ILIKE $3 AND quantity > 0
+               ORDER BY expiry_date ASC NULLS LAST LIMIT 1
+             )`,
+            [qty, branchId, '%' + productName + '%']
+          );
+        } catch (stockErr) {
+          console.error('Stock deduction warning:', stockErr.message);
+        }
+      };
+
       for (const item of saleItems) {
-        const productName = item.product_name || item.name || item.description || '';
         const qty = Number(item.quantity || item.qty || 0);
-        if (qty > 0 && branchId) {
-          try {
-            await query(
-              `UPDATE branch_inventory_batches SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
-               WHERE id = (
-                 SELECT id FROM branch_inventory_batches
-                 WHERE branch_id = $2 AND product_name ILIKE $3 AND quantity > 0
-                 ORDER BY expiry_date ASC NULLS LAST LIMIT 1
-               )`,
-              [qty, branchId, '%' + productName + '%']
-            );
-          } catch (stockErr) {
-            console.error('Stock deduction warning:', stockErr.message);
+        if (Array.isArray(item.components) && item.components.length > 0) {
+          for (const comp of item.components) {
+            const compName = comp.name || comp.product_name || '';
+            const compQty = Number(comp.quantity || comp.qty || 1) * qty;
+            await deductStock(compName, compQty);
           }
+        } else {
+          const productName = item.product_name || item.name || item.description || '';
+          await deductStock(productName, qty);
         }
       }
 

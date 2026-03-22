@@ -1270,22 +1270,31 @@ function PriceListTab() {
                 {filtered.map((row, i) => {
                   const changed = !!edits[row.id];
                   return (
-                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="py-2 px-3">
-                        <span className="font-medium text-gray-800">{row.description}</span>
-                        {changed && <span className="ml-2 text-xs text-amber-600 font-semibold">&bull; unsaved</span>}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-800">{row.description}</span>
+                          {row.is_package && (
+                            <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>📦 Package</span>
+                          )}
+                          {changed && <span className="text-xs text-amber-600 font-semibold">&bull; unsaved</span>}
+                        </div>
                       </td>
-                      <td className="py-2 px-2 text-right">{fieldInput(row, 'cif', 'Cost Insurance Freight')}</td>
+                      <td className="py-2 px-2 text-right">{row.is_package ? <span className="text-xs text-gray-400 italic">bundle</span> : fieldInput(row, 'cif', 'Cost Insurance Freight')}</td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'dp', 'Distributor Price')}</td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'cp', 'Consumer Price')}</td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'bv', 'Business Volume')}</td>
                       <td className="py-2 px-2 text-center">
-                        <button
-                          onClick={() => deleteRow(row.id)}
-                          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
-                        >
-                          Remove
-                        </button>
+                        {row.is_package ? (
+                          <span className="text-xs text-blue-400 italic">auto-seeded</span>
+                        ) : (
+                          <button
+                            onClick={() => deleteRow(row.id)}
+                            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
