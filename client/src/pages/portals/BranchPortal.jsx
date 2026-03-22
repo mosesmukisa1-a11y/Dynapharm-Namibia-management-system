@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices, CHECKUP_SERVICES } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
@@ -105,8 +105,7 @@ function WalkInSalesTab() {
       const raw = Array.isArray(productsData) ? productsData : productsData.products || [];
       const enriched = enrichProductsWithPricing(raw);
       const packages = getPackagesForPOS();
-      // Checkup services are included in the full product list so they can be searched
-      setProducts([...CHECKUP_SERVICES, ...enriched, ...packages]);
+      setProducts([...enriched, ...packages]);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -779,6 +778,14 @@ function PrescriptionsTab() {
   const [rxGroupTab, setRxGroupTab] = useState('all');
   const [consultFeeMode, setConsultFeeMode] = useState({});
   const [consultFeePaid, setConsultFeePaid] = useState({});
+  const [checkupFeeType, setCheckupFeeType] = useState({}); // { [reportId]: 'standard' | 'report' | null }
+
+  const CHECKUP_FEE_OPTIONS = {
+    standard: { label: 'Full Body Check Up', fee: 200, cashback: 50, consultantEarns: 150 },
+    report:   { label: 'Full Body Check Up (With Report)', fee: 250, cashback: 50, consultantEarns: 200 },
+  };
+  const getCheckupType = (reportId) => checkupFeeType[reportId] || null;
+  const setCheckupType = (reportId, type) => setCheckupFeeType(prev => ({ ...prev, [reportId]: type }));
 
   useEffect(() => {
     api.reports.list()
@@ -900,15 +907,16 @@ function PrescriptionsTab() {
      Non-member: comprehensive — CP, DP, BV, profit, referral,
                  branch amount, N$50 cashback
   ────────────────────────────────────────────────────────────── */
-  const printPrescriptionReceipt = (report, consultMode) => {
+  const printPrescriptionReceipt = (report, consultMode, checkupType) => {
     const meds = getMedicines(report);
     const membershipStatus = report.membership_status || 'referred';
     const isMember = membershipStatus === 'member';
     const consultFee = getConsultationFee(membershipStatus);
     const totals = calculatePrescriptionTotals(meds, membershipStatus);
     const isInclusive = consultMode === 'inclusive';
+    const checkupOpt = checkupType ? CHECKUP_FEE_OPTIONS[checkupType] : null;
 
-    const items = meds.map(m => {
+    const medItems = meds.map(m => {
       const p = getEffectivePrice(m.name);
       return {
         product_name: m.name,
@@ -922,11 +930,29 @@ function PrescriptionsTab() {
       };
     });
 
+    // Append checkup fee as a special item if selected
+    const checkupItem = checkupOpt ? {
+      product_name: checkupOpt.label,
+      quantity: 1,
+      unit_price: checkupOpt.fee,
+      line_total: checkupOpt.fee,
+      bv: 0,
+      lineBV: 0,
+      dpPrice: checkupOpt.fee - checkupOpt.cashback,
+      cpPrice: checkupOpt.fee,
+      isCheckup: true,
+      cashbackPerUnit: isMember ? 0 : checkupOpt.cashback,
+      consultantEarns: checkupOpt.consultantEarns,
+    } : null;
+
+    const items = checkupItem ? [...medItems, checkupItem] : medItems;
+
     const medTotal = isMember ? totals.total.dp : totals.total.cp;
+    const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
     const rxBranchAmount = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
     const rxDistProfit = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
     const totalBV = totals.total.bv;
-    const totalAmount = medTotal + (isInclusive ? consultFee.total : 0);
+    const totalAmount = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
 
     printReceipt(generateReceiptHTML({
       receiptNumber: 'RX-' + (report.id || Date.now()),
@@ -1063,7 +1089,10 @@ function PrescriptionsTab() {
         const consultMode = getConsultMode(report.id, isMember);
         const isInclusive = consultMode === 'inclusive';
         const medTotal = isMember ? totals.total.dp : totals.total.cp;
-        const grandTotal = medTotal + (isInclusive ? consultFee.total : 0);
+        const checkupType = getCheckupType(report.id);
+        const checkupOpt = checkupType ? CHECKUP_FEE_OPTIONS[checkupType] : null;
+        const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
+        const grandTotal = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
         const allDispensed = pendingCount === 0 && total > 0;
         const headerGradient = allDispensed
           ? 'linear-gradient(135deg,#166534,#16a34a)'
@@ -1162,6 +1191,45 @@ function PrescriptionsTab() {
                 </div>
               </div>
 
+              {/* ── Health Check Fee ─────────────────────────────────────── */}
+              <div className="rounded-xl p-4 mb-4" style={{ background: '#f0fdfa', border: '2px solid #5eead4' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">🩺</span>
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: '#0d9488' }}>Health Check Fee</div>
+                    <div className="text-xs" style={{ color: '#0f766e' }}>Select the type of check-up the client paid for</div>
+                  </div>
+                  {checkupOpt && (
+                    <div className="ml-auto text-right">
+                      <div className="text-xl font-black" style={{ color: '#0d9488' }}>N$ {checkupOpt.fee}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  <button onClick={() => setCheckupType(report.id, checkupType === 'standard' ? null : 'standard')}
+                    style={{ flex: 1, minWidth: 130, padding: '8px', borderRadius: 8, border: `2px solid ${checkupType === 'standard' ? '#0d9488' : '#ccfbf1'}`, background: checkupType === 'standard' ? '#0d9488' : '#f0fdfa', color: checkupType === 'standard' ? '#fff' : '#0f766e', fontWeight: checkupType === 'standard' ? 700 : 400, cursor: 'pointer', fontSize: '0.78rem', transition: 'all .15s' }}>
+                    🩺 Standard — N$200
+                  </button>
+                  <button onClick={() => setCheckupType(report.id, checkupType === 'report' ? null : 'report')}
+                    style={{ flex: 1, minWidth: 160, padding: '8px', borderRadius: 8, border: `2px solid ${checkupType === 'report' ? '#0d9488' : '#ccfbf1'}`, background: checkupType === 'report' ? '#0d9488' : '#f0fdfa', color: checkupType === 'report' ? '#fff' : '#0f766e', fontWeight: checkupType === 'report' ? 700 : 400, cursor: 'pointer', fontSize: '0.78rem', transition: 'all .15s' }}>
+                    📋 With Report — N$250
+                  </button>
+                </div>
+                {checkupOpt && (
+                  <div className="text-xs px-2 py-1.5 rounded-lg mt-1" style={{ background: '#ccfbf1', color: '#065f46' }}>
+                    {!isMember
+                      ? `🎁 N$${checkupOpt.cashback} cashback to referring distributor · Consultant earns N$${checkupOpt.consultantEarns}`
+                      : `Flat member rate · Consultant earns N$${checkupOpt.fee}`}
+                  </div>
+                )}
+                {!checkupType && (
+                  <div className="text-xs px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#94a3b8' }}>
+                    Not applicable — click a button above if this client had a health check
+                  </div>
+                )}
+              </div>
+
+              {/* ── Consultation Fee ─────────────────────────────────────── */}
               <div className="rounded-xl p-4 mb-4" style={{ background: '#fffbeb', border: '2px solid #fcd34d' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">💼</span>
@@ -1221,20 +1289,28 @@ function PrescriptionsTab() {
                       <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>* Distributor profit is off branch books</div>
                     </>);
                   })()}
+                  {checkupOpt && (
+                    <div className="flex justify-between items-center px-2 py-1 rounded-lg" style={{ background: 'rgba(13,148,136,0.18)', border: '1px solid rgba(94,234,212,0.3)' }}>
+                      <span style={{ color: '#5eead4', fontSize: '0.85rem' }}>🩺 {checkupOpt.label}</span>
+                      <span className="font-bold" style={{ color: '#5eead4' }}>N$ {checkupOpt.fee}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <span style={{ color: 'rgba(255,255,255,0.7)' }}>Consultation fee <span style={{ fontSize: '0.7rem', background: isInclusive ? '#16a34a44' : '#f59e0b44', padding: '1px 6px', borderRadius: 10, color: isInclusive ? '#4ade80' : '#fbbf24' }}>{isInclusive ? 'included' : 'separate'}</span></span>
                     <span className="font-semibold" style={{ color: isInclusive ? '#4ade80' : '#fbbf24' }}>N$ {consultFee.total}</span>
                   </div>
                   <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>* Consult fee not counted in branch sales</div>
                   <div className="flex justify-between items-center pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-                    <span className="font-bold text-base">GRAND TOTAL {!isInclusive ? '(medicines)' : ''}</span>
+                    <span className="font-bold text-base">GRAND TOTAL {!isInclusive ? '(medicines only)' : ''}</span>
                     <span className="text-xl font-black" style={{ color: '#4ade80' }}>N$ {grandTotal}</span>
                   </div>
                   {!isInclusive && <div className="text-xs pt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>+ N$ {consultFee.total} consultation fee billed separately</div>}
-                  {!isMember && <div className="flex justify-between items-center mt-1 px-2 py-1 rounded-lg" style={{ background: '#fef3c711', border: '1px solid #f59e0b44' }}>
-                    <span style={{ color: '#fbbf24', fontSize: '0.8rem' }}>🎁 N$50 Cashback for non-member</span>
-                    <span style={{ color: '#fbbf24', fontWeight: 700 }}>N$ 50</span>
-                  </div>}
+                  {!isMember && checkupOpt && (
+                    <div className="flex justify-between items-center mt-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(94,234,212,0.25)' }}>
+                      <span style={{ color: '#5eead4', fontSize: '0.78rem' }}>🎁 N${checkupOpt.cashback} checkup cashback to distributor</span>
+                      <span style={{ color: '#5eead4', fontWeight: 700 }}>N$ {checkupOpt.cashback}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                   {[
@@ -1265,9 +1341,9 @@ function PrescriptionsTab() {
                 <div style={{ width: 1, background: 'rgba(255,255,255,0.15)', margin: '0 4px', alignSelf: 'stretch' }} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', alignSelf: 'center' }}>RECEIPT:</span>
-                  <button onClick={() => printPrescriptionReceipt(report, consultMode)}
+                  <button onClick={() => printPrescriptionReceipt(report, consultMode, checkupType)}
                     style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#c41e3a,#991b1b)', color: '#fff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(196,30,58,0.3)' }}>
-                    🧾 Print Receipt
+                    🧾 Print Receipt {checkupType ? '(+Checkup)' : ''}
                   </button>
                 </div>
               </div>
