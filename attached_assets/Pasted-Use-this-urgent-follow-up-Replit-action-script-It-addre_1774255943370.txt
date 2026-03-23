@@ -1,0 +1,474 @@
+Use this **urgent follow-up Replit action script**. It addresses the fact that the stock workflow screens are visible, but the action buttons like **Approve, Reject, Confirm Receipt, Submit, Receive, Amend** are still **static** and do not actually trigger workflow changes.
+
+---
+
+# **URGENT REPLIT SCRIPT – ACTIVATE STATIC STOCK ACTION BUTTONS**
+
+## **Important instruction to Replit**
+
+The stock process screens are now visible in the portals, but the workflow action buttons are still static.
+
+Buttons such as:
+
+* Approve
+* Reject
+* Confirm
+* Confirm Receipt
+* Receive Stock
+* Submit
+* Amend
+* Return for Correction
+
+are showing on the interface, but when clicked they do not activate the next workflow step properly.
+
+This must be corrected immediately.
+
+Do **not** redesign the whole module again.
+Do **not** remove the current visible workflow pages.
+This is now a **workflow activation and backend connection fix**.
+
+The requirement is:
+
+> Every stock action button must perform the real business action, update status, save to database, trigger stock movement logic, show feedback, and open or refresh the correct next interface.
+
+---
+
+# **1. MAIN PROBLEM TO FIX**
+
+Currently, the stock workflow pages open, but action buttons remain static.
+
+## **Wrong behavior now**
+
+* button is clickable visually
+* no real action happens
+* status does not change properly
+* next interface does not open
+* no database update
+* no notification
+* no inventory adjustment
+* no proper success/error response
+
+## **Correct behavior required**
+
+When the user clicks an action button, the system must:
+
+1. validate the record
+2. call the correct backend action
+3. save the action in the database
+4. update workflow status
+5. update stock levels where required
+6. log the action
+7. notify relevant users if needed
+8. refresh or open the next stage interface
+9. show clear success or failure message
+
+---
+
+# **2. ACTIVATE ALL STOCK WORKFLOW BUTTONS**
+
+The following buttons must become fully functional across all relevant portals.
+
+## **A. Approve**
+
+When GM clicks **Approve**:
+
+* action must save successfully
+* dispatch / transfer status must change from pending to approved
+* branch receiving stage must become available if approval is final
+* next interface should update immediately
+* success message must display
+* approval log must be written
+* downstream users must see the approved record
+
+## **B. Reject**
+
+When GM clicks **Reject**:
+
+* status must change to rejected
+* reserved quantities must be restored if applicable
+* rejection note should be saved
+* author must be notified if notification system exists
+* record must leave pending approval state
+* rejection response must show on screen
+
+## **C. Amend**
+
+When GM clicks **Amend**:
+
+* amendment interface must open
+* GM must be able to edit allowed fields such as quantity, line items, notes, batch if permitted
+* after save, final approved or amended record must update properly
+* original author must be notified
+* stock reservations must adjust correctly
+* final approved version must be what branch sees
+
+## **D. Confirm / Confirm Receipt**
+
+When branch clicks **Confirm Receipt**:
+
+* the receipt form must actually submit
+* signed / noted confirmation must save
+* branch inventory must increase
+* warehouse stock must reduce according to final approved quantity
+* status must update to received or discrepancy reported
+* receipt log must save
+* confirmation response must show immediately
+
+## **E. Submit**
+
+When warehouse or stock officer clicks **Submit**:
+
+* draft dispatch / transfer must move to next state
+* validation must run
+* incomplete records should not submit silently
+* proper feedback must display
+* next stage queue must receive the submitted record
+
+## **F. Receive**
+
+When warehouse receives stock from Country Stock:
+
+* receive button must actually post the receipt
+* warehouse inventory must increase
+* country stock must reduce correctly
+* status must update from in-transit to received
+* movement log must update
+
+## **G. Return for Correction**
+
+When GM or authorized user clicks **Return for Correction**:
+
+* record must move back to author queue
+* return reason must save
+* author must see it clearly as returned for correction
+* next editable interface must open or become available
+
+---
+
+# **3. BUTTONS MUST NOT ONLY CHANGE TEXT – THEY MUST TRIGGER REAL WORKFLOW**
+
+Do not implement fake front-end-only state changes.
+
+## **Required architecture**
+
+Each button must be connected to:
+
+* real API action / server action / backend route
+* database transaction
+* business logic service
+* audit log
+* status transition rules
+* UI refresh or route transition
+
+If the front-end only changes the label visually without committing the action, that is incorrect.
+
+---
+
+# **4. AFTER CLICKING, OPEN OR REFRESH THE NEXT INTERFACE**
+
+This is one of the main missing parts.
+
+The user said the button should not remain static; it should show what happened and open the next interface.
+
+## **Required behavior**
+
+After an action is successful, the system must do one of the following depending on the workflow:
+
+* refresh current record with updated status
+* open updated detail page
+* move user to next workflow page
+* open approval form
+* open amendment modal
+* open receipt interface
+* show updated queue/list where record moved
+
+### Examples
+
+* After **Approve**, branch pending receipt interface must become active
+* After **Amend**, amendment form must open, then save and return updated record
+* After **Confirm Receipt**, receipt screen must show successful received status and updated stock details
+* After **Reject**, record should move out of pending approval and show rejected view with reason
+
+---
+
+# **5. EVERY ACTION MUST SHOW USER FEEDBACK**
+
+At the moment clicks feel dead.
+
+## **Required feedback**
+
+After clicking any button, the user must clearly see:
+
+* loading indicator while action processes
+* success message if action succeeds
+* error message if action fails
+* updated status badge
+* refreshed view or new interface
+
+### Example success feedback
+
+* “Dispatch approved successfully.”
+* “Stock receipt confirmed successfully.”
+* “Dispatch returned for correction.”
+* “Amendment saved and author notified.”
+
+### Example failure feedback
+
+* “Approval failed: missing destination branch.”
+* “Receipt failed: no approved quantity available.”
+* “Submit failed: batch number is missing.”
+
+---
+
+# **6. IMPLEMENT PROPER STATUS TRANSITION RULES**
+
+Buttons must only activate valid next stages.
+
+## **Examples**
+
+### Dispatch approval
+
+* Pending GM Approval → Approved
+* Pending GM Approval → Rejected
+* Pending GM Approval → Returned for Correction
+* Pending GM Approval → Amended and Approved
+
+### Branch receipt
+
+* Approved / Awaiting Branch Receipt → Received
+* Approved / Awaiting Branch Receipt → Partially Received
+* Approved / Awaiting Branch Receipt → Discrepancy Reported
+
+### Warehouse receipt
+
+* In Transit → Received
+
+Do not let the button click do nothing because the state machine was not wired.
+
+---
+
+# **7. CONNECT BUTTONS TO THE DATABASE PROPERLY**
+
+Likely current issue:
+
+* UI buttons exist
+* event handler missing or broken
+* backend mutation missing
+* status update not persisted
+* async function not awaited
+* modal opens but no save logic
+* wrong route or broken form submission
+
+## **Required correction**
+
+Check and repair:
+
+* onClick handlers
+* form submit handlers
+* modal submit actions
+* API endpoints / server actions
+* database write queries
+* transaction commits
+* optimistic update logic
+* invalid silent catches
+* missing await / promise handling
+* disabled state stuck after click
+* route refresh / cache invalidation
+
+---
+
+# **8. ACTIVATE THESE BUTTONS IN ALL RELEVANT PORTALS**
+
+## **Stock Management Portal**
+
+* Submit supplier shipment
+* Confirm shipment receipt
+* Submit distribution
+* Confirm warehouse receipt
+
+## **Warehouse Portal**
+
+* Create dispatch
+* Submit dispatch
+* Edit dispatch
+* Send to GM
+* View Dispatch Note
+* Print Dispatch Note
+
+## **GM Portal**
+
+* Approve
+* Reject
+* Amend
+* Return for Correction
+
+## **Branch Portal**
+
+* View incoming stock
+* Open Dispatch Note
+* Confirm Receipt
+* Save discrepancy
+* Sign and receive
+
+---
+
+# **9. APPROVE / REJECT / CONFIRM MUST OPEN THE RIGHT NEXT SCREEN**
+
+The user specifically asked that after click, the system should show what happened and open the next interface.
+
+## **Required UI flow examples**
+
+### GM Approve
+
+Click Approve → save action → show success → open updated approved Dispatch Note → send record to destination branch queue
+
+### GM Reject
+
+Click Reject → save reason → show rejected state → return to approval queue list with status updated
+
+### GM Amend
+
+Click Amend → open editable amendment interface → save amended version → show final approved document → notify author
+
+### Branch Confirm Receipt
+
+Click Confirm Receipt → save receipt → show final received Dispatch Note → update branch inventory view
+
+### Warehouse Submit Dispatch
+
+Click Submit → move record to Pending GM Approval → open queue/detail page with new status shown
+
+---
+
+# **10. ENSURE BUTTONS ARE NOT BLOCKED BY FRONTEND STATE BUGS**
+
+Check for common issues such as:
+
+* button disabled state never cleared
+* modal opens but no handler bound
+* handler exists but returns early
+* zod / validation failure hidden from UI
+* route action not wired
+* stale props
+* action result not handled
+* form schema mismatch
+* CSRF / auth issue silently failing
+* role permission logic blocking valid users incorrectly
+
+If permission blocks the action, show a real message.
+Do not let the button appear active but do nothing.
+
+---
+
+# **11. ACTIONS MUST UPDATE STOCK LEVELS IMMEDIATELY WHERE REQUIRED**
+
+Buttons must not only change status.
+They must also trigger stock arithmetic where appropriate.
+
+## **Examples**
+
+### Approve branch dispatch
+
+* reserve final approved quantity for receipt stage
+
+### Reject dispatch
+
+* restore reserved warehouse stock
+
+### Amend dispatch
+
+* adjust reserved stock according to final amended quantity
+
+### Branch receive
+
+* reduce warehouse stock
+* increase branch stock
+
+### Warehouse receive from country stock
+
+* reduce country stock
+* increase warehouse stock
+
+---
+
+# **12. WRITE FULL AUDIT LOGS FOR EVERY BUTTON ACTION**
+
+Every click must be logged.
+
+## **Log fields**
+
+* action type
+* record reference number
+* previous status
+* new status
+* user who clicked
+* timestamp
+* note / reason / comment if provided
+
+This helps verify that the button truly worked.
+
+---
+
+# **13. SHOW ACTION HISTORY ON THE RECORD PAGE**
+
+To make it clear the buttons are now functioning, show action history on stock records.
+
+## **Examples**
+
+* Submitted by John on 2026-03-23 14:05
+* Approved by GM on 2026-03-23 14:19
+* Received by Oshakati Branch on 2026-03-23 16:02
+
+This will help confirm workflow activation.
+
+---
+
+# **14. REQUIRED DEBUGGING PRIORITY**
+
+Replit should inspect and correct all places where:
+
+* buttons are rendered but not wired
+* action handlers are placeholders
+* status mutation is not persisted
+* next route/page is not triggered
+* modal save buttons do nothing
+* workflow transitions are front-end only
+
+This is no longer a design task.
+It is a **workflow execution bug fix**.
+
+---
+
+# **15. FINAL INSTRUCTION TO REPLIT**
+
+Please fix the stock workflow action buttons immediately.
+
+Currently the stock process is visible in the portals, but buttons like **Approve, Reject, Confirm, Submit, Receive, Amend** remain static after clicking.
+
+They must not just sit there visually.
+Each one must:
+
+* execute the real backend action
+* save to database
+* update status
+* adjust stock where required
+* write to audit log
+* show success/error feedback
+* and open or refresh the correct next interface
+
+After clicking, the user must clearly see what happened, for example:
+
+* approved
+* rejected
+* amended
+* awaiting branch receipt
+* received
+
+and the system must move to the next valid workflow screen or refreshed record view.
+
+Do not leave these buttons as UI-only placeholders.
+Make them fully operational end-to-end.
+
+---
+
+I can also merge this into the stock follow-up script so Replit gets one stronger correction brief.

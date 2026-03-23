@@ -1,5 +1,58 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from '../db.js';
+import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
+
+async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
+  const batches = await client.query(
+    `SELECT id, remaining_quantity FROM stock_batches
+     WHERE (location = $1 OR warehouse_id = $1)
+       AND description ILIKE $2
+       AND remaining_quantity > 0
+     ORDER BY expiry_date ASC NULLS LAST
+     FOR UPDATE`,
+    [locationFilter, '%' + productName + '%']
+  );
+  let remaining = totalQty;
+  for (const batch of batches.rows) {
+    if (remaining <= 0) break;
+    const deduct = Math.min(remaining, Number(batch.remaining_quantity));
+    await client.query(
+      `UPDATE stock_batches
+       SET remaining_quantity = remaining_quantity - $1,
+           dispatched_quantity = dispatched_quantity + $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [deduct, batch.id]
+    );
+    remaining -= deduct;
+  }
+  return totalQty - remaining;
+}
+
+async function fefoDeductWarehouseInventory(client, warehouseId, productName, totalQty) {
+  const inv = await client.query(
+    `SELECT id, quantity FROM warehouse_inventory
+     WHERE warehouse_id = $1
+       AND product_name ILIKE $2
+       AND quantity > 0
+     ORDER BY expiry_date ASC NULLS LAST
+     FOR UPDATE`,
+    [warehouseId, '%' + productName + '%']
+  );
+  let remaining = totalQty;
+  for (const row of inv.rows) {
+    if (remaining <= 0) break;
+    const deduct = Math.min(remaining, Number(row.quantity));
+    await client.query(
+      `UPDATE warehouse_inventory
+       SET quantity = quantity - $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [deduct, row.id]
+    );
+    remaining -= deduct;
+  }
+  return totalQty - remaining;
+}
 
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;
@@ -553,11 +606,164 @@ export default async function handler(req, res) {
         updatePayload.metadata = JSON.stringify(updatePayload.metadata);
       }
 
+      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch FROM stock_transfers WHERE id = $1', [id]);
+      const previousStatus = oldTransfer?.status;
+
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
 
       if (body.items !== undefined || body.itemsArray !== undefined) {
         const normalizedItems = parseItems(body.items || body.itemsArray);
         await replaceTransferItems(id, normalizedItems);
+      }
+
+      const transferItems = await getMany(
+        'SELECT * FROM stock_transfer_items WHERE transfer_id = $1',
+        [id]
+      );
+
+      const statusChanged = transfer.status !== previousStatus;
+      if (statusChanged && transferItems.length > 0) {
+        await withTransaction(async (client) => {
+          const actorName = transfer.received_by || transfer.dispatched_by || transfer.delivered_by || currentUser?.fullName || null;
+
+          if (transfer.status === 'received' && previousStatus !== 'received') {
+            const destWarehouse = transfer.to_branch || transfer.from_warehouse || null;
+            for (const item of transferItems) {
+              const qty = Number(item.quantity || 0);
+              if (qty <= 0) continue;
+              const productName = item.product_name || item.product_id || 'Unknown';
+              const batchNo = item.batch_no || null;
+              const expiryDate = item.expiry_date || null;
+              const productId = item.product_id || productName;
+
+              await fefoDeductStockBatches(client, 'country_stock', productName, qty);
+
+              const whBatchId = `WH-RCV-${id.slice(-6)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const existing = await client.query(
+                `SELECT id FROM warehouse_inventory
+                 WHERE warehouse_id = $1 AND product_id = $2
+                   AND COALESCE(batch_no, '') = COALESCE($3, '')
+                   AND COALESCE(expiry_date::text, '') = COALESCE($4, '')
+                 FOR UPDATE`,
+                [destWarehouse, productId, batchNo, expiryDate]
+              );
+              if (existing.rows.length > 0) {
+                await client.query(
+                  `UPDATE warehouse_inventory SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
+                  [qty, existing.rows[0].id]
+                );
+              } else {
+                await client.query(
+                  `INSERT INTO warehouse_inventory (id, warehouse_id, product_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', NOW(), NOW())`,
+                  [whBatchId, destWarehouse, productId, productName, batchNo, expiryDate, qty]
+                );
+              }
+
+              const movId = `MOV-RCV-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+              await client.query(
+                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, 'transfer_in', 'country_stock', $4, $5, $6, $7, NOW(), NOW())`,
+                [movId, productName, qty, destWarehouse || 'warehouse', id,
+                 `Received from Country Stock — transfer ${id}`, actorName]
+              );
+            }
+          }
+
+          if (transfer.status === 'approved' && previousStatus !== 'approved' && previousStatus !== 'dispatched') {
+            const sourceWarehouse = transfer.from_warehouse || null;
+            if (sourceWarehouse) {
+              for (const item of transferItems) {
+                const qtyToReserve = Number(item.quantity_approved ?? item.quantity ?? 0);
+                if (qtyToReserve <= 0) continue;
+                const productName = item.product_name || item.product_id || 'Unknown';
+
+                await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
+                await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
+
+                const movId = `MOV-APR-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+                await client.query(
+                  `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                   VALUES ($1, $2, $3, 'reserved', $4, $5, $6, $7, $8, NOW(), NOW())`,
+                  [movId, productName, qtyToReserve, sourceWarehouse, transfer.to_branch || 'branch', id,
+                   `GM approved — stock reserved for ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
+                );
+              }
+            }
+          }
+
+          if (transfer.status === 'dispatched' && previousStatus !== 'dispatched') {
+            const sourceWarehouse = transfer.from_warehouse || null;
+            const alreadyDeducted = previousStatus === 'approved';
+            for (const item of transferItems) {
+              const qty = Number(item.quantity || 0);
+              if (qty <= 0) continue;
+              const productName = item.product_name || item.product_id || 'Unknown';
+
+              if (!alreadyDeducted && sourceWarehouse) {
+                await fefoDeductStockBatches(client, sourceWarehouse, productName, qty);
+                await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
+              }
+
+              const movId = `MOV-DSP-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+              await client.query(
+                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [movId, productName, qty, sourceWarehouse || 'warehouse', transfer.to_branch || 'branch', id,
+                 `Dispatched to ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
+              );
+            }
+          }
+
+          if ((transfer.status === 'delivered' || transfer.status === 'partially_received') && previousStatus !== 'delivered' && previousStatus !== 'partially_received') {
+            const branchId = transfer.to_branch || null;
+            for (const item of transferItems) {
+              const qtyReceived = Number(item.quantity_received ?? item.quantity ?? 0);
+              if (qtyReceived <= 0) continue;
+              const productName = item.product_name || item.product_id || 'Unknown';
+              const batchNo = item.batch_no || null;
+              const expiryDate = item.expiry_date || null;
+
+              const batchId = `BIB-${id.slice(-6)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const existingBranch = await client.query(
+                `SELECT id FROM branch_inventory_batches
+                 WHERE branch_id = $1 AND product_name = $2
+                   AND COALESCE(batch_no, '') = COALESCE($3, '')
+                   AND COALESCE(expiry_date::text, '') = COALESCE($4, '')
+                 FOR UPDATE`,
+                [branchId, productName, batchNo, expiryDate]
+              );
+              if (existingBranch.rows.length > 0) {
+                await client.query(
+                  `UPDATE branch_inventory_batches SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
+                  [qtyReceived, existingBranch.rows[0].id]
+                );
+              } else {
+                await client.query(
+                  `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, 'in_stock', NOW(), NOW())`,
+                  [batchId, branchId, productName, batchNo, expiryDate, qtyReceived]
+                );
+              }
+
+              const bimId = `BIM-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+              await client.query(
+                `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+                 VALUES ($1, $2, 'receive', $3, $4, $5, $6, $7, $8, NOW())`,
+                [bimId, branchId, productName, batchNo, qtyReceived, id,
+                 `Received from warehouse — transfer ${id}${item.discrepancy_note ? ` (${item.discrepancy_note})` : ''}`, actorName]
+              );
+
+              const movId = `MOV-BRC-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+              await client.query(
+                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, 'transfer_in', $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [movId, productName, qtyReceived, transfer.from_warehouse || 'warehouse', branchId || 'branch', id,
+                 `Branch received from warehouse — transfer ${id}`, actorName]
+              );
+            }
+          }
+        });
       }
 
       let dispatchNote = null;

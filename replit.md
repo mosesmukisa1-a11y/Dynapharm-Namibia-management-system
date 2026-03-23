@@ -33,6 +33,14 @@ The backend is an Express.js server providing API services and serving the React
 - **Stock Management Workflow**: Supplier Import → Country Stock → Distribution to Warehouses → Warehouse Dispatch to Branch (GM approval) → Branch Receipt. Transfer statuses: `submitted`, `received`, `pending_approval`, `approved`, `rejected`, `delivered`, `returned`, `partially_received`. GM actions: Approve, Reject, Amend & Approve, Return for Correction. Branch receipt includes item-level receipt, e-signature, and discrepancy notes. Audit trail tracks all amendments.
 - **Dispatch Note Document** (`client/src/components/DispatchNote.jsx`): Full operational stock document with 7 sections: A) Header (company, title, reference number, barcode, date, status, prepared by), B) Source/Destination (warehouse details, branch name/code/address/phone/region), C) Item Table (10 columns: #, Product Name, Product Code, Batch No, Expiry Date, Unit, Qty Prepared, Qty Approved, Qty Received, Remarks), D) Warehouse Notes, E) GM Approval Section (status, name, date, comment, amendment details with original vs approved values), F) Branch Receipt Section (received by, date, e-signature, receipt status, discrepancy flag), G) Audit Footer (created/approved/received timestamps and actors). Includes Code128 barcode SVG, print/PDF support. Used in GMPortal and BranchPortal.
 - **DB columns for transfers**: `stock_transfer_items` (expiry_date, quantity_approved, quantity_received, discrepancy_note); `stock_transfers` (gm_action, gm_comment, amended_by_gm, amended_at, signature_name, branch_receipt_note, discrepancy_flag, receipt_status)
+- **Server-side Stock Adjustments** (`api/stock/transfers.js` PATCH handler): Backend automatically adjusts actual inventory levels when transfer status changes:
+  - **`received`** (Country→Warehouse): Deducts from `stock_batches` at country_stock, upserts `warehouse_inventory`, logs `transfer_in` movement
+  - **`approved`** (GM approval): Deducts from warehouse `stock_batches` and `warehouse_inventory` (reserves stock), logs `reserved` movement. Prevents double-deduction if dispatched after approval.
+  - **`dispatched`** (Warehouse→Branch): Only deducts warehouse stock if not already done during approval; logs `transfer_out` movement
+  - **`delivered`/`partially_received`** (Branch receipt): Creates/updates `branch_inventory_batches`, logs `branch_inventory_movements` and `stock_movements` with `transfer_in` type
+  - Uses FEFO (First Expiry First Out) ordering for stock deductions
+  - All deductions use `GREATEST(0, ...)` to prevent negative quantities
+  - Previous status is captured before update to prevent duplicate adjustments
 
 ### Database
 A PostgreSQL database with 40 fully migrated tables, including products, branches, users, and distributors (12,500+ records). Key data is pre-seeded, and a super admin user is auto-seeded.
