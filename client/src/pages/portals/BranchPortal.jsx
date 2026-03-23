@@ -1760,10 +1760,10 @@ function BranchStockTab() {
         priority: requestPriority,
         created_by: user?.full_name || user?.username || '',
       });
-      setAlert({ type: 'success', message: 'Stock request submitted to Stock Management' });
-      setRequestItems([]); setRequestPriority('normal'); setRequestNotes(''); setProductSearch('');
       setShowRequestForm(false);
-      loadData();
+      setRequestItems([]); setRequestPriority('normal'); setRequestNotes(''); setProductSearch('');
+      setAlert({ type: 'success', message: 'Stock request submitted to Stock Management' });
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to submit request' });
     } finally { setSubmitting(false); }
@@ -1796,10 +1796,10 @@ function BranchStockTab() {
         }
       }
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
-      setAlert({ type: 'success', message: 'Stock received and recorded successfully' });
       setShowReceiveForm(false);
       setSelectedRequest(null);
-      loadData();
+      setAlert({ type: 'success', message: 'Stock received and recorded successfully' });
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record receipt' });
     } finally { setSubmitting(false); }
@@ -1816,10 +1816,10 @@ function BranchStockTab() {
         created_by: user?.full_name || user?.username || '',
         notes: transferNotes,
       });
-      setAlert({ type: 'success', message: 'Stock transfer initiated successfully' });
-      setTransferItems([]); setTransferToBranch(''); setTransferNotes(''); setTransferProductSearch('');
       setShowTransferForm(false);
-      loadData();
+      setTransferItems([]); setTransferToBranch(''); setTransferNotes(''); setTransferProductSearch('');
+      setAlert({ type: 'success', message: 'Stock transfer initiated successfully' });
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to create transfer' });
     } finally { setSubmitting(false); }
@@ -1838,10 +1838,10 @@ function BranchStockTab() {
         notes: `Write-off: ${writeOffForm.reason}`,
         reference_id: `WO-${Date.now()}`,
       });
-      setAlert({ type: 'success', message: 'Write-off recorded. Pending approval from Stock Management.' });
-      setWriteOffForm({ product_name: '', quantity: '', reason: '' });
       setShowWriteOffForm(false);
-      loadData();
+      setWriteOffForm({ product_name: '', quantity: '', reason: '' });
+      setAlert({ type: 'success', message: 'Write-off recorded. Pending approval from Stock Management.' });
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record write-off' });
     } finally { setSubmitting(false); }
@@ -1912,12 +1912,14 @@ function BranchStockTab() {
         items: updatedItems,
       });
 
+      setReceiveTransferModal(null);
+      setReceiveSignature('');
+      setReceiveNotes('');
       setAlert({ type: 'success', message: hasDiscrepancy
         ? `Stock received with discrepancies noted. ${receiptStatus === 'partially_received' ? 'Partial receipt recorded.' : 'Discrepancy reported.'}`
         : `Stock received successfully from ${fmtLocation(transfer.fromWarehouse || transfer.from_location)}`
       });
-      setReceiveTransferModal(null);
-      loadData();
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to receive transfer' });
     } finally { setSubmitting(false); }
@@ -2292,16 +2294,16 @@ function BranchStockTab() {
               )}
 
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => setReceiveTransferModal(null)}
-                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                <button onClick={() => setReceiveTransferModal(null)} disabled={submitting}
+                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, opacity: submitting ? 0.5 : 1 }}>
                   Cancel
                 </button>
-                <button onClick={() => setViewDispatchNote(receiveTransferModal)}
-                  style={{ padding: '8px 16px', background: '#fff', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#1e40af', fontWeight: 600 }}>
+                <button onClick={() => setViewDispatchNote(receiveTransferModal)} disabled={submitting}
+                  style={{ padding: '8px 16px', background: '#fff', border: '1px solid #93c5fd', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, color: '#1e40af', fontWeight: 600, opacity: submitting ? 0.5 : 1 }}>
                   📄 Preview Document
                 </button>
                 <button onClick={handleReceiveTransfer} disabled={submitting || !receiveSignature.trim()}
-                  style={{ padding: '8px 20px', background: '#1e40af', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (submitting || !receiveSignature.trim()) ? 0.6 : 1 }}>
+                  style={{ padding: '8px 20px', background: '#1e40af', color: 'white', border: 'none', borderRadius: 6, cursor: (submitting || !receiveSignature.trim()) ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: (submitting || !receiveSignature.trim()) ? 0.6 : 1 }}>
                   {submitting ? 'Processing...' : '✅ Confirm Receipt'}
                 </button>
               </div>

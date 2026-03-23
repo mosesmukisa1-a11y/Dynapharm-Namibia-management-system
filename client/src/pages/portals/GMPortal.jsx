@@ -465,6 +465,7 @@ function ApprovalsTab() {
   useEffect(() => { loadData(); }, []);
 
   const handleAction = async (type, id, action) => {
+    setProcessing(true);
     try {
       if (type === 'cash') {
         await api.put(`/branch/cash-movements/${id}`, { status: action, notes: note });
@@ -493,6 +494,8 @@ function ApprovalsTab() {
       setNote('');
     } catch (err) {
       setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -889,8 +892,8 @@ function ApprovalsTab() {
                   style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, minHeight: 80, resize: 'vertical' }} />
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); }}
-                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); }} disabled={processing}
+                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, opacity: processing ? 0.5 : 1 }}>
                   Cancel
                 </button>
                 <button onClick={handleAmendApprove} disabled={processing}
@@ -916,15 +919,16 @@ function ApprovalsTab() {
               placeholder={noteModal?.action === 'returned' ? 'Explain what needs to be corrected...' : 'Add notes for this decision...'} />
           </div>
           <div className="flex gap-3 justify-end">
-            <Button variant="secondary" onClick={() => { setNoteModal(null); setNote(''); }}>Cancel</Button>
+            <Button variant="secondary" onClick={() => { setNoteModal(null); setNote(''); }} disabled={processing}>Cancel</Button>
             {noteModal?.action === 'returned' ? (
-              <Button variant="warning" onClick={() => handleReturnForCorrection(noteModal.id)} disabled={!note.trim()}>
-                ↩ Return for Correction
+              <Button variant="warning" onClick={() => handleReturnForCorrection(noteModal.id)} disabled={processing || !note.trim()}>
+                {processing ? 'Processing...' : '↩ Return for Correction'}
               </Button>
             ) : (
               <Button variant={noteModal?.action === 'approved' ? 'success' : 'danger'}
-                onClick={() => handleAction(noteModal.type, noteModal.id, noteModal.action)}>
-                {noteModal?.action === 'approved' ? 'Approve' : 'Reject'}
+                onClick={() => handleAction(noteModal.type, noteModal.id, noteModal.action)}
+                disabled={processing}>
+                {processing ? 'Processing...' : (noteModal?.action === 'approved' ? 'Approve' : 'Reject')}
               </Button>
             )}
           </div>

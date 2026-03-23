@@ -41,6 +41,7 @@ The backend is an Express.js server providing API services and serving the React
   - Uses FEFO (First Expiry First Out) ordering for stock deductions
   - All deductions use `GREATEST(0, ...)` to prevent negative quantities
   - Previous status is captured before update to prevent duplicate adjustments
+- **Modal/Dialog Close Pattern**: All stock workflow modals close only after successful API calls (not before). On API errors, modals stay open so users can retry. Action buttons (Approve, Reject, Submit, Confirm Receipt) show loading text ("Processing...", "Submitting...", "Approving...") and are disabled during API calls. Cancel buttons are also disabled during processing. Data refresh uses `setTimeout(() => loadData(), 100)` to avoid React state batching race conditions with modal close.
 
 ### Database
 A PostgreSQL database with 40 fully migrated tables, including products, branches, users, and distributors (12,500+ records). Key data is pre-seeded, and a super admin user is auto-seeded.

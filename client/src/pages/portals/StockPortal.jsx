@@ -1355,7 +1355,7 @@ function WarehouseTab({ name }) {
       }
       await api.stock.updateTransfer(transfer.id, { status: 'received', received_by: user?.full_name || user?.username });
       setAlert({ type: 'success', msg: `Stock received into ${name} Warehouse from Country Stock` });
-      loadData();
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', msg: err.message || 'Failed to receive transfer' });
     } finally {
@@ -1386,12 +1386,12 @@ function WarehouseTab({ name }) {
         dispatchNotes: dispatchNote || undefined,
         created_by: user?.full_name || user?.username,
       });
-      setAlert({ type: 'success', msg: `Dispatch submitted for GM approval. ${dispatchCart.length} product(s) → ${fmtLocation(dispatchBranch)}` });
+      setShowDispatch(false);
       setDispatchCart([]);
       setDispatchBranch('');
       setDispatchNote('');
-      setShowDispatch(false);
-      loadData();
+      setAlert({ type: 'success', msg: `Dispatch submitted for GM approval. ${dispatchCart.length} product(s) → ${fmtLocation(dispatchBranch)}` });
+      setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally {
@@ -2508,9 +2508,11 @@ function OrdersTab({ branch }) {
     try {
       await api.stock.updateRequest(reqId, { status: action, ...extra, updated_by: user?.full_name || user?.username });
       setAlert({ type: 'success', msg: `Request ${action === 'approved' ? 'approved' : action === 'rejected' ? 'rejected' : action === 'dispatched' ? 'dispatched to branch' : 'updated'} successfully` });
-      loadRequests();
+      setTimeout(() => loadRequests(), 100);
+      return true;
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
+      return false;
     } finally {
       setActionLoading(prev => { const n = { ...prev }; delete n[reqId]; return n; });
     }
@@ -2534,9 +2536,9 @@ function OrdersTab({ branch }) {
         });
       }
       await api.stock.updateRequest(dispatchRequest.id, { status: 'dispatched', updated_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: `Transfer submitted for GM approval: ${fmtLocation(dispatchWH)} → ${branchName}. Once approved, branch can receive the delivery.` });
       setDispatchRequest(null);
-      loadRequests();
+      setAlert({ type: 'success', msg: `Transfer submitted for GM approval: ${fmtLocation(dispatchWH)} → ${branchName}. Once approved, branch can receive the delivery.` });
+      setTimeout(() => loadRequests(), 100);
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally {
@@ -2556,9 +2558,10 @@ function OrdersTab({ branch }) {
         created_by: user?.full_name || user?.username || 'Stock Manager',
         items: cart.map(item => ({ productId: item.description, productName: item.description, quantity: Number(item.qty), unit: 'units' })),
       });
+      setShowForm(false);
+      setCart([]); setPriority('normal'); setNotes('');
       setAlert({ type: 'success', msg: `Stock request submitted for ${requestBranch}` });
-      setCart([]); setPriority('normal'); setNotes(''); setShowForm(false);
-      loadRequests();
+      setTimeout(() => loadRequests(), 100);
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally { setSubmitting(false); }
@@ -2696,13 +2699,17 @@ function OrdersTab({ branch }) {
             </div>
             <div className="flex gap-2 pt-2">
               {(!viewRequest.status || viewRequest.status === 'pending') && (<>
-                <Button onClick={() => { handleAction(viewRequest.id, 'approved'); setViewRequest(null); }}>✓ Approve</Button>
-                <Button variant="danger" onClick={() => { handleAction(viewRequest.id, 'rejected'); setViewRequest(null); }}>✗ Reject</Button>
+                <Button disabled={!!actionLoading[viewRequest.id]} onClick={async () => { const ok = await handleAction(viewRequest.id, 'approved'); if (ok) setViewRequest(null); }}>
+                  {actionLoading[viewRequest.id] === 'approved' ? 'Approving...' : '✓ Approve'}
+                </Button>
+                <Button variant="danger" disabled={!!actionLoading[viewRequest.id]} onClick={async () => { const ok = await handleAction(viewRequest.id, 'rejected'); if (ok) setViewRequest(null); }}>
+                  {actionLoading[viewRequest.id] === 'rejected' ? 'Rejecting...' : '✗ Reject'}
+                </Button>
               </>)}
               {viewRequest.status === 'approved' && (
                 <Button onClick={() => { setDispatchRequest(viewRequest); setViewRequest(null); setDispatchWH('country_stock'); }}>🚚 Dispatch to Branch</Button>
               )}
-              <Button variant="secondary" onClick={() => setViewRequest(null)}>Close</Button>
+              <Button variant="secondary" disabled={!!actionLoading[viewRequest?.id]} onClick={() => setViewRequest(null)}>Close</Button>
             </div>
           </div>
         )}
