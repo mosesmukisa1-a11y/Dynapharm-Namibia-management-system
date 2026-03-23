@@ -1775,33 +1775,38 @@ function BranchStockTab() {
     setReceiveItems(items.map(i => ({ ...i, received_qty: i.quantity })));
     setReceiveDeliveryNote('');
     setReceiveReceivedBy(user?.full_name || user?.username || '');
+    setReceiveFormMsg(null);
     setShowReceiveForm(true);
   };
 
   const handleReceiveStock = async () => {
     if (!selectedRequest) return;
     setSubmitting(true);
+    setReceiveFormMsg(null);
     try {
       for (const item of receiveItems) {
         if (Number(item.received_qty) > 0) {
           await api.stock.createMovement({
-            product_name: item.product_name,
+            product_name: item.product_name || item.productName || item.productId || 'Unknown',
             quantity: Number(item.received_qty),
             movement_type: 'received',
             source_location: 'Warehouse',
             destination_location: user?.branch || 'Branch',
             notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}`,
             reference_id: selectedRequest.id,
+            created_by: receiveReceivedBy || user?.full_name || user?.username || null,
           });
         }
       }
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
       setShowReceiveForm(false);
       setSelectedRequest(null);
+      setReceiveFormMsg(null);
       setAlert({ type: 'success', message: 'Stock received and recorded successfully' });
+      setSubTab('inventory');
       setTimeout(() => loadData(), 100);
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to record receipt' });
+      setReceiveFormMsg({ type: 'error', text: err.message || 'Failed to record receipt' });
     } finally { setSubmitting(false); }
   };
 
@@ -1872,6 +1877,7 @@ function BranchStockTab() {
   };
 
   const [receiveModalMsg, setReceiveModalMsg] = useState(null);
+  const [receiveFormMsg, setReceiveFormMsg] = useState(null);
 
   const handleReceiveTransfer = async () => {
     const transfer = receiveTransferModal;
@@ -1881,21 +1887,6 @@ function BranchStockTab() {
     try {
       const hasDiscrepancy = receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent));
       const allZero = receiveItems.every(it => Number(it.quantityReceived) === 0);
-
-      for (const item of receiveItems) {
-        const qtyReceived = Number(item.quantityReceived || 0);
-        if (qtyReceived > 0) {
-          await api.stock.createMovement({
-            product_name: item.productName || item.productId,
-            quantity: qtyReceived,
-            movement_type: 'received',
-            source_location: transfer.fromWarehouse || transfer.from_location || 'Warehouse',
-            destination_location: user?.branch || 'Branch',
-            notes: `Received dispatch ${transfer.id}${item.discrepancyNote ? ` - Note: ${item.discrepancyNote}` : ''}`,
-            reference_id: transfer.id,
-          });
-        }
-      }
 
       const receiptStatus = allZero ? 'discrepancy_reported' : hasDiscrepancy ? 'partially_received' : 'received';
       const transferStatus = hasDiscrepancy ? 'partially_received' : 'delivered';
@@ -1924,6 +1915,7 @@ function BranchStockTab() {
       setReceiveNotes('');
       setReceiveModalMsg(null);
       setAlert({ type: 'success', message: successMsg });
+      setSubTab('inventory');
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setReceiveModalMsg({ type: 'error', text: err.message || 'Failed to receive transfer' });
@@ -2530,12 +2522,22 @@ function BranchStockTab() {
                 </div>
               </div>
             </div>
-            <div style={{ padding: '14px 20px', borderTop: '1px solid #f0e8ea', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#fff' }}>
-              <button onClick={() => setShowReceiveForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
-              <button onClick={handleReceiveStock} disabled={submitting}
-                style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.9rem', opacity: submitting?0.65:1 }}>
-                {submitting ? '⏳ Recording…' : '✅ Confirm Receipt'}
-              </button>
+            <div style={{ padding: '14px 20px', borderTop: '1px solid #f0e8ea', background: '#fff' }}>
+              {receiveFormMsg && (
+                <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600,
+                  background: receiveFormMsg.type === 'error' ? '#fee2e2' : '#dcfce7',
+                  color: receiveFormMsg.type === 'error' ? '#991b1b' : '#166534',
+                  border: `1px solid ${receiveFormMsg.type === 'error' ? '#fecaca' : '#bbf7d0'}` }}>
+                  {receiveFormMsg.type === 'error' ? '❌' : '✅'} {receiveFormMsg.text}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => { setShowReceiveForm(false); setReceiveFormMsg(null); }} disabled={submitting} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: submitting ? 'not-allowed' : 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem', opacity: submitting ? 0.5 : 1 }}>Cancel</button>
+                <button onClick={handleReceiveStock} disabled={submitting}
+                  style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: submitting?0.65:1 }}>
+                  {submitting ? '⏳ Recording…' : '✅ Confirm Receipt'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

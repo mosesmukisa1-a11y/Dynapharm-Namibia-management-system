@@ -565,20 +565,20 @@ export default async function handler(req, res) {
         updatePayload.amended_by_gm = updatePayload.amendedByGm || updatePayload.amended_by_gm;
         delete updatePayload.amendedByGm;
       }
-      if (updatePayload.signatureName || updatePayload.signature_name) {
-        updatePayload.signature_name = updatePayload.signatureName || updatePayload.signature_name;
+      if (updatePayload.signatureName !== undefined) {
+        updatePayload.signature_name = updatePayload.signatureName ?? updatePayload.signature_name ?? null;
         delete updatePayload.signatureName;
       }
-      if (updatePayload.branchReceiptNote || updatePayload.branch_receipt_note) {
-        updatePayload.branch_receipt_note = updatePayload.branchReceiptNote || updatePayload.branch_receipt_note;
+      if (updatePayload.branchReceiptNote !== undefined) {
+        updatePayload.branch_receipt_note = updatePayload.branchReceiptNote ?? updatePayload.branch_receipt_note ?? null;
         delete updatePayload.branchReceiptNote;
       }
       if (updatePayload.discrepancyFlag !== undefined || updatePayload.discrepancy_flag !== undefined) {
         updatePayload.discrepancy_flag = updatePayload.discrepancyFlag ?? updatePayload.discrepancy_flag ?? false;
         delete updatePayload.discrepancyFlag;
       }
-      if (updatePayload.receiptStatus || updatePayload.receipt_status) {
-        updatePayload.receipt_status = updatePayload.receiptStatus || updatePayload.receipt_status;
+      if (updatePayload.receiptStatus !== undefined) {
+        updatePayload.receipt_status = updatePayload.receiptStatus ?? updatePayload.receipt_status ?? null;
         delete updatePayload.receiptStatus;
       }
 

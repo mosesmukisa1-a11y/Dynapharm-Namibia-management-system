@@ -89,12 +89,13 @@ export default async function handler(req, res) {
       const notes = body.notes || null;
       const createdBy = body.createdBy || body.created_by || null;
 
-      if (['write_off', 'sale', 'return', 'field_use'].includes(movType)) {
-        const id = body.reference_id || body.referenceId || `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      if (['write_off', 'sale', 'return', 'field_use', 'received'].includes(movType)) {
+        const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const referenceId = body.reference_id || body.referenceId || null;
         await query(
           `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
-          [id, productName, qty, movType, body.source_location || body.sourceLocation || null, body.destination_location || body.destinationLocation || null, body.reference_id || body.referenceId || null, notes, createdBy]
+          [id, productName, qty, movType, body.source_location || body.sourceLocation || null, body.destination_location || body.destinationLocation || null, referenceId, notes, createdBy]
         );
         return res.status(201).json({
           success: true,
