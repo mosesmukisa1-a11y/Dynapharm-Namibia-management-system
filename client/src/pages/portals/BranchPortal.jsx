@@ -1871,10 +1871,13 @@ function BranchStockTab() {
     setReceiveTransferModal(transfer);
   };
 
+  const [receiveModalMsg, setReceiveModalMsg] = useState(null);
+
   const handleReceiveTransfer = async () => {
     const transfer = receiveTransferModal;
     if (!transfer) return;
     setSubmitting(true);
+    setReceiveModalMsg(null);
     try {
       const hasDiscrepancy = receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent));
       const allZero = receiveItems.every(it => Number(it.quantityReceived) === 0);
@@ -1912,16 +1915,18 @@ function BranchStockTab() {
         items: updatedItems,
       });
 
+      const successMsg = hasDiscrepancy
+        ? `Stock received with discrepancies noted. ${receiptStatus === 'partially_received' ? 'Partial receipt recorded.' : 'Discrepancy reported.'}`
+        : `Stock received successfully from ${fmtLocation(transfer.fromWarehouse || transfer.from_location)}`;
+
       setReceiveTransferModal(null);
       setReceiveSignature('');
       setReceiveNotes('');
-      setAlert({ type: 'success', message: hasDiscrepancy
-        ? `Stock received with discrepancies noted. ${receiptStatus === 'partially_received' ? 'Partial receipt recorded.' : 'Discrepancy reported.'}`
-        : `Stock received successfully from ${fmtLocation(transfer.fromWarehouse || transfer.from_location)}`
-      });
+      setReceiveModalMsg(null);
+      setAlert({ type: 'success', message: successMsg });
       setTimeout(() => loadData(), 100);
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to receive transfer' });
+      setReceiveModalMsg({ type: 'error', text: err.message || 'Failed to receive transfer' });
     } finally { setSubmitting(false); }
   };
 
@@ -2293,8 +2298,17 @@ function BranchStockTab() {
                 </div>
               )}
 
+              {receiveModalMsg && (
+                <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600,
+                  background: receiveModalMsg.type === 'error' ? '#fee2e2' : '#dcfce7',
+                  color: receiveModalMsg.type === 'error' ? '#991b1b' : '#166534',
+                  border: `1px solid ${receiveModalMsg.type === 'error' ? '#fecaca' : '#bbf7d0'}` }}>
+                  {receiveModalMsg.type === 'error' ? '❌' : '✅'} {receiveModalMsg.text}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => setReceiveTransferModal(null)} disabled={submitting}
+                <button onClick={() => { setReceiveTransferModal(null); setReceiveModalMsg(null); }} disabled={submitting}
                   style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, opacity: submitting ? 0.5 : 1 }}>
                   Cancel
                 </button>
