@@ -1,0 +1,726 @@
+
+
+# 🚨 STOCK MANAGEMENT MASTER WORKFLOW CORRECTION & COMPLETION
+
+## Dynapharm Namibia Portal
+
+## ❗Important instruction to Replit Agent
+
+This is **not a redesign request**.
+This is a **completion and correction of the stock management module** using the workflows and logic already present or partially built in the system.
+
+The stock management area must now operate as a **true live stock control engine** for:
+
+* Country stock
+* Supplier imports
+* Warehouses
+* Branches
+* Field stock
+* Dispatches
+* Receipts
+* Batch tracking
+* Expiry tracking
+* Stock value tracking
+* Real-time movement dashboards
+* Printable stock records and dispatch notes
+
+> Use **warehouses, country stock, supplier imports, branches, and field stock as the true sources of stock information**.
+> Do not create fake summaries disconnected from real transactions.
+
+Also:
+
+> This is part of incomplete previous work and corrections.
+> **Do not charge again for fixing this incomplete implementation.**
+
+---
+
+# 1. CORE STOCK MANAGEMENT STRUCTURE REQUIRED
+
+The stock management module must treat stock as flowing through this real chain:
+
+## A. Supplier Import / Country Stock
+
+Imported stock enters the country through supplier import records.
+
+This must capture:
+
+* Supplier name
+* Import reference / GRN / invoice / shipment reference
+* Product
+* Full product description
+* Quantity received
+* Batch number
+* Expiry date
+* CIF cost
+* DPC value
+* Date received in country
+* Destination warehouse
+* Supporting notes/documents
+
+This becomes the first official stock entry into the system.
+
+---
+
+## B. Country Stock
+
+Country stock must show:
+
+* all stock currently in Namibia
+* grouped by warehouse
+* grouped by product
+* grouped by batch
+* grouped by expiry
+* quantities received
+* quantities dispatched
+* quantities remaining
+* stock value by CIF
+* stock value by DPC
+
+Country stock must answer:
+
+* what is currently in the country
+* which warehouse it is in
+* which batch it belongs to
+* when it was imported
+* what is left
+* what is available for issue/distribution
+
+---
+
+## C. Warehouse Stock
+
+Warehouses are the main stock holding points.
+
+Warehouse inventory must track:
+
+* product
+* full product description
+* batch
+* expiry
+* quantity in
+* quantity out
+* quantity reserved
+* quantity available
+* source import
+* destination branch/field if moved out
+* DPC value
+* CIF value
+
+Warehouses must be the main source of dispatches to:
+
+* branches
+* field teams
+* other warehouses if applicable
+
+---
+
+## D. Branch Stock
+
+Branch stock must not be shallow.
+It must hold **detailed inventory lines**.
+
+Each branch stock line must show:
+
+* product name
+* full product description
+* batch number
+* expiry date
+* quantity received
+* quantity sold
+* quantity transferred out
+* quantity adjusted
+* quantity returned
+* balance available
+* date received
+* source warehouse
+* stock value if needed
+* printable stock line records
+
+Branch stock is a live inventory, not just a summary figure.
+
+---
+
+## E. Field Stock
+
+Field stock must track stock moved to field teams or promoters.
+
+It must show:
+
+* which field officer/team received stock
+* product
+* batch
+* expiry
+* quantity issued
+* quantity returned
+* quantity sold/used
+* balance
+* origin warehouse/branch
+* movement date
+
+---
+
+# 2. PROPER STOCK MOVEMENT LOGIC REQUIRED
+
+Stock movement must be real and traceable from source to destination.
+
+Every movement must store:
+
+* source location
+
+  * supplier import
+  * country stock
+  * warehouse
+  * branch
+  * field
+* destination location
+
+  * warehouse
+  * branch
+  * field
+  * return location
+* product
+* full product description
+* batch
+* expiry
+* quantity moved
+* date moved
+* movement type
+* prepared by
+* approved by
+* received by
+* status
+* reference number
+
+## Stock movement types must include:
+
+* Import received
+* Warehouse receipt
+* Warehouse dispatch
+* Branch receipt
+* Branch transfer
+* Field issue
+* Return to warehouse
+* Adjustment
+* Damaged/expired write-off
+* Sales deduction
+* Promotion/campaign deduction if applicable
+
+The system must always answer:
+
+* how stock was supplied
+* where it was supplied
+* how much was supplied
+* when it was supplied
+* which batch was supplied
+* which expiry was supplied
+
+---
+
+# 3. BATCH + EXPIRY MUST BE MANDATORY IN DISTRIBUTION
+
+## Critical fix
+
+When selecting stock to distribute from warehouse to branch or field, the system must show:
+
+* product
+* available quantity
+* batch number
+* expiry date
+* warehouse location
+* quantity available per batch
+
+The dispatcher must choose stock by **batch**, not only by product name.
+
+This is mandatory because the dispatch note must show:
+
+* product
+* batch
+* expiry
+* quantity
+
+That same batch and expiry must remain traceable through:
+
+* dispatch note
+* branch receipt
+* branch stock ledger
+* reports
+* adjustments
+* returns
+
+No stock should move blindly without batch linkage.
+
+---
+
+# 4. DISPATCH NOTE REQUIREMENTS
+
+Every dispatch note must show full details, not short lines only.
+
+Dispatch note must include:
+
+* dispatch note number
+* source warehouse
+* destination branch/field
+* dispatch date
+* prepared by
+* approved by
+* transport/reference notes
+* product name
+* full product description
+* batch number
+* expiry date
+* quantity sent
+* quantity received
+* discrepancy note
+* receiver signature/e-signature
+* receipt notes
+* status
+
+This must be printable and stored historically.
+
+---
+
+# 5. REAL-TIME DASHBOARD REQUIREMENTS
+
+The stock dashboard must show exactly where stock is in real time.
+
+## Dashboard groupings required:
+
+* Country total stock
+* Stock by warehouse
+* Stock by branch
+* Stock by field
+* Expiring stock
+* Low stock
+* Outbound stock
+* In-transit stock
+* Recently received stock
+* Recently dispatched stock
+
+## Real-time rule
+
+When stock is:
+
+* imported
+* dispatched
+* received
+* sold
+* adjusted
+* returned
+
+the dashboard and all affected balances must update immediately.
+
+No delayed or static summaries.
+
+The dashboard must show:
+
+* what stock is in country
+* what stock is in each warehouse
+* what stock is in each branch
+* what stock is in field
+* what stock is in transit
+* what stock is near expiry
+* total stock value by CIF
+* total stock value by DPC
+
+---
+
+# 6. STOCK VALUE TRACKING
+
+The stock module must track value using both:
+
+* **CIF**
+* **DPC**
+
+For all stock levels, reports should be able to show:
+
+* quantity
+* CIF unit cost
+* CIF total value
+* DPC unit value
+* DPC total value
+
+This must be available at:
+
+* country stock
+* warehouse stock
+* branch stock if needed
+* valuation reports
+* inventory reports
+
+---
+
+# 7. OUTBOUND STOCK / INVENTORY CONTROL
+
+Inventory must include proper outbound tracking.
+
+Outbound stock means stock already committed or dispatched out of warehouse/branch.
+
+The system must distinguish:
+
+* physical stock on hand
+* stock reserved
+* stock dispatched but not yet received
+* stock received
+* stock sold
+* stock returned
+* stock expired/damaged
+
+This prevents overstating available stock.
+
+---
+
+# 8. TABS THAT MUST BE FULLY WORKING IN STOCK MANAGEMENT
+
+The following tabs must now have complete workflows using real stock source data:
+
+---
+
+## A. OVERVIEW
+
+The Overview tab must show:
+
+* country stock summary
+* warehouse stock totals
+* branch stock totals
+* field stock totals
+* in-transit stock
+* recent imports
+* recent dispatches
+* pending receipts
+* low stock alerts
+* expiry alerts
+* stock value summary by CIF and DPC
+
+This must be live, not static.
+
+---
+
+## B. BRANCH STOCK
+
+Branch Stock tab must show detailed inventory by branch.
+
+For each branch, show:
+
+* product name
+* full product description
+* batch
+* expiry
+* quantity received
+* quantity issued/sold
+* quantity returned
+* adjustments
+* balance
+* source warehouse
+* last movement date
+
+Also:
+
+* totals at the end
+* printable format
+* filters by branch, product, batch, expiry
+* live line-by-line detail
+
+## Important
+
+Show **full product description**, not shortened names only.
+
+---
+
+## C. STOCK REPORTS
+
+Stock Reports must become a powerful reporting center.
+
+Include:
+
+* country inventory report
+* warehouse stock report
+* branch stock report
+* field stock report
+* stock movement report
+* dispatch report
+* receipt report
+* expiry report
+* stock valuation report
+* low stock report
+* monthly sales report
+
+All reports must be:
+
+* filterable
+* printable
+* downloadable as PDF if already supported
+* based on live data
+
+---
+
+## D. INVENTORY
+
+Inventory tab must show detailed stock holdings, including:
+
+* location
+* product
+* full product description
+* batch
+* expiry
+* quantity on hand
+* reserved quantity
+* available quantity
+* incoming quantity if applicable
+* outgoing quantity if applicable
+* CIF value
+* DPC value
+
+Inventory must be filterable by:
+
+* country
+* warehouse
+* branch
+* field
+* product
+* batch
+* expiry date
+
+---
+
+## E. ORDERS
+
+Orders tab must show real branch orders and related dispatches.
+
+This must include:
+
+* branch order number
+* order date
+* branch name
+* requested items
+* full product description
+* quantity ordered
+* quantity approved
+* quantity dispatched
+* batch
+* expiry
+* dispatch note number
+* status
+* approval chain
+* received status
+
+Also:
+
+* full dispatch note visibility
+* order-to-dispatch linkage
+* traceability from order through receipt
+
+Do not show shallow summaries only.
+
+---
+
+## F. MONTHLY SALES
+
+Monthly Sales should be moved under **Stock Reports** as requested.
+
+It must show:
+
+* monthly sales by branch
+* monthly sales by product
+* monthly sales by batch if relevant
+* opening stock
+* stock received
+* stock sold
+* stock returned
+* closing stock
+* value summaries if needed
+
+This should rely on real stock movement and real sales deduction data.
+
+---
+
+## G. COUNTRY INVENTORY
+
+Country Inventory must be more detailed.
+
+It should show:
+
+* product
+* full product description
+* total in country
+* total per warehouse
+* total in branches
+* total in field
+* batch split
+* expiry split
+* stock in transit
+* CIF value
+* DPC value
+* available quantity
+* reserved quantity
+* damaged/expired quantity if applicable
+
+This report should be one of the most detailed in the system.
+
+---
+
+# 9. PRINTING REQUIREMENTS
+
+The following must be printable:
+
+* dispatch notes
+* goods receipt notes
+* branch stock reports
+* warehouse inventory reports
+* country inventory reports
+* stock movement reports
+* expiry reports
+* valuation reports
+
+Printable documents must show full details, not truncated fields.
+
+---
+
+# 10. LIVE SOURCE OF TRUTH RULE
+
+Very important:
+
+> Warehouses and branches must be the true source of stock movement data.
+
+Do not use manually typed summaries as main stock values.
+
+Stock balances must come from:
+
+* supplier imports
+* receipts
+* dispatches
+* branch receipts
+* sales deductions
+* adjustments
+* returns
+* write-offs
+
+This must drive all dashboards, inventory pages, and reports.
+
+---
+
+# 11. REQUIRED WORKFLOW CHAIN
+
+Implement or fix this complete workflow:
+
+## Import workflow
+
+Supplier Import
+→ Country Stock Receipt
+→ Warehouse Allocation
+→ Warehouse Inventory Update
+
+## Distribution workflow
+
+Branch Order
+→ Review/Approval
+→ Warehouse Batch Selection
+→ Dispatch Note Generation
+→ In-Transit Status
+→ Branch Receipt by Batch
+→ Branch Inventory Update
+
+## Field workflow
+
+Warehouse/Branch Issue
+→ Field Receipt
+→ Field Usage/Sales/Return
+→ Balance Update
+
+## Return workflow
+
+Branch/Field Return
+→ Warehouse Receipt
+→ Inventory Adjustment
+→ Movement Log Update
+
+## Expiry/damage workflow
+
+Expiry/Damage Record
+→ Quantity Deduction
+→ Write-off Report
+→ Inventory Update
+
+All workflows must be fully connected and real.
+
+---
+
+# 12. IMPORTANT UX / DATA REQUIREMENTS
+
+## Show full product description everywhere relevant:
+
+* Branch stock
+* Orders
+* Dispatch notes
+* Inventory
+* Reports
+
+## Show batch and expiry everywhere stock moves:
+
+* Warehouse issue
+* Dispatch note
+* Branch receipt
+* Branch stock
+* Reports
+
+## Totals must appear at bottom where relevant:
+
+* Branch stock tables
+* Inventory tables
+* Reports
+
+## All lines must be live:
+
+* no static lines
+* no hardcoded rows
+* no fake totals
+
+---
+
+# 13. DO NOT DO THE FOLLOWING
+
+* Do not redesign the entire module unnecessarily
+* Do not remove current working stock pages
+* Do not replace existing workflow logic that already works
+* Do not reduce detail
+* Do not hide batch and expiry details
+* Do not use summaries disconnected from warehouse/branch movement data
+
+---
+
+# 14. FINAL EXPECTED RESULT
+
+After this correction, the Stock Management module must function as a **complete live inventory and movement system** that can answer:
+
+* what stock entered the country
+* from which supplier
+* in which batch
+* with which expiry
+* into which warehouse
+* what is left
+* what is available
+* what has been dispatched
+* where it was sent
+* how much was sent
+* when it was sent
+* what each branch currently holds
+* what each field team currently holds
+* what stock is in transit
+* what stock is near expiry
+* what stock value exists by CIF and DPC
+
+Everything must be traceable, live, detailed, and printable.
+
+---
+
+# 15. BILLING NOTE
+
+This should be treated as:
+
+* completion of stock management workflow
+* correction of incomplete implementation
+* alignment of tabs to real stock logic
+
+> This is not a fresh rebuild request.
+> It is a correction/completion of the stock management module and should **not be billed again as a new task**.
+
+

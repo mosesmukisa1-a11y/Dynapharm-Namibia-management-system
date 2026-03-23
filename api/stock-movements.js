@@ -3,21 +3,27 @@ import { query, getMany, getOne } from './db.js';
 
 function normalizeMovement(row) {
   if (!row) return null;
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
   return {
     id: row.id,
-    warehouseId: row.warehouse_id,
-    inventoryId: row.inventory_id,
-    productId: row.product_id,
-    productName: row.product_name,
-    batchNo: row.batch_no,
-    movementType: row.movement_type,
+    warehouseId: row.warehouse_id, warehouse_id: row.warehouse_id,
+    inventoryId: row.inventory_id, inventory_id: row.inventory_id,
+    productId: row.product_id, product_id: row.product_id,
+    productName: row.product_name, product_name: row.product_name,
+    batchNo: row.batch_no, batch_no: row.batch_no,
+    movementType: row.movement_type, movement_type: row.movement_type,
     quantity: Number(row.quantity || 0),
     balanceAfter: row.balance_after !== null ? Number(row.balance_after) : null,
     reference: row.reference || '',
+    referenceId: row.reference_id || row.reference || '', reference_id: row.reference_id || row.reference || '',
+    sourceLocation: row.source_location || '', source_location: row.source_location || '',
+    destinationLocation: row.destination_location || '', destination_location: row.destination_location || '',
+    location: row.location || row.source_location || '',
     notes: row.notes || '',
     metadata: row.metadata || null,
-    createdBy: row.created_by || '',
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    createdBy: row.created_by || '', created_by: row.created_by || '',
+    createdAt: createdAt, created_at: createdAt,
+    status: row.status || null,
   };
 }
 
@@ -56,18 +62,21 @@ export default async function handler(req, res) {
       let branchMovements = [];
       try {
         const bmRows = await getMany('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT $1', [Number.isNaN(limit) ? 100 : limit]);
+        const fmtDt = (d) => d instanceof Date ? d.toISOString() : d;
         branchMovements = bmRows.map(r => ({
           id: r.id,
           productName: r.product_name, product_name: r.product_name,
+          batchNo: r.batch_no, batch_no: r.batch_no,
           movementType: r.movement_type, movement_type: r.movement_type,
           quantity: Number(r.quantity || 0),
+          location: r.source_location || r.destination_location || '',
           sourceLocation: r.source_location, source_location: r.source_location,
           destinationLocation: r.destination_location, destination_location: r.destination_location,
           referenceId: r.reference_id, reference_id: r.reference_id,
           notes: r.notes,
           createdBy: r.created_by, created_by: r.created_by,
-          createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-          created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+          createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
+          status: r.status || null,
         }));
       } catch {}
 

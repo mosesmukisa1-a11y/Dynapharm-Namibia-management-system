@@ -97,9 +97,11 @@ function normalizeBatch(row) {
     id: row.id,
     barcode: row.barcode,
     cartonNo: row.carton_no,
+    carton_no: row.carton_no,
     description: row.description,
     product_name: row.description,
     batchNo: row.batch_no,
+    batch_no: row.batch_no,
     batch_number: row.batch_no,
     expiryDate: expiryDate,
     expiry_date: expiryDate,
@@ -110,10 +112,16 @@ function normalizeBatch(row) {
     location: row.location,
     status: row.status,
     dispatchedQuantity: row.dispatched_quantity,
+    dispatched_quantity: row.dispatched_quantity,
     remainingQuantity: row.remaining_quantity,
+    remaining_quantity: row.remaining_quantity,
     productId: row.product_id,
+    product_id: row.product_id,
     warehouseId: row.warehouse_id,
+    warehouse_id: row.warehouse_id,
     unit_price: row.unit_price || 0,
+    cif_unit_cost: row.cif_unit_cost || row.unit_price || 0,
+    dpc_unit_value: row.dpc_unit_value || 0,
     notes: row.notes || null
   };
 }

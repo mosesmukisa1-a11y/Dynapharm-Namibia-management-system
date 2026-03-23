@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
-import { PRICE_LIST, getCIFPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu } from 'lucide-react';
@@ -297,6 +297,229 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
   );
 }
 
+// ── Field Stock Tab ──────────────────────────────────────────────────────────
+function FieldStockTab() {
+  const { user } = useAuth();
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [showReturn, setShowReturn] = useState(null);
+  const [returnQty, setReturnQty] = useState('');
+  const [soldQty, setSoldQty] = useState('');
+  const [form, setForm] = useState({ officer_name: '', team_name: '', product_name: '', batch_no: '', expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '' });
+  const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
+  const [search, setSearch] = useState('');
+
+  const loadData = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.fieldStock().catch(() => []),
+      api.prices.list().catch(() => []),
+    ]).then(([fsData, priceData]) => {
+      const rows = Array.isArray(fsData) ? fsData : [];
+      setRecords(rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      const namesSet = new Set(PRICE_LIST.map(p => p.description));
+      const prices = Array.isArray(priceData) ? priceData : [];
+      prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
+      setProductOptions([...namesSet].sort());
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleIssue = async (e) => {
+    e.preventDefault();
+    if (!form.officer_name || !form.product_name || !form.quantity_issued || Number(form.quantity_issued) <= 0) {
+      setAlert({ type: 'error', msg: 'Officer name, product, and quantity are required' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.stock.createFieldStock({
+        officer_name: form.officer_name,
+        team_name: form.team_name || null,
+        product_name: form.product_name,
+        batch_no: form.batch_no || null,
+        expiry_date: form.expiry_date || null,
+        quantity_issued: Number(form.quantity_issued),
+        origin_location: form.origin_location || 'windhoek_warehouse',
+        origin_type: form.origin_type || 'warehouse',
+        notes: form.notes || null,
+        created_by: user?.full_name || user?.username,
+      });
+      setShowForm(false);
+      setForm({ officer_name: '', team_name: '', product_name: '', batch_no: '', expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '' });
+      setAlert({ type: 'success', msg: `Stock issued to ${form.officer_name} successfully` });
+      setTimeout(loadData, 100);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReturn = async (record) => {
+    const returned = Number(returnQty) || 0;
+    const sold = Number(soldQty) || 0;
+    if (returned <= 0 && sold <= 0) {
+      setAlert({ type: 'error', msg: 'Enter return or sold quantity' });
+      return;
+    }
+    try {
+      await api.stock.updateFieldStock(record.id, {
+        quantity_returned: Number(record.quantity_returned || 0) + returned,
+        quantity_sold: Number(record.quantity_sold || 0) + sold,
+      });
+      setShowReturn(null);
+      setReturnQty('');
+      setSoldQty('');
+      setAlert({ type: 'success', msg: 'Field stock updated successfully' });
+      setTimeout(loadData, 100);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const filtered = search.trim() ? records.filter(r => {
+    const q = search.toLowerCase();
+    return (r.officer_name || '').toLowerCase().includes(q) || (r.product_name || '').toLowerCase().includes(q) || (r.team_name || '').toLowerCase().includes(q);
+  }) : records;
+
+  const activeRecords = filtered.filter(r => r.status === 'issued');
+  const closedRecords = filtered.filter(r => r.status === 'closed');
+  const totalIssued = activeRecords.reduce((s, r) => s + Number(r.quantity_issued || 0), 0);
+  const totalBalance = activeRecords.reduce((s, r) => s + Number(r.balance || 0), 0);
+  const totalSold = records.reduce((s, r) => s + Number(r.quantity_sold || 0), 0);
+  const totalReturned = records.reduce((s, r) => s + Number(r.quantity_returned || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+        <CardBody>
+          <div className="flex items-start gap-4">
+            <Users size={32} className="text-orange-600 mt-1" />
+            <div>
+              <h3 className="font-bold text-orange-900">Field Stock Management</h3>
+              <p className="text-sm text-orange-700 mt-1">
+                Track stock issued to field officers/teams. Record returns, sales, and monitor outstanding balances.
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Active Issues" value={activeRecords.length} color="orange" icon={<Users size={24} />} />
+        <StatCard title="Total Issued" value={totalIssued.toLocaleString()} color="blue" icon={<Package size={24} />} />
+        <StatCard title="Field Balance" value={totalBalance.toLocaleString()} color="purple" icon={<Activity size={24} />} />
+        <StatCard title="Sold / Returned" value={`${totalSold} / ${totalReturned}`} color="green" icon={<TrendingUp size={24} />} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Field Stock Records</h3>
+            <div className="flex gap-2">
+              <div className="relative">
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search officer, product..."
+                  className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-48" />
+              </div>
+              <Button size="sm" variant="secondary" onClick={loadData}>Refresh</Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const rows = filtered.map(r => `<tr><td>${r.officer_name||''}</td><td>${r.product_name||''}</td><td>${r.batch_no||'-'}</td><td>${r.quantity_issued||0}</td><td>${r.quantity_returned||0}</td><td>${r.quantity_sold||0}</td><td>${r.balance||0}</td><td>${r.status||''}</td></tr>`).join('');
+                printDocument('Field Stock Report', `<table><thead><tr><th>Officer</th><th>Product</th><th>Batch</th><th>Issued</th><th>Returned</th><th>Sold</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }}><Printer size={14} /> Print</Button>
+              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> Issue to Field</Button>
+            </div>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Date', render: r => formatDateTime(r.created_at || r.issue_date) },
+            { header: 'Officer', render: r => <div><span className="font-medium">{r.officer_name}</span>{r.team_name && <span className="text-xs text-gray-400 block">{r.team_name}</span>}</div> },
+            { header: 'Product', render: r => <span className="text-xs">{r.product_name}</span> },
+            { header: 'Batch', render: r => r.batch_no || '-' },
+            { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
+            { header: 'Issued', render: r => <span className="font-bold">{r.quantity_issued}</span> },
+            { header: 'Returned', render: r => r.quantity_returned || 0 },
+            { header: 'Sold', render: r => r.quantity_sold || 0 },
+            { header: 'Balance', render: r => <span className={Number(r.balance) > 0 ? 'text-orange-600 font-bold' : 'text-green-600 font-bold'}>{r.balance || 0}</span> },
+            { header: 'Status', render: r => <Badge variant={r.status === 'issued' ? 'warning' : 'success'}>{r.status || 'issued'}</Badge> },
+            { header: '', render: r => r.status === 'issued' ? (
+              <button onClick={() => { setShowReturn(r); setReturnQty(''); setSoldQty(''); }}
+                style={{ padding: '4px 10px', background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                Return/Sold
+              </button>
+            ) : null },
+          ]}
+          data={filtered}
+          emptyMessage="No field stock records yet"
+        />
+      </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Issue Stock to Field Officer" size="md">
+        <form onSubmit={handleIssue} className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Officer Name *" value={form.officer_name} onChange={e => setForm(f => ({ ...f, officer_name: e.target.value }))} placeholder="e.g. John Doe" />
+            <Input label="Team Name" value={form.team_name} onChange={e => setForm(f => ({ ...f, team_name: e.target.value }))} placeholder="e.g. Northern Team" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
+              <input list="field-prod-list" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.product_name}
+                onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Search products..." autoComplete="off" />
+              <datalist id="field-prod-list">{productOptions.map(name => <option key={name} value={name} />)}</datalist>
+            </div>
+            <Input label="Quantity *" type="number" min="1" value={form.quantity_issued} onChange={e => setForm(f => ({ ...f, quantity_issued: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Input label="Batch #" value={form.batch_no} onChange={e => setForm(f => ({ ...f, batch_no: e.target.value }))} />
+            <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Origin</label>
+              <select className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.origin_location} onChange={e => setForm(f => ({ ...f, origin_location: e.target.value }))}>
+                <option value="">Select origin...</option>
+                <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+                <option value="country_stock">Country Stock</option>
+                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+              </select>
+            </div>
+          </div>
+          <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Purpose, event, etc." />
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" disabled={submitting}>{submitting ? 'Issuing...' : 'Issue Stock'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!showReturn} onClose={() => setShowReturn(null)} title={`Record Return/Sale — ${showReturn?.product_name || ''}`} size="sm">
+        {showReturn && (
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-gray-600">
+              Officer: <strong>{showReturn.officer_name}</strong> · Balance: <strong>{showReturn.balance}</strong> units
+            </p>
+            <Input label="Quantity Returned" type="number" min="0" max={showReturn.balance} value={returnQty} onChange={e => setReturnQty(e.target.value)} />
+            <Input label="Quantity Sold" type="number" min="0" max={showReturn.balance} value={soldQty} onChange={e => setSoldQty(e.target.value)} />
+            <div className="flex gap-3 pt-2">
+              <Button onClick={() => handleReturn(showReturn)}>Update</Button>
+              <Button variant="secondary" onClick={() => setShowReturn(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 // ── Adjustment Requests History Tab ───────────────────────────────────────────
 function AdjustmentsTab() {
   const [adjustments, setAdjustments] = useState([]);
@@ -401,6 +624,7 @@ export default function StockPortal() {
     { id: 'reorder', label: 'AI Reorder', icon: '🤖' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
+    { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
   ];
 
@@ -467,6 +691,7 @@ export default function StockPortal() {
         {activeTab === 'reorder' && <SmartReorderTab branch={globalBranch} />}
         {activeTab === 'batch' && <BatchTab branch={globalBranch} />}
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
+        {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
       </div>
     </div>
@@ -760,7 +985,7 @@ function AICommandCenter({ branch }) {
 
 // ── Overview Tab (branch-aware) ───────────────────────────────────────────────
 function OverviewTab({ branch }) {
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -768,8 +993,16 @@ function OverviewTab({ branch }) {
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
-    ]).then(([batches, movements, transfers]) => {
-      setData({ batches, movements, transfers });
+      api.stock.supplierImports().catch(() => []),
+      api.stock.fieldStock().catch(() => []),
+    ]).then(([batches, movements, transfers, imports, fieldStock]) => {
+      setData({
+        batches,
+        movements,
+        transfers,
+        imports: Array.isArray(imports) ? imports : [],
+        fieldStock: Array.isArray(fieldStock) ? fieldStock : [],
+      });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -778,33 +1011,140 @@ function OverviewTab({ branch }) {
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = data.batches.filter(filterBatch);
   const filteredMovements = branch === 'all' ? data.movements : data.movements.filter(m =>
-    (m.location || m.source_location || '').toLowerCase().replace(/\s+/g, '_') === branch
+    (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch
   );
 
-  const totalItems = filteredBatches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
-  const totalValue = filteredBatches.reduce((sum, b) => sum + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const totalItems = filteredBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const totalCIF = filteredBatches.reduce((sum, b) => {
+    const qty = Number(b.remaining_quantity || b.quantity || 0);
+    const cif = Number(b.cif_unit_cost || b.unit_price || 0);
+    return sum + qty * cif;
+  }, 0);
+  const totalDPC = filteredBatches.reduce((sum, b) => {
+    const qty = Number(b.remaining_quantity || b.quantity || 0);
+    const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
+    return sum + qty * dpc;
+  }, 0);
   const pendingTransfers = data.transfers.filter(t => {
     const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
-    return related && t.status === 'pending';
+    return related && (t.status === 'pending' || t.status === 'pending_approval' || t.status === 'submitted');
   }).length;
   const inTransit = data.transfers.filter(t => {
     const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
-    return related && (t.status === 'in_transit' || t.status === 'dispatched');
+    return related && (t.status === 'in_transit' || t.status === 'dispatched' || t.status === 'approved');
   }).length;
+
+  const countryBatches = data.batches.filter(b => (b.location || '') === 'country_stock');
+  const countryQty = countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const whkBatches = data.batches.filter(b => (b.location || '').toLowerCase().includes('windhoek'));
+  const whkQty = whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const ondBatches = data.batches.filter(b => (b.location || '').toLowerCase().includes('ondangwa'));
+  const ondQty = ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const fieldQty = data.fieldStock.reduce((s, f) => s + Number(f.balance || 0), 0);
+
+  const now = new Date();
+  const expiryThreshold = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const expiringBatches = filteredBatches.filter(b => {
+    if (!b.expiry_date) return false;
+    const exp = new Date(b.expiry_date);
+    return exp <= expiryThreshold && Number(b.remaining_quantity || b.quantity || 0) > 0;
+  });
+  const expiredBatches = expiringBatches.filter(b => new Date(b.expiry_date) <= now);
+  const soonExpiring = expiringBatches.filter(b => new Date(b.expiry_date) > now);
+
+  const lowStockProducts = (() => {
+    const byProduct = {};
+    filteredBatches.forEach(b => {
+      const name = b.description || b.product_name || 'Unknown';
+      if (!byProduct[name]) byProduct[name] = 0;
+      byProduct[name] += Number(b.remaining_quantity || b.quantity || 0);
+    });
+    return Object.entries(byProduct).filter(([, qty]) => qty > 0 && qty <= 10).sort((a, b) => a[1] - b[1]);
+  })();
 
   return (
     <div>
       {branch !== 'all' && (
         <div style={{ marginBottom: 16, padding: '8px 14px', background: '#fff0f3', border: '1.5px solid #fecaca', borderRadius: 10, fontSize: '0.82rem', color: '#9b1c2e', fontWeight: 600 }}>
-          📍 Showing overview for: <strong>{fmtLocation(branch)}</strong>
+          Showing overview for: <strong>{fmtLocation(branch)}</strong>
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Stock Units" value={totalItems.toLocaleString()} color="blue" icon={<Package size={24} />} />
-        <StatCard title="Stock Value (CIF)" value={formatCurrency(totalValue)} color="green" icon={<BarChart3 size={24} />} />
-        <StatCard title="Pending Transfers" value={pendingTransfers} color="orange" icon={<ArrowLeftRight size={24} />} />
-        <StatCard title="In Transit" value={inTransit} color="purple" icon={<Truck size={24} />} />
+        <StatCard title="Stock Value (CIF)" value={formatCurrency(totalCIF)} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="Stock Value (DPC)" value={formatCurrency(totalDPC)} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="Pending / In Transit" value={`${pendingTransfers} / ${inTransit}`} color="orange" icon={<Truck size={24} />} />
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-blue-600 font-semibold mb-1">Country Stock</p>
+          <p className="text-xl font-bold text-blue-800">{countryQty.toLocaleString()}</p>
+          <p className="text-xs text-blue-500">{countryBatches.length} batches</p>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-green-600 font-semibold mb-1">Windhoek WH</p>
+          <p className="text-xl font-bold text-green-800">{whkQty.toLocaleString()}</p>
+          <p className="text-xs text-green-500">{whkBatches.length} batches</p>
+        </div>
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-purple-600 font-semibold mb-1">Ondangwa WH</p>
+          <p className="text-xl font-bold text-purple-800">{ondQty.toLocaleString()}</p>
+          <p className="text-xs text-purple-500">{ondBatches.length} batches</p>
+        </div>
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-orange-600 font-semibold mb-1">Field Stock</p>
+          <p className="text-xl font-bold text-orange-800">{fieldQty.toLocaleString()}</p>
+          <p className="text-xs text-orange-500">{data.fieldStock.filter(f => f.status === 'issued').length} active issues</p>
+        </div>
+      </div>
+
+      {(expiredBatches.length > 0 || soonExpiring.length > 0 || lowStockProducts.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {(expiredBatches.length > 0 || soonExpiring.length > 0) && (
+            <Card className="border-red-200">
+              <CardHeader><h3 className="font-bold text-red-700"><AlertTriangle size={16} className="inline mr-1" />Expiry Alerts</h3></CardHeader>
+              <CardBody>
+                {expiredBatches.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-bold text-red-600 mb-1">EXPIRED ({expiredBatches.length})</p>
+                    {expiredBatches.slice(0, 5).map((b, i) => (
+                      <div key={i} className="flex justify-between text-xs py-1 border-b border-red-100">
+                        <span className="text-red-700">{b.description || b.product_name} — Batch {b.batch_no || b.batch_number || '-'}</span>
+                        <span className="text-red-600 font-bold">{formatDate(b.expiry_date)} ({Number(b.remaining_quantity || b.quantity || 0)} units)</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {soonExpiring.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-orange-600 mb-1">EXPIRING WITHIN 90 DAYS ({soonExpiring.length})</p>
+                    {soonExpiring.slice(0, 5).map((b, i) => (
+                      <div key={i} className="flex justify-between text-xs py-1 border-b border-orange-100">
+                        <span className="text-orange-700">{b.description || b.product_name} — Batch {b.batch_no || b.batch_number || '-'}</span>
+                        <span className="text-orange-600 font-bold">{formatDate(b.expiry_date)} ({Number(b.remaining_quantity || b.quantity || 0)} units)</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
+          {lowStockProducts.length > 0 && (
+            <Card className="border-yellow-200">
+              <CardHeader><h3 className="font-bold text-yellow-700"><TrendingDown size={16} className="inline mr-1" />Low Stock Alerts ({lowStockProducts.length})</h3></CardHeader>
+              <CardBody>
+                {lowStockProducts.slice(0, 10).map(([name, qty], i) => (
+                  <div key={i} className="flex justify-between text-xs py-1.5 border-b border-yellow-100">
+                    <span className="text-gray-700">{name}</span>
+                    <Badge variant="warning">{qty} units</Badge>
+                  </div>
+                ))}
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -812,18 +1152,22 @@ function OverviewTab({ branch }) {
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-gray-800">Recent Stock Movements {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}</h3>
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = filteredMovements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.location||''}</td></tr>`).join('');
-                printDocument('Recent Stock Movements', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
+                const rows = filteredMovements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.source_location||''}</td><td>${r.destination_location||''}</td></tr>`).join('');
+                printDocument('Recent Stock Movements', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
           <Table
             columns={[
               { header: 'Date', render: r => formatDateTime(r.created_at) },
-              { header: 'Product', key: 'product_name' },
-              { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
+              { header: 'Product', render: r => <span className="text-xs">{r.product_name || ''}</span> },
+              { header: 'Type', render: r => <Badge variant={
+                ['import_received','received','transfer_in'].includes(r.movement_type) ? 'success' :
+                ['dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'warning' :
+                ['write_off','return'].includes(r.movement_type) ? 'danger' : 'info'
+              }>{(r.movement_type || 'movement').replace(/_/g, ' ')}</Badge> },
               { header: 'Qty', key: 'quantity' },
-              { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
+              { header: 'From/To', render: r => <span className="text-xs">{fmtLocation(r.source_location || '')} → {fmtLocation(r.destination_location || '')}</span> },
             ]}
             data={filteredMovements.slice(0, 15)}
             emptyMessage="No recent movements"
@@ -837,25 +1181,50 @@ function OverviewTab({ branch }) {
               const byLoc = {};
               filteredBatches.forEach(b => {
                 const label = fmtLocation(b.location || 'unknown');
-                if (!byLoc[label]) byLoc[label] = { qty: 0, value: 0 };
-                const qty = Number(b.quantity || 0);
+                if (!byLoc[label]) byLoc[label] = { qty: 0, cifValue: 0, dpcValue: 0, batches: 0 };
+                const qty = Number(b.remaining_quantity || b.quantity || 0);
                 byLoc[label].qty += qty;
-                byLoc[label].value += qty * Number(b.unit_price || 0);
+                byLoc[label].cifValue += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+                byLoc[label].dpcValue += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
+                byLoc[label].batches++;
               });
-              const entries = Object.entries(byLoc).sort((a, b) => b[1].value - a[1].value);
+              const entries = Object.entries(byLoc).sort((a, b) => b[1].cifValue - a[1].cifValue);
               return entries.length > 0 ? entries.map(([loc, d]) => (
                 <div key={loc} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
                   <div>
                     <p className="font-medium text-gray-800">{loc}</p>
-                    <p className="text-xs text-gray-500">{d.qty.toLocaleString()} units</p>
+                    <p className="text-xs text-gray-500">{d.qty.toLocaleString()} units · {d.batches} batches</p>
                   </div>
-                  <span className="font-bold text-gray-700">{formatCurrency(d.value)}</span>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-700">{formatCurrency(d.cifValue)}</p>
+                    <p className="text-xs text-blue-600">DPC: {formatCurrency(d.dpcValue)}</p>
+                  </div>
                 </div>
               )) : <p className="text-sm text-gray-400 text-center py-4">No stock data for this filter</p>;
             })()}
           </CardBody>
         </Card>
       </div>
+
+      {data.imports.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader><h3 className="font-bold text-gray-800">Recent Supplier Imports</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDateTime(r.created_at || r.date_received) },
+              { header: 'Supplier', render: r => <span className="text-xs">{r.supplier_name || '-'}</span> },
+              { header: 'GRN', render: r => <span className="text-xs font-mono">{r.grn_number || '-'}</span> },
+              { header: 'Product', key: 'product_name' },
+              { header: 'Batch', render: r => r.batch_no || '-' },
+              { header: 'Qty', key: 'quantity' },
+              { header: 'CIF Total', render: r => formatCurrency(Number(r.cif_total_value || 0)) },
+              { header: 'Destination', render: r => <span className="text-xs">{fmtLocation(r.destination_warehouse || 'country_stock')}</span> },
+            ]}
+            data={data.imports.slice(0, 10)}
+            emptyMessage="No imports"
+          />
+        </Card>
+      )}
     </div>
   );
 }
@@ -867,20 +1236,29 @@ function SupplierImportTab() {
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
-  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
-  const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
+  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
+  const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
   const [errors, setErrors] = useState({});
   const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [batchData, priceData, prodData] = await Promise.allSettled([
+        const [batchData, importData, priceData, prodData] = await Promise.allSettled([
           api.stock.batches(),
+          api.stock.supplierImports(),
           api.prices.list(),
           api.products.list(),
         ]);
-        if (batchData.status === 'fulfilled') {
+        if (importData.status === 'fulfilled') {
+          const impRows = Array.isArray(importData.value) ? importData.value : [];
+          if (impRows.length > 0) {
+            setImports(impRows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+          } else if (batchData.status === 'fulfilled') {
+            const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
+            setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+          }
+        } else if (batchData.status === 'fulfilled') {
           const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
           setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
         }
@@ -900,7 +1278,7 @@ function SupplierImportTab() {
     loadData();
   }, []);
 
-  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
+  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateItem = (idx, field, value) => {
     setItems(prev => {
@@ -909,6 +1287,8 @@ function SupplierImportTab() {
       if (field === 'product_name') {
         const cif = getCIFPrice(value);
         if (cif > 0) updated[idx].cif_price = String(cif);
+        const dpc = getDPCPrice(value);
+        if (dpc > 0) updated[idx].dpc_price = String(dpc);
       }
       return updated;
     });
@@ -941,24 +1321,34 @@ function SupplierImportTab() {
     setSubmitting(true);
     try {
       for (const item of validItems) {
-        await api.stock.createBatch({
+        const cifUnit = Number(item.cif_price) || getCIFPrice(item.product_name);
+        const dpcUnit = Number(item.dpc_price) || getDPCPrice(item.product_name);
+        await api.stock.createSupplierImport({
+          supplier_name: form.supplier,
+          import_reference: form.shipping_ref || null,
+          grn_number: form.grn_number || null,
+          invoice_number: form.invoice_number || null,
+          shipment_reference: form.shipping_ref || null,
           product_name: item.product_name,
           quantity: Number(item.quantity),
-          batch_number: item.batch_number || form.shipping_ref || `IMP-${Date.now()}`,
+          batch_no: item.batch_number || null,
           expiry_date: item.expiry_date || null,
-          unit_price: Number(item.cif_price) || getCIFPrice(item.product_name),
-          location: 'country_stock',
-          notes: `Supplier: ${form.supplier} | Ref: ${form.shipping_ref} | Carton: ${item.carton_no} | ${form.notes}`,
-          metadata: JSON.stringify({ carton_no: item.carton_no, shipping_ref: form.shipping_ref, arrival_date: form.arrival_date }),
+          cif_unit_cost: cifUnit,
+          dpc_unit_value: dpcUnit,
+          date_received: form.arrival_date || new Date().toISOString(),
+          destination_warehouse: form.destination_warehouse || 'country_stock',
+          origin_country: 'Malaysia',
+          notes: `Carton: ${item.carton_no || 'N/A'} | ${form.notes || ''}`.trim(),
+          metadata: { carton_no: item.carton_no, shipping_ref: form.shipping_ref, arrival_date: form.arrival_date },
         });
       }
-      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to Country Stock successfully` });
-      setItems([{ product_name: '', quantity: '', cif_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
-      setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', arrival_date: '', notes: '' });
+      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to ${fmtLocation(form.destination_warehouse)} successfully` });
+      setItems([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
+      setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
       setShowForm(false);
-      const d = await api.stock.batches().catch(() => []);
-      const all = Array.isArray(d) ? d : d.batches || [];
-      setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      const d = await api.stock.supplierImports().catch(() => []);
+      const impRows = Array.isArray(d) ? d : [];
+      setImports(impRows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
     } finally {
@@ -967,6 +1357,7 @@ function SupplierImportTab() {
   };
 
   const totalCIF = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.cif_price) || 0), 0);
+  const totalDPC = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.dpc_price) || 0), 0);
 
   if (loading) return <LoadingSpinner />;
 
@@ -1007,14 +1398,21 @@ function SupplierImportTab() {
         </CardHeader>
         <Table
           columns={[
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
+            { header: 'Date', render: r => formatDateTime(r.created_at || r.date_received) },
+            { header: 'GRN', render: r => <span className="text-xs font-mono">{r.grn_number || r.import_reference || '-'}</span> },
             { header: 'Product', key: 'product_name' },
-            { header: 'Batch #', key: 'batch_number' },
-            { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
+            { header: 'Batch #', render: r => r.batch_no || r.batch_number || '-' },
+            { header: 'Expiry', render: r => (r.expiry_date ? formatDate(r.expiry_date) : '-') },
             { header: 'Qty', key: 'quantity' },
-            { header: 'CIF Price', render: r => formatCurrency(Number(r.unit_price || 0)) },
-            { header: 'CIF Total', render: r => formatCurrency(Number(r.quantity || 0) * Number(r.unit_price || 0)) },
-            { header: 'Edit', render: r => (
+            { header: 'CIF/unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
+            { header: 'CIF Total', render: r => {
+              const cif = Number(r.cif_total_value || 0) || (Number(r.quantity || 0) * Number(r.cif_unit_cost || r.unit_price || 0));
+              return formatCurrency(cif);
+            }},
+            { header: 'DPC/unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0)) },
+            { header: 'Destination', render: r => <span className="text-xs">{fmtLocation(r.destination_warehouse || r.location || 'country_stock')}</span> },
+            { header: 'Status', render: r => <Badge variant={r.status === 'received' ? 'success' : 'info'}>{r.status || 'received'}</Badge> },
+            { header: '', render: r => (
               <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
                 style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Edit2 size={12} /> Edit
@@ -1034,12 +1432,24 @@ function SupplierImportTab() {
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Import Shipment from Malaysia" size="lg">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="Supplier" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
-            <Input label="Shipping Reference / B/L No." value={form.shipping_ref} onChange={e => setForm(f => ({ ...f, shipping_ref: e.target.value }))} placeholder="e.g. BL-2026-0042" />
+            <Input label="GRN Number" value={form.grn_number} onChange={e => setForm(f => ({ ...f, grn_number: e.target.value }))} placeholder="GRN-2026-001" />
+            <Input label="Invoice Number" value={form.invoice_number} onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))} placeholder="INV-2026-001" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Input label="Shipping Reference / B/L No." value={form.shipping_ref} onChange={e => setForm(f => ({ ...f, shipping_ref: e.target.value }))} placeholder="e.g. BL-2026-0042" />
             <Input label="Arrival Date" type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))} />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+              <select className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.destination_warehouse} onChange={e => setForm(f => ({ ...f, destination_warehouse: e.target.value }))}>
+                <option value="country_stock">Country Stock</option>
+                <option value="windhoek">Windhoek Warehouse</option>
+                <option value="ondangwa">Ondangwa Warehouse</option>
+              </select>
+            </div>
+          </div>
+          <div>
             <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Container no., remarks..." />
           </div>
 
@@ -1090,19 +1500,27 @@ function SupplierImportTab() {
                     </div>
                   </div>
                   <div className="grid grid-cols-12 gap-2 items-center mt-2">
-                    <div className="col-span-4 md:col-span-2">
+                    <div className="col-span-3 md:col-span-2">
                       <label className="text-xs text-gray-500 mb-1 block">CIF Price (N$)</label>
                       <input type="number" min="0" step="0.01" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Auto" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
                     </div>
-                    <div className="col-span-4 md:col-span-2 text-sm font-medium text-gray-700 pt-5">
-                      CIF Total: {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
+                    <div className="col-span-3 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">DPC Price (N$)</label>
+                      <input type="number" min="0" step="0.01" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Auto" value={item.dpc_price} onChange={e => updateItem(idx, 'dpc_price', e.target.value)} />
+                    </div>
+                    <div className="col-span-3 md:col-span-2 text-xs font-medium text-gray-700 pt-5">
+                      CIF: {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
+                    </div>
+                    <div className="col-span-3 md:col-span-2 text-xs font-medium text-gray-700 pt-5">
+                      DPC: {formatCurrency((Number(item.quantity) || 0) * (Number(item.dpc_price) || 0))}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="text-right mt-3 font-bold text-gray-800">
-              Total CIF Value: {formatCurrency(totalCIF)}
+            <div className="flex justify-end gap-6 mt-3 font-bold text-gray-800">
+              <span>Total CIF: {formatCurrency(totalCIF)}</span>
+              <span>Total DPC: {formatCurrency(totalDPC)}</span>
             </div>
           </div>
 
@@ -1148,15 +1566,23 @@ function CountryStockTab() {
       })
     : batches;
 
-  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const totalValue = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
+  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const totalCIFVal = filteredBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
+  const totalDPCVal = filteredBatches.reduce((s, b) => {
+    const qty = Number(b.remaining_quantity || b.quantity || 0);
+    const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
+    return s + qty * dpc;
+  }, 0);
 
   const byProduct = {};
   filteredBatches.forEach(b => {
-    const name = b.product_name || 'Unknown';
-    if (!byProduct[name]) byProduct[name] = { product_name: name, total_qty: 0, total_value: 0, batch_count: 0, earliest_expiry: null };
-    byProduct[name].total_qty += Number(b.quantity || 0);
-    byProduct[name].total_value += Number(b.quantity || 0) * Number(b.unit_price || 0);
+    const name = b.description || b.product_name || 'Unknown';
+    if (!byProduct[name]) byProduct[name] = { product_name: name, total_qty: 0, cif_value: 0, dpc_value: 0, dispatched: 0, batch_count: 0, earliest_expiry: null };
+    const qty = Number(b.remaining_quantity || b.quantity || 0);
+    byProduct[name].total_qty += qty;
+    byProduct[name].dispatched += Number(b.dispatched_quantity || 0);
+    byProduct[name].cif_value += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+    byProduct[name].dpc_value += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(name));
     byProduct[name].batch_count += 1;
     if (b.expiry_date) {
       const d = b.expiry_date;
@@ -1189,10 +1615,11 @@ function CountryStockTab() {
         </CardBody>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Distinct Products" value={productRows.length} color="blue" icon={<Globe size={24} />} />
         <StatCard title="Total Units" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
-        <StatCard title="Total CIF Value" value={formatCurrency(totalValue)} color="purple" icon={<DollarSign size={24} />} />
+        <StatCard title="CIF Value" value={formatCurrency(totalCIFVal)} color="purple" icon={<DollarSign size={24} />} />
+        <StatCard title="DPC Value" value={formatCurrency(totalDPCVal)} color="blue" icon={<TrendingUp size={24} />} />
         <StatCard title="Low Stock Items" value={lowStockProducts.length} color={lowStockProducts.length > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
 
@@ -1234,17 +1661,19 @@ function CountryStockTab() {
             columns={[
               { header: 'Product', render: r => <span className="font-medium text-gray-800">{r.product_name}</span> },
               { header: 'Batches', render: r => <span className="text-sm text-gray-500">{r.batch_count}</span> },
-              { header: 'Total Qty', render: r => (
+              { header: 'Available', render: r => (
                 <span className={r.total_qty < 10 ? 'text-red-600 font-bold' : r.total_qty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
                   {r.total_qty.toLocaleString()}
                 </span>
               )},
+              { header: 'Dispatched', render: r => <span className="text-gray-500">{r.dispatched.toLocaleString()}</span> },
               { header: 'Earliest Expiry', render: r => {
                 if (!r.earliest_expiry) return '—';
                 const days = Math.floor((new Date(r.earliest_expiry) - new Date()) / 86400000);
                 return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600 font-semibold' : ''}>{formatDate(r.earliest_expiry)}{days <= 90 ? ` (${days}d)` : ''}</span>;
               }},
-              { header: 'CIF Value', render: r => formatCurrency(r.total_value) },
+              { header: 'CIF Value', render: r => formatCurrency(r.cif_value) },
+              { header: 'DPC Value', render: r => formatCurrency(r.dpc_value) },
             ]}
             data={productRows}
             emptyMessage="No country stock yet — record a supplier import to populate this."
@@ -1252,16 +1681,15 @@ function CountryStockTab() {
         ) : (
           <Table
             columns={[
-              { header: 'Product', key: 'product_name' },
-              { header: 'Batch #', render: r => r.batch_number || '—' },
-              { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
+              { header: 'Product', render: r => <span className="text-xs">{r.description || r.product_name || ''}</span> },
+              { header: 'Batch #', render: r => r.batch_no || r.batch_number || '—' },
+              { header: 'Remaining', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
+              { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
               { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
-              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.unit_price || 0)) },
-              { header: 'Shipment Ref', render: r => {
-                try { const m = JSON.parse(r.metadata || '{}'); return <span className="font-mono text-xs text-gray-500">{m.shipping_ref || '—'}</span>; } catch { return '—'; }
-              }},
-              { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-xs block">{r.notes || '—'}</span> },
-              { header: 'Edit', render: r => (
+              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
+              { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
+              { header: 'Supplier', render: r => <span className="text-xs text-gray-500">{r.supplier_name || '—'}</span> },
+              { header: '', render: r => (
                 <button onClick={() => setAdjRecord(r)} title="Request correction"
                   style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Edit2 size={12} /> Edit
@@ -1428,9 +1856,11 @@ function WarehouseTab({ name }) {
 
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>🏭 {name} Warehouse</div>
+          <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>{name} Warehouse</div>
           <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: 4 }}>
-            {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.quantity || 0), 0)} total units in stock
+            {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0).toLocaleString()} units
+            {' · CIF: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0))}
+            {' · DPC: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '')), 0))}
           </div>
         </div>
         <Button size="sm" onClick={() => setShowDispatch(true)} style={{ background: '#fff', color: '#c41e3a', fontWeight: 700 }}>
@@ -1457,11 +1887,18 @@ function WarehouseTab({ name }) {
           </CardHeader>
           <Table
             columns={[
-              { header: 'Product', key: 'product_name' },
-              { header: 'Batch Ref', key: 'batch_number' },
-              { header: 'Quantity', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
-              { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
-              { header: 'Edit', render: r => (
+              { header: 'Product', render: r => <span className="text-xs font-medium">{r.description || r.product_name || ''}</span> },
+              { header: 'Batch #', render: r => r.batch_no || r.batch_number || '—' },
+              { header: 'Available', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
+              { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
+              { header: 'Expiry', render: r => {
+                if (!r.expiry_date) return '—';
+                const days = Math.floor((new Date(r.expiry_date) - new Date()) / 86400000);
+                return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600' : ''}>{formatDate(r.expiry_date)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+              }},
+              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
+              { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
+              { header: '', render: r => (
                 <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
                   style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Edit2 size={12} /> Edit
@@ -1856,10 +2293,13 @@ function DistributionTab({ branch }) {
   ];
 
   const availableByProduct = {};
+  const batchesByProduct = {};
   countryBatches.forEach(b => {
     const name = b.product_name || '';
     if (!availableByProduct[name]) availableByProduct[name] = 0;
-    availableByProduct[name] += Number(b.quantity || 0);
+    availableByProduct[name] += Number(b.remaining_quantity || b.quantity || 0);
+    if (!batchesByProduct[name]) batchesByProduct[name] = [];
+    batchesByProduct[name].push(b);
   });
 
   const handleSubmit = async (e) => {
@@ -1954,12 +2394,29 @@ function DistributionTab({ branch }) {
                   {cart.map(c => {
                     const avail = availableByProduct[c.description] || 0;
                     const over = c.qty > avail;
+                    const pBatches = batchesByProduct[c.description] || [];
                     return (
-                      <div key={c.description} className={`flex items-center justify-between px-3 py-1.5 rounded text-xs ${over ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-100'}`}>
-                        <span className="font-medium">{c.description}</span>
-                        <span className={over ? 'text-red-600 font-bold' : 'text-gray-500'}>
-                          Qty: {c.qty} / Available: {avail}{over ? ' ⚠️ OVER' : ''}
-                        </span>
+                      <div key={c.description} className={`px-3 py-2 rounded text-xs ${over ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-100'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{c.description}</span>
+                          <span className={over ? 'text-red-600 font-bold' : 'text-gray-500'}>
+                            Qty: {c.qty} / Available: {avail}{over ? ' OVER' : ''}
+                          </span>
+                        </div>
+                        {pBatches.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {pBatches.slice(0, 3).map((b, i) => {
+                              const exp = b.expiry_date ? new Date(b.expiry_date) : null;
+                              const daysLeft = exp ? Math.ceil((exp - new Date()) / 86400000) : null;
+                              return (
+                                <span key={i} className="px-1.5 py-0.5 rounded text-xs" style={{ background: daysLeft !== null && daysLeft < 90 ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: daysLeft !== null && daysLeft < 90 ? '#fecaca' : '#bbf7d0', color: '#374151' }}>
+                                  B:{b.batch_no || b.batch_number || '-'} | {Number(b.remaining_quantity || b.quantity || 0)}u{exp ? ` | Exp:${formatDate(b.expiry_date)}` : ''}
+                                </span>
+                              );
+                            })}
+                            {pBatches.length > 3 && <span className="text-gray-400">+{pBatches.length - 3} more</span>}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2025,9 +2482,23 @@ function DistributionTab({ branch }) {
                   <Button size="sm" variant="ghost" onClick={() => {
                     const items = Array.isArray(r.items) ? r.items : [];
                     const prodRows = items.length > 0
-                      ? items.map(i => `<tr><td>${i.productName || i.product_name}</td><td>${i.quantity}</td></tr>`).join('')
-                      : `<tr><td>${r.product_name || '—'}</td><td>${r.quantity || 0}</td></tr>`;
-                    printDocument(`Distribution Note — ${r.id}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Transfer ID</td><td>${r.id||''}</td></tr><tr><td>Date</td><td>${formatDateTime(r.created_at)}</td></tr><tr><td>From</td><td>Country Stock</td></tr><tr><td>To</td><td>${fmtLocation(r.toBranch || r.to_location)}</td></tr><tr><td>Status</td><td>${r.status||'Pending'}</td></tr></tbody></table><br/><h3>Products</h3><table><thead><tr><th>Product</th><th>Qty</th></tr></thead><tbody>${prodRows}</tbody></table>`);
+                      ? items.map(i => `<tr><td>${i.productName || i.product_name}</td><td>${i.batch_no || i.batchNo || '-'}</td><td>${(i.expiry_date || i.expiryDate) ? formatDate(i.expiry_date || i.expiryDate) : '-'}</td><td>${i.quantity}</td></tr>`).join('')
+                      : `<tr><td>${r.product_name || '—'}</td><td>${r.batch_no || r.batchNo || '-'}</td><td>${(r.expiry_date || r.expiryDate) ? formatDate(r.expiry_date || r.expiryDate) : '-'}</td><td>${r.quantity || 0}</td></tr>`;
+                    const totalQ = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                    const win = window.open('', '_blank');
+                    if (!win) return;
+                    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Dispatch Note — ${r.id}</title>
+                    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;border:1.5px solid #f0e8ea;border-radius:10px;padding:14px}.detail-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #e2e8f0}.detail-label{font-weight:600;color:#64748b;font-size:10px}.detail-val{font-weight:800;color:#1e293b;font-size:10px}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.sig-section{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.sig-box{border-top:1.5px solid #1e293b;padding-top:8px;font-size:10px;color:#64748b}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
+                    <button class="print-btn" onclick="window.print()">Print</button>
+                    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">DISPATCH NOTE</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>DN#: ${r.id || ''}</div></div>
+                    <div class="detail-grid"><div class="detail-item"><span class="detail-label">Transfer ID</span><span class="detail-val">${r.id||''}</span></div><div class="detail-item"><span class="detail-label">Date Created</span><span class="detail-val">${formatDateTime(r.created_at)}</span></div><div class="detail-item"><span class="detail-label">From</span><span class="detail-val">Country Stock</span></div><div class="detail-item"><span class="detail-label">To</span><span class="detail-val">${fmtLocation(r.toBranch || r.to_location)}</span></div><div class="detail-item"><span class="detail-label">Status</span><span class="detail-val">${r.status||'Pending'}</span></div><div class="detail-item"><span class="detail-label">Total Items</span><span class="detail-val">${totalQ} units</span></div></div>
+                    <div style="font-weight:800;color:#c41e3a;font-size:11px;margin-bottom:4px;border-bottom:1px solid #fecaca;padding-bottom:4px">PRODUCTS DISPATCHED</div>
+                    <table><thead><tr><th>Product Description</th><th>Batch No.</th><th>Expiry</th><th>Qty Sent</th></tr></thead><tbody>${prodRows}<tr class="total-row"><td colspan="3"><strong>TOTAL</strong></td><td><strong>${totalQ}</strong></td></tr></tbody></table>
+                    ${r.dispatchNotes || r.dispatch_notes ? `<div style="margin-top:14px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:10px;color:#374151"><strong>Notes:</strong> ${r.dispatchNotes || r.dispatch_notes}</div>` : ''}
+                    <div class="sig-section"><div class="sig-box">Dispatched By (Name & Signature)</div><div class="sig-box">Received By (Name & Signature)</div></div>
+                    <div style="margin-top:16px;font-size:9px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">Dynapharm International Namibia — Stock Management System</div>
+                    </body></html>`);
+                    win.document.close();
                   }}>
                     <Printer size={12} />
                   </Button>
@@ -2399,11 +2870,18 @@ function InventoryTab({ branch }) {
         <Table
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' || r.movement_type === 'received' ? 'success' : r.movement_type === 'out' || r.movement_type === 'dispatched' ? 'danger' : 'warning'}>{r.movement_type || '-'}</Badge> },
-            { header: 'Quantity', render: r => <span className="font-semibold">{r.quantity}</span> },
-            { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
-            { header: 'Reference', render: r => <span className="text-xs text-gray-500">{r.reference || '—'}</span> },
+            { header: 'Product', render: r => <span className="text-xs">{r.product_name || ''}</span> },
+            { header: 'Batch', render: r => <span className="text-xs font-mono">{r.batch_no || '-'}</span> },
+            { header: 'Type', render: r => <Badge variant={
+              ['in','received','import_received','transfer_in'].includes(r.movement_type) ? 'success' :
+              ['out','dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'danger' :
+              ['write_off','return'].includes(r.movement_type) ? 'warning' : 'info'
+            }>{(r.movement_type || '-').replace(/_/g, ' ')}</Badge> },
+            { header: 'Qty', render: r => <span className="font-semibold">{r.quantity}</span> },
+            { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location || r.location || '')}</span> },
+            { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location || '')}</span> },
+            { header: 'Reference', render: r => <span className="text-xs text-gray-500 truncate max-w-[120px] block">{r.reference_id || r.reference || '—'}</span> },
+            { header: 'Status', render: r => r.status ? <Badge variant={r.status === 'completed' ? 'success' : 'info'}>{r.status}</Badge> : null },
           ]}
           data={filtered}
           emptyMessage={branch !== 'all' ? `No stock movements at ${fmtLocation(branch)}` : 'No stock movements found'}
@@ -2597,10 +3075,15 @@ function OrdersTab({ branch }) {
           <button onClick={() => setViewRequest(r)} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 font-semibold border-none cursor-pointer">👁 View</button>
         </div>
         <div className="flex flex-wrap gap-1 mb-3">
-          {items.length === 0 ? <span className="text-xs text-gray-400">No items listed</span> : items.slice(0, 4).map((it, i) => (
-            <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-800 border border-red-100">{it.productName || it.productId} ×{it.quantity}</span>
+          {items.length === 0 ? <span className="text-xs text-gray-400">No items listed</span> : items.slice(0, 6).map((it, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-800 border border-red-100">{it.productName || it.productId} x{it.quantity}{it.batch_no ? ` [B:${it.batch_no}]` : ''}</span>
           ))}
-          {items.length > 4 && <span className="text-xs text-gray-400">+{items.length - 4} more</span>}
+          {items.length > 6 && <span className="text-xs text-gray-400">+{items.length - 6} more</span>}
+        </div>
+        <div className="text-xs text-gray-400 mb-2">
+          {r.status === 'dispatched' && <span>Dispatched from: <strong>{fmtLocation(r.dispatch_warehouse || r.dispatchWarehouse || 'warehouse')}</strong></span>}
+          {(r.status === 'received' || r.status === 'fulfilled') && <span>Received at: <strong>{branchName}</strong> from {fmtLocation(r.dispatch_warehouse || r.dispatchWarehouse || 'warehouse')}</span>}
+          {r.updated_at && <span className="ml-2">| Updated: {formatDateTime(r.updated_at)}</span>}
         </div>
         {r.notes && <div className="text-xs text-gray-500 italic mb-3">{r.notes}</div>}
         <div className="flex gap-2 flex-wrap">
@@ -3983,9 +4466,13 @@ function BranchStockTab({ branch }) {
       return loc === branchKey;
     });
 
-    const closingQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-    const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
-    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const closingQty = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+    const closingValue = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
+    const closingDPC = branchBatches.reduce((s, b) => {
+      const qty = Number(b.remaining_quantity || b.quantity || 0);
+      return s + qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
+    }, 0);
+    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
 
     const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
     const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
@@ -4005,15 +4492,19 @@ function BranchStockTab({ branch }) {
     // Products list
     const productMap = {};
     branchBatches.forEach(b => {
-      const name = b.product_name || 'Unknown';
-      if (!productMap[name]) productMap[name] = { product_name: name, qty: 0, value: 0, expiring: false };
-      productMap[name].qty += Number(b.quantity || 0);
-      productMap[name].value += Number(b.quantity || 0) * Number(b.unit_price || 0);
+      const name = b.description || b.product_name || 'Unknown';
+      if (!productMap[name]) productMap[name] = { product_name: name, qty: 0, cifValue: 0, dpcValue: 0, batchNo: null, expiryDate: null, expiring: false };
+      const qty = Number(b.remaining_quantity || b.quantity || 0);
+      productMap[name].qty += qty;
+      productMap[name].cifValue += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+      productMap[name].dpcValue += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(name));
+      if (b.batch_no || b.batch_number) productMap[name].batchNo = b.batch_no || b.batch_number;
+      if (b.expiry_date) productMap[name].expiryDate = b.expiry_date;
       if (b.expiry_date && new Date(b.expiry_date) < now) productMap[name].expiring = true;
     });
     const products = Object.values(productMap);
 
-    return { branchKey, closingQty, closingValue, expiryQty, issued, returns: returns_, writeoffs, salesQty, salesRevenue, opening, products, batchCount: branchBatches.length };
+    return { branchKey, closingQty, closingValue, closingDPC, expiryQty, issued, returns: returns_, writeoffs, salesQty, salesRevenue, opening, products, batchCount: branchBatches.length };
   };
 
   const allBranchSummaries = BRANCHES.map(b => {
@@ -4036,7 +4527,7 @@ function BranchStockTab({ branch }) {
   const printBranchReport = (br) => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">⚠ Expiring</span>':'-'}</td><td>N$ ${p.value.toFixed(2)}</td></tr>`).join('');
+    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">Expiring</span>':'-'}</td><td>N$ ${p.cifValue.toFixed(2)}</td><td>N$ ${p.dpcValue.toFixed(2)}</td></tr>`).join('');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Branch Stock — ${br.name}</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-box{border:1.5px solid #f0e8ea;border-radius:10px;padding:14px;margin-bottom:14px}.formula-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9}.formula-label{font-weight:600;color:#374151}.formula-val{font-weight:900;font-size:14px}.closing-row{display:flex;justify-content:space-between;padding:10px 12px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-top:2px solid #86efac}.closing-label{font-weight:800;color:#166534;font-size:13px}.closing-val{font-weight:900;font-size:18px;color:#15803d}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
     <button class="print-btn" onclick="window.print()">🖨️ Print</button>
@@ -4157,10 +4648,11 @@ function BranchStockTab({ branch }) {
                   <span style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
                   <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
                 </div>
-                <div style={{ padding: '8px 16px', background: '#fafafa', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
+                <div style={{ padding: '8px 16px', background: '#fafafa', display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                  <span>CIF: <strong style={{ color: '#1e3a5f' }}>N$ {br.closingValue.toFixed(2)}</strong></span>
+                  <span>DPC: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
                   <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
-                  <span>Revenue: <strong style={{ color: '#1e3a5f' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
-                  <span>Value: <strong style={{ color: '#1e3a5f' }}>N$ {br.closingValue.toFixed(0)}</strong></span>
+                  <span>Revenue: <strong style={{ color: '#166534' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
                 </div>
                 {br.expiryQty > 0 && (
                   <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.75rem', color: '#c41e3a', fontWeight: 700 }}>
@@ -4181,8 +4673,8 @@ function BranchStockTab({ branch }) {
               <h3 className="font-bold text-gray-800">Product Stock by Branch</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const allProds = displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name })));
-                const rows = allProds.map(p => `<tr><td>${p.product_name}</td><td>${p.branch}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'⚠ Expiring':'-'}</td><td>N$ ${p.value.toFixed(2)}</td></tr>`).join('');
-                printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Qty</th><th>Expiry</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
+                const rows = allProds.map(p => `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${(p.cifValue||0).toFixed(2)}</td><td>N$ ${(p.dpcValue||0).toFixed(2)}</td></tr>`).join('');
+                printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>CIF Value</th><th>DPC Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
@@ -4191,12 +4683,19 @@ function BranchStockTab({ branch }) {
           </div>
           <Table
             columns={[
-              { header: 'Product', render: r => <span className="font-semibold">{r.product_name}</span> },
+              { header: 'Product', render: r => <span className="font-semibold text-xs">{r.product_name}</span> },
               { header: 'Branch', render: r => <Badge variant="info">{r.branch}</Badge> },
+              { header: 'Batch', render: r => <span className="text-xs font-mono">{r.batchNo || '-'}</span> },
+              { header: 'Expiry', render: r => {
+                if (!r.expiryDate) return '-';
+                const exp = new Date(r.expiryDate);
+                const daysLeft = Math.ceil((exp - new Date()) / 86400000);
+                return <span style={{ color: daysLeft < 0 ? '#c41e3a' : daysLeft < 90 ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiryDate)}{daysLeft < 0 ? ' (EXPIRED)' : daysLeft < 90 ? ` (${daysLeft}d)` : ''}</span>;
+              }},
               { header: 'Qty', render: r => <span style={{ fontWeight: 800, color: r.qty === 0 ? '#c41e3a' : r.qty < 10 ? '#d97706' : '#166534' }}>{r.qty}</span> },
               { header: 'Status', render: r => r.qty === 0 ? <Badge variant="danger">Out of Stock</Badge> : r.qty < 10 ? <Badge variant="warning">Low</Badge> : <Badge variant="success">OK</Badge> },
-              { header: 'Expiry', render: r => r.expiring ? <Badge variant="danger">⚠ Expiring</Badge> : '-' },
-              { header: 'Stock Value', render: r => `N$ ${r.value.toFixed(2)}` },
+              { header: 'CIF Value', render: r => <span className="text-xs">N$ {(r.cifValue || 0).toFixed(2)}</span> },
+              { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {(r.dpcValue || 0).toFixed(2)}</span> },
             ]}
             data={displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name }))).filter(p => !productSearch || p.product_name.toLowerCase().includes(productSearch.toLowerCase()))}
             emptyMessage="No product data available for selected branch(es)"
@@ -4246,9 +4745,13 @@ function StockReportsTab({ branch }) {
     const branchSales = walkinSales.filter(s => (s.branch || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
     const branchMovs = movements.filter(m => (m.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
 
-    const closingQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-    const closingValue = branchBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
-    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const closingQty = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+    const closingValue = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
+    const closingDPC = branchBatches.reduce((s, b) => {
+      const qty = Number(b.remaining_quantity || b.quantity || 0);
+      return s + qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
+    }, 0);
+    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
 
     const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
     const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
@@ -4260,9 +4763,8 @@ function StockReportsTab({ branch }) {
       return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
     }, 0);
 
-    // Opening = Closing − Issued + Sales + Returns + Expiring (backwards from closing)
     const opening = Math.max(0, closingQty + salesQty + returns_ + expiryQty - issued);
-    return { opening, issued, returns: returns_, expiryQty, promotions: 0, closing: closingQty, closingValue, salesQty };
+    return { opening, issued, returns: returns_, expiryQty, promotions: 0, closing: closingQty, closingValue, closingDPC, salesQty };
   };
 
   const branchReports = BRANCHES.map(b => {
@@ -4386,6 +4888,135 @@ function StockReportsTab({ branch }) {
           <span>Closing: <strong style={{ color: '#15803d', fontSize: '1rem' }}>{companySummary.closing.toLocaleString()}</strong></span>
           <span>Value: <strong>N$ {companySummary.closingValue.toFixed(2)}</strong></span>
         </div>
+      </Card>
+
+      {/* Expiry Report */}
+      <Card style={{ marginTop: 18 }}>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Expiry & Shelf-Life Report</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const expiringBatches = batches.filter(b => b.expiry_date).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+              const rows = expiringBatches.map(b => {
+                const exp = new Date(b.expiry_date);
+                const daysLeft = Math.ceil((exp - now) / 86400000);
+                const status = daysLeft < 0 ? 'EXPIRED' : daysLeft < 30 ? 'CRITICAL' : daysLeft < 90 ? 'WARNING' : 'OK';
+                return `<tr><td>${b.description || b.product_name || ''}</td><td>${b.batch_no || b.batch_number || '-'}</td><td>${fmtLocation(b.location)}</td><td>${Number(b.remaining_quantity || b.quantity || 0)}</td><td style="color:${daysLeft<0?'#c41e3a':daysLeft<90?'#d97706':'#166534'};font-weight:700">${formatDate(b.expiry_date)}</td><td style="font-weight:700;color:${daysLeft<0?'#c41e3a':daysLeft<90?'#d97706':'#166534'}">${daysLeft < 0 ? daysLeft + 'd (EXPIRED)' : daysLeft + 'd'}</td><td style="font-weight:700;color:${status==='EXPIRED'?'#c41e3a':status==='CRITICAL'?'#dc2626':status==='WARNING'?'#d97706':'#166534'}">${status}</td></tr>`;
+              }).join('');
+              printDocument('Expiry & Shelf-Life Report', `<table><thead><tr><th>Product</th><th>Batch</th><th>Location</th><th>Qty</th><th>Expiry Date</th><th>Days Left</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }}><Printer size={14} /> Print Expiry Report</Button>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Product', render: r => <span className="text-xs font-semibold">{r.description || r.product_name}</span> },
+            { header: 'Batch', render: r => <span className="text-xs font-mono">{r.batch_no || r.batch_number || '-'}</span> },
+            { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
+            { header: 'Qty', render: r => <span className="font-semibold">{Number(r.remaining_quantity || r.quantity || 0)}</span> },
+            { header: 'Expiry', render: r => {
+              const exp = new Date(r.expiry_date);
+              const d = Math.ceil((exp - now) / 86400000);
+              return <span style={{ color: d < 0 ? '#c41e3a' : d < 90 ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiry_date)}</span>;
+            }},
+            { header: 'Days Left', render: r => {
+              const d = Math.ceil((new Date(r.expiry_date) - now) / 86400000);
+              return <span style={{ fontWeight: 800, color: d < 0 ? '#c41e3a' : d < 30 ? '#dc2626' : d < 90 ? '#d97706' : '#166534' }}>{d < 0 ? `${d}d (EXPIRED)` : `${d}d`}</span>;
+            }},
+            { header: 'Status', render: r => {
+              const d = Math.ceil((new Date(r.expiry_date) - now) / 86400000);
+              return d < 0 ? <Badge variant="danger">EXPIRED</Badge> : d < 30 ? <Badge variant="danger">CRITICAL</Badge> : d < 90 ? <Badge variant="warning">WARNING</Badge> : <Badge variant="success">OK</Badge>;
+            }},
+          ]}
+          data={batches.filter(b => b.expiry_date).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date))}
+          emptyMessage="No batches with expiry dates found"
+        />
+      </Card>
+
+      {/* Stock Valuation Report */}
+      <Card style={{ marginTop: 18 }}>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Stock Valuation Report (CIF & DPC)</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const locGroups = {};
+              batches.forEach(b => {
+                const loc = b.location || 'unknown';
+                if (!locGroups[loc]) locGroups[loc] = { qty: 0, cif: 0, dpc: 0 };
+                const qty = Number(b.remaining_quantity || b.quantity || 0);
+                locGroups[loc].qty += qty;
+                locGroups[loc].cif += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+                locGroups[loc].dpc += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
+              });
+              const rows = Object.entries(locGroups).map(([loc, d]) => `<tr><td style="font-weight:700">${fmtLocation(loc)}</td><td>${d.qty.toLocaleString()}</td><td>N$ ${d.cif.toFixed(2)}</td><td>N$ ${d.dpc.toFixed(2)}</td><td>N$ ${(d.dpc - d.cif).toFixed(2)}</td></tr>`).join('');
+              const totals = Object.values(locGroups).reduce((s,d) => ({ qty: s.qty+d.qty, cif: s.cif+d.cif, dpc: s.dpc+d.dpc }), { qty:0, cif:0, dpc:0 });
+              printDocument('Stock Valuation Report', `<table><thead><tr><th>Location</th><th>Total Qty</th><th>CIF Value</th><th>DPC Value</th><th>Margin</th></tr></thead><tbody>${rows}<tr class="total-row" style="font-weight:800;background:#fff0f3;border-top:2px solid #fecaca"><td>TOTAL</td><td>${totals.qty.toLocaleString()}</td><td>N$ ${totals.cif.toFixed(2)}</td><td>N$ ${totals.dpc.toFixed(2)}</td><td>N$ ${(totals.dpc-totals.cif).toFixed(2)}</td></tr></tbody></table>`);
+            }}><Printer size={14} /> Print Valuation Report</Button>
+          </div>
+        </CardHeader>
+        {(() => {
+          const locGroups = {};
+          batches.forEach(b => {
+            const loc = b.location || 'unknown';
+            if (!locGroups[loc]) locGroups[loc] = { location: loc, qty: 0, cif: 0, dpc: 0 };
+            const qty = Number(b.remaining_quantity || b.quantity || 0);
+            locGroups[loc].qty += qty;
+            locGroups[loc].cif += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+            locGroups[loc].dpc += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
+          });
+          const valData = Object.values(locGroups);
+          const totals = valData.reduce((s,d) => ({ qty: s.qty+d.qty, cif: s.cif+d.cif, dpc: s.dpc+d.dpc }), { qty:0, cif:0, dpc:0 });
+          return (<>
+            <Table
+              columns={[
+                { header: 'Location', render: r => <span className="font-bold text-sm">{fmtLocation(r.location)}</span> },
+                { header: 'Total Qty', render: r => <span className="font-semibold">{r.qty.toLocaleString()}</span> },
+                { header: 'CIF Value', render: r => <span className="text-xs">N$ {r.cif.toFixed(2)}</span> },
+                { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {r.dpc.toFixed(2)}</span> },
+                { header: 'Margin', render: r => <span className="text-xs font-semibold" style={{ color: (r.dpc - r.cif) > 0 ? '#166534' : '#c41e3a' }}>N$ {(r.dpc - r.cif).toFixed(2)}</span> },
+              ]}
+              data={valData}
+              emptyMessage="No stock data"
+            />
+            <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 24, fontSize: '0.82rem', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, color: '#c41e3a' }}>TOTAL</span>
+              <span>Qty: <strong>{totals.qty.toLocaleString()}</strong></span>
+              <span>CIF: <strong>N$ {totals.cif.toFixed(2)}</strong></span>
+              <span>DPC: <strong style={{ color: '#c41e3a' }}>N$ {totals.dpc.toFixed(2)}</strong></span>
+              <span>Margin: <strong style={{ color: '#166534' }}>N$ {(totals.dpc - totals.cif).toFixed(2)}</strong></span>
+            </div>
+          </>);
+        })()}
+      </Card>
+
+      {/* Movement Log Report */}
+      <Card style={{ marginTop: 18 }}>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">Stock Movement Log</h3>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const periodMoves = movements.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd)
+                .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+              const rows = periodMoves.map(m => `<tr><td>${formatDateTime(m.created_at)}</td><td>${m.product_name||''}</td><td>${(m.movement_type||'').replace(/_/g,' ')}</td><td>${m.quantity||0}</td><td>${fmtLocation(m.source_location||m.location||'')}</td><td>${fmtLocation(m.destination_location||'')}</td><td>${m.reference_id||m.reference||'-'}</td><td>${m.recorded_by||m.created_by||'-'}</td></tr>`).join('');
+              printDocument(`Stock Movement Log — ${periodLabel}`, `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Reference</th><th>By</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }}><Printer size={14} /> Print Movement Log</Button>
+          </div>
+        </CardHeader>
+        <Table
+          columns={[
+            { header: 'Date', render: r => formatDateTime(r.created_at) },
+            { header: 'Product', render: r => <span className="text-xs">{r.product_name || ''}</span> },
+            { header: 'Type', render: r => <Badge variant={
+              ['in','received','import_received','transfer_in'].includes(r.movement_type) ? 'success' :
+              ['out','dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'danger' : 'warning'
+            }>{(r.movement_type || '-').replace(/_/g, ' ')}</Badge> },
+            { header: 'Qty', render: r => <span className="font-semibold">{r.quantity}</span> },
+            { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location || r.location || '')}</span> },
+            { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location || '')}</span> },
+            { header: 'Ref', render: r => <span className="text-xs text-gray-500">{r.reference_id || r.reference || '-'}</span> },
+          ]}
+          data={movements.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100)}
+          emptyMessage="No movements in selected period"
+        />
       </Card>
 
       {/* MIS stock report reference */}

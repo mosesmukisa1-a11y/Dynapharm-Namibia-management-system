@@ -114,6 +114,14 @@ export const api = {
     requests: (params = '') => api.get(`/stock-requests${params ? '?' + params : ''}`),
     createRequest: (data) => api.post('/stock-requests', data),
     updateRequest: (id, data) => api.put('/stock-requests', { ...data, id }),
+    supplierImports: (params = '') => api.get(`/supplier-imports${params ? '?' + params : ''}`),
+    createSupplierImport: (data) => api.post('/supplier-imports', data),
+    updateSupplierImport: (id, data) => api.put('/supplier-imports', { ...data, id }),
+    fieldStock: (params = '') => api.get(`/field-stock${params ? '?' + params : ''}`),
+    createFieldStock: (data) => api.post('/field-stock', data),
+    updateFieldStock: (id, data) => api.put('/field-stock', { ...data, id }),
+    warehouseInventory: (params = '') => api.get(`/warehouse/inventory${params ? '?' + params : ''}`),
+    branchInventory: (params = '') => api.get(`/branch/inventory${params ? '?' + params : ''}`),
   },
 
   branch: {

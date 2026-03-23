@@ -93,7 +93,11 @@ async function main() {
       '006_create_employees_table.sql',
       '007_create_branch_walkin_sales.sql',
       '008_create_branch_inventory_tables.sql',
-      '009_create_branch_finance_tables.sql'
+      '009_create_branch_finance_tables.sql',
+      '010_create_stock_management_tables.sql',
+      '011_create_mis_tables.sql',
+      '012_alter_distributors_add_branch_fields.sql',
+      '013_stock_enhancements.sql'
     ];
     
     for (const migration of migrations) {
