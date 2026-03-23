@@ -3189,7 +3189,7 @@ function OrderPaymentModal({ order, onClose, onPaid }) {
       onPaid(order.id, method);
       onClose();
     } catch (e) { setErr(e.message || 'Payment failed'); }
-    setSaving(false);
+    finally { setSaving(false); }
   };
 
   const btnStyle = (m) => ({
