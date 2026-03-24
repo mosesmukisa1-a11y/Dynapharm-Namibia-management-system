@@ -1755,8 +1755,8 @@ function BranchStockTab() {
   const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const lowStock = inventory.filter(i => Number(i.quantity || 0) < 10 && Number(i.quantity || 0) > 0);
   const outOfStock = inventory.filter(i => Number(i.quantity || 0) <= 0);
-  const expiringItems = inventory.filter(i => { if (!i.expiry_date) return false; const exp = new Date(i.expiry_date); return exp <= thirtyDays && exp >= now; });
-  const expiredItems = inventory.filter(i => { if (!i.expiry_date) return false; return new Date(i.expiry_date) < now; });
+  const expiringItems = inventory.filter(i => { const exp = i.expiry_date || i.expiryDate; if (!exp) return false; const d = new Date(exp); return d <= thirtyDays && d >= now; });
+  const expiredItems = inventory.filter(i => { const exp = i.expiry_date || i.expiryDate; if (!exp) return false; return new Date(exp) < now; });
 
   const filteredProducts = products.filter(p => !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase()));
 
@@ -2045,15 +2045,18 @@ function BranchStockTab() {
         }, 0);
         const lowCount = filteredInv.filter(r => { const q = Number(r.quantity || 0); return q > 0 && q < 10; }).length;
         const nearExpCount = filteredInv.filter(r => { const e = r.expiry_date || r.expiryDate; return e && new Date(e) <= thirtyDays && new Date(e) >= now; }).length;
+        const thS = { textAlign: 'left', padding: '8px 6px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' };
+        const thR = { ...thS, textAlign: 'right' };
+        const thC = { ...thS, textAlign: 'center' };
 
         return (
         <Card>
           <CardHeader className="flex justify-between items-center flex-wrap gap-3">
             <div>
               <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {user?.branch || 'All'}</h3>
-              <p className="text-xs text-gray-500 m-0 mt-1">Line-by-line batch detail with DP valuations</p>
+              <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
-            <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print Report</button>
+            <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
           </CardHeader>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <input type="text" placeholder="Search product..." value={invFilter.search} onChange={e => setInvFilter(p => ({ ...p, search: e.target.value }))}
@@ -2072,24 +2075,31 @@ function BranchStockTab() {
             {(invFilter.search || invFilter.batch || invFilter.status !== 'all') && (
               <button onClick={() => setInvFilter({ search: '', status: 'all', batch: '', expiry: '' })} style={{ padding: '6px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.78rem', cursor: 'pointer', background: '#f9fafb', color: '#64748b' }}>Clear</button>
             )}
-            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{filteredInv.length} line{filteredInv.length !== 1 ? 's' : ''}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{filteredInv.length} batch line{filteredInv.length !== 1 ? 's' : ''}</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
               <thead>
                 <tr style={{ background: '#f8f5f5' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Product</th>
-                  <th style={{ textAlign: 'left', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Batch</th>
-                  <th style={{ textAlign: 'left', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Expiry</th>
-                  <th style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Balance</th>
-                  <th style={{ textAlign: 'center', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Status</th>
-                  <th style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>DP Unit</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>DP Value</th>
+                  <th style={thS}>Product</th>
+                  <th style={thS}>Batch</th>
+                  <th style={thS}>Expiry</th>
+                  <th style={thR}>Rcvd</th>
+                  <th style={thR}>Sold</th>
+                  <th style={thR}>Disp</th>
+                  <th style={thR}>Trf</th>
+                  <th style={thR}>W/O</th>
+                  <th style={thR}>Balance</th>
+                  <th style={thC}>Status</th>
+                  <th style={thR}>DP Unit</th>
+                  <th style={thR}>DP Value</th>
+                  <th style={thS}>Source</th>
+                  <th style={thS}>Last Move</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredInv.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
+                  <tr><td colSpan={14} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
                 ) : filteredInv.map((r, idx) => {
                   const pName = r.product_name || r.productName || r.description || '-';
                   const q = Number(r.quantity || 0);
@@ -2103,21 +2113,36 @@ function BranchStockTab() {
                   const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : isExpiring ? 'Expiring' : 'OK';
                   const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 || isExpiring ? '#d97706' : '#166534';
                   const statusBg = q <= 0 || isExp ? '#fef2f2' : q < 10 || isExpiring ? '#fffbeb' : '#f0fdf4';
+                  const rcvd = Number(r.qty_received || r.qtyReceived || 0);
+                  const sold = Number(r.qty_sold || r.qtySold || 0);
+                  const disp = Number(r.qty_dispensed || r.qtyDispensed || 0);
+                  const trf = Number(r.qty_transferred || r.qtyTransferred || 0);
+                  const wo = Number(r.qty_written_off || r.qtyWrittenOff || 0);
+                  const srcWh = r.source_warehouse || r.sourceWarehouse || '';
+                  const lastMov = r.last_movement_date || r.lastMovementDate;
+                  const cellStyle = { padding: '7px 6px', fontSize: '0.76rem' };
                   return (
                     <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
-                      <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</td>
-                      <td style={{ padding: '9px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.78rem' }}>{r.batch_no || r.batchNo || '—'}</td>
-                      <td style={{ padding: '9px 8px', color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
+                      <td style={{ ...cellStyle, fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pName}>{pName}</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{r.batch_no || r.batchNo || '—'}</td>
+                      <td style={{ ...cellStyle, color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
                         {exp ? formatDate(exp) : '—'}
-                        {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.68rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d left</span>}
-                        {isExp && <span style={{ display: 'block', fontSize: '0.68rem', color: '#c41e3a' }}>EXPIRED</span>}
+                        {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.65rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d</span>}
+                        {isExp && <span style={{ display: 'block', fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700 }}>EXPIRED</span>}
                       </td>
-                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534' }}>{q}</td>
-                      <td style={{ padding: '9px 8px', textAlign: 'center' }}>
-                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, color: statusColor, background: statusBg, border: `1px solid ${statusColor}22` }}>{statusLabel}</span>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: rcvd > 0 ? '#166534' : '#d1d5db' }}>{rcvd || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: sold > 0 ? '#2563eb' : '#d1d5db' }}>{sold || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: disp > 0 ? '#6366f1' : '#d1d5db' }}>{disp || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: trf > 0 ? '#9333ea' : '#d1d5db' }}>{trf || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: wo > 0 ? '#c41e3a' : '#d1d5db' }}>{wo || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534' }}>{q}</td>
+                      <td style={{ ...cellStyle, textAlign: 'center' }}>
+                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, color: statusColor, background: statusBg, border: `1px solid ${statusColor}22` }}>{statusLabel}</span>
                       </td>
-                      <td style={{ padding: '9px 8px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
-                      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: dpTotal > 0 ? '#1e293b' : '#94a3b8' }}>{dpTotal > 0 ? `N$ ${dpTotal.toFixed(2)}` : '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: dpTotal > 0 ? '#1e293b' : '#94a3b8' }}>{dpTotal > 0 ? `N$ ${dpTotal.toFixed(2)}` : '—'}</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={srcWh}>{srcWh ? fmtLocation(srcWh) : '—'}</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{lastMov ? formatDateTime(lastMov) : '—'}</td>
                     </tr>
                   );
                 })}
@@ -2125,15 +2150,21 @@ function BranchStockTab() {
               {filteredInv.length > 0 && (
                 <tfoot>
                   <tr style={{ background: 'linear-gradient(90deg,#fdf2f4,#fef7f8)', borderTop: '2px solid #c41e3a' }}>
-                    <td colSpan={3} style={{ padding: '10px 12px', fontWeight: 800, color: '#c41e3a', fontSize: '0.78rem', textTransform: 'uppercase' }}>Totals</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 800, fontSize: '0.92rem', color: '#1e293b' }}>{totalQty}</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
+                    <td colSpan={3} style={{ padding: '10px 6px', fontWeight: 800, color: '#c41e3a', fontSize: '0.75rem', textTransform: 'uppercase' }}>Totals</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#166534' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_received || r.qtyReceived || 0), 0) || ''}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#2563eb' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_sold || r.qtySold || 0), 0) || ''}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#6366f1' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_dispensed || r.qtyDispensed || 0), 0) || ''}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#9333ea' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_transferred || r.qtyTransferred || 0), 0) || ''}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#c41e3a' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_written_off || r.qtyWrittenOff || 0), 0) || ''}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.92rem', color: '#1e293b' }}>{totalQty}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'center', fontSize: '0.68rem', color: '#64748b' }}>
                       {lowCount > 0 && <span style={{ color: '#d97706' }}>{lowCount} low</span>}
                       {lowCount > 0 && nearExpCount > 0 && ' · '}
                       {nearExpCount > 0 && <span style={{ color: '#c41e3a' }}>{nearExpCount} exp</span>}
                     </td>
-                    <td style={{ padding: '10px 8px' }}></td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, fontSize: '0.92rem', color: '#c41e3a' }}>N$ {totalDP.toFixed(2)}</td>
+                    <td style={{ padding: '10px 6px' }}></td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: '#c41e3a' }}>N$ {totalDP.toFixed(2)}</td>
+                    <td colSpan={2}></td>
                   </tr>
                 </tfoot>
               )}
@@ -2146,15 +2177,20 @@ function BranchStockTab() {
       {subTab === 'alerts' && (() => {
         const pendingReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted');
         const alertItems = [
-          ...outOfStock.map(r => ({ ...r, alertType: 'Out of Stock', severity: 'critical', action: 'Request restock from warehouse immediately', icon: '🔴' })),
-          ...expiredItems.map(r => ({ ...r, alertType: 'Expired', severity: 'critical', action: 'Write off expired stock and remove from shelf', icon: '🔴' })),
-          ...lowStock.map(r => ({ ...r, alertType: 'Low Stock', severity: 'warning', action: 'Submit restock request before stockout', icon: '🟡' })),
-          ...expiringItems.map(r => ({ ...r, alertType: 'Expiring Soon', severity: 'warning', action: 'Prioritize sale or consider write-off plan', icon: '🟡' })),
-          ...pendingReqs.map(r => ({ product_name: `Request #${r.request_number || r.id}`, alertType: 'Pending Request', severity: 'info', action: 'Awaiting stock management approval', icon: '🔵', quantity: '-', batch_no: '-', expiry_date: null })),
+          ...outOfStock.map(r => ({ ...r, alertType: 'Out of Stock', severity: 'critical', action: 'Request restock from warehouse immediately' })),
+          ...expiredItems.map(r => ({ ...r, alertType: 'Expired', severity: 'critical', action: 'Write off expired stock and remove from shelf' })),
+          ...lowStock.map(r => ({ ...r, alertType: 'Low Stock', severity: 'warning', action: 'Submit restock request before stockout' })),
+          ...expiringItems.map(r => {
+            const exp = r.expiry_date || r.expiryDate;
+            const dLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
+            return { ...r, alertType: 'Expiring Soon', severity: 'warning', action: dLeft !== null ? `${dLeft} day${dLeft !== 1 ? 's' : ''} until expiry — prioritize sale or plan write-off` : 'Prioritize sale or consider write-off plan' };
+          }),
+          ...pendingReqs.map(r => ({ product_name: `Request #${r.request_number || r.id}`, alertType: 'Pending Request', severity: 'info', action: 'Awaiting stock management approval', quantity: '-', batch_no: '-', expiry_date: null })),
         ];
+        const thA = { textAlign: 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', whiteSpace: 'nowrap' };
         return (
         <div className="space-y-4">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, marginBottom: 16 }}>
             {[
               { label: 'Out of Stock', count: outOfStock.length, color: '#c41e3a', bg: '#fef2f2' },
               { label: 'Expired', count: expiredItems.length, color: '#c41e3a', bg: '#fef2f2' },
@@ -2172,31 +2208,38 @@ function BranchStockTab() {
             <Card><CardBody><p className="text-center text-green-600 font-semibold py-4">All stock levels are healthy — no alerts</p></CardBody></Card>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
                   <tr style={{ background: '#f8f5f5' }}>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Alert</th>
-                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Product</th>
-                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Batch</th>
-                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Expiry</th>
-                    <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Qty</th>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Action Required</th>
+                    <th style={thA}>Alert Type</th>
+                    <th style={thA}>Product</th>
+                    <th style={thA}>Batch</th>
+                    <th style={thA}>Expiry</th>
+                    <th style={{ ...thA, textAlign: 'right' }}>Balance</th>
+                    <th style={thA}>Action Required</th>
                   </tr>
                 </thead>
                 <tbody>
                   {alertItems.map((a, i) => {
                     const sevColor = a.severity === 'critical' ? '#c41e3a' : a.severity === 'warning' ? '#d97706' : '#2563eb';
                     const sevBg = a.severity === 'critical' ? '#fef2f2' : a.severity === 'warning' ? '#fffbeb' : '#eff6ff';
+                    const exp = a.expiry_date || a.expiryDate;
+                    const isExp = exp ? new Date(exp) < now : false;
+                    const dLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
                     return (
                       <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
-                        <td style={{ padding: '8px 12px' }}>
-                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, color: sevColor, background: sevBg, border: `1px solid ${sevColor}22` }}>{a.icon} {a.alertType}</span>
+                        <td style={{ padding: '8px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color: sevColor, background: sevBg, border: `1px solid ${sevColor}22`, whiteSpace: 'nowrap' }}>{a.alertType}</span>
                         </td>
                         <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{a.product_name || a.productName || a.description || '-'}</td>
-                        <td style={{ padding: '8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.78rem' }}>{a.batch_no || a.batchNo || '—'}</td>
-                        <td style={{ padding: '8px', color: a.alertType === 'Expired' ? '#c41e3a' : '#6b7280' }}>{a.expiry_date || a.expiryDate ? formatDate(a.expiry_date || a.expiryDate) : '—'}</td>
-                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>{a.quantity ?? '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>{a.action}</td>
+                        <td style={{ padding: '8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{a.batch_no || a.batchNo || '—'}</td>
+                        <td style={{ padding: '8px', color: isExp ? '#c41e3a' : (dLeft !== null && dLeft <= 30) ? '#d97706' : '#6b7280', fontWeight: isExp || (dLeft !== null && dLeft <= 30) ? 700 : 400 }}>
+                          {exp ? formatDate(exp) : '—'}
+                          {dLeft !== null && dLeft >= 0 && dLeft <= 90 && <span style={{ display: 'block', fontSize: '0.65rem', color: dLeft <= 30 ? '#c41e3a' : '#d97706' }}>{dLeft}d left</span>}
+                          {isExp && <span style={{ display: 'block', fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700 }}>EXPIRED</span>}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: Number(a.quantity) <= 0 ? '#c41e3a' : Number(a.quantity) < 10 ? '#d97706' : '#1e293b' }}>{a.quantity ?? '—'}</td>
+                        <td style={{ padding: '8px', fontSize: '0.76rem', color: '#64748b', maxWidth: 240 }}>{a.action}</td>
                       </tr>
                     );
                   })}
@@ -2220,18 +2263,20 @@ function BranchStockTab() {
           <Table
             columns={[
               { header: 'Request #', render: r => <span className="font-mono text-xs">{r.requestNumber || r.request_number || r.id}</span> },
-              { header: 'Branch', render: r => <span className="font-semibold text-xs">{r.requestingBranch || r.requesting_branch || user?.branch || '-'}</span> },
+              { header: 'Requested For', render: r => <span className="font-semibold text-xs">{r.requestingBranch || r.requesting_branch || user?.branch || '-'}</span> },
+              { header: 'Requested By', render: r => <span className="text-xs text-gray-600">{r.createdBy || r.created_by || '—'}</span> },
               { header: 'Items', render: r => {
                 const items = Array.isArray(r.items) ? r.items : (() => { try { return typeof r.items==='string'?JSON.parse(r.items):[]; } catch { return []; } })();
-                return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.productName||i.product_name||i.productId} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>;
+                return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.productName||i.product_name||i.productId} x${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}{items.length===0?'-':''}</span>;
               }},
               { header: 'Priority', render: r => <Badge variant={r.priority==='urgent'?'danger':r.priority==='high'?'warning':'info'}>{r.priority||'normal'}</Badge> },
               { header: 'Status', render: r => <Badge variant={r.status==='approved'?'success':r.status==='received'?'success':r.status==='rejected'?'danger':'warning'}>{r.status||'pending'}</Badge> },
-              { header: 'Date', render: r => formatDateTime(r.created_at) },
+              { header: 'Approved By', render: r => <span className="text-xs text-gray-600">{r.approvedBy || r.approved_by || r.reviewedBy || r.reviewed_by || '—'}</span> },
+              { header: 'Date', render: r => formatDateTime(r.created_at || r.createdAt) },
               { header: '', render: r => (
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => setViewRequest(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>👁 View</button>
-                  {(r.status==='approved'||r.status==='dispatched') && <button onClick={() => openReceiveForm(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#166534', color: '#fff' }}>📥 Receive</button>}
+                  <button onClick={() => setViewRequest(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>View</button>
+                  {(r.status==='approved'||r.status==='dispatched') && <button onClick={() => openReceiveForm(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#166534', color: '#fff' }}>Receive</button>}
                 </div>
               )},
             ]}
@@ -2517,25 +2562,55 @@ function BranchStockTab() {
             <h3 className="font-bold text-gray-800">Stock Transfers</h3>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
-              <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>↔ New Transfer</button>
+              <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>New Transfer</button>
             </div>
           </CardHeader>
-          <Table
-            columns={[
-              { header: 'From', render: r => <span className="font-semibold text-xs">{fmtLocation(r.fromWarehouse || r.from_location || user?.branch)}</span> },
-              { header: 'To', render: r => <span className="font-semibold text-xs">{fmtLocation(r.toBranch || r.to_location)}</span> },
-              { header: 'Product', render: r => {
-                const items = Array.isArray(r.items) ? r.items : [];
-                if (items.length > 0) return <span className="text-xs text-gray-600">{items.slice(0,2).map(i=>`${i.productName||i.productId} ×${i.quantity}`).join(', ')}{items.length>2?` +${items.length-2} more`:''}</span>;
-                return <span className="text-xs text-gray-600">{r.product_name ? `${r.product_name} ×${r.quantity}` : '-'}</span>;
-              }},
-              { header: 'Status', render: r => <Badge variant={r.status==='delivered'?'success':r.status==='dispatched'?'info':'warning'}>{r.status||'pending'}</Badge> },
-              { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
-              { header: '', render: r => <button onClick={() => setViewTransfer(r)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>👁 View</button> },
-            ]}
-            data={transfers}
-            emptyMessage="No transfers yet — click New Transfer to start"
-          />
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr style={{ background: '#f8f5f5' }}>
+                  {['Transfer #', 'From', 'To', 'Products (Batch / Expiry / Qty)', 'Status', 'Date', 'Prepared By', 'Received By', ''].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.length === 0 ? (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No transfers yet</td></tr>
+                ) : transfers.map((t, idx) => {
+                  const items = Array.isArray(t.items) ? t.items : (() => { try { return typeof t.items === 'string' ? JSON.parse(t.items) : []; } catch { return []; } })();
+                  const statusColors = { delivered: '#166534', received: '#166534', dispatched: '#1e40af', approved: '#7c3aed', pending: '#d97706', rejected: '#c41e3a' };
+                  const statusBgs = { delivered: '#f0fdf4', received: '#f0fdf4', dispatched: '#eff6ff', approved: '#f5f3ff', pending: '#fffbeb', rejected: '#fef2f2' };
+                  return (
+                    <tr key={t.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0', verticalAlign: 'top' }}>
+                      <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '0.74rem', color: '#374151' }}>{t.dispatchReference || t.dispatch_reference || t.id || '-'}</td>
+                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.fromWarehouse || t.from_location || user?.branch)}</td>
+                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.toBranch || t.to_location)}</td>
+                      <td style={{ padding: '8px', maxWidth: 300 }}>
+                        {items.length > 0 ? items.map((it, i) => (
+                          <div key={i} style={{ fontSize: '0.74rem', marginBottom: i < items.length - 1 ? 3 : 0, paddingBottom: i < items.length - 1 ? 3 : 0, borderBottom: i < items.length - 1 ? '1px dotted #e5e7eb' : 'none' }}>
+                            <span style={{ fontWeight: 600, color: '#1e293b' }}>{it.productName || it.product_name || it.productId}</span>
+                            {(it.batchNo || it.batch_no) && <span style={{ color: '#9333ea', marginLeft: 6, fontFamily: 'monospace', fontSize: '0.7rem' }}>B:{it.batchNo || it.batch_no}</span>}
+                            {(it.expiryDate || it.expiry_date) && <span style={{ color: '#d97706', marginLeft: 4, fontSize: '0.7rem' }}>Exp:{formatDate(it.expiryDate || it.expiry_date)}</span>}
+                            <span style={{ color: '#6b7280', marginLeft: 4 }}>x{it.quantityApproved || it.quantity_approved || it.quantity}</span>
+                          </div>
+                        )) : <span style={{ color: '#94a3b8' }}>{t.product_name ? `${t.product_name} x${t.quantity}` : '-'}</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color: statusColors[t.status] || '#64748b', background: statusBgs[t.status] || '#f1f5f9', border: `1px solid ${statusColors[t.status] || '#e2e8f0'}22` }}>{(t.status || 'pending').replace(/_/g, ' ')}</span>
+                      </td>
+                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt || t.created_at)}</td>
+                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.createdBy || t.created_by || t.dispatchedBy || t.dispatched_by || '—'}</td>
+                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.receivedBy || t.received_by || '—'}</td>
+                      <td style={{ padding: '8px' }}>
+                        <button onClick={() => setViewTransfer(t)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>View</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 
@@ -2568,16 +2643,16 @@ function BranchStockTab() {
           if (movFilter.dateTo) { const d = new Date(m.created_at || m.createdAt); if (d > new Date(movFilter.dateTo + 'T23:59:59')) return false; }
           return true;
         });
-        const inwardTypes = ['received', 'receive', 'transfer_in', 'return', 'return_in', 'adjustment'];
-        const outwardTypes = ['sale', 'write_off', 'transfer_out', 'field_use', 'return_out', 'dispense'];
-        const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Number(m.quantity || 0), 0);
-        const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const inwardTypes = ['received', 'receive', 'stock_receipt', 'transfer_in', 'return', 'return_in', 'adjustment'];
+        const outwardTypes = ['sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'write_off', 'transfer_out', 'field_use', 'return_out', 'dispense', 'prescription_dispense', 'online_order_sale'];
+        const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
+        const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalDPOut = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => {
           const p = findProductPrice(m.product_name || m.productName);
-          return s + (p?.dp ? Number(p.dp) * Number(m.quantity || 0) : 0);
+          return s + (p?.dp ? Number(p.dp) * Math.abs(Number(m.quantity || 0)) : 0);
         }, 0);
         const typeLabel = (t) => {
-          const map = { received: 'Received', receive: 'Received', sale: 'Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Dispense' };
+          const map = { received: 'Stock Receipt', receive: 'Stock Receipt', stock_receipt: 'Stock Receipt', sale: 'Walk-in Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Prescription Dispense', prescription_dispense: 'Prescription Dispense', online_order_sale: 'Online Order Sale' };
           return map[t] || (t || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         };
         const typeBadge = (t) => {
@@ -2659,7 +2734,7 @@ function BranchStockTab() {
                       <td style={{ padding: '7px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{m.batch_no || m.batchNo || '—'}</td>
                       <td style={{ padding: '7px 8px' }}>{typeBadge(mType)}</td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{m.quantity}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{Math.abs(Number(m.quantity || 0))}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.source_location || m.sourceLocation) || '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.destination_location || m.destinationLocation) || '—'}</td>
@@ -2681,48 +2756,77 @@ function BranchStockTab() {
         const branchName = user?.branch || 'Branch';
         const todaySales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.toDateString() === t.toDateString(); });
         const monthSales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); });
-        const catSales = (list) => {
-          const walkin = list.filter(s => (s.sale_type || s.type || 'walk_in') === 'walk_in' || (s.sale_type || s.type || '') === 'walkin');
-          const member = list.filter(s => (s.sale_type || s.type || '') === 'member' || (s.customer_type || '') === 'registered');
-          const nonMember = list.filter(s => (s.sale_type || s.type || '') === 'non_member' || (s.customer_type || '') === 'non-member');
-          const online = list.filter(s => (s.sale_type || s.type || '') === 'online');
-          const rx = list.filter(s => (s.sale_type || s.type || '') === 'prescription' || (s.sale_type || s.type || '') === 'dispense');
-          const dpTotal = (arr) => arr.reduce((s, r) => {
-            const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
-            return s + items.reduce((a, i) => {
-              const p = findProductPrice(i.product_name || i.productName || i.name);
-              return a + (p?.dp ? Number(p.dp) * Number(i.quantity || 1) : 0);
-            }, 0);
+        const parseItems = (r) => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } };
+        const dpTotalFn = (arr) => arr.reduce((s, r) => {
+          return s + parseItems(r).reduce((a, i) => {
+            const p = findProductPrice(i.product_name || i.productName || i.name);
+            return a + (p?.dp ? Number(p.dp) * Number(i.quantity || 1) : 0);
           }, 0);
-          return { walkin, member, nonMember, online, rx, all: list, dpTotal };
+        }, 0);
+        const qtyTotalFn = (arr) => arr.reduce((s, r) => s + parseItems(r).reduce((a, i) => a + Number(i.quantity || 1), 0), 0);
+        const catSales = (list) => {
+          const sType = (s) => (s.sale_type || s.saleType || s.type || '').toLowerCase();
+          const cType = (s) => (s.customer_type || s.customerType || '').toLowerCase();
+          const isMember = (s) => sType(s) === 'member' || sType(s) === 'walk_in_member_sale' || cType(s) === 'member' || cType(s) === 'registered';
+          const isNonMember = (s) => sType(s) === 'non_member' || sType(s) === 'walk_in_non_member_sale' || cType(s) === 'non_member' || cType(s) === 'non-member';
+          const isOnline = (s) => sType(s) === 'online' || sType(s) === 'online_order_sale';
+          const isRx = (s) => sType(s) === 'prescription' || sType(s) === 'dispense' || sType(s) === 'prescription_dispense';
+          const isConsult = (s) => sType(s) === 'consultation' || sType(s) === 'consultation_fee';
+          const member = list.filter(s => isMember(s));
+          const nonMember = list.filter(s => isNonMember(s));
+          const online = list.filter(s => isOnline(s));
+          const rx = list.filter(s => isRx(s));
+          const consultation = list.filter(s => isConsult(s));
+          const walkin = list.filter(s => !isMember(s) && !isNonMember(s) && !isOnline(s) && !isRx(s) && !isConsult(s));
+          return { walkin, member, nonMember, online, rx, consultation, all: list };
         };
         const printDPSalesReport = (salesList, period) => {
           const c = catSales(salesList);
           const sections = [
-            { title: 'Walk-in Sales', data: c.walkin },
-            { title: 'Member Sales', data: c.member },
-            { title: 'Non-member Sales', data: c.nonMember },
-            { title: 'Online Order Sales', data: c.online },
-            { title: 'Prescription Dispensing Sales', data: c.rx },
+            { title: '1. Consultation Fees', data: c.consultation },
+            { title: '2. Walk-in Sales (General)', data: c.walkin },
+            { title: '3. Member Sales', data: c.member },
+            { title: '4. Non-member Sales', data: c.nonMember },
+            { title: '5. Online Order Sales', data: c.online },
+            { title: '6. Prescription Dispensing', data: c.rx },
           ];
-          const rows = sections.map(sec => {
-            const qty = sec.data.reduce((s, r) => {
-              const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
-              return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0);
-            }, 0);
-            const dp = c.dpTotal(sec.data);
+          const totalDP = dpTotalFn(salesList);
+          const totalQty = qtyTotalFn(salesList);
+          const consultFees = c.consultation.reduce((s, r) => s + Number(r.consultation_fee || r.fee || 0), 0);
+          const totalWithConsult = totalDP + consultFees;
+          const distributorProfit = totalDP * 0.25;
+          const sectionRows = sections.map(sec => {
+            const qty = qtyTotalFn(sec.data);
+            const dp = sec.title.includes('Consultation') ? consultFees : dpTotalFn(sec.data);
             return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.data.length}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${dp.toFixed(2)}</td></tr>`;
           }).join('');
-          const totalTx = salesList.length;
-          const totalQty = salesList.reduce((s, r) => { const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })(); return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0); }, 0);
-          const totalDP = c.dpTotal(salesList);
           printStockDocument(`DP Sales Report — ${period}`, `
             <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only</div>
+            <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty Sold</th><th style="text-align:right;padding:8px 12px">DP Total</th></tr></thead>
-              <tbody>${rows}
-                <tr style="background:linear-gradient(90deg,#fdf2f4,#fef7f8);border-top:2px solid #c41e3a"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">TOTAL</td><td style="padding:10px 8px;text-align:center;font-weight:800">${totalTx}</td><td style="padding:10px 8px;text-align:right;font-weight:800">${totalQty}</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a">N$ ${totalDP.toFixed(2)}</td></tr>
-              </tbody>
+              <tbody>${sectionRows}</tbody>
+            </table>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">7. TOTAL DP SALES</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
+              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${salesList.length}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:700">Total Qty Sold</td><td style="padding:8px 12px;text-align:right;font-weight:700">${totalQty}</td></tr>
+              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Total DP Sales Value</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">N$ ${totalWithConsult.toFixed(2)}</td></tr>
+            </table>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">8. BRANCH SALES SUMMARY</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Period</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${period}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Product DP Value</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${totalDP.toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Consultation Fees</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${consultFees.toFixed(2)}</td></tr>
+              <tr style="background:#fdf2f4"><td style="padding:8px 12px;font-weight:800;color:#c41e3a">Grand Total</td><td style="padding:8px 12px;text-align:right;font-weight:800;color:#c41e3a">N$ ${totalWithConsult.toFixed(2)}</td></tr>
+            </table>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">9. DISTRIBUTOR PROFIT SUMMARY</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Total DP Sales</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">N$ ${totalDP.toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Estimated Profit Margin (25%)</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${distributorProfit.toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Consultation Revenue</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${consultFees.toFixed(2)}</td></tr>
+              <tr style="background:#f0fdf4"><td style="padding:8px 12px;font-weight:800;color:#166534">Total Distributor Earnings</td><td style="padding:8px 12px;text-align:right;font-weight:800;color:#166534">N$ ${(distributorProfit + consultFees).toFixed(2)}</td></tr>
             </table>`, branchName);
         };
 
@@ -2730,11 +2834,11 @@ function BranchStockTab() {
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
-              { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales by category — DP prices only for internal reporting", action: () => printDPSalesReport(todaySales, 'Daily — ' + new Date().toLocaleDateString('en-NA')) },
-              { icon: '📈', title: 'Monthly DP Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — separated categories, DP totals`, action: () => printDPSalesReport(monthSales, new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})) },
-              { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch, expiry & DP values', action: () => printPhysicalStockReport(inventory, branchName) },
+              { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all 9 sections: consultation, walk-in, member, non-member, online, Rx, totals, summary, profit", action: () => printDPSalesReport(todaySales, 'Daily — ' + new Date().toLocaleDateString('en-NA')) },
+              { icon: '📈', title: 'Monthly DP Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — complete DP report with distributor profit`, action: () => printDPSalesReport(monthSales, new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})) },
+              { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => printPhysicalStockReport(inventory, branchName) },
               { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued - Sales - Returns - Expiring = Closing', action: () => printStockFormulaReport(inventory, movements, sales, branchName) },
-              { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: sales, received, write-offs, transfers', action: () => printStockMovementsReport(movements, branchName) },
+              { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: receipts, sales, write-offs, transfers, dispenses', action: () => printStockMovementsReport(movements, branchName) },
               { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse with dispatch details', action: () => printReceivingStockReport(requests, branchName) },
             ].map(card => (
               <div key={card.title} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '18px 20px', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -97,12 +97,75 @@ function normalizeMovementRow(row) {
   };
 }
 
-async function getInventoryByBranch(branchId) {
+async function getInventoryByBranch(branchId, enriched = false) {
   const rows = await getMany(
     `SELECT * FROM branch_inventory_batches WHERE branch_id = $1 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
     [branchId]
   );
-  return rows.map(normalizeInventoryRow).filter(Boolean);
+  const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
+  if (!enriched) return normalized;
+
+  let movAgg = [];
+  try {
+    movAgg = await getMany(
+      `SELECT product_name, batch_no, type,
+         SUM(ABS(quantity)) as total_qty,
+         MAX(created_at) as last_date,
+         (array_agg(DISTINCT source_branch_id))[1] as source
+       FROM branch_inventory_movements
+       WHERE branch_id = $1
+       GROUP BY product_name, batch_no, type`,
+      [branchId]
+    );
+  } catch {}
+
+  let smAgg = [];
+  try {
+    smAgg = await getMany(
+      `SELECT product_name, batch_no, movement_type as type,
+         SUM(ABS(quantity)) as total_qty,
+         MAX(created_at) as last_date,
+         NULL as source
+       FROM stock_movements
+       WHERE (source_location ILIKE $1 OR destination_location ILIKE $1)
+       GROUP BY product_name, batch_no, movement_type`,
+      [`%${branchId}%`]
+    );
+  } catch {}
+  movAgg = [...movAgg, ...smAgg];
+
+  const aggMap = {};
+  for (const r of movAgg) {
+    const key = `${r.product_name}||${r.batch_no || ''}`;
+    if (!aggMap[key]) aggMap[key] = { received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null };
+    const a = aggMap[key];
+    const q = Number(r.total_qty || 0);
+    const t = (r.type || '').toLowerCase();
+    if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') { a.received += q; if (r.source) a.source_warehouse = r.source; }
+    else if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.sold += q;
+    else if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') a.dispensed += q;
+    else if (t === 'transfer_out' || t === 'transfer') a.transferred += q;
+    else if (t === 'write_off') a.written_off += q;
+    else if (t === 'adjustment' || t === 'return' || t === 'return_in') a.adjusted += q;
+    const ld = r.last_date instanceof Date ? r.last_date.toISOString() : r.last_date;
+    if (!a.last_movement || (ld && ld > a.last_movement)) a.last_movement = ld;
+  }
+
+  return normalized.map(inv => {
+    const key = `${inv.product_name}||${inv.batch_no || ''}`;
+    const agg = aggMap[key] || { received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null };
+    return {
+      ...inv,
+      qty_received: agg.received, qtyReceived: agg.received,
+      qty_sold: agg.sold, qtySold: agg.sold,
+      qty_dispensed: agg.dispensed, qtyDispensed: agg.dispensed,
+      qty_transferred: agg.transferred, qtyTransferred: agg.transferred,
+      qty_written_off: agg.written_off, qtyWrittenOff: agg.written_off,
+      qty_adjusted: agg.adjusted, qtyAdjusted: agg.adjusted,
+      source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
+      last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement,
+    };
+  });
 }
 
 async function getMovementsByBranch(branchId, limit = 100) {
@@ -445,7 +508,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
-      const inventory = await getInventoryByBranch(branchId);
+      const enrichedParam = searchParams.get('enriched') === '1' || searchParams.get('include_aggregates') === '1';
+      const inventory = await getInventoryByBranch(branchId, enrichedParam || includeMovements);
       const response = {
         success: true,
         inventory,

@@ -1,0 +1,386 @@
+Send this to Replit exactly:
+
+---
+
+# 🚨 BRANCH STOCK REVIEW — NOT YET FULLY ACCEPTED
+
+The recent Branch Stock update looks much better visually, but I am **not yet accepting it as fully complete**.
+
+The UI has improved, but I need you to now verify and correct the **real logic, data flow, stock movement integrity, inventory depth, and report completeness**.
+
+This is now a **logic validation and correction stage**, not just a UI stage.
+
+---
+
+## ✅ WHAT NOW LOOKS BETTER
+
+The following has improved visually:
+
+* Inventory tab
+* Alerts tab
+* Requests tab
+* Receive Stock tab
+* Transfers tab
+* Movements tab
+* DP Sales Report layout
+
+This is good progress.
+
+However, visual improvement alone is not enough.
+
+---
+
+# ❗WHAT MUST STILL BE FIXED / VERIFIED
+
+## 1. INVENTORY IS STILL TOO SHALLOW
+
+Inventory still looks more like a product summary than a true live stock ledger.
+
+### I need Inventory to become line-by-line and batch-based.
+
+For each product line, where applicable, show:
+
+* product name
+* full product description
+* batch
+* expiry
+* quantity received
+* quantity sold
+* quantity dispensed
+* quantity transferred
+* quantity written off
+* balance
+* DP unit
+* DP value
+* source warehouse
+* last movement date
+
+### Important:
+
+If stock was received with batch and expiry in Receive Stock, that same batch and expiry must appear in:
+
+* Inventory
+* Alerts
+* Movements
+* Reports
+* Transfers
+* Write-offs
+
+Right now, too many lines still show batch and expiry as “—”. That means the stock traceability is still incomplete.
+
+---
+
+## 2. RECEIVE STOCK AND INVENTORY MUST MATCH
+
+In Receive Stock, the dispatch note clearly shows:
+
+* product
+* batch
+* expiry column
+* quantity
+
+But this detail is not flowing properly into Inventory, Alerts, and Movements.
+
+### Fix required:
+
+When stock is received and confirmed:
+
+* save into branch inventory by batch
+* carry the same batch into stock movement
+* carry the same batch into alerts
+* carry the same batch into reports
+* do not collapse everything into simple product totals
+
+---
+
+## 3. MOVEMENT SUMMARY CARDS ARE WRONG
+
+In Movements, the summary cards currently show:
+
+* Inward as negative
+* Outward as positive
+* Net as a larger negative
+
+This is wrong for presentation.
+
+### Fix required:
+
+Summary cards must be:
+
+* Inward = positive received quantity
+* Outward = positive issued quantity
+* Net = inward minus outward
+
+Example:
+
+* Inward: 1707
+* Outward: 217
+* Net: 1490
+
+Do not display inward totals as negative.
+
+---
+
+## 4. MOVEMENTS NEED CLEANER CLASSIFICATION
+
+The movement ledger is better, but the notes/type classification is still too loose.
+
+### Fix required:
+
+Use structured movement sources such as:
+
+* stock_receipt
+* walk_in_member_sale
+* walk_in_non_member_sale
+* prescription_dispense
+* online_order_sale
+* transfer_in
+* transfer_out
+* write_off
+* adjustment
+
+Then display them in a clean readable way in the ledger.
+
+Each movement line must clearly show:
+
+* date/time
+* product
+* batch
+* expiry
+* type
+* qty
+* DP value
+* from
+* to
+* reference
+* staff
+* notes
+
+---
+
+## 5. REQUESTS TAB IS STILL MIXING BRANCH AND USER TYPES
+
+In Requests, the Branch column is inconsistent. It is mixing:
+
+* branch names
+* stock_manager
+* locations
+
+### Fix required:
+
+Separate the fields properly:
+
+* Requested For Branch
+* Requested By
+* Approved By
+* Fulfilled By
+
+Do not mix people/roles and branch names in one column.
+
+---
+
+## 6. TRANSFERS ARE STILL TOO SUMMARIZED
+
+Transfers still do not provide enough detail in the list view and audit trail.
+
+### Fix required:
+
+When viewing a transfer, I need full detail including:
+
+* transfer number
+* from
+* to
+* each product
+* full description
+* batch
+* expiry
+* quantity
+* status
+* date
+* prepared by
+* received by
+* linked stock movements
+
+Transfer traceability must be complete.
+
+---
+
+## 7. ALERTS MUST BECOME BATCH-INTELLIGENT
+
+Alerts look better visually, but they are still too generic.
+
+### Fix required:
+
+Alerts must come from true stock lines and show:
+
+* product
+* batch
+* expiry
+* current balance
+* alert type
+* action required
+
+Examples:
+
+* low stock by batch
+* expiring stock by batch
+* expired stock by batch
+* out of stock
+* pending request
+
+If batch exists in inventory, alerts must not hide it.
+
+---
+
+## 8. DP SALES REPORT IS STILL INCOMPLETE
+
+The current DP daily report is better, but it is still missing some of the exact separated sections I asked for.
+
+### Expand the report to include:
+
+* Consultation Fees
+* Walk-in Sales
+* Member Sales
+* Non-member Sales
+* Online Order Sales
+* Prescription Dispensing Sales
+* Total DP Sales
+* Branch Sales Summary
+* Distributor Profit Summary
+
+This exact report must also be accessible under:
+
+> Stock Reports
+
+And this report must remain the basis for finance-related reporting.
+
+---
+
+## 9. PRESCRIPTION DISPENSING STILL NEEDS FULL PROOF
+
+The screenshots do not yet prove that prescription dispensing is fully correct.
+
+### I need you to verify and fix the following:
+
+* sale receipt must show only dispensed products
+* prescription record must save dispensing status as:
+
+  * Not Dispensed
+  * Partially Dispensed
+  * Fully Dispensed
+* if partially dispensed, undispensed items must remain pending
+* stock movement must deduct only dispensed items
+* DP sales report must reflect only actually dispensed products
+
+---
+
+## 10. NON-MEMBER RECEIPT COPY STILL NEEDS FULL PROOF
+
+The screenshots do not yet prove that the distributor copy of the receipt looks exactly like the branch copy.
+
+### I need you to test and confirm:
+
+For a non-member sale:
+
+* branch receipt copy
+* distributor receipt copy
+
+Both must match exactly in:
+
+* layout
+* product lines
+* totals
+* referral details
+* design
+
+Only the copy label may differ if needed.
+
+---
+
+# 🔍 REQUIRED TESTS BEFORE YOU CLAIM THIS COMPLETE
+
+Please test and confirm all of the following with real data:
+
+## Test 1: Receive Stock
+
+* receive stock with batch and expiry
+* confirm receipt
+* check Inventory
+* check Movements
+* check Alerts
+* check Reports
+
+## Test 2: Walk-in Member Sale
+
+* make a member sale
+* confirm stock reduces correctly
+* confirm movement logs correctly
+* confirm DP report updates correctly
+
+## Test 3: Walk-in Non-member Sale
+
+* make a non-member sale
+* confirm stock reduces
+* confirm movement logs as non-member sale
+* confirm distributor copy receipt matches branch copy exactly
+
+## Test 4: Prescription Dispensing
+
+* prescribe multiple items
+* dispense only some
+* confirm receipt prints only dispensed items
+* confirm status becomes partially dispensed
+* later dispense remaining
+* confirm status becomes fully dispensed
+
+## Test 5: Write Off
+
+* write off one item/batch
+* confirm inventory reduces
+* confirm movement logs
+* confirm alerts/reports update
+
+## Test 6: Transfer
+
+* transfer stock
+* confirm source deduction
+* confirm destination receipt
+* confirm batch traceability
+* confirm movement records on both ends
+
+---
+
+# ✅ FINAL INSTRUCTION
+
+Do not treat this as complete yet.
+
+The interface now looks better, but I need you to finish and prove the real implementation by correcting the logic behind:
+
+* Inventory
+* Alerts
+* Requests
+* Receive Stock
+* Transfers
+* Movements
+* Reports
+* Prescription dispensing
+* Non-member receipts
+
+## Final expectation:
+
+* Inventory must become true batch-based live stock
+* Receive Stock must flow correctly into Inventory and Movements
+* Movement summaries must use correct inward/outward signs
+* Requests must separate branch and user roles properly
+* Transfers must have full traceability
+* Alerts must use real batch-based inventory data
+* DP reports must include all requested sections
+* Prescription dispensing must only deduct dispensed items
+* Non-member distributor receipt copy must match the branch copy exactly
+
+Do not only adjust the appearance.
+Please verify the real data logic and confirm with actual test cases.
+
+---
+
+If you want, I can also format this into a **harder acceptance checklist with PASS / FAIL / MUST FIX headings**.
