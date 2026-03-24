@@ -1,0 +1,316 @@
+
+---
+
+# 🔁 FOLLOW-UP CORRECTION — STOCK + DISPENSING (NO CHARGE)
+
+## ❗IMPORTANT
+
+This is a **FOLLOW-UP to the previous task already paid for**.
+
+👉 These issues are part of the **same original scope**
+👉 They were **not fully implemented**
+👉 **NO additional charges must apply**
+
+---
+
+# 🔴 1. CRITICAL ISSUE — DISPENSING (NOT FIXED)
+
+## ❌ Current Problem
+
+From review:
+
+* Dispensing is still:
+
+  * **Not partially saving**
+  * **Not generating receipt before submission**
+  * **Not allowing preview before final submit**
+
+---
+
+## ✅ REQUIRED FIX
+
+### ✔ Partial Save
+
+* Consultant must be able to:
+
+  * Save prescription as **Draft**
+  * Return and continue editing later
+
+---
+
+### ✔ Preview Before Submit
+
+Before submission, system must:
+
+* Show:
+
+  * Full client details
+  * Selected products
+  * Quantities
+  * Prices (DP/CP logic)
+  * Totals
+
+---
+
+### ✔ Print Before Submit
+
+* Add button:
+  👉 **“Print / Preview Prescription”**
+
+* This must:
+
+  * Generate printable receipt
+  * NOT deduct stock yet
+  * NOT finalize transaction
+
+---
+
+### ✔ Final Submit Behavior
+
+Only when user clicks:
+👉 **“Confirm & Dispense”**
+
+Then:
+
+* Deduct stock (FEFO batch logic)
+* Record movement
+* Mark prescription as completed
+
+---
+
+# 🔴 2. STOCK MOVEMENT ISSUES (FROM SCREENSHOTS)
+
+## ❌ Problem Observed
+
+### Movement Ledger
+
+* All quantities showing as:
+  👉 **negative (-1, -2, etc.)**
+
+This is incorrect.
+
+---
+
+## ✅ REQUIRED FIX
+
+### ✔ Movement Logic
+
+* INWARD → must be **positive (+)**
+* OUTWARD → must be **negative (-)**
+
+---
+
+### ✔ Correct Summary Cards
+
+Current:
+
+* Inward = 2697
+* Outward = 217
+* Net = 2480
+
+👉 These must be **calculated correctly from real data**, not hardcoded.
+
+---
+
+### ✔ Movement Types Must Be Accurate
+
+Fix classification:
+
+* Receive Stock → INWARD
+* Transfer In → INWARD
+* Transfer Out → OUTWARD
+* Walk-in Sale → OUTWARD
+* Prescription → OUTWARD
+* Write-off → OUTWARD
+
+---
+
+# 🔴 3. RECEIVE STOCK ISSUE (BATCH + EXPIRY MISSING)
+
+## ❌ Problem
+
+From screenshot:
+
+* Some products show:
+  👉 Batch = “—”
+  👉 Expiry = “—”
+
+---
+
+## ✅ REQUIRED FIX
+
+### ✔ Mandatory Fields
+
+When receiving stock:
+
+* Batch → REQUIRED
+* Expiry → REQUIRED
+
+👉 System must NOT allow saving without these
+
+---
+
+### ✔ Data Flow
+
+Batch & expiry must flow to:
+
+* Inventory
+* Movements
+* Transfers
+* Reports
+* Alerts
+
+---
+
+# 🔴 4. TRANSFERS — TRACEABILITY ISSUE
+
+## ❌ Problem
+
+Transfers are showing products, but:
+
+* Not fully traceable across system
+* Batch tracking inconsistent
+
+---
+
+## ✅ REQUIRED FIX
+
+Each transfer must:
+
+* Carry:
+
+  * Batch
+  * Expiry
+  * Quantity
+* Be traceable in:
+
+  * Movements
+  * Receiving branch inventory
+
+---
+
+# 🔴 5. REQUESTS TAB — WRONG DATA STRUCTURE
+
+## ❌ Problem
+
+Requests showing:
+
+* Mixed roles (branch vs stock manager)
+* Generic “Item x10” instead of real product details
+
+---
+
+## ✅ REQUIRED FIX
+
+Requests must show:
+
+* Product name (FULL)
+* Quantity
+* Requesting branch
+* Requested by (user)
+* Status
+* Approval chain
+
+---
+
+# 🔴 6. ALERTS — NOT BATCH-BASED
+
+## ❌ Problem
+
+Alerts show:
+
+* No proper expiry tracking
+* Missing batch-level logic
+
+---
+
+## ✅ REQUIRED FIX
+
+Alerts must be:
+
+### ✔ Batch-Based
+
+* Low stock → per batch
+* Expiring → based on expiry date
+* Expired → flagged automatically
+
+---
+
+# 🔴 7. INVENTORY DISPLAY — PARTIALLY CORRECT
+
+## ❌ Problem
+
+Inventory is visible but:
+
+* Missing full traceability
+* Some fields blank though data exists
+
+---
+
+## ✅ REQUIRED FIX
+
+Each inventory line must show:
+
+* Product name (FULL description)
+* Batch
+* Expiry
+* Received
+* Sold
+* Transferred
+* Write-offs
+* Balance
+* DP Unit Price
+* DP Total Value
+
+---
+
+# 🔴 8. SALES REPORT — STRUCTURE ISSUE
+
+## ❌ Problem
+
+Sales report exists but:
+
+* Categories not fully integrated
+* Some sections always zero
+
+---
+
+## ✅ REQUIRED FIX
+
+Sales must correctly reflect:
+
+* Walk-in (member vs non-member)
+* Prescription
+* Online orders
+* Consultation fees
+
+---
+
+# 🔴 FINAL INSTRUCTION
+
+This is:
+
+✅ A continuation of the same paid task
+✅ A correction of incomplete implementation
+❌ NOT a new feature request
+
+---
+
+# ⚠️ REQUIREMENT
+
+* Fix all above issues
+* Validate using real transactions
+* Ensure full workflow works end-to-end
+
+---
+
+# ✅ CONFIRMATION REQUIRED
+
+Please confirm:
+
+1. All fixes will be done under existing task
+2. No additional billing
+3. Timeline for completion
+
+---
+
