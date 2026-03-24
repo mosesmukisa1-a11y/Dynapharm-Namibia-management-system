@@ -62,9 +62,9 @@ export default async function handler(req, res) {
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
             await client.query(
-              `INSERT INTO stock_movements (id, product_name, batch_no, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, 'patient', $7, $8, NOW())`,
-              [smId, batch.product_name, batch.batch_no || '', take, movType, branchId, reportId, 'Prescription dispense']
+              `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'patient', $8, $9, NOW())`,
+              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, 'Prescription dispense']
             );
 
             deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take });

@@ -128,7 +128,7 @@ export default async function handler(req, res) {
         created_at: fmtDt(sm.created_at),
       };
 
-      const isBranchLoc = (loc) => loc && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off';
+      const isBranchLoc = (loc) => loc && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
 
       if (isBranchLoc(dst)) {
         const br = ensureBranch(dst);
@@ -182,10 +182,12 @@ export default async function handler(req, res) {
       const br = ensureBranch(brId);
       br.sales_count++;
       br.sales_revenue += Number(sale.total || 0);
-      let items = [];
-      try { items = typeof sale.items === 'string' ? JSON.parse(sale.items) : (sale.items || []); } catch {}
-      const saleQty = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
-      br.qty_sold += saleQty;
+      if (!smBranches.has(brId)) {
+        let items = [];
+        try { items = typeof sale.items === 'string' ? JSON.parse(sale.items) : (sale.items || []); } catch {}
+        const saleQty = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
+        br.qty_sold += saleQty;
+      }
     }
 
     for (const key of Object.keys(branchMap)) {

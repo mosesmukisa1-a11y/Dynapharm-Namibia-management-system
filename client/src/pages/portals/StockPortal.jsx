@@ -1217,7 +1217,10 @@ function OverviewTab({ branch }) {
                 ['dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'warning' :
                 ['write_off','return'].includes(r.movement_type) ? 'danger' : 'info'
               }>{(r.movement_type || 'movement').replace(/_/g, ' ')}</Badge> },
+              { header: 'Batch', render: r => r.batch_no || r.batchNo || '—' },
+              { header: 'Expiry', render: r => (r.expiry_date || r.expiryDate) ? formatDate(r.expiry_date || r.expiryDate) : '—' },
               { header: 'Qty', key: 'quantity' },
+              { header: 'DP Value', render: r => formatCurrency(Number(r.quantity || 0) * (Number(r.dpc_unit_value || 0) || getDPCPrice(r.product_name || ''))) },
               { header: 'From/To', render: r => <span className="text-xs">{fmtLocation(r.source_location || '')} → {fmtLocation(r.destination_location || '')}</span> },
             ]}
             data={filteredMovements.slice(0, 15)}
@@ -2923,16 +2926,17 @@ function InventoryTab({ branch }) {
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Product', render: r => <span className="text-xs">{r.product_name || ''}</span> },
             { header: 'Batch', render: r => <span className="text-xs font-mono">{r.batch_no || '-'}</span> },
+            { header: 'Expiry', render: r => <span className="text-xs">{(r.expiry_date || r.expiryDate) ? formatDate(r.expiry_date || r.expiryDate) : '—'}</span> },
             { header: 'Type', render: r => <Badge variant={
               ['in','received','import_received','transfer_in'].includes(r.movement_type) ? 'success' :
               ['out','dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'danger' :
               ['write_off','return'].includes(r.movement_type) ? 'warning' : 'info'
             }>{(r.movement_type || '-').replace(/_/g, ' ')}</Badge> },
             { header: 'Qty', render: r => <span className="font-semibold">{r.quantity}</span> },
+            { header: 'DP Value', render: r => <span className="text-xs font-semibold">{formatCurrency(Number(r.quantity || 0) * (Number(r.dpc_unit_value || 0) || getDPCPrice(r.product_name || '')))}</span> },
             { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location || r.location || '')}</span> },
             { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location || '')}</span> },
             { header: 'Reference', render: r => <span className="text-xs text-gray-500 truncate max-w-[120px] block">{r.reference_id || r.reference || '—'}</span> },
-            { header: 'Status', render: r => r.status ? <Badge variant={r.status === 'completed' ? 'success' : 'info'}>{r.status}</Badge> : null },
           ]}
           data={filtered}
           emptyMessage={branch !== 'all' ? `No stock movements at ${fmtLocation(branch)}` : 'No stock movements found'}
@@ -4911,6 +4915,7 @@ function BranchStockTab({ branch }) {
 function StockReportsTab({ branch }) {
   const [branchData, setBranchData] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [misReport, setMisReport] = useState(null);
@@ -4925,10 +4930,12 @@ function StockReportsTab({ branch }) {
       api.branch.stockSummary(params.toString()).then(d => d.branches || []).catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       api.mis.stockReport().catch(() => null),
-    ]).then(([bd, b, mis]) => {
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+    ]).then(([bd, b, mis, m]) => {
       setBranchData(bd);
       setBatches(b);
       setMisReport(mis);
+      setMovements(m);
     }).finally(() => setLoading(false));
   }, [period.from, period.to]);
 
@@ -4938,6 +4945,8 @@ function StockReportsTab({ branch }) {
 
   const now = new Date();
   const periodLabel = fmtPeriodLabel(period.from, period.to);
+  const periodStart = period.from ? new Date(period.from) : new Date(0);
+  const periodEnd = period.to ? new Date(period.to + 'T23:59:59') : new Date('2099-12-31');
 
   const branchReports = BRANCHES.map(b => {
     const key = b.toLowerCase().replace(/\s+/g, '_');
@@ -5200,11 +5209,14 @@ function StockReportsTab({ branch }) {
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'Product', render: r => <span className="text-xs">{r.product_name || ''}</span> },
+            { header: 'Batch', render: r => <span className="text-xs font-mono">{r.batch_no || r.batchNo || '—'}</span> },
+            { header: 'Expiry', render: r => <span className="text-xs">{(r.expiry_date || r.expiryDate) ? formatDate(r.expiry_date || r.expiryDate) : '—'}</span> },
             { header: 'Type', render: r => <Badge variant={
               ['in','received','import_received','transfer_in'].includes(r.movement_type) ? 'success' :
               ['out','dispatched','transfer_out','field_issue'].includes(r.movement_type) ? 'danger' : 'warning'
             }>{(r.movement_type || '-').replace(/_/g, ' ')}</Badge> },
             { header: 'Qty', render: r => <span className="font-semibold">{r.quantity}</span> },
+            { header: 'DP Value', render: r => <span className="text-xs font-semibold">{formatCurrency(Number(r.quantity || 0) * (Number(r.dpc_unit_value || 0) || getDPCPrice(r.product_name || '')))}</span> },
             { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location || r.location || '')}</span> },
             { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location || '')}</span> },
             { header: 'Ref', render: r => <span className="text-xs text-gray-500">{r.reference_id || r.reference || '-'}</span> },

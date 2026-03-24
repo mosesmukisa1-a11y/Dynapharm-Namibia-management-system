@@ -662,9 +662,9 @@ export default async function handler(req, res) {
 
               const movId = `MOV-RCV-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
               await client.query(
-                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-                 VALUES ($1, $2, $3, 'transfer_in', 'country_stock', $4, $5, $6, $7, NOW(), NOW())`,
-                [movId, productName, qty, destWarehouse || 'warehouse', id,
+                `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, 'transfer_in', 'country_stock', $6, $7, $8, $9, NOW(), NOW())`,
+                [movId, productName, batchNo || null, expiryDate || null, qty, destWarehouse || 'warehouse', id,
                  `Received from Country Stock — transfer ${id}`, actorName]
               );
             }
@@ -681,11 +681,13 @@ export default async function handler(req, res) {
                 await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
                 await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
 
+                const batchNo = item.batch_no || null;
+                const expiryDate = item.expiry_date || null;
                 const movId = `MOV-APR-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
                 await client.query(
-                  `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-                   VALUES ($1, $2, $3, 'reserved', $4, $5, $6, $7, $8, NOW(), NOW())`,
-                  [movId, productName, qtyToReserve, sourceWarehouse, transfer.to_branch || 'branch', id,
+                  `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, 'reserved', $6, $7, $8, $9, $10, NOW(), NOW())`,
+                  [movId, productName, batchNo, expiryDate, qtyToReserve, sourceWarehouse, transfer.to_branch || 'branch', id,
                    `GM approved — stock reserved for ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
                 );
               }
@@ -705,11 +707,13 @@ export default async function handler(req, res) {
                 await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
               }
 
+              const batchNo = item.batch_no || null;
+              const expiryDate = item.expiry_date || null;
               const movId = `MOV-DSP-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
               await client.query(
-                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-                 VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6, $7, $8, NOW(), NOW())`,
-                [movId, productName, qty, sourceWarehouse || 'warehouse', transfer.to_branch || 'branch', id,
+                `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, 'transfer_out', $6, $7, $8, $9, $10, NOW(), NOW())`,
+                [movId, productName, batchNo, expiryDate, qty, sourceWarehouse || 'warehouse', transfer.to_branch || 'branch', id,
                  `Dispatched to ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
               );
             }
@@ -756,9 +760,9 @@ export default async function handler(req, res) {
 
               const movId = `MOV-BRC-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
               await client.query(
-                `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-                 VALUES ($1, $2, $3, 'transfer_in', $4, $5, $6, $7, $8, NOW(), NOW())`,
-                [movId, productName, qtyReceived, transfer.from_warehouse || 'warehouse', branchId || 'branch', id,
+                `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, 'transfer_in', $6, $7, $8, $9, $10, NOW(), NOW())`,
+                [movId, productName, batchNo, expiryDate, qtyReceived, transfer.from_warehouse || 'warehouse', branchId || 'branch', id,
                  `Branch received from warehouse — transfer ${id}`, actorName]
               );
             }

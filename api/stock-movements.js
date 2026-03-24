@@ -11,6 +11,8 @@ function normalizeMovement(row) {
     productId: row.product_id, product_id: row.product_id,
     productName: row.product_name, product_name: row.product_name,
     batchNo: row.batch_no, batch_no: row.batch_no,
+    expiryDate: row.expiry_date ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString() : row.expiry_date) : null,
+    expiry_date: row.expiry_date ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString() : row.expiry_date) : null,
     movementType: row.movement_type, movement_type: row.movement_type,
     quantity: Number(row.quantity || 0),
     balanceAfter: row.balance_after !== null ? Number(row.balance_after) : null,
@@ -97,6 +99,8 @@ export default async function handler(req, res) {
           id: r.id,
           productName: r.product_name, product_name: r.product_name,
           batchNo: r.batch_no, batch_no: r.batch_no,
+          expiryDate: r.expiry_date ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString() : r.expiry_date) : null,
+          expiry_date: r.expiry_date ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString() : r.expiry_date) : null,
           movementType: r.movement_type, movement_type: r.movement_type,
           quantity: Number(r.quantity || 0),
           location: r.source_location || r.destination_location || '',
@@ -150,6 +154,19 @@ export default async function handler(req, res) {
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
               [bimId, branchId, movType, productName, batchNo || '', qty, referenceId, notes, createdBy]
             );
+            if (['write_off', 'sale', 'field_use'].includes(movType)) {
+              let remaining = qty;
+              const batches = await query(
+                `SELECT id, quantity FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND quantity > 0 ORDER BY expiry_date ASC NULLS LAST`,
+                [branchId, productName]
+              );
+              for (const b of batches.rows) {
+                if (remaining <= 0) break;
+                const take = Math.min(remaining, Number(b.quantity));
+                await query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                remaining -= take;
+              }
+            }
           } catch (bimErr) {
             console.error('Branch movement mirror warning:', bimErr.message);
           }
