@@ -39,29 +39,59 @@ export default async function handler(req, res) {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const warehouseId = url.searchParams.get('warehouse');
       const productId = url.searchParams.get('product');
+      const branch = url.searchParams.get('branch');
+      const movementType = url.searchParams.get('type');
+      const dateFrom = url.searchParams.get('date_from');
+      const dateTo = url.searchParams.get('date_to');
       const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+      const safeLimit = Number.isNaN(limit) ? 100 : Math.min(limit, 2000);
 
       let rows;
       if (warehouseId) {
         rows = await getMany(
           'SELECT * FROM warehouse_inventory_movements WHERE warehouse_id = $1 ORDER BY created_at DESC LIMIT $2',
-          [warehouseId, Number.isNaN(limit) ? 100 : limit]
+          [warehouseId, safeLimit]
         );
       } else if (productId) {
         rows = await getMany(
           'SELECT * FROM warehouse_inventory_movements WHERE product_id = $1 ORDER BY created_at DESC LIMIT $2',
-          [productId, Number.isNaN(limit) ? 100 : limit]
+          [productId, safeLimit]
         );
-      } else {
+      } else if (!branch) {
         rows = await getMany(
           'SELECT * FROM warehouse_inventory_movements ORDER BY created_at DESC LIMIT $1',
-          [Number.isNaN(limit) ? 100 : limit]
+          [safeLimit]
         );
+      } else {
+        rows = [];
       }
 
       let branchMovements = [];
       try {
-        const bmRows = await getMany('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT $1', [Number.isNaN(limit) ? 100 : limit]);
+        let bmQuery = 'SELECT * FROM stock_movements';
+        const bmParams = [];
+        const bmWhere = [];
+        if (branch) {
+          bmParams.push(`%${branch}%`);
+          bmWhere.push(`(LOWER(source_location) LIKE LOWER($${bmParams.length}) OR LOWER(destination_location) LIKE LOWER($${bmParams.length}))`);
+        }
+        if (movementType) {
+          bmParams.push(movementType);
+          bmWhere.push(`movement_type = $${bmParams.length}`);
+        }
+        if (dateFrom) {
+          bmParams.push(dateFrom);
+          bmWhere.push(`created_at >= $${bmParams.length}::timestamp`);
+        }
+        if (dateTo) {
+          bmParams.push(dateTo + 'T23:59:59');
+          bmWhere.push(`created_at <= $${bmParams.length}::timestamp`);
+        }
+        if (bmWhere.length > 0) bmQuery += ' WHERE ' + bmWhere.join(' AND ');
+        bmParams.push(safeLimit);
+        bmQuery += ` ORDER BY created_at DESC LIMIT $${bmParams.length}`;
+
+        const bmRows = await getMany(bmQuery, bmParams);
         const fmtDt = (d) => d instanceof Date ? d.toISOString() : d;
         branchMovements = bmRows.map(r => ({
           id: r.id,
@@ -74,6 +104,7 @@ export default async function handler(req, res) {
           destinationLocation: r.destination_location, destination_location: r.destination_location,
           referenceId: r.reference_id, reference_id: r.reference_id,
           notes: r.notes,
+          saleType: r.sale_type || null, sale_type: r.sale_type || null,
           createdBy: r.created_by, created_by: r.created_by,
           createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
           status: r.status || null,
@@ -85,9 +116,9 @@ export default async function handler(req, res) {
         const da = new Date(a.createdAt || a.created_at || 0);
         const db = new Date(b.createdAt || b.created_at || 0);
         return db - da;
-      }).slice(0, Number.isNaN(limit) ? 100 : limit);
+      }).slice(0, safeLimit);
 
-      return res.json({ success: true, movements: combined });
+      return res.json({ success: true, movements: combined, total: combined.length });
     }
 
     if (req.method === 'POST') {

@@ -1404,14 +1404,41 @@ function printStockDocument(title, htmlBody, branch = '') {
 }
 
 function printPhysicalStockReport(inventory, branch) {
-  const rows = inventory.map(r => `<tr><td>${r.product_name||r.description||'-'}</td><td>${r.batch_no||r.batch_number||'-'}</td><td style="font-weight:700;color:${Number(r.quantity||0)<=0?'#c41e3a':Number(r.quantity||0)<10?'#d97706':'#166534'}">${r.quantity||0}</td><td>${r.unit_price?`N$ ${Number(r.unit_price).toFixed(2)}`:'-'}</td><td>${r.expiry_date?new Date(r.expiry_date).toLocaleDateString('en-NA'):'—'}</td></tr>`).join('');
+  let totalDP = 0;
+  const rows = inventory.map(r => {
+    const pName = r.product_name || r.productName || r.description || '-';
+    const q = Number(r.quantity || 0);
+    const p = findProductPrice(pName);
+    const dpUnit = p?.dp ? Number(p.dp) : 0;
+    const dpVal = dpUnit * q;
+    totalDP += dpVal;
+    const exp = r.expiry_date || r.expiryDate;
+    const isExp = exp ? new Date(exp) < new Date() : false;
+    const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : 'OK';
+    const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
+    return `<tr><td>${pName}</td><td>${r.batch_no||r.batchNo||r.batch_number||'-'}</td><td style="font-weight:700;color:${q<=0?'#c41e3a':q<10?'#d97706':'#166534'}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit>0?`N$ ${dpUnit.toFixed(2)}`:'-'}</td><td style="font-weight:700">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${exp?new Date(exp).toLocaleDateString('en-NA'):'—'}</td></tr>`;
+  }).join('');
   const total = inventory.reduce((s, r) => s + Number(r.quantity||0), 0);
-  printStockDocument('Physical Stock Report', `<table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Unit Price</th><th>Expiry</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="2"><strong>TOTAL ITEMS</strong></td><td><strong>${total}</strong></td><td colspan="2"></td></tr></tbody></table>`, branch);
+  printStockDocument('Physical Stock Report (DP Valued)', `
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
+    <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th><th>Expiry</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="2"><strong>TOTALS</strong></td><td><strong>${total}</strong></td><td></td><td></td><td style="font-weight:800;color:#c41e3a"><strong>N$ ${totalDP.toFixed(2)}</strong></td><td></td></tr></tbody></table>`, branch);
 }
 
 function printStockMovementsReport(movements, branch) {
-  const rows = movements.map(r => `<tr><td>${r.product_name||'-'}</td><td>${(r.movement_type||'').replace(/_/g,' ')}</td><td>${r.quantity||0}</td><td>${r.source_location||'-'}</td><td>${r.destination_location||'-'}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`).join('');
-  printStockDocument('Stock Movements Report', `<table><thead><tr><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}</tbody></table>`, branch);
+  let totalDPVal = 0;
+  const rows = movements.map(r => {
+    const pName = r.product_name || r.productName || '-';
+    const mType = (r.movement_type || r.type || '').replace(/_/g, ' ');
+    const p = findProductPrice(pName);
+    const dpVal = p?.dp ? Number(p.dp) * Number(r.quantity || 0) : 0;
+    totalDPVal += dpVal;
+    const staff = r.created_by || r.createdBy || '-';
+    return `<tr><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA',{day:'2-digit',month:'short',year:'numeric'})+ ' '+new Date(r.created_at).toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'}):'-'}</td><td>${pName}</td><td>${r.batch_no||r.batchNo||'-'}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700">${r.quantity||0}</td><td style="text-align:right">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${r.source_location||r.sourceLocation||'-'}</td><td>${r.destination_location||r.destinationLocation||'-'}</td><td style="font-size:9px">${staff}</td></tr>`;
+  }).join('');
+  printStockDocument('Stock Movements Report (DP Valued)', `
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
+    <table><thead><tr><th>Date</th><th>Product</th><th>Batch</th><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">DP Value</th><th>From</th><th>To</th><th>Staff</th></tr></thead><tbody>${rows||'<tr><td colspan="9" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}
+    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${movements.reduce((s,r)=>s+Number(r.quantity||0),0)}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
 }
 
 function printReceivingStockReport(requests, branch) {
@@ -1668,6 +1695,7 @@ function BranchStockTab() {
   const [requests, setRequests] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [movements, setMovements] = useState([]);
+  const [branchMovements, setBranchMovements] = useState([]);
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
@@ -1683,13 +1711,15 @@ function BranchStockTab() {
   const [receiveNotes, setReceiveNotes] = useState('');
   const [viewDispatchNote, setViewDispatchNote] = useState(null);
   const [transferForm, setTransferForm] = useState({ product_name: '', quantity: '', to_branch: '', notes: '' });
-  const [writeOffForm, setWriteOffForm] = useState({ product_name: '', quantity: '', reason: '' });
+  const [writeOffForm, setWriteOffForm] = useState({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
   const [transferItems, setTransferItems] = useState([]);
   const [transferProductSearch, setTransferProductSearch] = useState('');
   const [transferToBranch, setTransferToBranch] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
   const [viewRequest, setViewRequest] = useState(null);
   const [viewTransfer, setViewTransfer] = useState(null);
+  const [invFilter, setInvFilter] = useState({ search: '', status: 'all', batch: '', expiry: '' });
+  const [movFilter, setMovFilter] = useState({ search: '', type: 'all', dateFrom: '', dateTo: '' });
 
   useEffect(() => { loadData(); }, []);
 
@@ -1698,18 +1728,23 @@ function BranchStockTab() {
     try {
       const branchParam = user?.branch ? `branch=${encodeURIComponent(user.branch)}` : '';
       const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
+      const movBranchParam = user?.branch ? `branch=${encodeURIComponent(user.branch)}&limit=500` : 'limit=500';
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
-        api.branch.inventory(branchParam).catch(() => []),
+        api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=500' : 'include_movements=1&limit=500').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
         api.stock.transfers(branchKey ? `branch=${encodeURIComponent(branchKey)}` : '').catch(() => ({ transfers: [] })),
-        api.get('/stock-movements').catch(() => []),
+        api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),
       ]);
-      setInventory(Array.isArray(inv) ? inv : inv.inventory || []);
+      const invData = Array.isArray(inv) ? inv : inv.inventory || [];
+      const branchMovs = inv.movements || [];
+      setInventory(invData);
+      setBranchMovements(branchMovs);
       setRequests(Array.isArray(reqs) ? reqs : reqs.requests || []);
       setTransfers(Array.isArray(trans) ? trans : trans.transfers || []);
-      setMovements(Array.isArray(movs) ? movs : movs.movements || []);
+      const allMovs = Array.isArray(movs) ? movs : movs.movements || [];
+      setMovements(allMovs);
       setProducts(Array.isArray(prods) ? prods : prods.products || []);
       setSales(Array.isArray(sl) ? sl : sl.sales || []);
     } catch {}
@@ -1831,21 +1866,26 @@ function BranchStockTab() {
   };
 
   const handleWriteOff = async () => {
-    if (!writeOffForm.product_name.trim() || !writeOffForm.quantity || !writeOffForm.reason.trim()) return;
+    const selBatch = writeOffForm.batch_id ? inventory.find(i => i.id === writeOffForm.batch_id) : null;
+    const pName = selBatch ? (selBatch.product_name || selBatch.productName) : writeOffForm.product_name;
+    if (!pName || !writeOffForm.quantity || !writeOffForm.reason) return;
     setSubmitting(true);
     try {
+      const dp = findProductPrice(pName);
+      const dpVal = dp?.dp ? (Number(dp.dp) * Number(writeOffForm.quantity)).toFixed(2) : '0.00';
       await api.stock.createMovement({
-        product_name: writeOffForm.product_name,
+        product_name: pName,
         quantity: Number(writeOffForm.quantity),
         movement_type: 'write_off',
         source_location: user?.branch || '',
         destination_location: 'written_off',
-        notes: `Write-off: ${writeOffForm.reason}`,
+        notes: `Write-off: ${writeOffForm.reason}. Batch: ${selBatch?.batch_no || selBatch?.batchNo || 'N/A'}. Expiry: ${selBatch?.expiry_date || selBatch?.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
         reference_id: `WO-${Date.now()}`,
+        created_by: user?.full_name || user?.username || '',
       });
       setShowWriteOffForm(false);
-      setWriteOffForm({ product_name: '', quantity: '', reason: '' });
-      setAlert({ type: 'success', message: 'Write-off recorded. Pending approval from Stock Management.' });
+      setWriteOffForm({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
+      setAlert({ type: 'success', message: `Write-off recorded for ${pName} (${writeOffForm.quantity} units, DP N$ ${dpVal}). Pending approval.` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record write-off' });
@@ -1982,38 +2022,191 @@ function BranchStockTab() {
         ))}
       </div>
 
-      {subTab === 'inventory' && (
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Branch Inventory — {user?.branch || 'All'}</h3>
-            <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print Physical Stock</button>
-          </CardHeader>
-          <Table
-            columns={[
-              { header: 'Product', render: r => r.product_name || r.description || '-' },
-              { header: 'Qty', render: r => { const q = Number(r.quantity || 0); return <span style={{ fontWeight: 700, color: q<=0?'#c41e3a':q<10?'#d97706':'#166534' }}>{q}</span>; }},
-              { header: 'Batch', render: r => r.batch_no || r.batch_number || '-' },
-              { header: 'Expiry', render: r => { if (!r.expiry_date) return '-'; const exp = new Date(r.expiry_date); const isExp = exp < now; const isExpiring = exp <= thirtyDays; return <span style={{ color: isExp?'#c41e3a':isExpiring?'#d97706':'inherit', fontWeight: (isExp||isExpiring)?700:400 }}>{formatDate(r.expiry_date)}{isExp?' (EXPIRED)':isExpiring?' ⚠️':''}</span>; }},
-              { header: 'DP Price', render: r => { const p = findProductPrice(r.product_name || r.description); return p?.dp ? <span className="font-semibold text-green-700">N$ {Number(p.dp).toFixed(2)}</span> : <span className="text-gray-400">—</span>; }},
-              { header: 'SP Price', render: r => { const p = findProductPrice(r.product_name || r.description); return p?.cp ? <span className="font-semibold">N$ {Number(p.cp).toFixed(2)}</span> : formatCurrency(r.unit_price || 0); }},
-            ]}
-            data={inventory}
-            emptyMessage="No inventory data for this branch"
-          />
-        </Card>
-      )}
+      {subTab === 'inventory' && (() => {
+        const filteredInv = inventory.filter(r => {
+          const pName = (r.product_name || r.productName || r.description || '').toLowerCase();
+          if (invFilter.search && !pName.includes(invFilter.search.toLowerCase())) return false;
+          if (invFilter.batch && !(r.batch_no || r.batchNo || '').toLowerCase().includes(invFilter.batch.toLowerCase())) return false;
+          const q = Number(r.quantity || 0);
+          const exp = r.expiry_date || r.expiryDate;
+          const isExp = exp ? new Date(exp) < now : false;
+          const isExpiring = exp ? new Date(exp) <= thirtyDays && new Date(exp) >= now : false;
+          if (invFilter.status === 'low' && !(q > 0 && q < 10)) return false;
+          if (invFilter.status === 'out' && q > 0) return false;
+          if (invFilter.status === 'expired' && !isExp) return false;
+          if (invFilter.status === 'expiring' && !isExpiring) return false;
+          if (invFilter.status === 'in_stock' && q <= 0) return false;
+          return true;
+        });
+        const totalQty = filteredInv.reduce((s, r) => s + Number(r.quantity || 0), 0);
+        const totalDP = filteredInv.reduce((s, r) => {
+          const p = findProductPrice(r.product_name || r.productName || r.description);
+          return s + (p?.dp ? Number(p.dp) * Number(r.quantity || 0) : 0);
+        }, 0);
+        const lowCount = filteredInv.filter(r => { const q = Number(r.quantity || 0); return q > 0 && q < 10; }).length;
+        const nearExpCount = filteredInv.filter(r => { const e = r.expiry_date || r.expiryDate; return e && new Date(e) <= thirtyDays && new Date(e) >= now; }).length;
 
-      {subTab === 'alerts' && (
+        return (
+        <Card>
+          <CardHeader className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {user?.branch || 'All'}</h3>
+              <p className="text-xs text-gray-500 m-0 mt-1">Line-by-line batch detail with DP valuations</p>
+            </div>
+            <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print Report</button>
+          </CardHeader>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input type="text" placeholder="Search product..." value={invFilter.search} onChange={e => setInvFilter(p => ({ ...p, search: e.target.value }))}
+              style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', width: 180, outline: 'none' }} />
+            <input type="text" placeholder="Batch..." value={invFilter.batch} onChange={e => setInvFilter(p => ({ ...p, batch: e.target.value }))}
+              style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', width: 100, outline: 'none' }} />
+            <select value={invFilter.status} onChange={e => setInvFilter(p => ({ ...p, status: e.target.value }))}
+              style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}>
+              <option value="all">All Status</option>
+              <option value="in_stock">In Stock</option>
+              <option value="low">Low Stock (&lt;10)</option>
+              <option value="out">Out of Stock</option>
+              <option value="expired">Expired</option>
+              <option value="expiring">Expiring Soon</option>
+            </select>
+            {(invFilter.search || invFilter.batch || invFilter.status !== 'all') && (
+              <button onClick={() => setInvFilter({ search: '', status: 'all', batch: '', expiry: '' })} style={{ padding: '6px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.78rem', cursor: 'pointer', background: '#f9fafb', color: '#64748b' }}>Clear</button>
+            )}
+            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{filteredInv.length} line{filteredInv.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr style={{ background: '#f8f5f5' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Product</th>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Batch</th>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Expiry</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Balance</th>
+                  <th style={{ textAlign: 'center', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>Status</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>DP Unit</th>
+                  <th style={{ textAlign: 'right', padding: '10px 12px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.72rem', textTransform: 'uppercase' }}>DP Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInv.length === 0 ? (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
+                ) : filteredInv.map((r, idx) => {
+                  const pName = r.product_name || r.productName || r.description || '-';
+                  const q = Number(r.quantity || 0);
+                  const exp = r.expiry_date || r.expiryDate;
+                  const isExp = exp ? new Date(exp) < now : false;
+                  const isExpiring = exp ? new Date(exp) <= thirtyDays && new Date(exp) >= now : false;
+                  const daysLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
+                  const p = findProductPrice(pName);
+                  const dpUnit = p?.dp ? Number(p.dp) : 0;
+                  const dpTotal = dpUnit * q;
+                  const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : isExpiring ? 'Expiring' : 'OK';
+                  const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 || isExpiring ? '#d97706' : '#166534';
+                  const statusBg = q <= 0 || isExp ? '#fef2f2' : q < 10 || isExpiring ? '#fffbeb' : '#f0fdf4';
+                  return (
+                    <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                      <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</td>
+                      <td style={{ padding: '9px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.78rem' }}>{r.batch_no || r.batchNo || '—'}</td>
+                      <td style={{ padding: '9px 8px', color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
+                        {exp ? formatDate(exp) : '—'}
+                        {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.68rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d left</span>}
+                        {isExp && <span style={{ display: 'block', fontSize: '0.68rem', color: '#c41e3a' }}>EXPIRED</span>}
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534' }}>{q}</td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, color: statusColor, background: statusBg, border: `1px solid ${statusColor}22` }}>{statusLabel}</span>
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: dpTotal > 0 ? '#1e293b' : '#94a3b8' }}>{dpTotal > 0 ? `N$ ${dpTotal.toFixed(2)}` : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {filteredInv.length > 0 && (
+                <tfoot>
+                  <tr style={{ background: 'linear-gradient(90deg,#fdf2f4,#fef7f8)', borderTop: '2px solid #c41e3a' }}>
+                    <td colSpan={3} style={{ padding: '10px 12px', fontWeight: 800, color: '#c41e3a', fontSize: '0.78rem', textTransform: 'uppercase' }}>Totals</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 800, fontSize: '0.92rem', color: '#1e293b' }}>{totalQty}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
+                      {lowCount > 0 && <span style={{ color: '#d97706' }}>{lowCount} low</span>}
+                      {lowCount > 0 && nearExpCount > 0 && ' · '}
+                      {nearExpCount > 0 && <span style={{ color: '#c41e3a' }}>{nearExpCount} exp</span>}
+                    </td>
+                    <td style={{ padding: '10px 8px' }}></td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, fontSize: '0.92rem', color: '#c41e3a' }}>N$ {totalDP.toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </Card>
+        );
+      })()}
+
+      {subTab === 'alerts' && (() => {
+        const pendingReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted');
+        const alertItems = [
+          ...outOfStock.map(r => ({ ...r, alertType: 'Out of Stock', severity: 'critical', action: 'Request restock from warehouse immediately', icon: '🔴' })),
+          ...expiredItems.map(r => ({ ...r, alertType: 'Expired', severity: 'critical', action: 'Write off expired stock and remove from shelf', icon: '🔴' })),
+          ...lowStock.map(r => ({ ...r, alertType: 'Low Stock', severity: 'warning', action: 'Submit restock request before stockout', icon: '🟡' })),
+          ...expiringItems.map(r => ({ ...r, alertType: 'Expiring Soon', severity: 'warning', action: 'Prioritize sale or consider write-off plan', icon: '🟡' })),
+          ...pendingReqs.map(r => ({ product_name: `Request #${r.request_number || r.id}`, alertType: 'Pending Request', severity: 'info', action: 'Awaiting stock management approval', icon: '🔵', quantity: '-', batch_no: '-', expiry_date: null })),
+        ];
+        return (
         <div className="space-y-4">
-          {outOfStock.length > 0 && <Card><CardHeader><h3 className="font-bold" style={{ color: '#c41e3a' }}>🔴 Out of Stock ({outOfStock.length})</h3></CardHeader><Table columns={[{ header: 'Product', render: r => r.product_name || r.description || '-' }, { header: 'Qty', render: () => <Badge variant="danger">0</Badge> }]} data={outOfStock} /></Card>}
-          {lowStock.length > 0 && <Card><CardHeader><h3 className="font-bold text-orange-600">🟡 Low Stock ({lowStock.length})</h3></CardHeader><Table columns={[{ header: 'Product', render: r => r.product_name || r.description || '-' }, { header: 'Qty', render: r => <Badge variant="warning">{r.quantity}</Badge> }]} data={lowStock} /></Card>}
-          {expiredItems.length > 0 && <Card><CardHeader><h3 className="font-bold" style={{ color: '#c41e3a' }}>🔴 Expired ({expiredItems.length})</h3></CardHeader><Table columns={[{ header: 'Product', render: r => r.product_name || r.description || '-' }, { header: 'Expiry', render: r => <Badge variant="danger">{formatDate(r.expiry_date)}</Badge> }, { header: 'Qty', render: r => r.quantity }]} data={expiredItems} /></Card>}
-          {expiringItems.length > 0 && <Card><CardHeader><h3 className="font-bold text-orange-600">🟡 Expiring Soon ({expiringItems.length})</h3></CardHeader><Table columns={[{ header: 'Product', render: r => r.product_name || r.description || '-' }, { header: 'Expiry', render: r => <Badge variant="warning">{formatDate(r.expiry_date)}</Badge> }, { header: 'Qty', render: r => r.quantity }]} data={expiringItems} /></Card>}
-          {outOfStock.length === 0 && lowStock.length === 0 && expiredItems.length === 0 && expiringItems.length === 0 && (
-            <Card><CardBody><p className="text-center text-green-600 font-semibold py-4">✅ All stock levels are healthy</p></CardBody></Card>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Out of Stock', count: outOfStock.length, color: '#c41e3a', bg: '#fef2f2' },
+              { label: 'Expired', count: expiredItems.length, color: '#c41e3a', bg: '#fef2f2' },
+              { label: 'Low Stock', count: lowStock.length, color: '#d97706', bg: '#fffbeb' },
+              { label: 'Expiring', count: expiringItems.length, color: '#d97706', bg: '#fffbeb' },
+              { label: 'Pending Requests', count: pendingReqs.length, color: '#2563eb', bg: '#eff6ff' },
+            ].map(s => (
+              <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 12px', textAlign: 'center', border: `1px solid ${s.color}22` }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: s.color }}>{s.count}</div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {alertItems.length === 0 ? (
+            <Card><CardBody><p className="text-center text-green-600 font-semibold py-4">All stock levels are healthy — no alerts</p></CardBody></Card>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8f5f5' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Alert</th>
+                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Product</th>
+                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Batch</th>
+                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Expiry</th>
+                    <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Qty</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid #c41e3a', fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase' }}>Action Required</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertItems.map((a, i) => {
+                    const sevColor = a.severity === 'critical' ? '#c41e3a' : a.severity === 'warning' ? '#d97706' : '#2563eb';
+                    const sevBg = a.severity === 'critical' ? '#fef2f2' : a.severity === 'warning' ? '#fffbeb' : '#eff6ff';
+                    return (
+                      <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, color: sevColor, background: sevBg, border: `1px solid ${sevColor}22` }}>{a.icon} {a.alertType}</span>
+                        </td>
+                        <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{a.product_name || a.productName || a.description || '-'}</td>
+                        <td style={{ padding: '8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.78rem' }}>{a.batch_no || a.batchNo || '—'}</td>
+                        <td style={{ padding: '8px', color: a.alertType === 'Expired' ? '#c41e3a' : '#6b7280' }}>{a.expiry_date || a.expiryDate ? formatDate(a.expiry_date || a.expiryDate) : '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>{a.quantity ?? '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>{a.action}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {subTab === 'requests' && (
         <Card>
@@ -2346,37 +2539,203 @@ function BranchStockTab() {
         </Card>
       )}
 
-      {subTab === 'movements' && (
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Stock Movements</h3>
-            <button onClick={() => printStockMovementsReport(movements, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print Report</button>
-          </CardHeader>
-          <Table
-            columns={[
-              { header: 'Product', render: r => r.product_name || '-' },
-              { header: 'Type', render: r => <Badge variant={r.movement_type==='sale'?'info':r.movement_type==='write_off'?'danger':r.movement_type==='received'?'success':'warning'}>{(r.movement_type||'').replace(/_/g,' ')}</Badge> },
-              { header: 'Qty', render: r => r.quantity },
-              { header: 'From', render: r => r.source_location || '-' },
-              { header: 'To', render: r => r.destination_location || '-' },
-              { header: 'Date', render: r => formatDateTime(r.created_at) },
-            ]}
-            data={movements}
-            emptyMessage="No movements recorded"
-          />
-        </Card>
-      )}
+      {subTab === 'movements' && (() => {
+        const allMov = [...movements, ...branchMovements.map(m => ({
+          ...m,
+          product_name: m.productName || m.product_name,
+          movement_type: m.type || m.movementType || m.movement_type,
+          batch_no: m.batchNo || m.batch_no,
+          source_location: m.sourceBranchId || m.source_branch_id || '',
+          destination_location: m.destinationBranchId || m.destination_branch_id || '',
+          reference_id: m.reference,
+          created_by: m.createdBy || m.created_by,
+          created_at: m.createdAt || m.created_at,
+          notes: m.notes,
+        }))].sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+        const seen = new Set();
+        const dedupMov = allMov.filter(m => {
+          const key = `${m.id || ''}-${m.product_name || m.productName || ''}-${m.movement_type || m.type || ''}-${m.quantity || 0}-${(m.created_at || m.createdAt || '').toString().slice(0, 19)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const filteredMov = dedupMov.filter(m => {
+          const pName = (m.product_name || m.productName || '').toLowerCase();
+          if (movFilter.search && !pName.includes(movFilter.search.toLowerCase())) return false;
+          const mType = (m.movement_type || m.type || '').toLowerCase();
+          if (movFilter.type !== 'all' && mType !== movFilter.type) return false;
+          if (movFilter.dateFrom) { const d = new Date(m.created_at || m.createdAt); if (d < new Date(movFilter.dateFrom)) return false; }
+          if (movFilter.dateTo) { const d = new Date(m.created_at || m.createdAt); if (d > new Date(movFilter.dateTo + 'T23:59:59')) return false; }
+          return true;
+        });
+        const inwardTypes = ['received', 'receive', 'transfer_in', 'return', 'return_in', 'adjustment'];
+        const outwardTypes = ['sale', 'write_off', 'transfer_out', 'field_use', 'return_out', 'dispense'];
+        const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const totalDPOut = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => {
+          const p = findProductPrice(m.product_name || m.productName);
+          return s + (p?.dp ? Number(p.dp) * Number(m.quantity || 0) : 0);
+        }, 0);
+        const typeLabel = (t) => {
+          const map = { received: 'Received', receive: 'Received', sale: 'Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Dispense' };
+          return map[t] || (t || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        };
+        const typeBadge = (t) => {
+          const tl = (t || '').toLowerCase();
+          const colors = { received: '#166534', receive: '#166534', sale: '#2563eb', write_off: '#c41e3a', transfer_in: '#7c3aed', transfer_out: '#9333ea', field_use: '#0891b2', return: '#059669', adjustment: '#d97706', dispense: '#6366f1' };
+          const bgs = { received: '#f0fdf4', receive: '#f0fdf4', sale: '#eff6ff', write_off: '#fef2f2', transfer_in: '#f5f3ff', transfer_out: '#faf5ff', field_use: '#ecfeff', return: '#ecfdf5', adjustment: '#fffbeb', dispense: '#eef2ff' };
+          const color = colors[tl] || '#64748b';
+          const bg = bgs[tl] || '#f1f5f9';
+          return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color, background: bg, border: `1px solid ${color}22`, whiteSpace: 'nowrap' }}>{typeLabel(tl)}</span>;
+        };
+        const movTypes = [...new Set(dedupMov.map(m => (m.movement_type || m.type || '').toLowerCase()).filter(Boolean))];
 
-      {subTab === 'reports' && (
+        return (
+        <Card>
+          <CardHeader className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h3 className="font-bold text-gray-800 m-0">Stock Movement Ledger</h3>
+              <p className="text-xs text-gray-500 m-0 mt-1">Complete audit trail — all stock-affecting transactions</p>
+            </div>
+            <button onClick={() => printStockMovementsReport(filteredMov, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print</button>
+          </CardHeader>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input type="text" placeholder="Search product..." value={movFilter.search} onChange={e => setMovFilter(p => ({ ...p, search: e.target.value }))}
+              style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', width: 160, outline: 'none' }} />
+            <select value={movFilter.type} onChange={e => setMovFilter(p => ({ ...p, type: e.target.value }))}
+              style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}>
+              <option value="all">All Types</option>
+              {movTypes.map(t => <option key={t} value={t}>{typeLabel(t)}</option>)}
+            </select>
+            <input type="date" value={movFilter.dateFrom} onChange={e => setMovFilter(p => ({ ...p, dateFrom: e.target.value }))}
+              style={{ padding: '6px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.8rem', outline: 'none' }} />
+            <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>to</span>
+            <input type="date" value={movFilter.dateTo} onChange={e => setMovFilter(p => ({ ...p, dateTo: e.target.value }))}
+              style={{ padding: '6px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.8rem', outline: 'none' }} />
+            {(movFilter.search || movFilter.type !== 'all' || movFilter.dateFrom || movFilter.dateTo) && (
+              <button onClick={() => setMovFilter({ search: '', type: 'all', dateFrom: '', dateTo: '' })} style={{ padding: '6px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.78rem', cursor: 'pointer', background: '#f9fafb', color: '#64748b' }}>Clear</button>
+            )}
+            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{filteredMov.length} record{filteredMov.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, padding: '12px 16px', borderBottom: '1px solid #f0e8ea' }}>
+            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#166534' }}>{totalInward}</div>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Inward</div>
+            </div>
+            <div style={{ background: '#fef2f2', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a' }}>{totalOutward}</div>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase' }}>Outward</div>
+            </div>
+            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e40af' }}>{totalInward - totalOutward}</div>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>Net</div>
+            </div>
+            <div style={{ background: '#fdf2f4', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a' }}>N$ {totalDPOut.toFixed(2)}</div>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase' }}>DP Out</div>
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr style={{ background: '#f8f5f5' }}>
+                  {['Date', 'Product', 'Batch', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Reference', 'Staff', 'Notes'].map(h => (
+                    <th key={h} style={{ textAlign: h === 'Qty' || h === 'DP Value' ? 'right' : 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMov.length === 0 ? (
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No movements recorded</td></tr>
+                ) : filteredMov.slice(0, 200).map((m, idx) => {
+                  const pName = m.product_name || m.productName || '-';
+                  const mType = (m.movement_type || m.type || '').toLowerCase();
+                  const p = findProductPrice(pName);
+                  const dpVal = p?.dp ? Number(p.dp) * Number(m.quantity || 0) : 0;
+                  const isOut = outwardTypes.includes(mType);
+                  return (
+                    <tr key={m.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                      <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: '#6b7280', fontSize: '0.76rem' }}>{formatDateTime(m.created_at || m.createdAt)}</td>
+                      <td style={{ padding: '7px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{m.batch_no || m.batchNo || '—'}</td>
+                      <td style={{ padding: '7px 8px' }}>{typeBadge(mType)}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{m.quantity}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.source_location || m.sourceLocation) || '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.destination_location || m.destinationLocation) || '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reference_id || m.referenceId || m.reference || '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.created_by || m.createdBy || '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#94a3b8', fontSize: '0.72rem', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {filteredMov.length > 200 && <div style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>Showing first 200 of {filteredMov.length} movements</div>}
+        </Card>
+        );
+      })()}
+
+      {subTab === 'reports' && (() => {
+        const branchName = user?.branch || 'Branch';
+        const todaySales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.toDateString() === t.toDateString(); });
+        const monthSales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); });
+        const catSales = (list) => {
+          const walkin = list.filter(s => (s.sale_type || s.type || 'walk_in') === 'walk_in' || (s.sale_type || s.type || '') === 'walkin');
+          const member = list.filter(s => (s.sale_type || s.type || '') === 'member' || (s.customer_type || '') === 'registered');
+          const nonMember = list.filter(s => (s.sale_type || s.type || '') === 'non_member' || (s.customer_type || '') === 'non-member');
+          const online = list.filter(s => (s.sale_type || s.type || '') === 'online');
+          const rx = list.filter(s => (s.sale_type || s.type || '') === 'prescription' || (s.sale_type || s.type || '') === 'dispense');
+          const dpTotal = (arr) => arr.reduce((s, r) => {
+            const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
+            return s + items.reduce((a, i) => {
+              const p = findProductPrice(i.product_name || i.productName || i.name);
+              return a + (p?.dp ? Number(p.dp) * Number(i.quantity || 1) : 0);
+            }, 0);
+          }, 0);
+          return { walkin, member, nonMember, online, rx, all: list, dpTotal };
+        };
+        const printDPSalesReport = (salesList, period) => {
+          const c = catSales(salesList);
+          const sections = [
+            { title: 'Walk-in Sales', data: c.walkin },
+            { title: 'Member Sales', data: c.member },
+            { title: 'Non-member Sales', data: c.nonMember },
+            { title: 'Online Order Sales', data: c.online },
+            { title: 'Prescription Dispensing Sales', data: c.rx },
+          ];
+          const rows = sections.map(sec => {
+            const qty = sec.data.reduce((s, r) => {
+              const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
+              return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0);
+            }, 0);
+            const dp = c.dpTotal(sec.data);
+            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.data.length}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${dp.toFixed(2)}</td></tr>`;
+          }).join('');
+          const totalTx = salesList.length;
+          const totalQty = salesList.reduce((s, r) => { const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })(); return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0); }, 0);
+          const totalDP = c.dpTotal(salesList);
+          printStockDocument(`DP Sales Report — ${period}`, `
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty Sold</th><th style="text-align:right;padding:8px 12px">DP Total</th></tr></thead>
+              <tbody>${rows}
+                <tr style="background:linear-gradient(90deg,#fdf2f4,#fef7f8);border-top:2px solid #c41e3a"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">TOTAL</td><td style="padding:10px 8px;text-align:center;font-weight:800">${totalTx}</td><td style="padding:10px 8px;text-align:right;font-weight:800">${totalQty}</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a">N$ ${totalDP.toFixed(2)}</td></tr>
+              </tbody>
+            </table>`, branchName);
+        };
+
+        return (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
-              { icon: '📊', title: 'Daily Sales Report', desc: "Today's complete sales — walk-in, online & prescription breakdown", action: () => printSalesReportDoc(sales, 'today', user?.branch||'', [], []) },
-              { icon: '📈', title: 'Monthly Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — walk-in, online & prescription breakdown`, action: () => printSalesReportDoc(sales, 'month', user?.branch||'', [], []) },
-              { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch & expiry', action: () => printPhysicalStockReport(inventory, user?.branch||'') },
-              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued − Sales − Returns − Expiring − Promotions = Closing', action: () => printStockFormulaReport(inventory, movements, sales, user?.branch||'') },
-              { icon: '🔄', title: 'Stock Movements Report', desc: 'All stock movements: sales, received, write-offs', action: () => printStockMovementsReport(movements, user?.branch||'') },
-              { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse', action: () => printReceivingStockReport(requests, user?.branch||'') },
+              { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales by category — DP prices only for internal reporting", action: () => printDPSalesReport(todaySales, 'Daily — ' + new Date().toLocaleDateString('en-NA')) },
+              { icon: '📈', title: 'Monthly DP Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — separated categories, DP totals`, action: () => printDPSalesReport(monthSales, new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})) },
+              { icon: '📦', title: 'Physical Stock Report', desc: 'Current inventory levels with batch, expiry & DP values', action: () => printPhysicalStockReport(inventory, branchName) },
+              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued - Sales - Returns - Expiring = Closing', action: () => printStockFormulaReport(inventory, movements, sales, branchName) },
+              { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: sales, received, write-offs, transfers', action: () => printStockMovementsReport(movements, branchName) },
+              { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse with dispatch details', action: () => printReceivingStockReport(requests, branchName) },
             ].map(card => (
               <div key={card.title} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '18px 20px', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: '2rem' }}>{card.icon}</div>
@@ -2385,13 +2744,14 @@ function BranchStockTab() {
                   <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>{card.desc}</div>
                 </div>
                 <button onClick={card.action} className="mt-auto px-4 py-2.5 rounded-xl font-bold text-sm border-none cursor-pointer" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', boxShadow: '0 3px 10px rgba(196,30,58,0.25)' }}>
-                  🖨️ Preview &amp; Print
+                  Preview &amp; Print
                 </button>
               </div>
             ))}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Request Stock Modal — Product Table */}
       {showRequestForm && (
@@ -2737,17 +3097,79 @@ function BranchStockTab() {
         </div>
       )}
 
-      <Modal open={showWriteOffForm} onClose={() => setShowWriteOffForm(false)} title="Write Off Stock">
-        <div className="p-6 space-y-4">
-          <Input label="Product Name" value={writeOffForm.product_name} onChange={e => setWriteOffForm({ ...writeOffForm, product_name: e.target.value })} />
-          <Input label="Quantity" type="number" value={writeOffForm.quantity} onChange={e => setWriteOffForm({ ...writeOffForm, quantity: e.target.value })} />
-          <Textarea label="Reason for write-off *" value={writeOffForm.reason} onChange={e => setWriteOffForm({ ...writeOffForm, reason: e.target.value })} placeholder="e.g. Expired, Damaged, Lost" />
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={() => setShowWriteOffForm(false)}>Cancel</Button>
-            <Button className="flex-1" variant="danger" onClick={handleWriteOff} disabled={submitting}>{submitting ? 'Processing...' : '🗑️ Write Off'}</Button>
+      {showWriteOffForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Write Off Stock</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>Select product from inventory to write off</div>
+              </div>
+              <button onClick={() => setShowWriteOffForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+            </div>
+            <div style={{ padding: '20px 24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Select Product (from inventory)</label>
+                <select value={writeOffForm.batch_id} onChange={e => {
+                  const b = inventory.find(i => i.id === e.target.value);
+                  setWriteOffForm(f => ({ ...f, batch_id: e.target.value, product_name: b ? (b.product_name || b.productName) : '', quantity: '' }));
+                }} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none' }}>
+                  <option value="">-- Select product & batch --</option>
+                  {inventory.filter(i => Number(i.quantity || 0) > 0).map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.product_name || i.productName} — Batch: {i.batch_no || i.batchNo || 'N/A'} — Qty: {i.quantity} — Exp: {i.expiry_date || i.expiryDate ? formatDate(i.expiry_date || i.expiryDate) : 'N/A'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {writeOffForm.batch_id && (() => {
+                const sel = inventory.find(i => i.id === writeOffForm.batch_id);
+                if (!sel) return null;
+                const dp = findProductPrice(sel.product_name || sel.productName);
+                const dpUnit = dp?.dp ? Number(dp.dp) : 0;
+                const woQty = Number(writeOffForm.quantity || 0);
+                return (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.82rem' }}>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Product:</span> <strong>{sel.product_name || sel.productName}</strong></div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Batch:</span> {sel.batch_no || sel.batchNo || 'N/A'}</div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Expiry:</span> {(sel.expiry_date || sel.expiryDate) ? formatDate(sel.expiry_date || sel.expiryDate) : 'N/A'}</div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Available:</span> <strong style={{ color: '#c41e3a' }}>{sel.quantity}</strong></div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>DP Unit:</span> N$ {dpUnit.toFixed(2)}</div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Write-off DP:</span> <strong style={{ color: '#c41e3a' }}>N$ {(dpUnit * woQty).toFixed(2)}</strong></div>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Quantity to Write Off *</label>
+                  <input type="number" min="1" max={writeOffForm.batch_id ? Number(inventory.find(i => i.id === writeOffForm.batch_id)?.quantity || 999) : 999} value={writeOffForm.quantity} onChange={e => setWriteOffForm(f => ({ ...f, quantity: e.target.value }))}
+                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Reason *</label>
+                  <select value={writeOffForm.reason} onChange={e => setWriteOffForm(f => ({ ...f, reason: e.target.value }))}
+                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none' }}>
+                    <option value="expired">Expired</option>
+                    <option value="damaged">Damaged</option>
+                    <option value="lost">Lost</option>
+                    <option value="spoiled">Spoiled</option>
+                    <option value="adjustment-approved">Adjustment (Approved)</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowWriteOffForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
+                <button onClick={handleWriteOff} disabled={submitting || !writeOffForm.quantity || (!writeOffForm.batch_id && !writeOffForm.product_name.trim())}
+                  style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: (submitting || !writeOffForm.quantity) ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.65 : 1 }}>
+                  {submitting ? 'Processing...' : 'Write Off'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </Modal>
+      )}
     </div>
   );
 }

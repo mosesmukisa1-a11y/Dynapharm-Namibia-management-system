@@ -1,0 +1,700 @@
+
+# 🚨 BRANCH STOCK MANAGEMENT + SALES/REPORTING MASTER IMPLEMENTATION SCRIPT
+
+## Dynapharm Namibia Portal
+
+## ❗IMPORTANT TO REPLIT
+
+This instruction is for the **Branch Portal → Stock section** and all connected workflows.
+
+The purpose is to ensure that the following branch stock buttons and tabs are **fully functional, data-driven, modern, and connected to real stock movement and all related portals**:
+
+* Inventory
+* Alerts
+* Requests
+* Receive Stock
+* Transfers
+* Movements
+* Reports
+* Request Stock button
+* Transfer button
+* Write Off button
+* Print Report button
+
+This must not remain a visual interface only.
+
+Every button and tab must:
+
+* use real saved data
+* connect to stock movement records
+* update the correct tables
+* reflect true stock balances
+* sync with stock management, prescription dispensing, sales reports, finance basis, and other internal portals
+
+Do **not** leave these buttons static.
+
+Do **not** use fake/demo data.
+
+Do **not** create shallow summary cards disconnected from true movement records.
+
+---
+
+# 1. MAIN OBJECTIVE
+
+The **Branch Stock module** must become a real operational stock engine for branch-level activity.
+
+It must track:
+
+* what stock the branch received
+* from which warehouse/source
+* in which batch
+* with which expiry
+* how much was received
+* how much was sold
+* how much was dispensed via prescription
+* how much was transferred
+* how much was written off
+* what remains available
+* what movements happened
+* what values are attached using DP pricing
+* what records must flow into stock reports and finance reports
+
+The Branch Stock area must be one of the cleanest, most detailed, modern, and useful parts of the system.
+
+---
+
+# 2. TRUE DATA SOURCE RULE
+
+Branch stock must not be manually guessed.
+
+It must be built from real transactions coming from:
+
+* stock received from warehouse
+* stock transfers in/out
+* write-offs
+* walk-in sales
+* member sales
+* non-member sales
+* prescription dispensing sales
+* online order fulfilment
+* adjustments where valid
+* returns if supported
+
+These are the true sources for branch stock balances and movement logs.
+
+---
+
+# 3. BRANCH STOCK BUTTONS / TABS — REQUIRED WORKING LOGIC
+
+---
+
+## A. INVENTORY TAB
+
+The Inventory tab must be **fully efficient, detailed, and traceable**.
+
+### It must show for each stock line:
+
+* product name
+* full product description
+* product code/SKU if available
+* batch number
+* expiry date
+* source warehouse
+* quantity received
+* quantity sold
+* quantity dispensed
+* quantity transferred out
+* quantity written off
+* quantity adjusted
+* balance available
+* DP unit price
+* total stock value using DP
+* last movement date
+* stock status (available / low / out / near expiry)
+
+### Required filters:
+
+* product
+* batch
+* expiry
+* date range
+* movement type
+* source warehouse
+* stock status
+
+### Required totals:
+
+At the end of inventory tables show:
+
+* total quantity on hand
+* total DP value
+* total low stock items
+* total near-expiry items
+
+### Inventory behavior:
+
+* must update immediately after receipt, transfer, sale, dispensing, write-off, or adjustment
+* must not use hardcoded totals
+* must show line-by-line detail
+* must remain printable
+
+---
+
+## B. ALERTS TAB
+
+Alerts must not be generic.
+
+It must show actionable alerts such as:
+
+* low stock
+* out of stock
+* near expiry
+* expired stock still held
+* pending receipts
+* transfer issues
+* unprocessed requests
+* partially dispensed prescription stock issues
+
+Each alert must include:
+
+* product name
+* batch
+* expiry
+* current quantity
+* branch
+* alert type
+* recommended action
+
+---
+
+## C. REQUESTS TAB
+
+Requests must show real stock requests made by branch to stock/warehouse.
+
+### Each request must show:
+
+* request number
+* request date
+* requested by
+* branch name
+* product
+* full product description
+* requested quantity
+* approved quantity
+* dispatched quantity
+* batch and expiry once allocated
+* status
+* notes
+* linked dispatch note if fulfilled
+
+### Status flow:
+
+* Draft
+* Submitted
+* Approved
+* Partially Fulfilled
+* Fulfilled
+* Rejected
+* Cancelled
+
+---
+
+## D. RECEIVE STOCK TAB
+
+Receive Stock must be connected to actual dispatches from warehouse.
+
+### For each incoming dispatch show:
+
+* dispatch note number
+* source warehouse
+* destination branch
+* product
+* full product description
+* batch
+* expiry
+* sent quantity
+* received quantity
+* discrepancy note
+* dispatch date
+* received date
+* prepared by
+* received by
+* status
+
+### On confirmation of receipt:
+
+* save receipt confirmation
+* save received quantities
+* save e-signature/receiver
+* update branch inventory
+* create stock movement entries
+* update dispatch status
+* refresh inventory
+* refresh movements
+* refresh reports
+* close dialog after success
+
+---
+
+## E. TRANSFERS TAB
+
+Transfers must track branch-to-branch or internal stock transfers if allowed.
+
+### Each transfer record must show:
+
+* transfer number
+* source branch
+* destination branch
+* product
+* full description
+* batch
+* expiry
+* quantity
+* date
+* initiated by
+* received by
+* status
+
+### Transfer logic:
+
+* deduct from source branch inventory
+* add to destination branch inventory only after receipt confirmation
+* create movement records for both sides
+* maintain traceability by batch and expiry
+
+---
+
+## F. MOVEMENTS TAB
+
+This tab must be **extremely well organized, modern, detailed, and useful**.
+
+It should become the branch’s real stock ledger.
+
+### Each movement line must show:
+
+* movement date and time
+* product name
+* full product description
+* batch number
+* expiry date
+* movement type
+* quantity
+* unit DP price
+* total DP value
+* from location
+* to location
+* source document/reference
+* related sale / prescription / dispatch / request / transfer / write-off ID
+* user/staff responsible
+* remarks/status
+
+### Movement types must include:
+
+* Receive Stock
+* Sale - Walk-in
+* Sale - Member
+* Sale - Non-member
+* Sale - Online Order
+* Prescription Dispense
+* Transfer In
+* Transfer Out
+* Write Off
+* Adjustment
+* Return In
+* Return Out
+* Consultation-linked sale where applicable
+
+### Visual/UX requirement:
+
+The movement tab must be:
+
+* clean
+* modern
+* readable
+* filterable
+* searchable
+* grouped where useful
+* printable
+* export-ready if supported
+
+### Filters required:
+
+* date range
+* product
+* movement type
+* batch
+* source
+* destination
+* staff/user
+* prescription ID / sale ID / dispatch ID
+
+### Totals required:
+
+* total inward quantity
+* total outward quantity
+* total net balance effect
+* total DP value of outward movements
+* movement count by type
+
+---
+
+## G. REPORTS TAB
+
+Branch stock reports must be detailed and must use **DP prices only** for internal reporting.
+
+This exact reports logic must also be accessible under **Stock Reports** and used as the basis for finance-related reporting.
+
+---
+
+# 4. VERY IMPORTANT SALES / REPORTING RULES
+
+## DP ONLY RULE
+
+While generating internal branch sales reports, totals for branch amounts must use **DP prices only**.
+
+This is critical.
+
+Do not use CP or customer price for internal stock and business portal calculations.
+
+### Therefore:
+
+* internal branch stock value = DP
+* internal stock movement value = DP
+* internal sales report total branch amount = DP
+* internal finance basis = DP
+* stock prices for internal business reporting are determined by DP
+
+---
+
+# 5. NON-MEMBER SALES RECEIPT RULE
+
+In the case of **non-member sale**:
+
+> the distributor copy of the receipt must look **exactly like the branch copy**
+
+Do not create different receipt layouts or incomplete copies.
+
+Both copies must match in:
+
+* header style
+* product listing
+* quantities
+* prices
+* totals
+* referral details if applicable
+* date
+* receipt number
+
+Only labels such as “Branch Copy” / “Distributor Copy” may differ if needed.
+
+---
+
+# 6. PRESCRIPTION DISPENSING RULES
+
+When dispensing prescription sales:
+
+## Receipt behavior
+
+The **sale receipt must only show the dispensed products and amount**.
+
+It must not show products that were prescribed but not dispensed.
+
+Only actually dispensed items should appear on the receipt.
+
+## Prescription record behavior
+
+The client prescription must be saved with dispensing status:
+
+* Not Dispensed
+* Partially Dispensed
+* Fully Dispensed
+
+### For each prescribed item, system must know:
+
+* prescribed quantity
+* dispensed quantity
+* balance not yet dispensed
+* dispense date
+* dispensing staff
+* linked sale receipt
+
+### If partially dispensed:
+
+* save remaining undispensed items
+* allow future completion
+* keep accurate status until fully dispensed
+
+### If fully dispensed:
+
+* mark full prescription as fully dispensed
+* update stock movement and sales properly
+
+---
+
+# 7. SALES REPORT STRUCTURE REQUIRED
+
+The sales report must be detailed and visually clear.
+
+It must separate and show each category individually, not merged invisibly.
+
+### Required separated sections:
+
+* Consultation Fees
+* Walk-in Sales
+* Non-member Sales
+* Member Sales
+* Online Orders
+* Prescription Dispensing Sales
+* Total Sales
+* Branch Sales
+* Distributor Profits
+* DP-based internal totals
+* stock-related revenue basis for finance
+
+### Required behavior:
+
+Each category must be:
+
+* clearly separated
+* visible
+* totaled separately
+* filterable by date
+* printable
+* available in stock reports
+
+### Suggested row/summary structure:
+
+For each section show:
+
+* number of transactions
+* quantity sold
+* DP value
+* linked sales amount where relevant
+* profit-related figures where applicable
+* responsible branch
+* date range
+
+---
+
+# 8. INTERNAL BUSINESS PORTAL UPDATE RULE
+
+Only **DP sales** should update:
+
+* internal business portals
+* stock movement valuation
+* branch stock value
+* stock reports
+* finance basis
+
+This rule must be enforced consistently.
+
+Do not allow CP/customer-price based totals to distort:
+
+* stock movement
+* internal dashboards
+* financial operational reporting
+* branch performance analysis
+
+---
+
+# 9. STOCK REPORTS ACCESS RULE
+
+This exact detailed branch sales and stock report must be accessible at:
+
+> **Stock Reports**
+
+That means:
+
+* stock reports must not be separate from real branch stock data
+* reports must read from the same true movement and sales sources
+* finance module must use this as basis for stock-related financial issues
+
+---
+
+# 10. WRITE OFF BUTTON WORKFLOW
+
+The Write Off button must work properly and not just open a form.
+
+### It must:
+
+* let user choose product
+* show available batches
+* show expiry
+* show current quantity
+* capture quantity to write off
+* capture reason:
+
+  * expired
+  * damaged
+  * lost
+  * spoiled
+  * adjustment-approved
+* save record
+* deduct stock from inventory
+* create stock movement entry
+* reflect in reports
+* affect stock totals immediately
+
+### Write-off record must include:
+
+* product
+* full description
+* batch
+* expiry
+* quantity
+* DP value
+* date
+* reason
+* approved by if required
+* staff responsible
+
+---
+
+# 11. REQUEST STOCK BUTTON WORKFLOW
+
+The Request Stock button must:
+
+* open real request form
+* let user select product
+* show full description
+* optionally show current stock on hand
+* capture requested quantity
+* save request
+* submit to stock/warehouse workflow
+* appear in Requests tab
+* appear in relevant stock management portals
+* update status when approved/fulfilled
+
+---
+
+# 12. PRINT REPORT BUTTON
+
+The Print Report button must print a clean modern report using live data from the selected tab/report context.
+
+Depending on tab, print must include:
+
+* branch name
+* report type
+* date generated
+* filters applied
+* detailed line items
+* totals
+* DP values
+* movement summaries if relevant
+
+Do not print empty or shallow tables.
+
+---
+
+# 13. MODERN UI / UX REQUIREMENT
+
+The branch stock section, especially **Movements** and **Inventory**, must be clean and modern.
+
+Replit must improve usability without breaking logic.
+
+### Required qualities:
+
+* clean table spacing
+* clear headers
+* proper badges for movement types
+* visible totals
+* smart filters
+* fast loading
+* readable rows
+* modern cards/sections
+* professional print layouts
+* no clutter
+* no repeated useless fields
+* no hidden critical fields
+
+The goal is:
+
+> beautiful, modern, professional, data-rich stock control
+
+---
+
+# 14. REQUIRED DATA CONNECTIONS TO OTHER PORTALS
+
+Branch stock must be connected to:
+
+* warehouse/stock dispatches
+* prescription dispensing
+* walk-in sales
+* non-member sales
+* member sales
+* online orders
+* stock reports
+* finance basis
+* internal performance calculations
+
+No isolated branch stock logic.
+
+Everything must sync through real stock movement.
+
+---
+
+# 15. DATABASE / LOGIC EXPECTATION
+
+Replit must verify that all stock-changing actions write properly to persistent records.
+
+Every stock-affecting action must create/update:
+
+* stock balance
+* movement log
+* linked document reference
+* DP valuation
+* relevant report entries
+* related status fields
+
+---
+
+# 16. EXACT EXPECTED FINAL RESULT
+
+After this implementation:
+
+## Inventory
+
+* fully detailed
+* traceable by batch/expiry
+* accurate balances
+* fast and printable
+
+## Movements
+
+* modern, beautiful, informative
+* real stock ledger
+* connected to all sales and stock events
+* filterable and reliable
+
+## Reports
+
+* detailed sales and stock categories
+* DP-only internal totals
+* visible separated categories
+* accessible from stock reports
+* basis for finance issues
+
+## Prescription dispensing
+
+* receipts show only dispensed items
+* prescription saved as partial/full dispensed correctly
+
+## Non-member receipts
+
+* distributor copy exactly same as branch copy
+
+## Branch stock buttons
+
+* all operational
+* all connected
+* all reflected in real data
+
+---
+
+# 17. FINAL INSTRUCTION TO REPLIT
+
+> Review and rebuild the Branch Portal Stock module into a true live stock management interface. Ensure Inventory, Requests, Receive Stock, Transfers, Movements, Reports, Request Stock, Transfer, Write Off, and Print Report all work with real connected data. Make stock movement modern, detailed, beautiful, and highly useful. Ensure internal reports use DP prices only. Ensure non-member distributor receipt copy matches the branch receipt exactly. Ensure prescription sales receipts show only dispensed items and prescriptions save full or partial dispensing status. Ensure this same detailed sales report is available in Stock Reports and becomes the basis for finance-related reporting. Connect all of this to stock movement and all relevant portals.
+
+---
+
+
