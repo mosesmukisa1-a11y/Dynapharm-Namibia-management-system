@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { query, getMany, getOne } from '../db.js';
+import { query, getMany, getOne, withTransaction } from '../db.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -261,52 +261,60 @@ export default async function handler(req, res) {
       const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
       const branchId = record.branch_id;
 
-      const deductStock = async (productName, qty) => {
-        if (!productName || qty <= 0 || !branchId) return;
-        try {
-          await query(
-            `UPDATE branch_inventory_batches SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
-             WHERE id = (
-               SELECT id FROM branch_inventory_batches
-               WHERE branch_id = $2 AND product_name ILIKE $3 AND quantity > 0
-               ORDER BY expiry_date ASC NULLS LAST LIMIT 1
-             )`,
-            [qty, branchId, '%' + productName + '%']
-          );
-        } catch (stockErr) {
-          console.error('Stock deduction warning:', stockErr.message);
-        }
-      };
+      const saleId = result.rows[0].id;
+      const customerType = record.customer_type || 'customer';
+      const saleMovType = customerType === 'member' ? 'walk_in_member_sale' : customerType === 'non_member' ? 'walk_in_non_member_sale' : 'sale';
 
+      const deductItems = [];
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
         if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
-            const compName = comp.name || comp.product_name || '';
-            const compQty = Number(comp.quantity || comp.qty || 1) * qty;
-            await deductStock(compName, compQty);
+            deductItems.push({ name: comp.name || comp.product_name || '', qty: Number(comp.quantity || comp.qty || 1) * qty });
           }
         } else {
-          const productName = item.product_name || item.name || item.description || '';
-          await deductStock(productName, qty);
+          deductItems.push({ name: item.product_name || item.name || item.description || '', qty });
         }
       }
 
       try {
-        await query(
-          `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
-           VALUES ($1, $2, $3, 'sale', $4, 'customer', $5, $6, NOW())`,
-          [
-            'MOV-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-            saleItems.map(i => i.product_name || i.name || '').join(', '),
-            saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0),
-            branchId,
-            result.rows[0].id,
-            'Walk-in sale: ' + (record.customer_type || 'customer')
-          ]
-        );
-      } catch (movErr) {
-        console.error('Movement record warning:', movErr.message);
+        await withTransaction(async (client) => {
+          for (const item of deductItems) {
+            if (!item.name || item.qty <= 0 || !branchId) continue;
+            let remaining = item.qty;
+            const batches = (await client.query(
+              `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
+               WHERE branch_id = $1 AND product_name ILIKE $2 AND quantity > 0
+               ORDER BY expiry_date ASC NULLS LAST
+               FOR UPDATE`,
+              [branchId, '%' + item.name + '%']
+            )).rows;
+            for (const batch of batches) {
+              if (remaining <= 0) break;
+              const take = Math.min(remaining, Number(batch.quantity));
+              await client.query(
+                `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
+                [take, batch.id]
+              );
+              const ts = Date.now();
+              const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+              await client.query(
+                `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
+              );
+              const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
+              await client.query(
+                `INSERT INTO stock_movements (id, product_name, batch_no, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'customer', $7, $8, NOW())`,
+                [smId, batch.product_name, batch.batch_no || '', take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale']
+              );
+              remaining -= take;
+            }
+          }
+        });
+      } catch (txErr) {
+        console.error('Stock deduction transaction error:', txErr.message);
       }
 
       return res.status(201).json({

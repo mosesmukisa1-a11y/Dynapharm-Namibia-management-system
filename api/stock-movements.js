@@ -132,15 +132,31 @@ export default async function handler(req, res) {
       if (['write_off', 'sale', 'return', 'field_use', 'received'].includes(movType)) {
         const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const referenceId = body.reference_id || body.referenceId || null;
+        const batchNo = body.batch_no || body.batchNo || null;
+        const srcLoc = body.source_location || body.sourceLocation || null;
+        const destLoc = body.destination_location || body.destinationLocation || null;
         await query(
-          `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
-          [id, productName, qty, movType, body.source_location || body.sourceLocation || null, body.destination_location || body.destinationLocation || null, referenceId, notes, createdBy]
+          `INSERT INTO stock_movements (id, product_name, batch_no, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
+          [id, productName, batchNo, qty, movType, srcLoc, destLoc, referenceId, notes, createdBy]
         );
+        const branchId = srcLoc || destLoc;
+        if (branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType)) {
+          try {
+            const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            await query(
+              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+              [bimId, branchId, movType, productName, batchNo || '', qty, referenceId, notes, createdBy]
+            );
+          } catch (bimErr) {
+            console.error('Branch movement mirror warning:', bimErr.message);
+          }
+        }
         return res.status(201).json({
           success: true,
           id, product_name: productName, productName, quantity: qty, movement_type: movType, movementType: movType,
-          notes, created_by: createdBy,
+          batch_no: batchNo, batchNo, notes, created_by: createdBy,
         });
       }
 

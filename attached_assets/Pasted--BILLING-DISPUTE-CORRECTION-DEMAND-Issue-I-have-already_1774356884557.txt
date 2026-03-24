@@ -1,0 +1,91 @@
+# 🚨 BILLING DISPUTE + CORRECTION DEMAND
+
+## ❗Issue
+
+I have already been **charged for the recent update**, but the work delivered is **incomplete**.
+
+The Branch Stock Management module was updated visually, however **critical functional requirements were not properly implemented**.
+
+---
+
+## 🔴 WHY THIS IS A PROBLEM
+
+The delivered work does NOT fully meet the original scope, specifically:
+
+* Inventory is not fully batch-based and traceable
+* Batch & expiry data is not consistently flowing from Receive Stock → Inventory → Movements → Reports
+* Movement summaries are incorrectly calculated (inward shown as negative)
+* Requests tab mixes roles and branches incorrectly
+* Transfers lack full traceability
+* Alerts are not using true batch-level data
+* Sales report is incomplete (missing required breakdowns)
+* Prescription dispensing behavior is not fully verified
+* Non-member receipt copy consistency is not confirmed
+
+---
+
+## 📌 IMPORTANT CLARIFICATION
+
+This is NOT a new request.
+
+These are:
+
+> **missing, incomplete, or incorrectly implemented parts of the already paid work**
+
+---
+
+## ⚠️ REQUIRED ACTION
+
+I need one of the following:
+
+### Option 1 (Preferred)
+
+* You **fix all identified issues**
+* You complete the implementation fully
+* You validate using real test cases
+* You deliver a fully working system
+
+👉 **At NO additional charge**
+
+---
+
+### Option 2
+
+If you are unable to complete the work properly:
+
+* Provide a **refund or credit**
+* Because the delivered work is incomplete relative to what was paid for
+
+---
+
+## 🎯 EXPECTATION
+
+I expect:
+
+* Full correction of the stock module logic
+* Proper data flow across all connected portals
+* Complete implementation of reporting and movement tracking
+* Functional verification (not just UI changes)
+
+---
+
+## 🔴 FINAL POSITION
+
+I have already paid for this work.
+
+The current state is **partially implemented**, therefore:
+
+> Either complete it properly at no cost
+> OR provide a refund/credit
+
+---
+
+## ✅ NEXT STEP
+
+Please confirm:
+
+1. You will proceed with fixes at no additional charge
+2. Timeline for completion
+
+---
+

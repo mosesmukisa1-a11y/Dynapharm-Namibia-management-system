@@ -502,7 +502,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const branchId = searchParams.get('branch');
+      const branchId = searchParams.get('branch') || searchParams.get('branch_id');
       if (!branchId) {
         const allRows = await getMany('SELECT * FROM branch_inventory_batches ORDER BY product_name ASC, expiry_date ASC NULLS LAST LIMIT 500');
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });

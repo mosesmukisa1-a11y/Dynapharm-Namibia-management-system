@@ -1879,6 +1879,7 @@ function BranchStockTab() {
         movement_type: 'write_off',
         source_location: user?.branch || '',
         destination_location: 'written_off',
+        batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
         notes: `Write-off: ${writeOffForm.reason}. Batch: ${selBatch?.batch_no || selBatch?.batchNo || 'N/A'}. Expiry: ${selBatch?.expiry_date || selBatch?.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
         reference_id: `WO-${Date.now()}`,
         created_by: user?.full_name || user?.username || '',
