@@ -140,6 +140,7 @@ export const api = {
     createPayment: (data) => api.post('/branch/payments', data),
     inventory: (params = '') => api.get(`/branch/inventory${params ? '?' + params : ''}`),
     dispense: (data) => api.post('/branch/dispense', data),
+    stockSummary: (params = '') => api.get(`/branch/stock-summary${params ? '?' + params : ''}`),
   },
 
   reports: {

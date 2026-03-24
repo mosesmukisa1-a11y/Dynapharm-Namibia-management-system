@@ -700,7 +700,7 @@ export default function StockPortal() {
 
 // ── AI Command Center ─────────────────────────────────────────────────────────
 function AICommandCenter({ branch }) {
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [] });
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [alertFilter, setAlertFilter] = useState('all');
@@ -712,8 +712,9 @@ function AICommandCenter({ branch }) {
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
-    ]).then(([batches, movements, transfers, sales]) => {
-      setData({ batches, movements, transfers, sales });
+      api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
+    ]).then(([batches, movements, transfers, sales, branchData]) => {
+      setData({ batches, movements, transfers, sales, branchData });
       setLastRefresh(new Date());
     }).finally(() => setLoading(false));
   }, []);
@@ -725,17 +726,24 @@ function AICommandCenter({ branch }) {
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = data.batches.filter(filterBatch);
 
-  // ── Core stats ──────────────────────────────────────────────
+  const branchBatchesFlat = data.branchData.flatMap(br => (br.inventory || []).map(inv => ({
+    product_name: inv.product_name, description: inv.product_name,
+    batch_no: inv.batch_no, expiry_date: inv.expiry_date,
+    quantity: inv.quantity, unit_price: inv.unit_price || getDPCPrice(inv.product_name || ''),
+    location: br.branch_id,
+  })));
+  const allBatches = [...filteredBatches, ...branchBatchesFlat];
+
   const now = new Date();
   const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const ninetyFwd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const totalValue = filteredBatches.reduce((s, b) => s + Number(b.quantity || 0) * Number(b.unit_price || 0), 0);
-  const expiredBatches = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
-  const expiringBatches = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+  const totalQty = allBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+  const totalValue = allBatches.reduce((s, b) => s + Number(b.quantity || 0) * (Number(b.unit_price || 0) || getDPCPrice(b.product_name || '')), 0);
+  const expiredBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
+  const expiringBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
 
   const productTotals = {};
-  filteredBatches.forEach(b => {
+  allBatches.forEach(b => {
     if (!productTotals[b.product_name]) productTotals[b.product_name] = { qty: 0, location: b.location };
     productTotals[b.product_name].qty += Number(b.quantity || 0);
   });
@@ -751,19 +759,19 @@ function AICommandCenter({ branch }) {
     return isRelated && (t.status === 'in_transit' || t.status === 'dispatched');
   });
 
-  // ── AI Insights ─────────────────────────────────────────────
-  const insights = stockAI.generateInsights(filteredBatches, data.movements, data.transfers);
+  const insights = stockAI.generateInsights(allBatches, data.movements, data.transfers);
 
-  // ── AI Reorder Recommendations ──────────────────────────────
-  const reorderRecs = stockAI.getReorderRecommendations(filteredBatches, data.movements, data.sales)
+  const reorderRecs = stockAI.getReorderRecommendations(allBatches, data.movements, data.sales)
     .slice(0, 8);
 
-  // ── Branch Health Scores ─────────────────────────────────────
   const branchHealthScores = BRANCHES.map(brName => {
     const key = brName.toLowerCase().replace(/\s+/g, '_');
-    const brBatches = data.batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === key);
+    const brData = data.branchData.find(bd => bd.branch_id === key || bd.branch_id === key + '_branch' || bd.branch_id.replace(/_branch$/, '') === key || bd.branch_id.startsWith(key));
+    const brBatches = brData ? (brData.inventory || []).map(inv => ({
+      product_name: inv.product_name, quantity: inv.quantity, expiry_date: inv.expiry_date,
+    })) : data.batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === key);
     const health = stockAI.getBranchHealth(brBatches);
-    const totalStk = brBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const totalStk = brData ? (brData.closing_qty || 0) : brBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
     const pendingReqs = data.transfers.filter(t => ((t.to_location || '').toLowerCase().replace(/\s+/g, '_') === key) && (t.status === 'pending' || t.status === 'requested')).length;
     return { name: brName, key, health, totalStk, pendingReqs };
   });
@@ -985,7 +993,7 @@ function AICommandCenter({ branch }) {
 
 // ── Overview Tab (branch-aware) ───────────────────────────────────────────────
 function OverviewTab({ branch }) {
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -995,13 +1003,15 @@ function OverviewTab({ branch }) {
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.stock.supplierImports().catch(() => []),
       api.stock.fieldStock().catch(() => []),
-    ]).then(([batches, movements, transfers, imports, fieldStock]) => {
+      api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
+    ]).then(([batches, movements, transfers, imports, fieldStock, branchData]) => {
       setData({
         batches,
         movements,
         transfers,
         imports: Array.isArray(imports) ? imports : [],
         fieldStock: Array.isArray(fieldStock) ? fieldStock : [],
+        branchData,
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -1014,7 +1024,16 @@ function OverviewTab({ branch }) {
     (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch
   );
 
-  const totalItems = filteredBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const branchTotalQty = data.branchData.reduce((s, br) => s + (br.closing_qty || 0), 0);
+  const branchTotalDPC = data.branchData.reduce((s, br) => {
+    return s + (br.inventory || []).reduce((si, inv) => {
+      const qty = Number(inv.quantity || 0);
+      return si + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || ''));
+    }, 0);
+  }, 0);
+
+  const warehouseQty = filteredBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const totalItems = warehouseQty + branchTotalQty;
   const totalCIF = filteredBatches.reduce((sum, b) => {
     const qty = Number(b.remaining_quantity || b.quantity || 0);
     const cif = Number(b.cif_unit_cost || b.unit_price || 0);
@@ -1024,7 +1043,7 @@ function OverviewTab({ branch }) {
     const qty = Number(b.remaining_quantity || b.quantity || 0);
     const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
     return sum + qty * dpc;
-  }, 0);
+  }, 0) + branchTotalDPC;
   const pendingTransfers = data.transfers.filter(t => {
     const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
     return related && (t.status === 'pending' || t.status === 'pending_approval' || t.status === 'submitted');
@@ -1044,7 +1063,19 @@ function OverviewTab({ branch }) {
 
   const now = new Date();
   const expiryThreshold = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-  const expiringBatches = filteredBatches.filter(b => {
+
+  const allBatchesForExpiry = [
+    ...filteredBatches,
+    ...data.branchData.flatMap(br => (br.inventory || []).map(inv => ({
+      product_name: inv.product_name,
+      description: inv.product_name,
+      batch_no: inv.batch_no,
+      expiry_date: inv.expiry_date,
+      remaining_quantity: inv.quantity,
+      location: br.branch_id,
+    }))),
+  ];
+  const expiringBatches = allBatchesForExpiry.filter(b => {
     if (!b.expiry_date) return false;
     const exp = new Date(b.expiry_date);
     return exp <= expiryThreshold && Number(b.remaining_quantity || b.quantity || 0) > 0;
@@ -1054,7 +1085,7 @@ function OverviewTab({ branch }) {
 
   const lowStockProducts = (() => {
     const byProduct = {};
-    filteredBatches.forEach(b => {
+    allBatchesForExpiry.forEach(b => {
       const name = b.description || b.product_name || 'Unknown';
       if (!byProduct[name]) byProduct[name] = 0;
       byProduct[name] += Number(b.remaining_quantity || b.quantity || 0);
@@ -1098,6 +1129,26 @@ function OverviewTab({ branch }) {
           <p className="text-xs text-orange-500">{data.fieldStock.filter(f => f.status === 'issued').length} active issues</p>
         </div>
       </div>
+
+      {data.branchData.length > 0 && (
+        <div className="mb-6">
+          <p style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>Branch Stock</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {data.branchData.map(br => (
+              <div key={br.branch_id} className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                <p className="text-xs text-red-600 font-semibold mb-1">{fmtLocation(br.branch_id)}</p>
+                <p className="text-xl font-bold text-red-800">{(br.closing_qty || 0).toLocaleString()}</p>
+                <p className="text-xs text-red-500">{br.product_count || 0} products</p>
+              </div>
+            ))}
+            <div className="bg-red-100 border-2 border-red-300 rounded-xl p-4 text-center">
+              <p className="text-xs text-red-700 font-bold mb-1">All Branches</p>
+              <p className="text-xl font-black text-red-900">{branchTotalQty.toLocaleString()}</p>
+              <p className="text-xs text-red-600 font-semibold">DP: {formatCurrency(branchTotalDPC)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(expiredBatches.length > 0 || soonExpiring.length > 0 || lowStockProducts.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -3319,7 +3370,7 @@ function MonthlySalesTab({ branch }) {
             dp_price: prod ? prod.dp : Number(item.unit_price || item.price || 0),
             cif_price: prod ? prod.cif : 0,
             source: 'walkin',
-            branch: s.branch || '-',
+            branch: s.branch_id || s.branch || '-',
           });
         });
       });
@@ -4411,27 +4462,25 @@ function fmtPeriodLabel(from, to) {
 
 // ─── Branch Stock Tab ─────────────────────────────────────────────────────────
 function BranchStockTab({ branch }) {
-  const [batches, setBatches] = useState([]);
-  const [walkinSales, setWalkinSales] = useState([]);
-  const [movements, setMovements] = useState([]);
+  const [branchData, setBranchData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [viewMode, setViewMode] = useState('dashboard');
   const [productSearch, setProductSearch] = useState('');
   const [period, setPeriod] = useState(getDefaultPeriod);
+  const [drillBranch, setDrillBranch] = useState(null);
+  const [movTypeFilter, setMovTypeFilter] = useState('all');
 
   const loadData = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-    ]).then(([b, s, m]) => {
-      setBatches(b);
-      setWalkinSales(s);
-      setMovements(m);
-    }).finally(() => setLoading(false));
-  }, []);
+    const params = new URLSearchParams();
+    if (period.from) params.set('date_from', period.from);
+    if (period.to) params.set('date_to', period.to);
+    api.branch.stockSummary(params.toString())
+      .then(d => setBranchData(d.branches || []))
+      .catch(() => setBranchData([]))
+      .finally(() => setLoading(false));
+  }, [period.from, period.to]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -4439,112 +4488,92 @@ function BranchStockTab({ branch }) {
 
   const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
   const now = new Date();
-  const periodStart = new Date(period.from + 'T00:00:00');
-  const periodEnd = new Date(period.to + 'T23:59:59');
   const periodLabel = fmtPeriodLabel(period.from, period.to);
-
-  // Group batches by branch location
-  const branchLocations = new Set();
-  batches.forEach(b => {
-    const loc = b.location || '';
-    if (loc && !loc.includes('warehouse') && loc !== 'country_stock') branchLocations.add(loc);
-  });
-  // Also add known branches from BRANCHES constant mapped to snake_case
-  BRANCHES.forEach(b => branchLocations.add(b.toLowerCase().replace(/\s+/g, '_')));
-
-  const buildBranchSummary = (branchKey) => {
-    const branchBatches = batches.filter(b => {
-      const loc = (b.location || '').toLowerCase().replace(/\s+/g, '_');
-      return loc === branchKey;
-    });
-    const branchSales = walkinSales.filter(s => {
-      const br = (s.branch || '').toLowerCase().replace(/\s+/g, '_');
-      return br === branchKey;
-    });
-    const branchMovs = movements.filter(m => {
-      const loc = (m.location || '').toLowerCase().replace(/\s+/g, '_');
-      return loc === branchKey;
-    });
-
-    const closingQty = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-    const closingValue = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-    const closingDPC = branchBatches.reduce((s, b) => {
-      const qty = Number(b.remaining_quantity || b.quantity || 0);
-      return s + qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
-    }, 0);
-    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-
-    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
-    const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
-    const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
-    const writeoffs = movsPeriod.filter(m => (m.movement_type || '').includes('write')).reduce((s, m) => s + Number(m.quantity || 0), 0);
-
-    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= periodStart && new Date(s.created_at) <= periodEnd);
-    const salesQty = salesPeriod.reduce((s, r) => {
-      const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
-      return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
-    }, 0);
-    const salesRevenue = salesPeriod.reduce((s, r) => s + Number(r.total_amount || r.amount || 0), 0);
-
-    // Opening = Closing − Issued + Sales + Returns + Expiring + Write-offs (backwards from closing)
-    const opening = Math.max(0, closingQty + salesQty + writeoffs + expiryQty - issued + returns_);
-
-    // Products list
-    const productMap = {};
-    branchBatches.forEach(b => {
-      const name = b.description || b.product_name || 'Unknown';
-      if (!productMap[name]) productMap[name] = { product_name: name, qty: 0, cifValue: 0, dpcValue: 0, batchNo: null, expiryDate: null, expiring: false };
-      const qty = Number(b.remaining_quantity || b.quantity || 0);
-      productMap[name].qty += qty;
-      productMap[name].cifValue += qty * Number(b.cif_unit_cost || b.unit_price || 0);
-      productMap[name].dpcValue += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(name));
-      if (b.batch_no || b.batch_number) productMap[name].batchNo = b.batch_no || b.batch_number;
-      if (b.expiry_date) productMap[name].expiryDate = b.expiry_date;
-      if (b.expiry_date && new Date(b.expiry_date) < now) productMap[name].expiring = true;
-    });
-    const products = Object.values(productMap);
-
-    return { branchKey, closingQty, closingValue, closingDPC, expiryQty, issued, returns: returns_, writeoffs, salesQty, salesRevenue, opening, products, batchCount: branchBatches.length };
-  };
 
   const allBranchSummaries = BRANCHES.map(b => {
     const key = b.toLowerCase().replace(/\s+/g, '_');
-    return { name: b, key, ...buildBranchSummary(key) };
-  }).filter(br => br.batchCount > 0 || br.salesQty > 0 || selectedBranch !== 'all');
+    const data = branchData.find(d => d.branch_id === key || d.branch_id === key + '_branch' || d.branch_id.replace(/_branch$/, '') === key || d.branch_id.startsWith(key));
+    if (!data) return null;
+    const closingQty = data.closing_qty || 0;
+    const closingDPC = (data.inventory || []).reduce((s, inv) => {
+      const qty = Number(inv.quantity || 0);
+      return s + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || inv.description || ''));
+    }, 0);
+    const products = [];
+    const productMap = {};
+    (data.inventory || []).forEach(inv => {
+      const name = inv.product_name || inv.description || 'Unknown';
+      const mapKey = `${name}||${inv.batch_no || ''}`;
+      if (!productMap[mapKey]) productMap[mapKey] = { product_name: name, qty: 0, dpcValue: 0, batchNo: inv.batch_no || null, expiryDate: inv.expiry_date || null, expiring: false, source_warehouse: inv.source_warehouse || null };
+      const qty = Number(inv.quantity || 0);
+      productMap[mapKey].qty += qty;
+      productMap[mapKey].dpcValue += qty * (Number(inv.unit_price || 0) || getDPCPrice(name));
+      if (inv.expiry_date && new Date(inv.expiry_date) < now) productMap[mapKey].expiring = true;
+    });
+    Object.values(productMap).forEach(p => products.push(p));
+    return {
+      name: b, key,
+      closingQty,
+      closingDPC,
+      closingValue: closingDPC,
+      expiryQty: (data.expired_qty || 0) + (data.expiring_qty || 0),
+      expiredQty: data.expired_qty || 0,
+      expiringQty: data.expiring_qty || 0,
+      issued: data.qty_received || 0,
+      returns: data.qty_returned || 0,
+      writeoffs: data.qty_written_off || 0,
+      salesQty: data.qty_sold || 0,
+      dispensedQty: data.qty_dispensed || 0,
+      transferredOut: data.qty_transferred_out || 0,
+      transferredIn: data.qty_transferred_in || 0,
+      salesRevenue: data.sales_revenue || 0,
+      salesCount: data.sales_count || 0,
+      opening: data.opening_qty || 0,
+      products,
+      batchCount: (data.inventory || []).length,
+      lowStockCount: data.low_stock_count || 0,
+      movements: data.movements || [],
+      lastMovement: data.last_movement,
+      sourceWarehouse: data.source_warehouse,
+    };
+  }).filter(Boolean).filter(br => br.batchCount > 0 || br.salesQty > 0 || br.issued > 0 || selectedBranch !== 'all');
 
-  const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch);
+  const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch || selectedBranch === b.key + '_branch' || b.key.startsWith(selectedBranch) || selectedBranch.startsWith(b.key));
 
   const companySummary = {
     closing: allBranchSummaries.reduce((s, b) => s + b.closingQty, 0),
-    closingValue: allBranchSummaries.reduce((s, b) => s + b.closingValue, 0),
+    closingValue: allBranchSummaries.reduce((s, b) => s + b.closingDPC, 0),
     salesQty: allBranchSummaries.reduce((s, b) => s + b.salesQty, 0),
     salesRevenue: allBranchSummaries.reduce((s, b) => s + b.salesRevenue, 0),
     issued: allBranchSummaries.reduce((s, b) => s + b.issued, 0),
+    dispensed: allBranchSummaries.reduce((s, b) => s + b.dispensedQty, 0),
     returns: allBranchSummaries.reduce((s, b) => s + b.returns, 0),
     expiry: allBranchSummaries.reduce((s, b) => s + b.expiryQty, 0),
+    writeoffs: allBranchSummaries.reduce((s, b) => s + b.writeoffs, 0),
   };
 
   const printBranchReport = (br) => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">Expiring</span>':'-'}</td><td>N$ ${p.cifValue.toFixed(2)}</td><td>N$ ${p.dpcValue.toFixed(2)}</td></tr>`).join('');
+    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">Expiring</span>':'-'}</td><td>N$ ${(p.dpcValue||0).toFixed(2)}</td></tr>`).join('');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Branch Stock — ${br.name}</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-box{border:1.5px solid #f0e8ea;border-radius:10px;padding:14px;margin-bottom:14px}.formula-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9}.formula-label{font-weight:600;color:#374151}.formula-val{font-weight:900;font-size:14px}.closing-row{display:flex;justify-content:space-between;padding:10px 12px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-top:2px solid #86efac}.closing-label{font-weight:800;color:#166534;font-size:13px}.closing-val{font-weight:900;font-size:18px;color:#15803d}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
-    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
-    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">📍 Branch Stock Report — ${br.name}</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel}</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
+    <button class="print-btn" onclick="window.print()">Print</button>
+    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">Branch Stock Report — ${br.name}</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel}</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
     <div class="formula-box">
-      <div style="font-weight:800;color:#c41e3a;font-size:13px;margin-bottom:10px;border-bottom:1px solid #fecaca;padding-bottom:6px">📐 Stock Formula — ${periodLabel}</div>
+      <div style="font-weight:800;color:#c41e3a;font-size:13px;margin-bottom:10px;border-bottom:1px solid #fecaca;padding-bottom:6px">Stock Formula — ${periodLabel}</div>
       <div class="formula-row"><span class="formula-label">Opening Stock</span><span class="formula-val" style="color:#1e3a5f">${br.opening.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">+ Issued / Received Stock</span><span class="formula-val" style="color:#166534">+${br.issued.toLocaleString()}</span></div>
-      <div class="formula-row"><span class="formula-label">− Sales (units sold)</span><span class="formula-val" style="color:#c41e3a">−${br.salesQty.toLocaleString()}</span></div>
-      <div class="formula-row"><span class="formula-label">− Returns</span><span class="formula-val" style="color:#92400e">−${br.returns.toLocaleString()}</span></div>
-      <div class="formula-row"><span class="formula-label">− Expiring / Expired Stock</span><span class="formula-val" style="color:#c41e3a">−${br.expiryQty.toLocaleString()}</span></div>
-      <div class="formula-row"><span class="formula-label">− Promotions / Campaign Adjustments</span><span class="formula-val" style="color:#c41e3a">−0</span></div>
+      <div class="formula-row"><span class="formula-label">- Sales (units sold)</span><span class="formula-val" style="color:#c41e3a">-${br.salesQty.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">- Prescription Dispensed</span><span class="formula-val" style="color:#c41e3a">-${br.dispensedQty.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">- Transfers Out</span><span class="formula-val" style="color:#92400e">-${br.transferredOut.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">- Write-offs</span><span class="formula-val" style="color:#c41e3a">-${br.writeoffs.toLocaleString()}</span></div>
+      <div class="formula-row"><span class="formula-label">+ Returns</span><span class="formula-val" style="color:#166534">+${br.returns.toLocaleString()}</span></div>
       <div class="closing-row"><span class="closing-label">= Closing Stock</span><span class="closing-val">${br.closingQty.toLocaleString()}</span></div>
-      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>Closing Value: <strong style="color:#c41e3a">N$ ${br.closingValue.toFixed(2)}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
+      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>DP Value: <strong style="color:#c41e3a">N$ ${br.closingDPC.toFixed(2)}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
     </div>
     <div style="font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;border-bottom:1px solid #fecaca;padding-bottom:4px">Current Product Inventory</div>
-    <table><thead><tr><th>Product</th><th>Qty on Hand</th><th>Expiry Status</th><th>Stock Value</th></tr></thead><tbody>${pRows||'<tr><td colspan="4" style="text-align:center;color:#94a3b8">No inventory on file</td></tr>'}</tbody></table>
+    <table><thead><tr><th>Product</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>DP Value</th></tr></thead><tbody>${pRows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No inventory on file</td></tr>'}</tbody></table>
     </body></html>`);
     win.document.close();
   };
@@ -4552,57 +4581,175 @@ function BranchStockTab({ branch }) {
   const printCompanyReport = () => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const brRows = allBranchSummaries.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">+${br.issued.toLocaleString()}</td><td style="color:#92400e">−${br.returns.toLocaleString()}</td><td style="color:#c41e3a">−${br.expiryQty.toLocaleString()}</td><td style="color:#c41e3a">${br.salesQty.toLocaleString()}</td><td style="font-weight:800;color:#15803d">${br.closingQty.toLocaleString()}</td><td>N$ ${br.closingValue.toFixed(2)}</td></tr>`).join('');
+    const brRows = allBranchSummaries.map(br => `<tr><td style="font-weight:700">${br.name}</td><td>${br.opening.toLocaleString()}</td><td style="color:#166534;font-weight:700">+${br.issued.toLocaleString()}</td><td style="color:#c41e3a">-${br.salesQty.toLocaleString()}</td><td style="color:#c41e3a">-${br.dispensedQty.toLocaleString()}</td><td style="color:#c41e3a">-${br.writeoffs.toLocaleString()}</td><td style="color:#92400e">+${br.returns.toLocaleString()}</td><td style="font-weight:800;color:#15803d">${br.closingQty.toLocaleString()}</td><td>N$ ${br.closingDPC.toFixed(2)}</td></tr>`).join('');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Company Stock Summary</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.kpi{border:1.5px solid #f0e8ea;border-radius:8px;padding:10px 12px;text-align:center}.kpi-val{font-size:18px;font-weight:900;color:#c41e3a;margin-top:4px}.kpi-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
-    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
-    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">🏢 Company Stock Summary — All Branches</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel} · ${allBranchSummaries.length} Branch(es)</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
-    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Total Closing Stock</div><div class="kpi-val">${companySummary.closing.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">Total Stock Value</div><div class="kpi-val">N$ ${companySummary.closingValue.toFixed(0)}</div></div><div class="kpi"><div class="kpi-label">Total Sales (units)</div><div class="kpi-val">${companySummary.salesQty.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">Total Sales Revenue</div><div class="kpi-val">N$ ${companySummary.salesRevenue.toFixed(0)}</div></div></div>
-    <table><thead><tr><th>Branch</th><th>Opening</th><th>Issued</th><th>Returns</th><th>Expiring</th><th>Sales (units)</th><th>Closing Qty</th><th>Closing Value</th></tr></thead>
+    <button class="print-btn" onclick="window.print()">Print</button>
+    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">Company Stock Summary — All Branches</div><div style="color:#64748b;font-size:10px;margin-top:3px">Period: ${periodLabel} · ${allBranchSummaries.length} Branch(es)</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div></div>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Total Closing Stock</div><div class="kpi-val">${companySummary.closing.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">DP Stock Value</div><div class="kpi-val">N$ ${companySummary.closingValue.toFixed(0)}</div></div><div class="kpi"><div class="kpi-label">Total Sales (units)</div><div class="kpi-val">${companySummary.salesQty.toLocaleString()}</div></div><div class="kpi"><div class="kpi-label">Total Sales Revenue</div><div class="kpi-val">N$ ${companySummary.salesRevenue.toFixed(0)}</div></div></div>
+    <table><thead><tr><th>Branch</th><th>Opening</th><th>Received</th><th>Sales</th><th>Dispensed</th><th>Write-offs</th><th>Returns</th><th>Closing</th><th>DP Value</th></tr></thead>
     <tbody>${brRows}
-    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td>-</td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#92400e">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.expiry.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.salesQty.toLocaleString()}</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
+    <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td>-</td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.salesQty.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.dispensed.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.writeoffs.toLocaleString()}</strong></td><td><strong style="color:#166534">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
     </tbody></table></body></html>`);
     win.document.close();
   };
 
+  if (drillBranch) {
+    const br = allBranchSummaries.find(b => b.key === drillBranch);
+    if (!br) { setDrillBranch(null); return null; }
+    const movTypes = [...new Set((br.movements || []).map(m => m.movement_type))];
+    const filteredMovements = movTypeFilter === 'all' ? (br.movements || []) : (br.movements || []).filter(m => m.movement_type === movTypeFilter);
+    const filteredProducts = productSearch ? br.products.filter(p => p.product_name.toLowerCase().includes(productSearch.toLowerCase())) : br.products;
+    const movTypeBadge = (t) => {
+      const map = { transfer_in: { label: 'Received', bg: '#dcfce7', color: '#166534' }, received: { label: 'Received', bg: '#dcfce7', color: '#166534' }, receive: { label: 'Received', bg: '#dcfce7', color: '#166534' }, transfer_out: { label: 'Transfer Out', bg: '#fef2f2', color: '#c41e3a' }, sale: { label: 'Sale', bg: '#fef3c7', color: '#92400e' }, walk_in_member_sale: { label: 'Member Sale', bg: '#fef3c7', color: '#92400e' }, walk_in_non_member_sale: { label: 'Non-member Sale', bg: '#fef3c7', color: '#92400e' }, prescription_dispense: { label: 'Rx Dispense', bg: '#ede9fe', color: '#6d28d9' }, dispense: { label: 'Dispense', bg: '#ede9fe', color: '#6d28d9' }, write_off: { label: 'Write-off', bg: '#fef2f2', color: '#c41e3a' }, return: { label: 'Return', bg: '#e0e7ff', color: '#3730a3' }, reserved: { label: 'Reserved', bg: '#f1f5f9', color: '#475569' } };
+      const m = map[t] || { label: (t || '-').replace(/_/g, ' '), bg: '#f1f5f9', color: '#475569' };
+      return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 700, background: m.bg, color: m.color }}>{m.label}</span>;
+    };
+    return (
+      <div>
+        <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <button onClick={() => { setDrillBranch(null); setProductSearch(''); setMovTypeFilter('all'); }} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '4px 12px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', marginBottom: 6 }}>Back to Dashboard</button>
+            <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>{br.name} — Detailed Stock View</h3>
+            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Branch inventory, movements, and stock formula · {periodLabel}</p>
+          </div>
+          <button onClick={() => printBranchReport(br)} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>Print Branch Report</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 8, marginBottom: 16 }}>
+          {[
+            ['Opening', br.opening, '#1e3a5f'], ['+ Received', br.issued, '#166534'], ['- Sales', br.salesQty, '#c41e3a'],
+            ['- Dispensed', br.dispensedQty, '#6d28d9'], ['- Trf Out', br.transferredOut, '#92400e'], ['- Write-offs', br.writeoffs, '#c41e3a'],
+            ['+ Returns', br.returns, '#166534'], ['= Closing', br.closingQty, '#15803d'], ['DP Value', `N$${Math.round(br.closingDPC).toLocaleString()}`, '#c41e3a'],
+            ['Low Stock', br.lowStockCount, br.lowStockCount > 0 ? '#d97706' : '#166534'], ['Expiring', br.expiringQty || 0, br.expiringQty > 0 ? '#d97706' : '#166534'], ['Expired', br.expiredQty || 0, br.expiredQty > 0 ? '#c41e3a' : '#166534'],
+          ].map(([l, v, c]) => (
+            <div key={l} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>{l}</div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: c, marginTop: 2 }}>{typeof v === 'number' ? v.toLocaleString() : v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0 }}>Product Inventory — {br.name}</h4>
+            <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products..." style={{ padding: '6px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none', width: 220 }} />
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr style={{ background: '#c41e3a' }}>
+                  {['Product', 'Batch', 'Expiry', 'Qty', 'Status', 'DP Unit', 'DP Total', 'Source'].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', color: '#fff', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProducts.length === 0 && <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No products found</td></tr>}
+                {filteredProducts.map((p, i) => {
+                  const dpUnit = getDPCPrice(p.product_name);
+                  return (
+                    <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.product_name}>{p.product_name}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.74rem' }}>{p.batchNo || '-'}</td>
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: p.expiring ? '#c41e3a' : '#6b7280', fontWeight: p.expiring ? 700 : 400, fontSize: '0.74rem' }}>{p.expiryDate ? formatDate(p.expiryDate) : '-'}{p.expiring ? ' (EXP)' : ''}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 800, color: p.qty === 0 ? '#c41e3a' : p.qty < 5 ? '#d97706' : '#166534', textAlign: 'right' }}>{p.qty}</td>
+                      <td style={{ padding: '7px 10px' }}>{p.qty === 0 ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Out</span> : p.qty < 5 ? <span style={{ color: '#d97706', fontWeight: 700 }}>Low</span> : <span style={{ color: '#166534', fontWeight: 600 }}>OK</span>}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', color: '#374151' }}>N$ {dpUnit.toFixed(2)}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#c41e3a' }}>N$ {(p.qty * dpUnit).toFixed(2)}</td>
+                      <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: '0.74rem' }}>{p.source_warehouse ? fmtBranch(p.source_warehouse) : '-'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0 }}>Movement Ledger — {br.name} ({filteredMovements.length})</h4>
+            <select value={movTypeFilter} onChange={e => setMovTypeFilter(e.target.value)} style={{ padding: '5px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}>
+              <option value="all">All Types</option>
+              {movTypes.map(t => <option key={t} value={t}>{(t || '').replace(/_/g, ' ')}</option>)}
+            </select>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+              <thead>
+                <tr style={{ background: '#c41e3a' }}>
+                  {['Date', 'Product', 'Batch', 'Expiry', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Reference', 'Staff', 'Notes'].map(h => (
+                    <th key={h} style={{ padding: '7px 8px', color: '#fff', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMovements.length === 0 && <tr><td colSpan={12} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No movements recorded</td></tr>}
+                {filteredMovements.map((m, i) => {
+                  const isOut = ['sale', 'transfer_out', 'write_off', 'dispense', 'prescription_dispense', 'field_use'].some(t => (m.movement_type || '').toLowerCase().includes(t));
+                  const dpUnit = getDPCPrice(m.product_name || '');
+                  const qty = Math.abs(Number(m.quantity || 0));
+                  return (
+                    <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#6b7280', fontSize: '0.74rem' }}>{m.created_at ? formatDateTime(m.created_at) : '-'}</td>
+                      <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.product_name || '-'}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.72rem' }}>{m.batch_no || '-'}</td>
+                      <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{m.expiry_date ? formatDate(m.expiry_date) : '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{movTypeBadge(m.movement_type)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{qty}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: dpUnit > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-'}</td>
+                      <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.source_location ? fmtBranch(m.source_location) : '-'}</td>
+                      <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.7rem' }}>{m.reference_id || '-'}</td>
+                      <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.created_by || '-'}</td>
+                      <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.notes || ''}>{m.notes || '-'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Branch View</p>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>🏪 Per-Branch Stock Dashboard</h3>
+          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>Per-Branch Stock Dashboard</h3>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Live stock balances per shop · {periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>
-          <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Company Report PDF</button>
+          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>Refresh</button>
+          <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>Company Report PDF</button>
         </div>
       </div>
 
-      {/* Period filter */}
       <PeriodFilter period={period} onChange={setPeriod} />
 
-      {/* Company KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, marginBottom: 18 }}>
         {[
           ['Total Branches', allBranchSummaries.length, '#1e3a5f', '#f4f7fb'],
           ['Closing Stock', companySummary.closing.toLocaleString(), '#15803d', '#f0fdf4'],
-          ['Stock Value', `N$${Math.round(companySummary.closingValue).toLocaleString()}`, '#c41e3a', '#fff0f3'],
+          ['DP Stock Value', `N$${Math.round(companySummary.closingValue).toLocaleString()}`, '#c41e3a', '#fff0f3'],
           ['Sales (units)', companySummary.salesQty.toLocaleString(), '#c41e3a', '#fef2f2'],
+          ['Dispensed', companySummary.dispensed.toLocaleString(), '#6d28d9', '#f5f3ff'],
           ['Sales Revenue', `N$${Math.round(companySummary.salesRevenue).toLocaleString()}`, '#166534', '#f0fdf4'],
-          ['Expiring Items', companySummary.expiry.toLocaleString(), companySummary.expiry > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
+          ['Write-offs', companySummary.writeoffs.toLocaleString(), companySummary.writeoffs > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
+          ['Expiring', companySummary.expiry.toLocaleString(), companySummary.expiry > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
         ].map(([l, v, col, bg]) => (
-          <div key={l} style={{ background: bg, border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>{l}</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: col, marginTop: 4 }}>{v}</div>
+          <div key={l} style={{ background: bg, border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>{l}</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: col, marginTop: 3 }}>{v}</div>
           </div>
         ))}
       </div>
 
-      {/* Controls */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[{ id: 'dashboard', label: '📊 Dashboard' }, { id: 'products', label: '📦 Products' }].map(v => (
+        {[{ id: 'dashboard', label: 'Dashboard' }, { id: 'products', label: 'Products' }, { id: 'movements', label: 'Movement Ledger' }].map(v => (
           <button key={v.id} onClick={() => setViewMode(v.id)} style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.83rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: viewMode === v.id ? '#c41e3a' : '#f1f5f9', color: viewMode === v.id ? '#fff' : '#64748b' }}>{v.label}</button>
         ))}
         <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
@@ -4611,9 +4758,8 @@ function BranchStockTab({ branch }) {
         </select>
       </div>
 
-      {/* Dashboard view — card per branch */}
       {viewMode === 'dashboard' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 14 }}>
           {displayBranches.length === 0 && (
             <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏪</div>
@@ -4622,26 +4768,27 @@ function BranchStockTab({ branch }) {
             </div>
           )}
           {displayBranches.map(br => (
-            <div key={br.key} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
+            <div key={br.key} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', cursor: 'pointer' }} onClick={() => setDrillBranch(br.key)}>
               <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>📍 {br.name}</div>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>{br.name}</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.products.length} products</span>
-                  <button onClick={() => printBranchReport(br)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
+                  <button onClick={(e) => { e.stopPropagation(); printBranchReport(br); }} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>Print</button>
                 </div>
               </div>
               <div>
                 {[
                   ['Opening Stock', br.opening, '#1e3a5f'],
-                  ['+ Issued / Received', br.issued, '#166534'],
-                  ['− Sales (units)', br.salesQty, '#c41e3a'],
-                  ['− Returns', br.returns, '#92400e'],
-                  ['− Expiring', br.expiryQty, '#c41e3a'],
-                  ['− Promotions', 0, '#c41e3a'],
+                  ['+ Received / Issued', br.issued, '#166534'],
+                  ['- Sales (units)', br.salesQty, '#c41e3a'],
+                  ['- Prescription Dispensed', br.dispensedQty, '#6d28d9'],
+                  ['- Transfers Out', br.transferredOut, '#92400e'],
+                  ['- Write-offs', br.writeoffs, '#c41e3a'],
+                  ['+ Returns', br.returns, '#166534'],
                 ].map(([label, val, color]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                    <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600 }}>{label}</span>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>{label}</span>
+                    <span style={{ fontSize: '0.92rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
@@ -4649,14 +4796,20 @@ function BranchStockTab({ branch }) {
                   <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
                 </div>
                 <div style={{ padding: '8px 16px', background: '#fafafa', display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, fontSize: '0.72rem', color: '#64748b' }}>
-                  <span>CIF: <strong style={{ color: '#1e3a5f' }}>N$ {br.closingValue.toFixed(2)}</strong></span>
-                  <span>DPC: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
-                  <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
+                  <span>DP Value: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
                   <span>Revenue: <strong style={{ color: '#166534' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
+                  <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
+                  <span>Dispensed: <strong style={{ color: '#6d28d9' }}>{br.dispensedQty} units</strong></span>
                 </div>
-                {br.expiryQty > 0 && (
-                  <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.75rem', color: '#c41e3a', fontWeight: 700 }}>
-                    ⚠️ {br.expiryQty} units expiring/expired
+                {(br.expiryQty > 0 || br.lowStockCount > 0) && (
+                  <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.73rem', color: '#c41e3a', fontWeight: 700, display: 'flex', gap: 12 }}>
+                    {br.expiryQty > 0 && <span>{br.expiryQty} expiring/expired</span>}
+                    {br.lowStockCount > 0 && <span style={{ color: '#d97706' }}>{br.lowStockCount} low stock</span>}
+                  </div>
+                )}
+                {br.lastMovement && (
+                  <div style={{ padding: '4px 16px 6px', background: '#f8fafc', fontSize: '0.68rem', color: '#94a3b8' }}>
+                    Last movement: {formatDateTime(br.lastMovement)}
                   </div>
                 )}
               </div>
@@ -4665,7 +4818,55 @@ function BranchStockTab({ branch }) {
         </div>
       )}
 
-      {/* Products view */}
+      {viewMode === 'movements' && (
+        <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0 }}>All Branch Movements</h4>
+            <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search product..." style={{ padding: '6px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none', width: 200 }} />
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+              <thead>
+                <tr style={{ background: '#c41e3a' }}>
+                  {['Date', 'Branch', 'Product', 'Batch', 'Expiry', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Ref', 'Staff'].map(h => (
+                    <th key={h} style={{ padding: '7px 8px', color: '#fff', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const allMovs = displayBranches.flatMap(br => (br.movements || []).map(m => ({ ...m, _branch: br.name })));
+                  const filtMovs = productSearch ? allMovs.filter(m => (m.product_name || '').toLowerCase().includes(productSearch.toLowerCase())) : allMovs;
+                  if (filtMovs.length === 0) return <tr><td colSpan={12} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No movements found</td></tr>;
+                  return filtMovs.slice(0, 200).map((m, i) => {
+                    const isOut = ['sale', 'transfer_out', 'write_off', 'dispense', 'prescription_dispense', 'field_use'].some(t => (m.movement_type || '').includes(t));
+                    const dpUnit = getDPCPrice(m.product_name || '');
+                    const qty = Math.abs(Number(m.quantity || 0));
+                    const tMap = { transfer_in: 'Received', received: 'Received', receive: 'Received', transfer_out: 'Transfer Out', sale: 'Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', prescription_dispense: 'Rx Dispense', dispense: 'Dispense', write_off: 'Write-off', return: 'Return', reserved: 'Reserved' };
+                    return (
+                      <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#6b7280', fontSize: '0.72rem' }}>{m.created_at ? formatDateTime(m.created_at) : '-'}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 700, color: '#1e293b', fontSize: '0.74rem' }}>{m._branch}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.product_name || '-'}</td>
+                        <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.72rem' }}>{m.batch_no || '-'}</td>
+                        <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{m.expiry_date ? formatDate(m.expiry_date) : '-'}</td>
+                        <td style={{ padding: '6px 8px' }}><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700, background: isOut ? '#fef2f2' : '#dcfce7', color: isOut ? '#c41e3a' : '#166534' }}>{tMap[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ')}</span></td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{qty}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#374151', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-'}</td>
+                        <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.source_location ? fmtBranch(m.source_location) : '-'}</td>
+                        <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
+                        <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.68rem' }}>{m.reference_id || '-'}</td>
+                        <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.created_by || '-'}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {viewMode === 'products' && (
         <Card>
           <CardHeader>
@@ -4673,8 +4874,8 @@ function BranchStockTab({ branch }) {
               <h3 className="font-bold text-gray-800">Product Stock by Branch</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const allProds = displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name })));
-                const rows = allProds.map(p => `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${(p.cifValue||0).toFixed(2)}</td><td>N$ ${(p.dpcValue||0).toFixed(2)}</td></tr>`).join('');
-                printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>CIF Value</th><th>DPC Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
+                const rows = allProds.map(p => { const dpU = getDPCPrice(p.product_name); return `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${dpU.toFixed(2)}</td><td>N$ ${(p.qty*dpU).toFixed(2)}</td></tr>`; }).join('');
+                printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
@@ -4694,8 +4895,8 @@ function BranchStockTab({ branch }) {
               }},
               { header: 'Qty', render: r => <span style={{ fontWeight: 800, color: r.qty === 0 ? '#c41e3a' : r.qty < 10 ? '#d97706' : '#166534' }}>{r.qty}</span> },
               { header: 'Status', render: r => r.qty === 0 ? <Badge variant="danger">Out of Stock</Badge> : r.qty < 10 ? <Badge variant="warning">Low</Badge> : <Badge variant="success">OK</Badge> },
-              { header: 'CIF Value', render: r => <span className="text-xs">N$ {(r.cifValue || 0).toFixed(2)}</span> },
-              { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {(r.dpcValue || 0).toFixed(2)}</span> },
+              { header: 'DP Unit', render: r => <span className="text-xs">N$ {getDPCPrice(r.product_name).toFixed(2)}</span> },
+              { header: 'DP Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {(r.qty * getDPCPrice(r.product_name)).toFixed(2)}</span> },
             ]}
             data={displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name }))).filter(p => !productSearch || p.product_name.toLowerCase().includes(productSearch.toLowerCase()))}
             emptyMessage="No product data available for selected branch(es)"
@@ -4708,9 +4909,8 @@ function BranchStockTab({ branch }) {
 
 // ─── Stock Reports Tab ─────────────────────────────────────────────────────────
 function StockReportsTab({ branch }) {
+  const [branchData, setBranchData] = useState([]);
   const [batches, setBatches] = useState([]);
-  const [walkinSales, setWalkinSales] = useState([]);
-  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [misReport, setMisReport] = useState(null);
@@ -4718,59 +4918,52 @@ function StockReportsTab({ branch }) {
 
   const loadData = useCallback(() => {
     setLoading(true);
+    const params = new URLSearchParams();
+    if (period.from) params.set('date_from', period.from);
+    if (period.to) params.set('date_to', period.to);
     Promise.all([
+      api.branch.stockSummary(params.toString()).then(d => d.branches || []).catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.mis.stockReport().catch(() => null),
-    ]).then(([b, s, m, mis]) => {
+    ]).then(([bd, b, mis]) => {
+      setBranchData(bd);
       setBatches(b);
-      setWalkinSales(s);
-      setMovements(m);
       setMisReport(mis);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [period.from, period.to]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) return <LoadingSpinner />;
 
   const now = new Date();
-  const periodStart = new Date(period.from + 'T00:00:00');
-  const periodEnd = new Date(period.to + 'T23:59:59');
   const periodLabel = fmtPeriodLabel(period.from, period.to);
-
-  const buildFormula = (branchKey) => {
-    const branchBatches = batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
-    const branchSales = walkinSales.filter(s => (s.branch || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
-    const branchMovs = movements.filter(m => (m.location || '').toLowerCase().replace(/\s+/g, '_') === branchKey);
-
-    const closingQty = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-    const closingValue = branchBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-    const closingDPC = branchBatches.reduce((s, b) => {
-      const qty = Number(b.remaining_quantity || b.quantity || 0);
-      return s + qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
-    }, 0);
-    const expiryQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-
-    const movsPeriod = branchMovs.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd);
-    const issued = movsPeriod.filter(m => (m.movement_type || '').includes('in') || (m.movement_type || '').includes('receiv')).reduce((s, m) => s + Number(m.quantity || 0), 0);
-    const returns_ = movsPeriod.filter(m => (m.movement_type || '').includes('return')).reduce((s, m) => s + Number(m.quantity || 0), 0);
-
-    const salesPeriod = branchSales.filter(s => s.created_at && new Date(s.created_at) >= periodStart && new Date(s.created_at) <= periodEnd);
-    const salesQty = salesPeriod.reduce((s, r) => {
-      const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } })();
-      return s + items.reduce((si, i) => si + Number(i.quantity || 0), 0);
-    }, 0);
-
-    const opening = Math.max(0, closingQty + salesQty + returns_ + expiryQty - issued);
-    return { opening, issued, returns: returns_, expiryQty, promotions: 0, closing: closingQty, closingValue, closingDPC, salesQty };
-  };
 
   const branchReports = BRANCHES.map(b => {
     const key = b.toLowerCase().replace(/\s+/g, '_');
-    const formula = buildFormula(key);
-    return { name: b, key, formula };
+    const data = branchData.find(d => d.branch_id === key || d.branch_id === key + '_branch' || d.branch_id.replace(/_branch$/, '') === key || d.branch_id.startsWith(key));
+    if (!data) return { name: b, key, formula: { opening: 0, issued: 0, returns: 0, expiryQty: 0, dispensed: 0, writeoffs: 0, promotions: 0, closing: 0, closingValue: 0, closingDPC: 0, salesQty: 0, salesRevenue: 0 } };
+    const closingDPC = (data.inventory || []).reduce((s, inv) => {
+      const qty = Number(inv.quantity || 0);
+      return s + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || ''));
+    }, 0);
+    return {
+      name: b, key,
+      formula: {
+        opening: data.opening_qty || 0,
+        issued: data.qty_received || 0,
+        returns: data.qty_returned || 0,
+        expiryQty: (data.expired_qty || 0) + (data.expiring_qty || 0),
+        dispensed: data.qty_dispensed || 0,
+        writeoffs: data.qty_written_off || 0,
+        promotions: 0,
+        closing: data.closing_qty || 0,
+        closingValue: closingDPC,
+        closingDPC,
+        salesQty: data.qty_sold || 0,
+        salesRevenue: data.sales_revenue || 0,
+      }
+    };
   });
 
   const displayReports = selectedBranch === 'all' ? branchReports : branchReports.filter(r => r.key === selectedBranch);
@@ -4780,6 +4973,8 @@ function StockReportsTab({ branch }) {
     issued: branchReports.reduce((s, r) => s + r.formula.issued, 0),
     returns: branchReports.reduce((s, r) => s + r.formula.returns, 0),
     expiryQty: branchReports.reduce((s, r) => s + r.formula.expiryQty, 0),
+    dispensed: branchReports.reduce((s, r) => s + r.formula.dispensed, 0),
+    writeoffs: branchReports.reduce((s, r) => s + r.formula.writeoffs, 0),
     promotions: 0,
     closing: branchReports.reduce((s, r) => s + r.formula.closing, 0),
     closingValue: branchReports.reduce((s, r) => s + r.formula.closingValue, 0),

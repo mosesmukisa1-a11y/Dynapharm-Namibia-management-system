@@ -1,0 +1,212 @@
+
+# 🚨 STRICT ACCEPTANCE CHECKLIST — STOCK PORTAL (NO CHARGE)
+
+## ❗RULES
+
+* Every item must be marked: **PASS / FAIL ONLY**
+* ❌ No “partial”, no “in progress”
+* ❌ No explanation without status
+* ❌ Any FAIL = MUST FIX (NO CHARGE)
+
+---
+
+# 🔴 1. SYSTEM INTEGRATION (CORE)
+
+* [ ] Branch Portal → Stock Portal fully connected
+* [ ] Warehouse → Branch → Stock Portal connected
+* [ ] Supplier Import → Country Stock → Warehouse connected
+* [ ] All modules use the SAME data source (no duplicates)
+
+❌ If any module works independently → FAIL
+
+---
+
+# 🔴 2. BRANCH STOCK DASHBOARD (CRITICAL)
+
+* [ ] Branches DO NOT show 0 if stock exists
+* [ ] Product count per branch is correct
+* [ ] Closing stock is correct
+* [ ] Stock value (DP) is correct
+* [ ] Sales reflect in stock reduction
+* [ ] Dispensing reflects in stock reduction
+
+❌ If any branch shows wrong/zero values → FAIL
+
+---
+
+# 🔴 3. STOCK CALCULATION ENGINE
+
+* [ ] Opening stock correct
+* [ ] + Received correct
+* [ ] + Transfers in correct
+* [ ] + Returns correct
+* [ ] - Sales correct
+* [ ] - Dispensed correct
+* [ ] - Transfers out correct
+* [ ] - Write-offs correct
+* [ ] Closing stock formula correct
+
+❌ If formula breaks anywhere → FAIL
+
+---
+
+# 🔴 4. REAL-TIME UPDATE
+
+* [ ] Sale updates stock immediately
+* [ ] Receive updates stock immediately
+* [ ] Transfer updates both sides
+* [ ] Write-off updates stock immediately
+* [ ] Dashboard reflects changes instantly
+
+❌ If delay/manual refresh needed → FAIL
+
+---
+
+# 🔴 5. BATCH & EXPIRY TRACEABILITY
+
+* [ ] Batch ALWAYS captured
+* [ ] Expiry ALWAYS captured
+* [ ] Batch visible in Inventory
+* [ ] Batch visible in Movements
+* [ ] Batch visible in Transfers
+* [ ] Batch visible in Reports
+
+❌ If any “—” appears → FAIL
+
+---
+
+# 🔴 6. MOVEMENT LEDGER (STOCK PORTAL)
+
+* [ ] Movement ledger visible in Stock Portal
+* [ ] Shows branch + product + batch + expiry
+* [ ] Movement types correct (IN / OUT)
+* [ ] Quantities correct (no wrong negatives)
+* [ ] DP values shown
+
+❌ If movement is incomplete → FAIL
+
+---
+
+# 🔴 7. SALES & DISPENSING
+
+* [ ] Walk-in sales reduce stock
+* [ ] Member sales reduce stock
+* [ ] Non-member sales reduce stock
+* [ ] Prescription deducts ONLY dispensed items
+* [ ] Partial dispensing works
+* [ ] Undispensed items remain pending
+
+❌ If full prescription deducts automatically → FAIL
+
+---
+
+# 🔴 8. TRANSFERS
+
+* [ ] Source stock reduces
+* [ ] Destination stock increases ONLY after receipt
+* [ ] Batch & expiry preserved
+* [ ] Movement recorded both sides
+
+❌ If transfer not traceable → FAIL
+
+---
+
+# 🔴 9. RECEIVE STOCK
+
+* [ ] Cannot save without batch
+* [ ] Cannot save without expiry
+* [ ] Inventory updates immediately
+* [ ] Movement created
+* [ ] Warehouse stock updated
+
+❌ If any missing → FAIL
+
+---
+
+# 🔴 10. EMPTY FIELD VALIDATION
+
+* [ ] No blank fields where data exists
+* [ ] No “—” where data exists
+* [ ] No zero values where stock exists
+
+❌ If any appear → FAIL
+
+---
+
+# 🔴 11. PERIOD FILTER
+
+* [ ] Date filter updates ALL data
+* [ ] Stock recalculates correctly
+* [ ] Sales recalculates correctly
+* [ ] Reports update correctly
+
+❌ If filter is visual only → FAIL
+
+---
+
+# 🔴 12. REPORTS
+
+* [ ] Stock Reports use real data
+* [ ] Company PDF uses real data
+* [ ] DP values used only
+* [ ] Branch data accurate
+
+❌ If report ≠ dashboard → FAIL
+
+---
+
+# 🔴 13. STOCK MANAGER VISIBILITY
+
+* [ ] Can see ALL branches
+* [ ] Can see real-time stock per branch
+* [ ] Can drill into branch
+* [ ] Can see full movement history
+
+❌ If visibility limited → FAIL
+
+---
+
+# 🔴 14. FINAL SYSTEM TEST (MANDATORY)
+
+Replit must confirm ALL pass:
+
+* [ ] Receive stock → reflects everywhere
+* [ ] Sale → reduces stock everywhere
+* [ ] Dispense → reduces correctly
+* [ ] Transfer → both sides update
+* [ ] Write-off → reflects everywhere
+
+❌ If any test fails → SYSTEM FAIL
+
+---
+
+# 🔴 FINAL ACCEPTANCE RULE
+
+If ANY item = FAIL:
+
+👉 System is **NOT COMPLETE**
+👉 Must be fixed **under original paid task**
+👉 **NO ADDITIONAL BILLING**
+
+---
+
+# ✅ REQUIRED RESPONSE FORMAT
+
+Reply ONLY like this:
+
+## PASS
+
+(list)
+
+## FAIL
+
+(list)
+
+## FIX TIMELINE
+
+(time)
+
+## CONFIRMATION
+
+“No additional billing”
+

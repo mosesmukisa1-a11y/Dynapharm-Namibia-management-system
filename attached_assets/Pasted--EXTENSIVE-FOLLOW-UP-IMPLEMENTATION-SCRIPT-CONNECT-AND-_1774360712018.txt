@@ -1,0 +1,760 @@
+# 🚨 EXTENSIVE FOLLOW-UP IMPLEMENTATION SCRIPT
+
+## CONNECT AND COMPLETE THE CURRENT STOCK MANAGEMENT PORTAL
+
+## Dynapharm Namibia Portal — `/stock`
+
+## ❗IMPORTANT
+
+This instruction is a **follow-up to the original stock management work already requested and already paid for**.
+
+It is **not a new feature request**.
+
+It is the continuation and completion of the current stock system so that the Stock Department can properly supervise:
+
+* Country stock
+* Supplier imports
+* Warehouse stock
+* Branch stock
+* Distribution
+* Transfers
+* Real-time movement
+* Stock reports
+
+### Billing position
+
+This is part of the same original task and must be handled as:
+
+> **correction + completion of existing paid work**
+> **NO additional fee**
+
+Also note this carefully:
+
+> **Fields that are currently showing blank, zero, or “—” are already provided for in the system.**
+> Replit must not treat them as unavailable fields.
+> Replit must correctly retrieve, bind, calculate, and display the already existing data.
+
+---
+
+# 1. UNDERSTANDING OF THE CURRENT STOCK PORTAL
+
+The current stock management portal at `/stock` is already structured into these major areas:
+
+* AI Command
+* Overview
+* Branch Stock
+* Stock Reports
+* Supplier Import
+* Country Stock
+* Windhoek
+* Ondangwa
+* Distribution
+* Transfers
+
+This means the portal is already designed to support the complete stock chain.
+
+## The intended stock chain is clearly:
+
+**Supplier Import → Country Stock → Warehouse Stock → Distribution / Transfer → Branch Stock → Branch Sales / Dispensing / Write-off / Returns → Stock Reports**
+
+That structure is correct.
+
+## The main problem now is:
+
+The structure exists visually, but the data flow and live connection across these tabs is still incomplete.
+
+The next task is therefore:
+
+> complete the current stock management portal using the existing structure,
+> not redesign it from scratch,
+> and make it operate as one connected live stock engine.
+
+---
+
+# 2. MAIN OBJECTIVE OF THIS FOLLOW-UP
+
+The Stock Department / Stock Manager must now be able to use the `/stock` portal as the true operational command center for all stock in Namibia.
+
+That means the stock manager must be able to see, from the Stock portal itself:
+
+* what was imported
+* what is in country stock
+* what is in Windhoek warehouse
+* what is in Ondangwa warehouse
+* what has been distributed to branches
+* what each branch currently holds
+* what each branch has sold
+* what each branch has dispensed through prescription
+* what each branch has written off
+* what each branch returned
+* what stock is in transit
+* what stock is expiring
+* what stock is low
+* current stock value using DP
+* movement history in real time
+
+The portal must become a real live stock monitoring and control dashboard.
+
+---
+
+# 3. CURRENT PROBLEM TO FIX
+
+From the current system behavior and screenshots, these issues are evident:
+
+* Branch Stock dashboard exists but some branch values are still zero or partially connected
+* Closing stock is not updating correctly
+* Stock value is not fully flowing from branch inventory
+* Product counts are not reliable
+* Branch movement is not fully visible to Stock Department
+* Some fields still show blank even though data exists in the system
+* Receive Stock captures batch, but the same data is not fully visible everywhere it should be
+* Branch stock cards are not yet a reliable reflection of real branch inventory
+* Stock Reports are not yet fully acting as the financial and operational source of truth
+
+This follow-up is to fix those gaps inside the current stock portal.
+
+---
+
+# 4. REQUIRED LOGIC OF THE CURRENT STOCK PORTAL
+
+The current portal must now behave as one connected live system.
+
+## A. Supplier Import
+
+Supplier Import must be the first stock entry point into the country.
+
+It must save:
+
+* supplier
+* import reference
+* product
+* full description
+* quantity
+* batch
+* expiry
+* CIF
+* DP
+* date received
+* receiving warehouse
+* notes/documents
+
+This must feed:
+
+* Country Stock
+* warehouse stock
+* valuation
+* reports
+
+---
+
+## B. Country Stock
+
+Country Stock must show all stock currently in Namibia.
+
+It must show:
+
+* product
+* full description
+* total quantity in country
+* stock by warehouse
+* stock by batch
+* stock by expiry
+* stock in transit
+* available stock
+* CIF value
+* DP value
+
+Country Stock must not be a disconnected summary.
+It must be built from:
+
+* supplier import
+* warehouse receipts
+* transfers
+* dispatches
+* returns
+* write-offs
+* branch receipts where needed for country-level roll-up
+
+---
+
+## C. Windhoek and Ondangwa Warehouses
+
+The Windhoek and Ondangwa tabs must act as real warehouse stock ledgers.
+
+Each warehouse view must show:
+
+* product
+* full description
+* batch
+* expiry
+* quantity received
+* quantity dispatched
+* quantity reserved
+* quantity available
+* destination branch
+* DP value
+* CIF value
+* last movement
+
+Warehouses must be the main dispatch source to branches and field operations.
+
+---
+
+## D. Distribution
+
+Distribution must be the live interface for stock issue from warehouse to branch/field.
+
+When stock is selected for distribution, the system must show:
+
+* product
+* full description
+* batch
+* expiry
+* available quantity
+* warehouse source
+* DP value if needed
+
+Distribution must not allow blind product-level dispatch without batch traceability.
+
+Every dispatch must produce:
+
+* dispatch note number
+* source warehouse
+* destination branch
+* product lines
+* batch
+* expiry
+* quantity
+* date
+* prepared by
+* approval status
+* receipt status
+
+---
+
+## E. Transfers
+
+Transfers must track stock movement across locations in a fully traceable way.
+
+This includes:
+
+* warehouse to branch
+* branch to branch if allowed
+* warehouse to warehouse if applicable
+* country stock adjustments if supported by current logic
+
+Each transfer must include:
+
+* transfer number
+* from
+* to
+* product
+* full description
+* batch
+* expiry
+* quantity
+* status
+* prepared by
+* received by
+* related movement records
+
+The transfer detail view must show complete lines, not collapsed summaries only.
+
+---
+
+# 5. BRANCH STOCK TAB — MUST NOW BE FULLY CONNECTED
+
+The current **Branch Stock** tab in the Stock portal must become the live supervisory view for branch stock across the company.
+
+This is one of the main missing pieces.
+
+## The Stock Manager must be able to see, per branch:
+
+* branch name
+* active product count
+* opening stock
+* received/issued stock
+* sales units
+* prescription dispensed units
+* transfers in
+* transfers out
+* write-offs
+* returns
+* closing stock
+* stock value by DP
+* sales revenue
+* expiring items
+* low stock items
+* last movement time
+
+## Important
+
+If a branch has:
+
+* received stock
+* sold stock
+* dispensed stock
+* movement history
+
+then branch cards must not remain at:
+
+* zero products
+* zero closing stock
+* zero stock value
+
+If those values are currently zero while records exist, Replit must fix the connection immediately.
+
+---
+
+# 6. BRANCH STOCK DASHBOARD — REQUIRED CALCULATION RULE
+
+The current branch stock dashboard must calculate values from real movement data.
+
+## For each branch:
+
+### Opening Stock
+
+Opening stock must come from the previous stock position at the start of the selected period.
+
+### + Issued / Received
+
+This must include:
+
+* warehouse dispatches received by branch
+* transfer-ins
+* returns-in if applicable
+
+### - Sales (units)
+
+This must include:
+
+* walk-in sales
+* member sales
+* non-member sales
+* online fulfilment sales where branch fulfills
+* only real stock-deducting transactions
+
+### - Prescription Dispensing
+
+Prescription dispensing must be counted separately where required and must deduct only actually dispensed products.
+
+### - Transfers Out
+
+Any stock moved out from branch must reduce branch stock.
+
+### - Write-offs
+
+Written-off stock must reduce branch stock.
+
+### + Returns
+
+Valid stock returns that come back into branch stock must increase stock.
+
+### Closing Stock
+
+Closing stock must be:
+**Opening + Received + Transfer In + Returns - Sales - Dispensed - Transfer Out - Write-off**
+
+### Stock Value
+
+Stock Value must use **DP only**.
+
+---
+
+# 7. PERIOD FILTERS MUST ACTUALLY WORK
+
+The current stock dashboard already has:
+
+* This Month
+* Last Month
+* Last 3 Months
+* Year to Date
+* Custom Date Range
+
+These must properly recalculate all the stock and sales metrics shown in the branch dashboard.
+
+## Required behavior
+
+Changing the date range must update:
+
+* opening stock
+* issued/received
+* sales units
+* sales revenue
+* closing stock
+* low stock count
+* expiring items count
+* printable report data
+
+This cannot remain a visual filter only.
+
+---
+
+# 8. BRANCH DRILL-DOWN VIEW REQUIRED
+
+When the Stock Manager clicks a branch in Branch Stock, open a true detailed branch stock view.
+
+## This must show:
+
+* product name
+* full description
+* batch
+* expiry
+* opening quantity
+* received quantity
+* sold quantity
+* dispensed quantity
+* transfer in
+* transfer out
+* returns
+* write-off
+* balance
+* DP unit
+* DP total value
+* source warehouse
+* last movement
+* references
+
+## Filters required:
+
+* date range
+* product
+* batch
+* expiry
+* movement type
+* branch
+
+This branch drill-down must give Stock Department real visibility into what each branch is doing.
+
+---
+
+# 9. STOCK DEPARTMENT MUST SEE LIVE BRANCH MOVEMENT
+
+The Stock Department cannot rely only on branch summary cards.
+It must see the actual movement ledger behind branch activity.
+
+Add or connect a **Branch Movement Ledger** inside the Stock portal.
+
+## It must show:
+
+* date/time
+* branch
+* product
+* full description
+* batch
+* expiry
+* movement type
+* quantity
+* DP value
+* from
+* to
+* reference
+* staff
+* notes
+
+## Movement types must include:
+
+* Branch Receive Stock
+* Walk-in Sale
+* Member Sale
+* Non-member Sale
+* Prescription Dispense
+* Online Order Fulfilment
+* Transfer In
+* Transfer Out
+* Write Off
+* Return
+* Adjustment
+
+The stock manager must be able to filter this by:
+
+* branch
+* product
+* batch
+* date
+* movement type
+
+This is one of the most important operational visibility requirements.
+
+---
+
+# 10. EMPTY / BLANK FIELDS MUST BE FILLED FROM EXISTING DATA
+
+This is critical.
+
+Several fields in the current system still show:
+
+* `0`
+* `—`
+* blank values
+
+even though the system already provides for them.
+
+## Replit must not say the data field does not exist.
+
+Instead, Replit must:
+
+* identify where the data is already being captured
+* retrieve it correctly
+* join it correctly
+* display it correctly
+
+This applies to:
+
+* batch
+* expiry
+* branch product count
+* closing stock
+* stock value
+* source warehouse
+* movement references
+* last movement date
+* requested by / approved by / received by
+* branch-level summaries
+
+If a field is empty while saved data exists elsewhere in the workflow, this is a binding/integration bug and must be corrected.
+
+---
+
+# 11. PRODUCTS TAB UNDER BRANCH STOCK MUST BE USEFUL
+
+The Products view inside Branch Stock must not be shallow.
+
+It must show branch stock line-by-line across branches.
+
+## Required columns:
+
+* branch
+* product
+* full description
+* batch
+* expiry
+* opening stock
+* received
+* sold
+* dispensed
+* transferred
+* write-off
+* closing stock
+* DP unit
+* DP total value
+* status
+
+This Products view should help the stock manager compare branch stock holdings across all branches.
+
+---
+
+# 12. STOCK REPORTS MUST USE THE SAME LIVE DATA
+
+The Stock Reports tab must read from the exact same live records used in:
+
+* supplier import
+* country stock
+* warehouse movement
+* distribution
+* branch movement
+* branch sales
+* branch dispensing
+* branch write-off
+* returns
+
+Stock Reports must not become a disconnected report layer.
+
+They must be the official reporting layer built from actual transactions.
+
+---
+
+# 13. COMPANY REPORT PDF MUST BE REAL
+
+The current **Company Report PDF** button must generate a true company branch stock report.
+
+## Required content:
+
+* report title
+* selected date range
+* branch count
+* total company stock
+* total DP stock value
+* sales units
+* sales revenue
+* low stock items
+* expiring items
+* per-branch stock summary
+* per-branch movement summary
+* per-branch DP value
+
+Do not generate a company report from incomplete zero data.
+
+If the dashboard values are not yet connected, fix the dashboard first before generating the report.
+
+---
+
+# 14. DP RULE MUST REMAIN ABSOLUTE
+
+All internal stock and operational reporting must continue to use **DP only**.
+
+That includes:
+
+* branch stock value
+* movement valuation
+* branch stock dashboard
+* stock reports
+* company report PDF
+* finance base data
+
+Do not use customer price or CP for internal stock valuation.
+
+---
+
+# 15. PRESCRIPTION DISPENSING MUST ALSO FLOW TO STOCK PORTAL
+
+The branch portal prescription dispensing logic must now feed the stock department view correctly.
+
+## Required:
+
+* only actually dispensed items deduct stock
+* partial dispensing must be saved
+* full/partial/not dispensed status must remain correct
+* branch stock summary must reflect actual dispensed quantities
+* stock manager must see dispensed quantities in branch stock movement
+
+This is especially important because dispensing affects branch stock and must be visible to the stock department.
+
+---
+
+# 16. BRANCH SALES MUST FLOW TO STOCK PORTAL
+
+Branch walk-in sales, member sales, and non-member sales already affect stock.
+
+These must now also feed the stock department branch dashboard properly.
+
+## Required:
+
+* stock deducted from branch inventory
+* movement record created
+* branch stock summary updated
+* sales units updated
+* stock value adjusted
+* real-time reflection inside Stock portal
+
+If sales are reducing stock in branch but not reflecting in `/stock`, that is incomplete integration and must be fixed.
+
+---
+
+# 17. REQUESTS / RECEIVE STOCK CONNECTION
+
+The Stock Department must also see branch stock requests and branch receipts properly.
+
+## Required:
+
+* when branch requests stock, it becomes visible to stock management
+* when stock management dispatches stock, it becomes visible to branch
+* when branch receives and confirms, stock portal updates too
+* branch stock balance increases
+* movement records appear on both sides
+* request/dispatch/receipt statuses align
+
+This must be one complete workflow.
+
+---
+
+# 18. REAL-TIME EXPECTATION
+
+The Stock Department wants real-time visibility.
+
+That means when any of these happen in branch:
+
+* sale
+* prescription dispense
+* receive stock
+* write-off
+* transfer
+* return
+
+the Stock portal must reflect the effect immediately or on refresh.
+
+The stock manager must not need separate manual reconciliation to see current branch position.
+
+---
+
+# 19. WHAT REPLIT MUST TEST NOW
+
+Before saying this follow-up is complete, Replit must test with real data:
+
+## Test A — Branch Receive Stock
+
+* dispatch from warehouse
+* branch receives
+* branch inventory increases
+* stock department branch summary updates
+* batch appears
+* movement appears
+
+## Test B — Walk-in Sale at Branch
+
+* stock reduces at branch
+* movement appears in branch and stock portal
+* sales units update
+* closing stock updates
+
+## Test C — Prescription Partial Dispensing
+
+* prescribe multiple items
+* dispense only some
+* save partial
+* receipt shows only dispensed items
+* stock department sees only actual dispensed deduction
+
+## Test D — Write Off
+
+* write off batch item
+* branch stock reduces
+* movement appears
+* stock dashboard updates
+
+## Test E — Transfer
+
+* transfer stock
+* source and destination update correctly
+* stock department sees both ends
+
+## Test F — Company Report PDF
+
+* generate report from live data
+* confirm branch values are not zero if stock exists
+
+---
+
+# 20. REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Please reply in this structure:
+
+## Already Working
+
+* items already connected and correct
+
+## Missing / Incomplete
+
+* items still incomplete
+
+## Being Corrected In This Follow-Up
+
+* exact items being fixed now
+
+## Validation Tests Performed
+
+* list of real tests done
+
+## Billing Confirmation
+
+Confirm clearly that this is being handled as:
+
+> **follow-up correction under the original paid stock task, with no extra charge**
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Start from the current stock management portal exactly as it already exists at `/stock`. Do not redesign the structure unnecessarily. Use the existing tabs — Overview, Branch Stock, Stock Reports, Supplier Import, Country Stock, Windhoek, Ondangwa, Distribution, and Transfers — and complete the live data connections between Stock Department and Branch Portal. The stock manager must be able to see real-time branch stock balances, branch stock movements, branch stock value by DP, branch sales impact, dispensing impact, and true branch inventory from the Stock portal. Any fields currently blank or zero despite existing data must be correctly bound and displayed. This is a follow-up correction of the original paid task and must be done at no extra fee.
+
+---
