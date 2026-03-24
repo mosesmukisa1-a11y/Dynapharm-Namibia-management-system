@@ -1891,15 +1891,33 @@ function BranchStockTab() {
   const [viewTransfer, setViewTransfer] = useState(null);
   const [invFilter, setInvFilter] = useState({ search: '', status: 'all', batch: '', expiry: '' });
   const [movFilter, setMovFilter] = useState({ search: '', type: 'all', dateFrom: '', dateTo: '' });
+  const [selectedBranch, setSelectedBranch] = useState(user?.branch || '');
+  const [availableBranches, setAvailableBranches] = useState([]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    api.branch.inventory('').then(d => {
+      const inv = Array.isArray(d) ? d : d.inventory || [];
+      const branchIds = [...new Set(inv.map(i => i.branchId || i.branch_id).filter(Boolean))];
+      setAvailableBranches(branchIds);
+      const userKey = (user?.branch || '').toLowerCase().replace(/\s+/g, '_');
+      const match = branchIds.find(b => b === userKey || b === userKey + '_branch' || b.replace(/_branch$/, '') === userKey || b.startsWith(userKey));
+      if (match) {
+        setSelectedBranch(match);
+      } else if (branchIds.length > 0 && !branchIds.includes(userKey)) {
+        setSelectedBranch(branchIds[0]);
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => { if (selectedBranch) loadData(); }, [selectedBranch]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const branchParam = user?.branch ? `branch=${encodeURIComponent(user.branch)}` : '';
-      const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
-      const movBranchParam = user?.branch ? `branch=${encodeURIComponent(user.branch)}&limit=500` : 'limit=500';
+      const activeBranch = selectedBranch;
+      const branchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}` : '';
+      const branchKey = activeBranch ? activeBranch.toLowerCase().replace(/\s+/g, '_') : '';
+      const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=500` : 'limit=500';
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
         api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=500' : 'include_movements=1&limit=500').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
@@ -2205,6 +2223,22 @@ function BranchStockTab() {
       </div>
 
       {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
+
+      {availableBranches.length > 1 && (
+        <div className="mb-4 flex items-center gap-3 p-3 rounded-lg" style={{ background: '#f8f9fa', border: '1px solid #e2e8f0' }}>
+          <label className="text-sm font-semibold text-gray-600">Branch:</label>
+          <select
+            value={selectedBranch}
+            onChange={e => setSelectedBranch(e.target.value)}
+            className="px-3 py-2 rounded-lg text-sm font-medium border"
+            style={{ borderColor: '#cbd5e1', background: '#fff', minWidth: 180 }}
+          >
+            {availableBranches.map(b => (
+              <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-5 flex-wrap">
         {stockSubTabs.map(t => (
