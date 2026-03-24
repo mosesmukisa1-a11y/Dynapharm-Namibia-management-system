@@ -790,7 +790,9 @@ function PrescriptionsTab() {
   const [rxGroupTab, setRxGroupTab] = useState('all');
   const [consultFeeMode, setConsultFeeMode] = useState({});
   const [consultFeePaid, setConsultFeePaid] = useState({});
-  const [checkupFeeType, setCheckupFeeType] = useState({}); // { [reportId]: 'standard' | 'report' | null }
+  const [checkupFeeType, setCheckupFeeType] = useState({});
+  const [dispensePreview, setDispensePreview] = useState(null);
+  const [dispensing, setDispensing] = useState(false);
 
   const CHECKUP_FEE_OPTIONS = {
     standard: { label: 'Full Body Check Up', fee: 200, cashback: 50, consultantEarns: 150 },
@@ -851,6 +853,90 @@ function PrescriptionsTab() {
       meds[medIndex] = { ...meds[medIndex], paid: !meds[medIndex].paid };
       return { ...r, medicines: meds };
     }));
+  };
+
+  const saveDraft = async (report) => {
+    const meds = getMedicines(report);
+    try {
+      await api.reports.update(report.id, {
+        ...report,
+        medicines: meds,
+        dispensing_status: 'draft',
+      });
+      setAlert({ type: 'success', message: `Draft saved for prescription ${report.id}` });
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to save draft' });
+    }
+  };
+
+  const openDispensePreview = (report) => {
+    const meds = getMedicines(report);
+    const membershipStatus = report.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
+    const consultFee = getConsultationFee(membershipStatus);
+    const items = meds.map(m => {
+      const p = getEffectivePrice(m.name);
+      return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products };
+    });
+    const pendingItems = items.filter(i => !i.dispensed);
+    setDispensePreview({
+      report,
+      items,
+      pendingItems,
+      isMember,
+      membershipStatus,
+      consultFee,
+      totalDP: items.reduce((s, i) => s + (i.dp || 0) * i.quantity, 0),
+      totalCP: items.reduce((s, i) => s + (i.cp || 0) * i.quantity, 0),
+      totalBV: items.reduce((s, i) => s + (i.bv || 0) * i.quantity, 0),
+      pendingDP: pendingItems.reduce((s, i) => s + (i.dp || 0) * i.quantity, 0),
+      pendingCP: pendingItems.reduce((s, i) => s + (i.cp || 0) * i.quantity, 0),
+    });
+  };
+
+  const confirmDispense = async () => {
+    if (!dispensePreview) return;
+    const { report, pendingItems, isMember, membershipStatus } = dispensePreview;
+    if (pendingItems.length === 0) {
+      setAlert({ type: 'error', message: 'No pending items to dispense' });
+      return;
+    }
+    setDispensing(true);
+    try {
+      const dispenseItems = [];
+      for (const item of pendingItems) {
+        if (item.isPackage && item.products) {
+          for (const comp of item.products) {
+            dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * item.quantity });
+          }
+        } else {
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity });
+        }
+      }
+      await api.branch.dispense({
+        reportId: report.id,
+        branchId: user?.branch || '',
+        items: dispenseItems,
+        createdBy: user?.full_name || user?.username || '',
+        customerType: isMember ? 'member' : 'non_member',
+      });
+      const updatedMeds = getMedicines(report).map(m => ({ ...m, dispensed: true }));
+      await api.reports.update(report.id, {
+        ...report,
+        medicines: updatedMeds,
+        dispensing_status: 'dispensed',
+        dispensed_at: new Date().toISOString(),
+        dispensed_by: user?.full_name || user?.username || '',
+      });
+      setReports(prev => prev.map(r => r.id === report.id ? { ...r, medicines: updatedMeds, dispensing_status: 'dispensed' } : r));
+      setDispensePreview(null);
+      setAlert({ type: 'success', message: `All items dispensed and stock deducted for ${report.id}` });
+      setTimeout(() => refreshDispenserData(), 100);
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to dispense — stock may be insufficient' });
+    } finally {
+      setDispensing(false);
+    }
   };
 
   const getEffectivePrice = (medName) => {
@@ -1340,10 +1426,13 @@ function PrescriptionsTab() {
 
               <div className="flex gap-2 flex-wrap justify-end">
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', alignSelf: 'center' }}>QUOTE:</span>
+                  <button onClick={() => saveDraft(report)}
+                    style={{ padding: '7px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    💾 Save Draft
+                  </button>
                   <button onClick={() => printPrescriptionQuoteThermal(report, consultMode)}
                     style={{ padding: '7px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
-                    🖨️ Thermal Quote
+                    🖨️ Print / Preview
                   </button>
                   <button onClick={() => printPrescriptionPDF(report, consultMode)}
                     style={{ padding: '7px 12px', border: '1.5px solid #93c5fd', borderRadius: 8, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
@@ -1352,17 +1441,85 @@ function PrescriptionsTab() {
                 </div>
                 <div style={{ width: 1, background: 'rgba(255,255,255,0.15)', margin: '0 4px', alignSelf: 'stretch' }} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', alignSelf: 'center' }}>RECEIPT:</span>
                   <button onClick={() => printPrescriptionReceipt(report, consultMode, checkupType)}
-                    style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#c41e3a,#991b1b)', color: '#fff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(196,30,58,0.3)' }}>
-                    🧾 Print Receipt {checkupType ? '(+Checkup)' : ''}
+                    style={{ padding: '7px 14px', border: '1.5px solid #fecaca', borderRadius: 8, background: '#fff0f3', color: '#c41e3a', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    🧾 Print Receipt
                   </button>
+                  {pendingCount > 0 && (
+                    <button onClick={() => openDispensePreview(report)}
+                      style={{ padding: '8px 18px', border: 'none', borderRadius: 8, background: 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(22,163,74,0.35)' }}>
+                      ✅ Confirm & Dispense ({pendingCount})
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         );
       })}
+
+      {dispensePreview && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => !dispensing && setDispensePreview(null)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '95%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg,#16a34a,#166534)', borderRadius: '16px 16px 0 0', color: '#fff' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Confirm Dispense — Preview</h3>
+              <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>Review before deducting stock</p>
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                <div><span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Patient</span><div style={{ fontWeight: 700, color: '#1e293b' }}>{dispensePreview.report.client_name || dispensePreview.report.full_name || 'Patient'}</div></div>
+                <div><span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Prescription</span><div style={{ fontWeight: 700, color: '#1e293b' }}>{dispensePreview.report.id}</div></div>
+                <div><span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Status</span><div style={{ fontWeight: 700, color: dispensePreview.isMember ? '#166534' : '#d97706' }}>{dispensePreview.isMember ? 'Member' : 'Non-Member'}</div></div>
+                <div><span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Consultant</span><div style={{ fontWeight: 700, color: '#1e293b' }}>{dispensePreview.report.consultant || '—'}</div></div>
+              </div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Items to Dispense ({dispensePreview.pendingItems.length})</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', marginBottom: 16 }}>
+                <thead><tr style={{ background: '#f8fafc' }}>
+                  <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid #e2e8f0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>Product</th>
+                  <th style={{ textAlign: 'center', padding: '8px', borderBottom: '2px solid #e2e8f0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>Qty</th>
+                  <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid #e2e8f0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>DP</th>
+                  <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid #e2e8f0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>{dispensePreview.isMember ? 'DP' : 'CP'} Price</th>
+                </tr></thead>
+                <tbody>
+                  {dispensePreview.pendingItems.map((item, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{item.name}{item.isPackage ? ' 📦' : ''}</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>{item.quantity}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>N$ {(item.dp || 0).toFixed(2)}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {(dispensePreview.isMember ? item.dp : item.cp || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
+                    <td style={{ padding: '10px 8px' }}>TOTAL</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>{dispensePreview.pendingItems.reduce((s, i) => s + i.quantity, 0)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right', color: '#166534' }}>N$ {dispensePreview.pendingDP.toFixed(2)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right', color: '#1e293b' }}>N$ {(dispensePreview.isMember ? dispensePreview.pendingDP : dispensePreview.pendingCP).toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: '0.78rem', color: '#991b1b' }}>
+                ⚠️ Clicking "Confirm & Dispense" will deduct stock using FEFO batch logic. This action cannot be undone.
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setDispensePreview(null)} disabled={dispensing}
+                  style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                  Cancel
+                </button>
+                <button onClick={() => { const rpt = dispensePreview.report; const cm = getConsultMode(rpt.id, dispensePreview.isMember); printPrescriptionQuoteThermal(rpt, cm); }}
+                  style={{ padding: '10px 20px', border: '1.5px solid #93c5fd', borderRadius: 10, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                  🖨️ Print Preview
+                </button>
+                <button onClick={confirmDispense} disabled={dispensing}
+                  style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: dispensing ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(22,163,74,0.35)' }}>
+                  {dispensing ? 'Dispensing...' : '✅ Confirm & Dispense'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1430,15 +1587,19 @@ function printStockMovementsReport(movements, branch) {
     const pName = r.product_name || r.productName || '-';
     const mType = (r.movement_type || r.type || '').replace(/_/g, ' ');
     const p = findProductPrice(pName);
-    const dpVal = p?.dp ? Number(p.dp) * Number(r.quantity || 0) : 0;
+    const absQty = Math.abs(Number(r.quantity || 0));
+    const dpVal = p?.dp ? Number(p.dp) * absQty : 0;
     totalDPVal += dpVal;
     const staff = r.created_by || r.createdBy || '-';
-    return `<tr><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA',{day:'2-digit',month:'short',year:'numeric'})+ ' '+new Date(r.created_at).toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'}):'-'}</td><td>${pName}</td><td>${r.batch_no||r.batchNo||'-'}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700">${r.quantity||0}</td><td style="text-align:right">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${r.source_location||r.sourceLocation||'-'}</td><td>${r.destination_location||r.destinationLocation||'-'}</td><td style="font-size:9px">${staff}</td></tr>`;
+    const inTypes = ['received','receive','stock_receipt','transfer_in','return','return_in','adjustment'];
+    const isOutward = !inTypes.includes(mType.toLowerCase());
+    const signedQty = isOutward ? `-${absQty}` : `+${absQty}`;
+    return `<tr><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA',{day:'2-digit',month:'short',year:'numeric'})+ ' '+new Date(r.created_at).toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'}):'-'}</td><td>${pName}</td><td>${r.batch_no||r.batchNo||'-'}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700;color:${isOutward?'#c41e3a':'#166534'}">${signedQty}</td><td style="text-align:right">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${r.source_location||r.sourceLocation||'-'}</td><td>${r.destination_location||r.destinationLocation||'-'}</td><td style="font-size:9px">${staff}</td></tr>`;
   }).join('');
   printStockDocument('Stock Movements Report (DP Valued)', `
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
     <table><thead><tr><th>Date</th><th>Product</th><th>Batch</th><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">DP Value</th><th>From</th><th>To</th><th>Staff</th></tr></thead><tbody>${rows||'<tr><td colspan="9" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}
-    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${movements.reduce((s,r)=>s+Number(r.quantity||0),0)}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
+    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${movements.reduce((s,r)=>s+Math.abs(Number(r.quantity||0)),0)}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
 }
 
 function printReceivingStockReport(requests, branch) {
@@ -1819,19 +1980,32 @@ function BranchStockTab() {
     setSubmitting(true);
     setReceiveFormMsg(null);
     try {
-      for (const item of receiveItems) {
-        if (Number(item.received_qty) > 0) {
+      const itemsToReceive = receiveItems.filter(item => Number(item.received_qty) > 0);
+      for (const item of itemsToReceive) {
+        if (!item.batch_no || !item.batch_no.trim()) {
+          setReceiveFormMsg({ type: 'error', text: `Batch number is required for "${item.product_name}"` });
+          setSubmitting(false);
+          return;
+        }
+        if (!item.expiry_date) {
+          setReceiveFormMsg({ type: 'error', text: `Expiry date is required for "${item.product_name}"` });
+          setSubmitting(false);
+          return;
+        }
+      }
+      for (const item of itemsToReceive) {
           await api.stock.createMovement({
             product_name: item.product_name || item.productName || item.productId || 'Unknown',
             quantity: Number(item.received_qty),
             movement_type: 'received',
             source_location: 'Warehouse',
             destination_location: user?.branch || 'Branch',
-            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}`,
+            batch_no: item.batch_no?.trim() || '',
+            expiry_date: item.expiry_date || null,
+            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}. Batch: ${item.batch_no || 'N/A'}, Expiry: ${item.expiry_date || 'N/A'}`,
             reference_id: selectedRequest.id,
             created_by: receiveReceivedBy || user?.full_name || user?.username || null,
           });
-        }
       }
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
       setShowReceiveForm(false);
@@ -2727,7 +2901,7 @@ function BranchStockTab() {
                   const pName = m.product_name || m.productName || '-';
                   const mType = (m.movement_type || m.type || '').toLowerCase();
                   const p = findProductPrice(pName);
-                  const dpVal = p?.dp ? Number(p.dp) * Number(m.quantity || 0) : 0;
+                  const dpVal = p?.dp ? Number(p.dp) * Math.abs(Number(m.quantity || 0)) : 0;
                   const isOut = outwardTypes.includes(mType);
                   return (
                     <tr key={m.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
@@ -2959,16 +3133,32 @@ function BranchStockTab() {
                 {sectionLabel('Items to Receive')}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {receiveItems.map((item, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f9f5f5', borderRadius: 10, border: '1px solid #f0e8ea' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{item.product_name}</div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 1 }}>Requested: {item.quantity}</div>
+                    <div key={i} style={{ padding: '10px 14px', background: '#f9f5f5', borderRadius: 10, border: '1px solid #f0e8ea' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{item.product_name}</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 1 }}>Requested: {item.quantity}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <label style={{ fontSize: '0.68rem', color: '#c41e3a', fontWeight: 700 }}>Qty Received</label>
+                          <input type="number" min="0" value={item.received_qty}
+                            onChange={e => setReceiveItems(prev => prev.map((r, j) => j===i ? {...r, received_qty: e.target.value} : r))}
+                            style={{ width: 70, padding: '5px 8px', border: '1.5px solid #fecaca', borderRadius: 7, fontSize: '0.87rem', textAlign: 'center', outline: 'none' }} />
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                        <label style={{ fontSize: '0.68rem', color: '#c41e3a', fontWeight: 700 }}>Qty Received</label>
-                        <input type="number" min="0" value={item.received_qty}
-                          onChange={e => setReceiveItems(prev => prev.map((r, j) => j===i ? {...r, received_qty: e.target.value} : r))}
-                          style={{ width: 70, padding: '5px 8px', border: '1.5px solid #fecaca', borderRadius: 7, fontSize: '0.87rem', textAlign: 'center', outline: 'none' }} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700, display: 'block', marginBottom: 2 }}>Batch No *</label>
+                          <input type="text" value={item.batch_no || ''} placeholder="e.g. BN-2024-001"
+                            onChange={e => setReceiveItems(prev => prev.map((r, j) => j===i ? {...r, batch_no: e.target.value} : r))}
+                            style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700, display: 'block', marginBottom: 2 }}>Expiry Date *</label>
+                          <input type="date" value={item.expiry_date || ''}
+                            onChange={e => setReceiveItems(prev => prev.map((r, j) => j===i ? {...r, expiry_date: e.target.value} : r))}
+                            style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }} />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -3275,6 +3465,7 @@ function BranchStockTab() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
