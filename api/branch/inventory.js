@@ -97,10 +97,34 @@ function normalizeMovementRow(row) {
   };
 }
 
+function normalizeBranchId(raw) {
+  if (!raw) return raw;
+  const key = raw.toLowerCase().replace(/\s+/g, '_');
+  return key;
+}
+
+async function resolveBranchId(raw) {
+  const key = normalizeBranchId(raw);
+  if (!key) return key;
+  const exact = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [key]);
+  if (exact) return exact.branch_id;
+  const withSuffix = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [key + '_branch']);
+  if (withSuffix) return withSuffix.branch_id;
+  const stripped = key.replace(/_branch$/, '');
+  if (stripped !== key) {
+    const noSuffix = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [stripped]);
+    if (noSuffix) return noSuffix.branch_id;
+  }
+  const like = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id ILIKE $1 LIMIT 1', [`%${key}%`]);
+  if (like) return like.branch_id;
+  return key;
+}
+
 async function getInventoryByBranch(branchId, enriched = false) {
+  const resolvedId = await resolveBranchId(branchId);
   const rows = await getMany(
     `SELECT * FROM branch_inventory_batches WHERE branch_id = $1 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
-    [branchId]
+    [resolvedId]
   );
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
   if (!enriched) return normalized;
@@ -115,7 +139,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
        FROM branch_inventory_movements
        WHERE branch_id = $1
        GROUP BY product_name, batch_no, type`,
-      [branchId]
+      [resolvedId]
     );
   } catch {}
 
@@ -129,7 +153,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
        FROM stock_movements
        WHERE (source_location ILIKE $1 OR destination_location ILIKE $1)
        GROUP BY product_name, batch_no, movement_type`,
-      [`%${branchId}%`]
+      [`%${resolvedId}%`]
     );
   } catch {}
   movAgg = [...movAgg, ...smAgg];
@@ -169,9 +193,10 @@ async function getInventoryByBranch(branchId, enriched = false) {
 }
 
 async function getMovementsByBranch(branchId, limit = 100) {
+  const resolvedId = await resolveBranchId(branchId);
   const rows = await getMany(
     `SELECT * FROM branch_inventory_movements WHERE branch_id = $1 ORDER BY created_at DESC LIMIT $2`,
-    [branchId, limit]
+    [resolvedId, limit]
   );
   return rows.map(normalizeMovementRow).filter(Boolean);
 }
