@@ -1,0 +1,289 @@
+
+---
+
+# ✅ FINAL IMPLEMENTATION CHECKLIST + CORRECTION NOTICE (NO CHARGE)
+
+## ❗IMPORTANT
+
+This checklist is based on the **original instruction already delivered and paid for** 
+
+👉 This is **NOT a new request**
+👉 This is a **verification + correction checklist**
+👉 Any incomplete items must be **fixed at NO additional cost**
+
+---
+
+# 🔍 SECTION 1 — CORE SYSTEM COMPLIANCE
+
+Please confirm:
+
+* [ ] All stock data is coming from **real transactions (no hardcoded/demo data)**
+* [ ] All modules are connected to:
+
+  * Inventory
+  * Movements
+  * Reports
+  * Sales
+  * Prescription
+* [ ] Stock balances are calculated dynamically from movements
+* [ ] DP pricing is used for all internal calculations
+
+❌ If ANY of the above is not true → FIX REQUIRED (NO CHARGE)
+
+---
+
+# 📦 SECTION 2 — INVENTORY TAB
+
+Confirm the Inventory tab shows:
+
+* [ ] Product name + FULL description
+
+* [ ] Batch number
+
+* [ ] Expiry date
+
+* [ ] Source warehouse
+
+* [ ] Quantity received
+
+* [ ] Quantity sold
+
+* [ ] Quantity dispensed
+
+* [ ] Transfers (in/out)
+
+* [ ] Write-offs
+
+* [ ] Balance
+
+* [ ] DP unit price
+
+* [ ] DP total value
+
+* [ ] Last movement date
+
+* [ ] Status (OK / Low / Expiring / Out)
+
+* [ ] Totals at bottom (Qty + DP Value)
+
+❌ If any field is missing or blank (when data exists) → FIX REQUIRED
+
+---
+
+# 🚨 SECTION 3 — ALERTS
+
+Confirm Alerts are:
+
+* [ ] Batch-based
+* [ ] Showing expiry correctly
+* [ ] Showing low stock correctly
+* [ ] Showing expiring stock
+* [ ] Showing expired stock
+
+❌ If alerts are generic or missing batch/expiry → FIX REQUIRED
+
+---
+
+# 📥 SECTION 4 — RECEIVE STOCK
+
+From screenshots:
+
+* [ ] Batch is ALWAYS captured
+
+* [ ] Expiry is ALWAYS captured
+
+* [ ] System does NOT allow empty batch/expiry
+
+* [ ] Receiving updates inventory immediately
+
+* [ ] Movement is created correctly
+
+❌ If batch/expiry shows “—” → CRITICAL FIX REQUIRED
+
+---
+
+# 🔄 SECTION 5 — TRANSFERS
+
+Confirm:
+
+* [ ] Transfers include batch + expiry
+* [ ] Source stock deducted correctly
+* [ ] Destination stock added only after receiving
+* [ ] Transfer visible in Movements
+
+❌ If traceability is broken → FIX REQUIRED
+
+---
+
+# 📊 SECTION 6 — MOVEMENTS (CRITICAL)
+
+From current system:
+
+⚠️ ISSUE FOUND:
+
+* Quantities showing negative incorrectly
+
+---
+
+Confirm:
+
+* [ ] INWARD = positive (+)
+
+* [ ] OUTWARD = negative (-)
+
+* [ ] Movement types correctly assigned:
+
+  * Receive = IN
+  * Sales = OUT
+  * Transfer In = IN
+  * Transfer Out = OUT
+  * Write-off = OUT
+
+* [ ] Totals (Inward / Outward / Net) are calculated from real data
+
+❌ If incorrect → CRITICAL FIX REQUIRED
+
+---
+
+# 🧾 SECTION 7 — REQUESTS TAB
+
+Confirm:
+
+* [ ] Real product names (NOT “Item x10”)
+* [ ] Full product description
+* [ ] Requesting branch
+* [ ] Requested by user
+* [ ] Status flow working
+* [ ] Linked to dispatch
+
+❌ If generic data shown → FIX REQUIRED
+
+---
+
+# 💊 SECTION 8 — PRESCRIPTION DISPENSING (CRITICAL)
+
+Confirm:
+
+### Workflow
+
+* [ ] Can save as Draft (partial save)
+* [ ] Can return and edit later
+
+### Before Submit
+
+* [ ] Preview available
+* [ ] Print available BEFORE submission
+
+### After Submit
+
+* [ ] Stock deducted ONLY after confirmation
+
+### Receipt
+
+* [ ] Shows ONLY dispensed items
+
+### Status Tracking
+
+* [ ] Not Dispensed
+* [ ] Partial
+* [ ] Fully Dispensed
+
+❌ If ANY of these missing → CRITICAL FIX REQUIRED
+
+---
+
+# 💰 SECTION 9 — SALES REPORT
+
+Confirm:
+
+* [ ] Categories separated:
+
+  * Consultation
+  * Walk-in
+  * Member
+  * Non-member
+  * Online
+  * Prescription
+
+* [ ] DP values used ONLY
+
+* [ ] Totals correct
+
+* [ ] No zero errors where data exists
+
+❌ If incorrect → FIX REQUIRED
+
+---
+
+# 🧾 SECTION 10 — RECEIPTS
+
+Confirm:
+
+### Non-member receipts:
+
+* [ ] Distributor copy = EXACT SAME as branch copy
+
+### Prescription receipts:
+
+* [ ] Only dispensed items shown
+
+❌ If mismatch → FIX REQUIRED
+
+---
+
+# 🧮 SECTION 11 — WRITE-OFF
+
+Confirm:
+
+* [ ] Batch selection required
+* [ ] Expiry shown
+* [ ] Reason captured
+* [ ] Stock deducted
+* [ ] Movement recorded
+
+❌ If not fully working → FIX REQUIRED
+
+---
+
+# 📈 SECTION 12 — REPORTS
+
+Confirm:
+
+* [ ] Reports use REAL data
+* [ ] DP-based valuation
+* [ ] Same data visible in Stock Reports
+* [ ] Finance-ready structure
+
+❌ If disconnected → FIX REQUIRED
+
+---
+
+# 🔴 FINAL REQUIREMENT
+
+If ANY item above is:
+
+* incomplete
+* incorrect
+* partially implemented
+
+👉 It must be:
+
+✔ corrected
+✔ tested
+✔ confirmed
+
+**AT NO ADDITIONAL COST**
+
+---
+
+# ✅ REQUIRED RESPONSE FROM REPLIT
+
+Please confirm:
+
+1. ✅ Which items are fully completed
+2. ❌ Which items are incomplete
+3. 🔧 Which items will be corrected immediately
+4. ⏱ Timeline for completion
+
+---
+

@@ -920,17 +920,24 @@ function PrescriptionsTab() {
         createdBy: user?.full_name || user?.username || '',
         customerType: isMember ? 'member' : 'non_member',
       });
-      const updatedMeds = getMedicines(report).map(m => ({ ...m, dispensed: true }));
+      const pendingNames = new Set(pendingItems.map(i => i.name));
+      const updatedMeds = getMedicines(report).map(m => pendingNames.has(m.name) ? { ...m, dispensed: true } : m);
+      const allDispensedNow = updatedMeds.every(m => m.dispensed);
+      const someDispensed = updatedMeds.some(m => m.dispensed);
+      const newStatus = allDispensedNow ? 'dispensed' : (someDispensed ? 'partial' : 'draft');
       await api.reports.update(report.id, {
         ...report,
         medicines: updatedMeds,
-        dispensing_status: 'dispensed',
+        dispensing_status: newStatus,
         dispensed_at: new Date().toISOString(),
         dispensed_by: user?.full_name || user?.username || '',
       });
-      setReports(prev => prev.map(r => r.id === report.id ? { ...r, medicines: updatedMeds, dispensing_status: 'dispensed' } : r));
+      setReports(prev => prev.map(r => r.id === report.id ? { ...r, medicines: updatedMeds, dispensing_status: newStatus } : r));
       setDispensePreview(null);
-      setAlert({ type: 'success', message: `All items dispensed and stock deducted for ${report.id}` });
+      const msg = allDispensedNow
+        ? `All items dispensed and stock deducted for ${report.id}`
+        : `${pendingItems.length} item(s) dispensed. ${updatedMeds.filter(m => !m.dispensed).length} still pending.`;
+      setAlert({ type: 'success', message: msg });
       setTimeout(() => refreshDispenserData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to dispense — stock may be insufficient' });
@@ -1006,7 +1013,9 @@ function PrescriptionsTab() {
                  branch amount, N$50 cashback
   ────────────────────────────────────────────────────────────── */
   const printPrescriptionReceipt = (report, consultMode, checkupType) => {
-    const meds = getMedicines(report);
+    const allMeds = getMedicines(report);
+    const dispensedMeds = allMeds.filter(m => m.dispensed);
+    const meds = dispensedMeds.length > 0 ? dispensedMeds : allMeds;
     const membershipStatus = report.membership_status || 'referred';
     const isMember = membershipStatus === 'member';
     const consultFee = getConsultationFee(membershipStatus);
@@ -1047,8 +1056,9 @@ function PrescriptionsTab() {
 
     const medTotal = isMember ? totals.total.dp : totals.total.cp;
     const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
-    const rxBranchAmount = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
-    const rxDistProfit = meds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
+    const receiptMeds = dispensedMeds.length > 0 ? dispensedMeds : allMeds;
+    const rxBranchAmount = receiptMeds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
+    const rxDistProfit = receiptMeds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
     const totalBV = totals.total.bv;
     const totalAmount = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
 
@@ -1211,8 +1221,8 @@ function PrescriptionsTab() {
                     {isMember
                       ? <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: 'rgba(99,220,143,0.3)', color: '#d1fae5' }}>🏅 Member</span>
                       : <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: 'rgba(251,191,36,0.3)', color: '#fef3c7' }}>👤 Non-Member</span>}
-                    <span className="text-xs px-3 py-1 rounded-full" style={{ background: allDispensed ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.15)' }}>
-                      {allDispensed ? `✅ All dispensed` : `⏳ ${pendingCount} pending`}
+                    <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: allDispensed ? 'rgba(74,222,128,0.3)' : dispensedCount > 0 ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.15)' }}>
+                      {allDispensed ? `✅ Fully Dispensed` : dispensedCount > 0 ? `⚡ Partial (${dispensedCount}/${total})` : `⏳ Not Dispensed`}
                     </span>
                   </div>
                 </div>
