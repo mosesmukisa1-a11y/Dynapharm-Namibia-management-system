@@ -2053,6 +2053,11 @@ function BranchStockTab() {
     const selBatch = writeOffForm.batch_id ? inventory.find(i => i.id === writeOffForm.batch_id) : null;
     const pName = selBatch ? (selBatch.product_name || selBatch.productName) : writeOffForm.product_name;
     if (!pName || !writeOffForm.quantity || !writeOffForm.reason) return;
+    const availQty = selBatch ? Number(selBatch.quantity || 0) : 0;
+    if (selBatch && Number(writeOffForm.quantity) > availQty) {
+      setAlert({ type: 'error', message: `Cannot write off ${writeOffForm.quantity} — only ${availQty} available in this batch` });
+      return;
+    }
     setSubmitting(true);
     try {
       const dp = findProductPrice(pName);
@@ -2064,6 +2069,7 @@ function BranchStockTab() {
         source_location: user?.branch || '',
         destination_location: 'written_off',
         batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
+        expiry_date: selBatch?.expiry_date || selBatch?.expiryDate || null,
         notes: `Write-off: ${writeOffForm.reason}. Batch: ${selBatch?.batch_no || selBatch?.batchNo || 'N/A'}. Expiry: ${selBatch?.expiry_date || selBatch?.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
         reference_id: `WO-${Date.now()}`,
         created_by: user?.full_name || user?.username || '',
@@ -2899,14 +2905,14 @@ function BranchStockTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ background: '#f8f5f5' }}>
-                  {['Date', 'Product', 'Batch', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Reference', 'Staff', 'Notes'].map(h => (
+                  {['Date', 'Product', 'Batch', 'Expiry', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Reference', 'Staff', 'Notes'].map(h => (
                     <th key={h} style={{ textAlign: h === 'Qty' || h === 'DP Value' ? 'right' : 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredMov.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No movements recorded</td></tr>
+                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No movements recorded</td></tr>
                 ) : filteredMov.slice(0, 200).map((m, idx) => {
                   const pName = m.product_name || m.productName || '-';
                   const mType = (m.movement_type || m.type || '').toLowerCase();
@@ -2918,6 +2924,7 @@ function BranchStockTab() {
                       <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: '#6b7280', fontSize: '0.76rem' }}>{formatDateTime(m.created_at || m.createdAt)}</td>
                       <td style={{ padding: '7px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{m.batch_no || m.batchNo || '—'}</td>
+                      <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>{(m.expiry_date || m.expiryDate) ? new Date(m.expiry_date || m.expiryDate).toLocaleDateString('en-ZA') : '—'}</td>
                       <td style={{ padding: '7px 8px' }}>{typeBadge(mType)}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{Math.abs(Number(m.quantity || 0))}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td>

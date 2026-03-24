@@ -133,12 +133,13 @@ export default async function handler(req, res) {
         const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const referenceId = body.reference_id || body.referenceId || null;
         const batchNo = body.batch_no || body.batchNo || null;
+        const expiryDate = body.expiry_date || body.expiryDate || null;
         const srcLoc = body.source_location || body.sourceLocation || null;
         const destLoc = body.destination_location || body.destinationLocation || null;
         await query(
-          `INSERT INTO stock_movements (id, product_name, batch_no, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
-          [id, productName, batchNo, qty, movType, srcLoc, destLoc, referenceId, notes, createdBy]
+          `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`,
+          [id, productName, batchNo, expiryDate, qty, movType, srcLoc, destLoc, referenceId, notes, createdBy]
         );
         const branchId = srcLoc || destLoc;
         if (branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType)) {

@@ -1,0 +1,322 @@
+
+
+# 🚨 FINAL ACCEPTANCE CHECKLIST + MANDATORY CORRECTION NOTICE
+
+## ❗IMPORTANT
+
+This checklist comes from the **original Branch Stock Management instruction already submitted and already paid for** 
+
+This is:
+
+* **NOT a new feature request**
+* **NOT additional scope**
+* **NOT billable work**
+
+This is a **formal acceptance review of the same task**.
+
+Any item not completed exactly as requested must be corrected **immediately and at no extra charge**.
+
+---
+
+# 🔴 ACCEPTANCE RULE
+
+The task will only be considered complete when **all checklist items below are fully working with real data**.
+
+Visual updates alone are **not acceptance**.
+
+Screens that look better but are not fully connected in logic, workflow, and reporting are still **incomplete**.
+
+---
+
+# 1. CORE STOCK LOGIC
+
+Please mark each item clearly as:
+
+* **PASS**
+* **FAIL**
+* **FIXING NOW**
+
+### Required:
+
+* [ ] Real stock data only, no demo/hardcoded values
+* [ ] Inventory driven by actual receipts, sales, dispensing, transfers, and write-offs
+* [ ] Stock balances update automatically after every stock-affecting action
+* [ ] All internal stock valuation uses DP only
+* [ ] Branch stock is connected to warehouse dispatches, sales, prescription, and reports
+
+If any one of the above fails, the module is not accepted.
+
+---
+
+# 2. INVENTORY TAB
+
+### Must fully show:
+
+* [ ] Product name
+* [ ] Full product description
+* [ ] Batch number
+* [ ] Expiry date
+* [ ] Source warehouse
+* [ ] Quantity received
+* [ ] Quantity sold
+* [ ] Quantity dispensed
+* [ ] Quantity transferred
+* [ ] Quantity written off
+* [ ] Balance
+* [ ] DP unit price
+* [ ] DP total value
+* [ ] Last movement date
+* [ ] Stock status
+
+### Must also:
+
+* [ ] Show totals correctly
+* [ ] Update immediately after receipt/sale/dispense/transfer/write-off
+* [ ] Not leave fields blank when the system already has the data
+
+If any data exists in the system but still appears as “—” or blank in inventory, mark that item FAIL and correct it.
+
+---
+
+# 3. ALERTS TAB
+
+### Must correctly show:
+
+* [ ] Low stock
+* [ ] Out of stock
+* [ ] Expiring stock
+* [ ] Expired stock
+* [ ] Pending stock issues
+
+### Each alert must include:
+
+* [ ] Product
+* [ ] Batch
+* [ ] Expiry
+* [ ] Balance
+* [ ] Action required
+
+If alerts are generic and not batch-aware, they are incomplete.
+
+---
+
+# 4. RECEIVE STOCK
+
+### Must confirm:
+
+* [ ] Batch is captured
+* [ ] Expiry is captured
+* [ ] Receipt cannot save incomplete mandatory stock traceability data
+* [ ] Receipt updates inventory immediately
+* [ ] Receipt creates movement entry
+* [ ] Receipt updates reports
+* [ ] Receipt updates dispatch/receipt status
+
+If stock is received with batch and expiry but those details do not flow into inventory and movements, this is a FAIL.
+
+---
+
+# 5. TRANSFERS
+
+### Must confirm:
+
+* [ ] Transfer number exists
+* [ ] Source and destination are correct
+* [ ] Product details are complete
+* [ ] Batch is carried through
+* [ ] Expiry is carried through
+* [ ] Quantity is correct
+* [ ] Source stock is deducted correctly
+* [ ] Destination stock is added correctly after receipt
+* [ ] Transfer appears in movement ledger
+
+If any transfer remains only a visual list and not a full traceable stock event, it is incomplete.
+
+---
+
+# 6. MOVEMENTS TAB
+
+### Must confirm:
+
+* [ ] Inward quantities display correctly
+* [ ] Outward quantities display correctly
+* [ ] Net is calculated correctly
+* [ ] Summary cards are derived from real movement records
+* [ ] Movement type classification is correct
+* [ ] Each movement line shows date, product, batch, expiry, type, quantity, DP value, from, to, reference, staff, notes
+
+### Movement type examples must be correct:
+
+* [ ] Receive Stock = inward
+* [ ] Transfer In = inward
+* [ ] Transfer Out = outward
+* [ ] Walk-in Sale = outward
+* [ ] Non-member Sale = outward
+* [ ] Member Sale = outward
+* [ ] Prescription Dispense = outward
+* [ ] Write Off = outward
+
+If movement math or signs are wrong, the movement ledger is not accepted.
+
+---
+
+# 7. REQUESTS TAB
+
+### Must confirm:
+
+* [ ] Real product names shown
+* [ ] Full descriptions shown
+* [ ] Requested quantity shown
+* [ ] Requested for branch shown correctly
+* [ ] Requested by user shown separately
+* [ ] Approved by shown correctly
+* [ ] Fulfilment/receipt status shown
+* [ ] Linked dispatch/receipt path exists
+
+If generic labels like “Item x10” remain where the system has the actual product data, this is incomplete.
+
+---
+
+# 8. PRESCRIPTION DISPENSING — CRITICAL ACCEPTANCE ITEM
+
+This is one of the key missing items and must be checked carefully.
+
+### Must confirm:
+
+* [ ] Prescription can be saved as draft
+* [ ] Partial save works
+* [ ] User can return later and continue
+* [ ] Preview is available before final submit
+* [ ] Print is available before final submit
+* [ ] Final stock deduction only happens when dispense is confirmed
+* [ ] Receipt only shows actually dispensed items
+* [ ] Prescription status saves as:
+
+  * [ ] Not Dispensed
+  * [ ] Partially Dispensed
+  * [ ] Fully Dispensed
+* [ ] Undispensed items remain pending
+* [ ] Later completion updates status correctly
+
+If partial saving and only-receipting dispensed items is still not working, this remains a FAIL and must be corrected under the same paid task.
+
+---
+
+# 9. SALES REPORT
+
+### Must confirm:
+
+* [ ] Consultation Fees shown
+* [ ] Walk-in Sales shown
+* [ ] Member Sales shown
+* [ ] Non-member Sales shown
+* [ ] Online Orders shown
+* [ ] Prescription Dispensing shown
+* [ ] Total DP Sales shown
+* [ ] Branch Sales Summary shown
+* [ ] Distributor Profit Summary shown if already required in scope
+* [ ] Totals use DP only
+* [ ] Report is accessible under Stock Reports
+* [ ] Report is fit for finance basis
+
+If categories remain incomplete or values are disconnected from actual stock/sales data, the report is incomplete.
+
+---
+
+# 10. RECEIPTS
+
+### Must confirm:
+
+* [ ] Non-member distributor receipt copy matches branch copy exactly
+* [ ] Prescription receipt shows only dispensed items
+* [ ] Receipt values are correctly aligned to sale type
+* [ ] Linked references are consistent
+
+If the copies differ in structure or the wrong items appear, this is a FAIL.
+
+---
+
+# 11. WRITE OFF
+
+### Must confirm:
+
+* [ ] Batch selection works
+* [ ] Expiry is shown
+* [ ] Quantity is checked against available stock
+* [ ] Reason is captured
+* [ ] Stock is deducted immediately
+* [ ] Movement is recorded
+* [ ] Reports reflect the write-off
+
+If write-off is only a form and not a true stock event, it is incomplete.
+
+---
+
+# 12. REPORTS / PRINTING
+
+### Must confirm:
+
+* [ ] Print Report uses live data
+* [ ] Printed report includes totals
+* [ ] Printed report includes DP values
+* [ ] Printed report includes relevant filters or date context
+* [ ] Reports are connected to the same movement and inventory logic
+* [ ] Stock Reports reflect the same branch data correctly
+
+If reports are styled correctly but not logically tied to the same underlying data, they are not accepted.
+
+---
+
+# 🔴 MANDATORY CORRECTION RULE
+
+Any checklist item marked:
+
+* **FAIL**
+* **PARTIAL**
+* **NOT VERIFIED**
+
+must be:
+
+1. corrected,
+2. retested,
+3. confirmed back,
+
+**at no extra cost**.
+
+Because these items belong to the original request already submitted and already paid for. 
+
+---
+
+# ✅ REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Please reply in this structure:
+
+## Fully Completed
+
+* item list
+
+## Incomplete / Failed
+
+* item list
+
+## Being Corrected Now
+
+* item list
+
+## Estimated Completion
+
+* time/date
+
+---
+
+# FINAL POSITION
+
+The task is only accepted when:
+
+* all required items pass,
+* all missing logic is corrected,
+* all stock workflows work end-to-end with real data,
+* dispensing partial save and receipt logic are fixed,
+* and no further payment is requested for completing the original scope.
+
+---
