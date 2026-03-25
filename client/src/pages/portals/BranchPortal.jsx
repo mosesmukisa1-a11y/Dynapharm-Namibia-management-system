@@ -2117,6 +2117,7 @@ function BranchStockTab() {
       quantitySent: it.quantityApproved != null ? it.quantityApproved : it.quantity,
       quantityReceived: it.quantityApproved != null ? it.quantityApproved : it.quantity,
       discrepancyNote: '',
+      _hasDiscrepancy: false,
     })) : (transfer.product_name ? [{
       productName: transfer.product_name,
       productId: transfer.product_name,
@@ -2126,6 +2127,7 @@ function BranchStockTab() {
       quantitySent: transfer.quantity || 0,
       quantityReceived: transfer.quantity || 0,
       discrepancyNote: '',
+      _hasDiscrepancy: false,
       unit: 'units',
     }] : []);
     setReceiveItems(mapped);
@@ -2143,12 +2145,13 @@ function BranchStockTab() {
     setSubmitting(true);
     setReceiveModalMsg(null);
     try {
-      const hasDiscrepancy = receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent));
+      const receiverName = user?.full_name || user?.username || 'Branch Staff';
+      const hasDiscrepancy = receiveItems.some(it => it._hasDiscrepancy || Number(it.quantityReceived) !== Number(it.quantitySent));
       const allZero = receiveItems.every(it => Number(it.quantityReceived) === 0);
 
       const receiptStatus = allZero ? 'discrepancy_reported' : hasDiscrepancy ? 'partially_received' : 'received';
       const transferStatus = hasDiscrepancy ? 'partially_received' : 'delivered';
-      const updatedItems = receiveItems.map(it => ({
+      const updatedItems = receiveItems.map(({ _hasDiscrepancy, ...it }) => ({
         ...it,
         quantityReceived: Number(it.quantityReceived || 0),
         discrepancyNote: it.discrepancyNote || null,
@@ -2156,9 +2159,9 @@ function BranchStockTab() {
 
       await api.stock.updateTransfer(transfer.id, {
         status: transferStatus,
-        received_by: receiveSignature || user?.full_name || user?.username,
-        signatureName: receiveSignature,
-        branchReceiptNote: receiveNotes || null,
+        received_by: receiverName,
+        signatureName: receiverName,
+        branchReceiptNote: null,
         discrepancyFlag: hasDiscrepancy,
         receiptStatus,
         items: updatedItems,
@@ -2677,119 +2680,216 @@ function BranchStockTab() {
 
       {viewDispatchNote && <DispatchNote transfer={viewDispatchNote} onClose={() => setViewDispatchNote(null)} />}
 
-      {receiveTransferModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 800, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ padding: '16px 24px', borderBottom: '2px solid #1e40af', background: '#eff6ff', position: 'sticky', top: 0, zIndex: 1 }}>
-              <h2 style={{ margin: 0, fontSize: 18, color: '#1e3a5f' }}>📥 Receive Stock — Dispatch Note</h2>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3b82f6' }}>
-                {fmtLocation(receiveTransferModal.fromWarehouse || receiveTransferModal.from_location)} → {fmtLocation(receiveTransferModal.toBranch || receiveTransferModal.to_location || user?.branch)} · {receiveTransferModal.dispatchReference || receiveTransferModal.id}
-              </p>
-            </div>
-            <div style={{ padding: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-                <div style={{ padding: 8, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Dispatch Date</div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{formatDateTime(receiveTransferModal.createdAt || receiveTransferModal.created_at)}</div>
+      {receiveTransferModal && (() => {
+        const rtm = receiveTransferModal;
+        const gmAction = rtm.gmAction || rtm.gm_action;
+        const gmComment = rtm.gmComment || rtm.gm_comment;
+        const gmApprovedBy = rtm.amendedByGm || rtm.amended_by_gm || rtm.approvedBy || rtm.approved_by;
+        const dispatchNotes = rtm.dispatchNotes || rtm.dispatch_notes;
+        const anyDiscrepancy = receiveItems.some(it => it._hasDiscrepancy);
+        const totalDispatched = receiveItems.reduce((s, it) => s + Number(it.quantitySent || 0), 0);
+        const totalReceiving = receiveItems.reduce((s, it) => s + Number(it.quantityReceived || 0), 0);
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 860, maxHeight: '93vh', overflow: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.35)' }}>
+
+              {/* ── HEADER ── */}
+              <div style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%)', padding: '18px 24px', position: 'sticky', top: 0, zIndex: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 700 }}>📥 Receive Dispatched Stock</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.75)', margin: '4px 0 0', fontSize: 13 }}>
+                    Ref: {rtm.dispatchReference || rtm.dispatch_reference || rtm.id}
+                    &nbsp;·&nbsp;
+                    {fmtLocation(rtm.fromWarehouse || rtm.from_location)} → {getBranchDisplayName(rtm.toBranch || rtm.to_location || user?.branch)}
+                  </p>
                 </div>
-                <div style={{ padding: 8, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Prepared By</div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{receiveTransferModal.createdBy || receiveTransferModal.dispatchedBy || '—'}</div>
-                </div>
+                <button onClick={() => { setReceiveTransferModal(null); setReceiveModalMsg(null); }}
+                  style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
               </div>
 
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Verify received quantities against dispatched amounts:</p>
+              <div style={{ padding: 24 }}>
 
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Product</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Batch</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Expiry</th>
-                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Sent</th>
-                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Received</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #1e40af', fontSize: 12, color: '#fff', background: '#1e40af' }}>Discrepancy Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {receiveItems.map((it, i) => {
-                    const mismatch = Number(it.quantityReceived) !== Number(it.quantitySent);
-                    return (
-                      <tr key={i} style={{ background: mismatch ? '#fef2f2' : (i % 2 === 0 ? 'white' : '#f9fafb') }}>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500 }}>{it.productName || it.productId}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>{it.batchNo || '—'}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#6b7280' }}>
-                          {it.expiryDate ? formatDate(it.expiryDate) : '—'}
-                        </td>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#9ca3af' }}>{it.quantitySent}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
-                          <input type="number" min="0" max={it.quantitySent * 2} value={it.quantityReceived}
-                            onChange={e => {
-                              const val = Math.max(0, Number(e.target.value) || 0);
-                              setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, quantityReceived: val } : p));
-                            }}
-                            style={{ width: 65, padding: '4px 8px', border: `1px solid ${mismatch ? '#fca5a5' : '#d1d5db'}`, borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600, background: mismatch ? '#fef2f2' : 'white' }} />
-                        </td>
-                        <td style={{ padding: '4px 6px', borderBottom: '1px solid #e5e7eb' }}>
-                          <input type="text" placeholder={mismatch ? 'Explain discrepancy...' : ''}
-                            value={it.discrepancyNote}
-                            onChange={e => setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, discrepancyNote: e.target.value } : p))}
-                            style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12 }} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>E-Signature (Received By)</label>
-                  <input type="text" value={receiveSignature} onChange={e => setReceiveSignature(e.target.value)}
-                    placeholder="Type your full name as signature"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontFamily: 'cursive, serif', fontStyle: 'italic' }} />
+                {/* ── GM-APPROVED DISPATCH NOTE SUMMARY ── */}
+                <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 10, padding: '16px 20px', marginBottom: 22 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <span style={{ fontSize: 20 }}>📋</span>
+                    <span style={{ fontWeight: 800, color: '#0c4a6e', fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>GM-Approved Dispatch Note</span>
+                    {gmAction && (
+                      <span style={{ marginLeft: 'auto', padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                        background: (gmAction === 'approve' || gmAction === 'amend_approve') ? '#dcfce7' : '#fef2f2',
+                        color: (gmAction === 'approve' || gmAction === 'amend_approve') ? '#166534' : '#991b1b',
+                        border: `1px solid ${(gmAction === 'approve' || gmAction === 'amend_approve') ? '#86efac' : '#fca5a5'}` }}>
+                        {gmAction === 'amend_approve' ? '✅ Amended & Approved' : gmAction === 'approve' ? '✅ Approved' : '❌ Rejected'}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 20px' }}>
+                    {[
+                      { label: 'From', value: fmtLocation(rtm.fromWarehouse || rtm.from_location) },
+                      { label: 'To Branch', value: getBranchDisplayName(rtm.toBranch || rtm.to_location || user?.branch) },
+                      { label: 'Dispatch Date', value: formatDateTime(rtm.dispatchedAt || rtm.dispatched_at || rtm.created_at) },
+                      { label: 'Dispatched By', value: rtm.dispatchedBy || rtm.dispatched_by || rtm.createdBy || rtm.created_by || '—' },
+                      { label: 'GM Approved By', value: gmApprovedBy || '—' },
+                      { label: 'Receiving Officer', value: user?.full_name || user?.username },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {gmComment && (
+                    <div style={{ marginTop: 12, padding: '8px 12px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: 6, fontSize: 12 }}>
+                      <strong>GM Note:</strong> {gmComment}
+                    </div>
+                  )}
+                  {dispatchNotes && (
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}>
+                      <strong>Dispatch Notes:</strong> {dispatchNotes}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Receipt Notes (optional)</label>
-                  <input type="text" value={receiveNotes} onChange={e => setReceiveNotes(e.target.value)}
-                    placeholder="Additional notes..."
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13 }} />
-                </div>
-              </div>
 
-              {receiveItems.some(it => Number(it.quantityReceived) !== Number(it.quantitySent)) && (
-                <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 13 }}>
-                  <strong>⚠️ Discrepancy detected:</strong> Some received quantities differ from dispatched amounts. Please add notes explaining each discrepancy above.
+                {/* ── INSTRUCTION ── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Verify items against physical delivery</div>
+                  <div style={{ fontSize: 12, color: '#64748b', background: '#f1f5f9', padding: '3px 10px', borderRadius: 20, border: '1px solid #e2e8f0' }}>
+                    All items are pre-confirmed as received in full — only tap <strong>Mark Discrepancy</strong> if something is short or damaged
+                  </div>
                 </div>
-              )}
 
-              {receiveModalMsg && (
-                <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600,
-                  background: receiveModalMsg.type === 'error' ? '#fee2e2' : '#dcfce7',
-                  color: receiveModalMsg.type === 'error' ? '#991b1b' : '#166534',
-                  border: `1px solid ${receiveModalMsg.type === 'error' ? '#fecaca' : '#bbf7d0'}` }}>
-                  {receiveModalMsg.type === 'error' ? '❌' : '✅'} {receiveModalMsg.text}
+                {/* ── ITEMS TABLE ── */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+                  <thead>
+                    <tr style={{ background: '#1e40af' }}>
+                      <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Product</th>
+                      <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Batch / Expiry</th>
+                      <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Qty Dispatched</th>
+                      <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Receipt Status</th>
+                      <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Qty Received</th>
+                      <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>Discrepancy Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receiveItems.map((it, i) => {
+                      const flagged = it._hasDiscrepancy;
+                      const expiring = it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90 * 86400000);
+                      return (
+                        <tr key={i} style={{ background: flagged ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb'), borderBottom: '1px solid #e5e7eb' }}>
+                          <td style={{ padding: '11px 12px', fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{it.productName || it.productId}</td>
+                          <td style={{ padding: '11px 12px', fontSize: 12 }}>
+                            <div style={{ color: '#374151', fontFamily: 'monospace' }}>{it.batchNo || <span style={{ color: '#9ca3af' }}>—</span>}</div>
+                            {it.expiryDate && (
+                              <div style={{ fontSize: 11, marginTop: 2, color: expiring ? '#dc2626' : '#6b7280', fontWeight: expiring ? 700 : 400 }}>
+                                {expiring ? '⚠️ ' : ''}{formatDate(it.expiryDate)}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#374151' }}>{it.quantitySent}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                            {flagged ? (
+                              <button onClick={() => setReceiveItems(prev => prev.map((p, j) => j === i
+                                ? { ...p, _hasDiscrepancy: false, quantityReceived: p.quantitySent, discrepancyNote: '' } : p))}
+                                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                ⚠️ Discrepancy
+                              </button>
+                            ) : (
+                              <button onClick={() => setReceiveItems(prev => prev.map((p, j) => j === i
+                                ? { ...p, _hasDiscrepancy: true, quantityReceived: '' } : p))}
+                                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#dcfce7', color: '#166534', border: '1px solid #86efac', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                ✅ All Received
+                              </button>
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                            {flagged ? (
+                              <input type="number" min="0" max={it.quantitySent}
+                                value={it.quantityReceived}
+                                onChange={e => {
+                                  const val = Math.max(0, Math.min(Number(e.target.value) || 0, Number(it.quantitySent)));
+                                  setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, quantityReceived: val } : p));
+                                }}
+                                placeholder="0"
+                                style={{ width: 72, padding: '6px 8px', border: '1.5px solid #fca5a5', borderRadius: 7, textAlign: 'center', fontSize: 15, fontWeight: 700, background: '#fef2f2' }} />
+                            ) : (
+                              <span style={{ fontSize: 16, fontWeight: 800, color: '#166534' }}>{it.quantitySent}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 12px' }}>
+                            {flagged && (
+                              <input type="text" placeholder="Reason for discrepancy (required)"
+                                value={it.discrepancyNote || ''}
+                                onChange={e => setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, discrepancyNote: e.target.value } : p))}
+                                style={{ width: '100%', padding: '6px 10px', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12 }} />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f1f5f9', borderTop: '2.5px solid #1e40af' }}>
+                      <td colSpan={2} style={{ padding: '9px 12px', fontWeight: 800, fontSize: 13, color: '#1e293b' }}>TOTAL</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, fontSize: 15, color: '#374151' }}>{totalDispatched}</td>
+                      <td></td>
+                      <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, fontSize: 15, color: anyDiscrepancy ? '#dc2626' : '#166534' }}>
+                        {totalReceiving}
+                        {anyDiscrepancy && totalDispatched !== totalReceiving && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', marginLeft: 4 }}>({totalReceiving - totalDispatched})</span>
+                        )}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* ── DISCREPANCY WARNING ── */}
+                {anyDiscrepancy && (
+                  <div style={{ background: '#fff7ed', border: '1px solid #fb923c', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13 }}>
+                    ⚠️ <strong>Discrepancies noted.</strong> Please enter the actual quantity received and a reason for each flagged item above. This will be reported to the GM.
+                  </div>
+                )}
+
+                {/* ── AUTO-SIGNED RECEIVER BADGE ── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: 18 }}>
+                  <span style={{ fontSize: 22 }}>🖊️</span>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Received By (Auto-signed)</div>
+                    <div style={{ fontWeight: 700, color: '#15803d', fontSize: 14 }}>{user?.full_name || user?.username}</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Timestamp will be recorded automatically</div>
                 </div>
-              )}
 
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setReceiveTransferModal(null); setReceiveModalMsg(null); }} disabled={submitting}
-                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, opacity: submitting ? 0.5 : 1 }}>
-                  Cancel
-                </button>
-                <button onClick={() => setViewDispatchNote(receiveTransferModal)} disabled={submitting}
-                  style={{ padding: '8px 16px', background: '#fff', border: '1px solid #93c5fd', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, color: '#1e40af', fontWeight: 600, opacity: submitting ? 0.5 : 1 }}>
-                  📄 Preview Document
-                </button>
-                <button onClick={handleReceiveTransfer} disabled={submitting || !receiveSignature.trim()}
-                  style={{ padding: '8px 20px', background: '#1e40af', color: 'white', border: 'none', borderRadius: 6, cursor: (submitting || !receiveSignature.trim()) ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: (submitting || !receiveSignature.trim()) ? 0.6 : 1 }}>
-                  {submitting ? 'Processing...' : '✅ Confirm Receipt'}
-                </button>
+                {receiveModalMsg && (
+                  <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13, fontWeight: 600,
+                    background: receiveModalMsg.type === 'error' ? '#fee2e2' : '#dcfce7',
+                    color: receiveModalMsg.type === 'error' ? '#991b1b' : '#166534',
+                    border: `1px solid ${receiveModalMsg.type === 'error' ? '#fecaca' : '#bbf7d0'}` }}>
+                    {receiveModalMsg.type === 'error' ? '❌' : '✅'} {receiveModalMsg.text}
+                  </div>
+                )}
+
+                {/* ── ACTION BUTTONS ── */}
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button onClick={() => { setReceiveTransferModal(null); setReceiveModalMsg(null); }} disabled={submitting}
+                    style={{ padding: '10px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 8, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: submitting ? 0.5 : 1 }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => setViewDispatchNote(rtm)} disabled={submitting}
+                    style={{ padding: '10px 20px', background: '#fff', border: '1.5px solid #3b82f6', borderRadius: 8, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, color: '#1d4ed8', opacity: submitting ? 0.5 : 1 }}>
+                    📄 Full Document View
+                  </button>
+                  <button onClick={handleReceiveTransfer} disabled={submitting}
+                    style={{ padding: '10px 26px', background: anyDiscrepancy ? '#d97706' : '#166534', color: 'white', border: 'none', borderRadius: 8, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: submitting ? 0.6 : 1 }}>
+                    {submitting ? 'Processing...' : anyDiscrepancy ? '⚠️ Confirm with Discrepancies' : '✅ Confirm — All Stock Received'}
+                  </button>
+                </div>
+
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {subTab === 'transfers' && (
         <Card>

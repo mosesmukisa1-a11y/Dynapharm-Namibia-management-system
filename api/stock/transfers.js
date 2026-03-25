@@ -730,25 +730,35 @@ export default async function handler(req, res) {
               const expiryDate = item.expiry_date || null;
 
               const batchId = `BIB-${id.slice(-6)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const existingBranch = await client.query(
-                `SELECT id FROM branch_inventory_batches
-                 WHERE branch_id = $1 AND product_name = $2
-                   AND COALESCE(batch_no, '') = COALESCE($3, '')
-                   AND COALESCE(expiry_date::text, '') = COALESCE($4, '')
-                 FOR UPDATE`,
-                [branchId, productName, batchNo, expiryDate]
-              );
-              if (existingBranch.rows.length > 0) {
-                await client.query(
-                  `UPDATE branch_inventory_batches SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
-                  [qtyReceived, existingBranch.rows[0].id]
-                );
-              } else {
+              if (batchNo !== null && batchNo !== undefined && expiryDate !== null && expiryDate !== undefined) {
                 await client.query(
                   `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, 'in_stock', NOW(), NOW())`,
+                   VALUES ($1, $2, $3, $4, $5::date, $6, 'in_stock', NOW(), NOW())
+                   ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO UPDATE
+                     SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity, updated_at = NOW()`,
                   [batchId, branchId, productName, batchNo, expiryDate, qtyReceived]
                 );
+              } else {
+                const existingBranch = await client.query(
+                  `SELECT id FROM branch_inventory_batches
+                   WHERE branch_id = $1 AND product_name = $2
+                     AND batch_no IS NOT DISTINCT FROM $3
+                     AND expiry_date IS NOT DISTINCT FROM $4
+                   FOR UPDATE`,
+                  [branchId, productName, batchNo || null, expiryDate || null]
+                );
+                if (existingBranch.rows.length > 0) {
+                  await client.query(
+                    `UPDATE branch_inventory_batches SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
+                    [qtyReceived, existingBranch.rows[0].id]
+                  );
+                } else {
+                  await client.query(
+                    `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, 'in_stock', NOW(), NOW())`,
+                    [batchId, branchId, productName, batchNo || null, expiryDate || null, qtyReceived]
+                  );
+                }
               }
 
               const bimId = `BIM-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
