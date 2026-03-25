@@ -1,0 +1,1150 @@
+
+
+# 🚨 STOCK PORTAL — COMPLETE API MAP FOR ALL TABS
+
+## Dynapharm Namibia Stock Management Portal
+
+## ❗IMPORTANT
+
+The stock portal already has most of the information in the system, but it is **not being displayed or calculated correctly**.
+
+This means the main problem is:
+
+* wrong binding
+* wrong read models
+* incomplete API coverage
+* inconsistent stock math
+* blank / zero / `—` fields despite data existing
+
+This is **not a request to create fake data**.
+This is a request to expose and bind the **existing real data correctly** across all stock management tabs.
+
+> Treat this as a **follow-up correction under the original paid stock task**
+> **No additional billing**
+
+---
+
+# 1. CORE RULE FOR ALL STOCK PORTAL TABS
+
+All stock portal tabs must read from the same shared engines:
+
+* `stockEngine`
+* `salesEngine`
+* `reportingEngine`
+* `inventoryBalanceEngine`
+* `movementLedgerEngine`
+
+## Source tables / views
+
+Use these as source of truth:
+
+* `stock_movements`
+* `inventory_balances`
+* `dispatch_notes`
+* `dispatch_note_items`
+* `sales_transactions`
+* `prescription_items`
+* `supplier_imports`
+* `supplier_import_items`
+* `branch_requests`
+* `transfer_records`
+* `write_off_records`
+* `branch_summary_view`
+* `warehouse_summary_view`
+* `country_stock_summary_view`
+* `sales_summary_view`
+* `valuation_summary_view`
+
+---
+
+# 2. GLOBAL API DESIGN RULES
+
+## Every API must support:
+
+* `startDate`
+* `endDate`
+* `branchId` where relevant
+* `warehouseId` where relevant
+* `productId` where relevant
+* `batchNo` where relevant
+* pagination for long tables
+* search where relevant
+
+## Every stock quantity must be based on:
+
+> `location + product + batch + expiry`
+
+## Every internal value must use:
+
+> **DP / DPC for stock value**
+> **CIF only where cost or valuation requires it**
+
+---
+
+# 3. API MAP BY TAB
+
+---
+
+# 🧠 AI COMMAND
+
+## Purpose
+
+Show AI summary, alerts, insights, reorder suggestions, anomalies, and movement intelligence.
+
+## API
+
+```http
+GET /api/stock/ai-command?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&branchId=all
+```
+
+## Response
+
+```json
+{
+  "alerts": {
+    "lowStock": 0,
+    "expiring": 0,
+    "outOfStock": 0,
+    "writeOffRisk": 0
+  },
+  "insights": [
+    {
+      "type": "fast_moving_product",
+      "message": "Noni Juice is moving fastest in Windhoek CBD"
+    }
+  ],
+  "reorderSuggestions": [
+    {
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "branchName": "Townshop",
+      "recommendedQty": 24
+    }
+  ],
+  "anomalies": [
+    {
+      "type": "stock_mismatch",
+      "message": "Branch sales exceed available movement deduction"
+    }
+  ]
+}
+```
+
+---
+
+# 📊 OVERVIEW
+
+## Purpose
+
+Top cards and stock portal summary.
+
+## API
+
+```http
+GET /api/stock/overview?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&branchId=all
+```
+
+## Response
+
+```json
+{
+  "topCards": {
+    "totalStockUnits": 0,
+    "stockValueCIF": 0,
+    "stockValueDPC": 0,
+    "pendingCount": 0,
+    "inTransitCount": 0
+  },
+  "locationCards": {
+    "countryStockQty": 0,
+    "countryStockBatches": 0,
+    "windhoekQty": 0,
+    "windhoekBatches": 0,
+    "ondangwaQty": 0,
+    "ondangwaBatches": 0,
+    "fieldQty": 0,
+    "fieldIssues": 0
+  },
+  "branchStockCards": [
+    {
+      "branchId": "b1",
+      "branchName": "Windhoek CBD",
+      "closingQty": 0,
+      "productCount": 0,
+      "stockValueDPC": 0
+    }
+  ],
+  "allBranches": {
+    "closingQty": 0,
+    "stockValueDPC": 0
+  }
+}
+```
+
+---
+
+# 🏪 BRANCH STOCK
+
+## Purpose
+
+Per-branch live stock summary and drill-down.
+
+## APIs
+
+### Summary
+
+```http
+GET /api/stock/branch-stock?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&branchId=all
+```
+
+### Branch details
+
+```http
+GET /api/stock/branch-stock/:branchId?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+## Response for details
+
+```json
+{
+  "branch": {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD"
+  },
+  "summary": {
+    "openingQty": 0,
+    "receivedQty": 0,
+    "salesQty": 0,
+    "dispensedQty": 0,
+    "transferInQty": 0,
+    "transferOutQty": 0,
+    "returnQty": 0,
+    "writeOffQty": 0,
+    "closingQty": 0,
+    "stockValueDPC": 0,
+    "salesRevenue": 0
+  },
+  "items": [
+    {
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "productDescription": "Dynapharm Noni Juice",
+      "batchNo": "NJ-001",
+      "expiryDate": "2027-12-31",
+      "openingQty": 0,
+      "receivedQty": 0,
+      "salesQty": 0,
+      "dispensedQty": 0,
+      "closingQty": 0,
+      "unitDPC": 0,
+      "stockValueDPC": 0,
+      "lastMovementAt": "2026-03-25T12:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+# 📋 STOCK REPORTS
+
+## Purpose
+
+Master reporting layer.
+
+## APIs
+
+### Report menu summary
+
+```http
+GET /api/stock/reports/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Branch stock report
+
+```http
+GET /api/stock/reports/branch-stock?branchId=b1&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Movement report
+
+```http
+GET /api/stock/reports/movements?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&locationType=branch
+```
+
+### Expiry report
+
+```http
+GET /api/stock/reports/expiry?thresholdDays=90
+```
+
+### Low stock report
+
+```http
+GET /api/stock/reports/low-stock
+```
+
+### Company PDF data
+
+```http
+GET /api/stock/reports/company?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+---
+
+# 🚢 SUPPLIER IMPORT
+
+## Purpose
+
+Imports into national stock.
+
+## APIs
+
+### List imports
+
+```http
+GET /api/stock/supplier-imports?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Single import
+
+```http
+GET /api/stock/supplier-imports/:importId
+```
+
+### Create/receive import
+
+```http
+POST /api/stock/supplier-imports/receive
+```
+
+## Response for single import
+
+```json
+{
+  "importId": "imp_001",
+  "supplierName": "Dynapharm Malaysia",
+  "warehouseId": "country_stock",
+  "items": [
+    {
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "quantity": 100,
+      "batchNo": "NJ-001",
+      "expiryDate": "2027-12-31",
+      "unitCIF": 180,
+      "unitDPC": 300
+    }
+  ],
+  "status": "received"
+}
+```
+
+---
+
+# 🌍 COUNTRY STOCK
+
+## Purpose
+
+National inventory pool.
+
+## APIs
+
+### Summary
+
+```http
+GET /api/stock/country-stock?asOfDate=YYYY-MM-DD
+```
+
+### Country stock detail
+
+```http
+GET /api/stock/country-stock/items?search=&batchNo=&productId=
+```
+
+## Response
+
+```json
+{
+  "summary": {
+    "distinctProducts": 0,
+    "totalUnits": 0,
+    "cifValue": 0,
+    "dpcValue": 0,
+    "lowStockItems": 0
+  },
+  "items": [
+    {
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "batchNo": "NJ-001",
+      "expiryDate": "2027-12-31",
+      "closingQty": 0,
+      "unitCIF": 0,
+      "unitDPC": 0,
+      "stockValueCIF": 0,
+      "stockValueDPC": 0
+    }
+  ]
+}
+```
+
+---
+
+# 🏢 WINDHOEK
+
+## Purpose
+
+Windhoek warehouse operations.
+
+## APIs
+
+### Warehouse summary
+
+```http
+GET /api/stock/warehouses/windhoek/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Inventory
+
+```http
+GET /api/stock/warehouses/windhoek/inventory?search=&batchNo=
+```
+
+### Incoming
+
+```http
+GET /api/stock/warehouses/windhoek/incoming?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Outbound
+
+```http
+GET /api/stock/warehouses/windhoek/outbound?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Movements
+
+```http
+GET /api/stock/warehouses/windhoek/movements?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+## Inventory response
+
+```json
+{
+  "warehouse": {
+    "warehouseId": "wh_windhoek",
+    "warehouseName": "Windhoek Warehouse",
+    "productLines": 0,
+    "totalUnits": 0,
+    "cifValue": 0,
+    "dpcValue": 0
+  },
+  "items": [
+    {
+      "productId": "p1",
+      "productName": "Arabica Coffee Mix",
+      "batchNo": "RCV-CMDGOF",
+      "availableQty": 0,
+      "dispatchedQty": 0,
+      "expiryDate": "2027-12-31",
+      "unitCIF": 0,
+      "unitDPC": 0
+    }
+  ]
+}
+```
+
+---
+
+# 🏬 ONDANGWA
+
+Use the same warehouse pattern as Windhoek.
+
+## APIs
+
+```http
+GET /api/stock/warehouses/ondangwa/summary
+GET /api/stock/warehouses/ondangwa/inventory
+GET /api/stock/warehouses/ondangwa/incoming
+GET /api/stock/warehouses/ondangwa/outbound
+GET /api/stock/warehouses/ondangwa/movements
+```
+
+---
+
+# 🚚 DISTRIBUTION
+
+## Purpose
+
+Dispatch from country stock / warehouse to warehouse / branch.
+
+## APIs
+
+### Branch requests awaiting dispatch
+
+```http
+GET /api/stock/distribution/requests?status=approved
+```
+
+### Distribution detail
+
+```http
+GET /api/stock/distribution/requests/:requestId
+```
+
+### Dispatch to branch
+
+```http
+POST /api/stock/distribution/dispatch
+```
+
+### Pending dispatches
+
+```http
+GET /api/stock/distribution/pending
+```
+
+## Dispatch body
+
+```json
+{
+  "sourceLocationType": "warehouse",
+  "sourceLocationId": "wh_windhoek",
+  "destinationLocationType": "branch",
+  "destinationLocationId": "branch_townshop",
+  "requestId": "req_001",
+  "preparedBy": "user_001",
+  "items": [
+    {
+      "productId": "p1",
+      "batchNo": "NJ-001",
+      "expiryDate": "2027-12-31",
+      "quantity": 10
+    }
+  ]
+}
+```
+
+### Validation
+
+* no dispatch without product
+* no dispatch without batch
+* no dispatch without expiry
+* no dispatch without sufficient available stock
+
+---
+
+# 🔄 TRANSFERS
+
+## Purpose
+
+Inter-location movement.
+
+## APIs
+
+### List transfers
+
+```http
+GET /api/stock/transfers?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Transfer detail
+
+```http
+GET /api/stock/transfers/:transferId
+```
+
+### Create transfer
+
+```http
+POST /api/stock/transfers
+```
+
+### Confirm transfer receipt
+
+```http
+POST /api/stock/transfers/:transferId/confirm
+```
+
+---
+
+# 📦 INVENTORY
+
+## Purpose
+
+Universal inventory table.
+
+## APIs
+
+### Global inventory
+
+```http
+GET /api/stock/inventory?locationType=&locationId=&search=&batchNo=&expiryBefore=
+```
+
+### Inventory line detail
+
+```http
+GET /api/stock/inventory/line/:lineId
+```
+
+## Response
+
+```json
+{
+  "totals": {
+    "totalQty": 0,
+    "totalValueDPC": 0,
+    "lineCount": 0
+  },
+  "items": [
+    {
+      "locationType": "warehouse",
+      "locationName": "Windhoek Warehouse",
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "batchNo": "NJ-001",
+      "expiryDate": "2027-12-31",
+      "openingQty": 0,
+      "inwardQty": 0,
+      "outwardQty": 0,
+      "closingQty": 0,
+      "unitDPC": 0,
+      "stockValueDPC": 0
+    }
+  ]
+}
+```
+
+---
+
+# 🧾 ORDERS
+
+## Purpose
+
+Branch requests / stock orders.
+
+## APIs
+
+### List orders
+
+```http
+GET /api/stock/orders?status=&branchId=&priority=
+```
+
+### Order detail
+
+```http
+GET /api/stock/orders/:orderId
+```
+
+### Edit order
+
+```http
+PATCH /api/stock/orders/:orderId
+```
+
+### Create order
+
+```http
+POST /api/stock/orders
+```
+
+## Response
+
+```json
+{
+  "orderId": "req_001",
+  "branchId": "branch_townshop",
+  "branchName": "Townshop",
+  "requestedBy": "NAEM",
+  "status": "approved",
+  "priority": "urgent",
+  "items": [
+    {
+      "productId": "p1",
+      "productName": "Noni Juice",
+      "requestedQty": 10,
+      "approvedQty": 10,
+      "dispatchedQty": 0,
+      "batchNo": null,
+      "expiryDate": null
+    }
+  ]
+}
+```
+
+### Required fix
+
+Replace generic `Item x10` with real product names and quantities.
+
+---
+
+# 📈 MONTHLY SALES
+
+## Purpose
+
+Stock-linked sales analysis.
+
+## APIs
+
+### Monthly sales summary
+
+```http
+GET /api/stock/monthly-sales?month=2026-03&branchId=all
+```
+
+### Monthly sales by branch
+
+```http
+GET /api/stock/monthly-sales/branches?month=2026-03
+```
+
+### Monthly sales by product
+
+```http
+GET /api/stock/monthly-sales/products?month=2026-03
+```
+
+## Response
+
+```json
+{
+  "summary": {
+    "walkinSales": 0,
+    "memberSales": 0,
+    "nonMemberSales": 0,
+    "onlineSales": 0,
+    "prescriptionSales": 0,
+    "consultationFees": 0,
+    "totalSales": 0,
+    "totalUnits": 0
+  }
+}
+```
+
+---
+
+# 🗂️ COUNTRY INV.
+
+## Purpose
+
+Detailed national inventory view.
+
+## APIs
+
+```http
+GET /api/stock/country-inventory?search=&batchNo=&expiryBefore=
+GET /api/stock/country-inventory/summary
+```
+
+This is more detailed than the Country Stock summary tab and should include:
+
+* warehouse split
+* branch split
+* in-transit split
+* batch-level detail
+* valuation
+
+---
+
+# 💎 VALUATION
+
+## Purpose
+
+CIF / DPC stock value analysis.
+
+## APIs
+
+### Valuation summary
+
+```http
+GET /api/stock/valuation?asOfDate=YYYY-MM-DD
+```
+
+### Valuation by location
+
+```http
+GET /api/stock/valuation/locations?asOfDate=YYYY-MM-DD
+```
+
+### Valuation by product
+
+```http
+GET /api/stock/valuation/products?asOfDate=YYYY-MM-DD
+```
+
+## Response
+
+```json
+{
+  "summary": {
+    "totalQty": 0,
+    "totalValueCIF": 0,
+    "totalValueDPC": 0
+  },
+  "locations": [],
+  "products": []
+}
+```
+
+---
+
+# 🏷️ BARCODE
+
+## Purpose
+
+Barcode lookup and label generation.
+
+## APIs
+
+### Search by barcode
+
+```http
+GET /api/stock/barcode/:barcode
+```
+
+### Generate barcode label data
+
+```http
+GET /api/stock/barcode/label/:productId
+```
+
+## Response
+
+```json
+{
+  "productId": "p1",
+  "productName": "Noni Juice",
+  "barcode": "1234567890123",
+  "batchAware": true
+}
+```
+
+---
+
+# 🤖 AI REORDER
+
+## Purpose
+
+Reorder intelligence.
+
+## APIs
+
+### Reorder suggestions
+
+```http
+GET /api/stock/ai-reorder?branchId=all&days=30
+```
+
+### Product reorder detail
+
+```http
+GET /api/stock/ai-reorder/:productId?branchId=all
+```
+
+## Response
+
+```json
+[
+  {
+    "productId": "p1",
+    "productName": "Noni Juice",
+    "locationName": "Townshop",
+    "currentQty": 2,
+    "avgDailyUsage": 1.3,
+    "daysRemaining": 1.5,
+    "recommendedReorderQty": 25
+  }
+]
+```
+
+---
+
+# 🔢 BATCH
+
+## Purpose
+
+Batch-level traceability.
+
+## APIs
+
+### List all batches
+
+```http
+GET /api/stock/batches?productId=&locationType=&locationId=
+```
+
+### Single batch trace
+
+```http
+GET /api/stock/batches/:batchNo/trace
+```
+
+## Response
+
+```json
+{
+  "batchNo": "NJ-001",
+  "productName": "Noni Juice",
+  "expiryDate": "2027-12-31",
+  "locations": [
+    {
+      "locationType": "warehouse",
+      "locationName": "Windhoek Warehouse",
+      "closingQty": 80
+    }
+  ],
+  "movements": []
+}
+```
+
+---
+
+# ⚡ REALTIME
+
+## Purpose
+
+Live feed / polling endpoint.
+
+## APIs
+
+### Realtime summary
+
+```http
+GET /api/stock/realtime
+```
+
+### Realtime movements
+
+```http
+GET /api/stock/realtime/movements?limit=50
+```
+
+### Realtime branch changes
+
+```http
+GET /api/stock/realtime/branches
+```
+
+## Response
+
+```json
+{
+  "lastUpdatedAt": "2026-03-25T14:20:00Z",
+  "recentEvents": []
+}
+```
+
+---
+
+# 👥 FIELD STOCK
+
+## Purpose
+
+Field-issued stock.
+
+## APIs
+
+### Field stock summary
+
+```http
+GET /api/stock/field-stock?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Field stock detail
+
+```http
+GET /api/stock/field-stock/:fieldUserId
+```
+
+## Response
+
+```json
+{
+  "summary": {
+    "totalQty": 0,
+    "activeIssues": 0,
+    "stockValueDPC": 0
+  },
+  "holders": []
+}
+```
+
+---
+
+# ✏️ EDIT REQUESTS
+
+## Purpose
+
+Correct stock requests before dispatch.
+
+## APIs
+
+### Edit request
+
+```http
+PATCH /api/stock/requests/:requestId
+```
+
+### Add/remove request items
+
+```http
+POST /api/stock/requests/:requestId/items
+DELETE /api/stock/requests/:requestId/items/:itemId
+```
+
+### Approve request after edit
+
+```http
+POST /api/stock/requests/:requestId/approve
+```
+
+---
+
+# 4. REQUIRED SHARED SERVICES
+
+Replit must create or bind these services:
+
+* `stockOverviewService.ts`
+* `branchStockService.ts`
+* `stockReportService.ts`
+* `supplierImportService.ts`
+* `countryStockService.ts`
+* `warehouseService.ts`
+* `distributionService.ts`
+* `transferService.ts`
+* `inventoryService.ts`
+* `ordersService.ts`
+* `monthlySalesService.ts`
+* `valuationService.ts`
+* `barcodeService.ts`
+* `aiReorderService.ts`
+* `batchTraceService.ts`
+* `realtimeStockService.ts`
+* `fieldStockService.ts`
+
+---
+
+# 5. REQUIRED MATH / BINDING RULES
+
+## A. Any blank or zero field must be corrected if data exists
+
+This applies to:
+
+* batch
+* expiry
+* CIF value
+* DPC value
+* product count
+* stock totals
+* pending/in-transit values
+* branch stock cards
+
+## B. Warehouse and branch totals must be derived from movement-driven inventory
+
+Do not hardcode card totals.
+
+## C. Pending / In Transit
+
+```text
+in_transit_qty = dispatched qty not yet confirmed received
+pending_count = number of open dispatch / transfer / request records not completed
+```
+
+## D. Overview totals
+
+```text
+total_stock_units = sum of all closing qty across company
+stock_value_cif = sum(closing_qty × unit_cif)
+stock_value_dpc = sum(closing_qty × unit_dpc)
+```
+
+## E. Branch stock card
+
+```text
+branch_closing_qty = opening + inward - outward
+branch_product_count = count(distinct stock lines with qty > 0)
+```
+
+## F. Monthly sales
+
+Must use completed/posted sales only.
+
+---
+
+# 6. REQUIRED UI FIX RULE
+
+The information is already available in the system.
+The problem is not “missing fields.”
+The problem is:
+
+* APIs missing
+* wrong API used
+* wrong source view used
+* wrong grouping
+* wrong aggregation
+* wrong UI binding
+
+So Replit must:
+
+* expose correct APIs
+* bind each tab to the right endpoint
+* stop showing placeholders / zeros / generic “Item x10” when real data exists
+
+---
+
+# 7. REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Reply exactly in this structure:
+
+## APIs Implemented By Tab
+
+* AI Command
+* Overview
+* Branch Stock
+* Stock Reports
+* Supplier Import
+* Country Stock
+* Windhoek
+* Ondangwa
+* Distribution
+* Transfers
+* Inventory
+* Orders
+* Monthly Sales
+* Country Inv.
+* Valuation
+* Barcode
+* AI Reorder
+* Batch
+* Realtime
+* Field Stock
+* Edit Requests
+
+## Shared Services Bound
+
+* list
+
+## Tabs Still Showing Wrong / Blank Data
+
+* list
+
+## Validation Tests Done
+
+* list
+
+## Billing Confirmation
+
+* confirm this is follow-up correction under original paid task
+* confirm no extra billing
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Create and bind proper APIs for every stock management tab listed above. Use the existing live data already in the system and expose it correctly instead of leaving fields blank, zero, or generic. All tabs must read from the same centralized stock, sales, and reporting engines. Do not rebuild fake summaries. Fix the read layer and API layer so the stock portal finally displays correct real-time information across Overview, Branch Stock, Reports, Imports, Country Stock, Warehouses, Distribution, Transfers, Inventory, Orders, Monthly Sales, Valuation, Batch traceability, Realtime, Field Stock, and request editing. This is follow-up correction work under the original paid task and must be completed with no extra billing.
+
+

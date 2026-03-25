@@ -1,0 +1,1391 @@
+
+
+# 🚨 BACKEND FOLDER / FILE STRUCTURE MAP FOR STOCK PORTAL APIs
+
+## Dynapharm Namibia System
+
+## Follow-up correction under original paid stock task
+
+## No additional billing
+
+## ❗IMPORTANT
+
+The stock portal already has most of the information in the system, but it is not being displayed correctly because the backend/API/service structure is incomplete or inconsistently bound.
+
+This is the required backend structure so you can encode the stock portal cleanly and stop scattering logic across pages.
+
+The rule is:
+
+* **routes** handle HTTP
+* **controllers** validate request + call services
+* **services** perform business logic
+* **repositories** fetch/store data
+* **engines** centralize stock math
+* **views/read models** provide dashboard/report-ready data
+* **UI** must consume these APIs only
+
+---
+
+# 1. REQUIRED BACKEND STRUCTURE
+
+Use this structure or the closest equivalent in the current codebase:
+
+```text
+src/
+  api/
+    routes/
+      stock/
+        aiCommand.routes.ts
+        overview.routes.ts
+        branchStock.routes.ts
+        stockReports.routes.ts
+        supplierImports.routes.ts
+        countryStock.routes.ts
+        warehouses.routes.ts
+        distribution.routes.ts
+        transfers.routes.ts
+        inventory.routes.ts
+        orders.routes.ts
+        monthlySales.routes.ts
+        countryInventory.routes.ts
+        valuation.routes.ts
+        barcode.routes.ts
+        aiReorder.routes.ts
+        batch.routes.ts
+        realtime.routes.ts
+        fieldStock.routes.ts
+        editRequests.routes.ts
+
+  controllers/
+    stock/
+      aiCommand.controller.ts
+      overview.controller.ts
+      branchStock.controller.ts
+      stockReports.controller.ts
+      supplierImports.controller.ts
+      countryStock.controller.ts
+      warehouses.controller.ts
+      distribution.controller.ts
+      transfers.controller.ts
+      inventory.controller.ts
+      orders.controller.ts
+      monthlySales.controller.ts
+      countryInventory.controller.ts
+      valuation.controller.ts
+      barcode.controller.ts
+      aiReorder.controller.ts
+      batch.controller.ts
+      realtime.controller.ts
+      fieldStock.controller.ts
+      editRequests.controller.ts
+
+  services/
+    stock/
+      stockOverviewService.ts
+      branchStockService.ts
+      stockReportService.ts
+      supplierImportService.ts
+      countryStockService.ts
+      warehouseService.ts
+      distributionService.ts
+      transferService.ts
+      inventoryService.ts
+      ordersService.ts
+      monthlySalesService.ts
+      countryInventoryService.ts
+      valuationService.ts
+      barcodeService.ts
+      aiReorderService.ts
+      batchTraceService.ts
+      realtimeStockService.ts
+      fieldStockService.ts
+      editRequestsService.ts
+
+  engines/
+    stock/
+      stockEngine.ts
+      inventoryBalanceEngine.ts
+      movementLedgerEngine.ts
+      stockValuationEngine.ts
+      stockAlertEngine.ts
+      reorderEngine.ts
+      branchSummaryEngine.ts
+      warehouseSummaryEngine.ts
+      countrySummaryEngine.ts
+
+    sales/
+      salesEngine.ts
+      salesSummaryEngine.ts
+
+    reporting/
+      reportingEngine.ts
+
+  repositories/
+    stock/
+      stockMovement.repository.ts
+      inventoryBalance.repository.ts
+      dispatchNote.repository.ts
+      transfer.repository.ts
+      supplierImport.repository.ts
+      branchRequest.repository.ts
+      warehouse.repository.ts
+      countryStock.repository.ts
+      batch.repository.ts
+      writeOff.repository.ts
+      fieldStock.repository.ts
+
+    sales/
+      salesTransaction.repository.ts
+      consultation.repository.ts
+      prescription.repository.ts
+
+  queries/
+    stock/
+      branchSummary.query.ts
+      warehouseSummary.query.ts
+      countrySummary.query.ts
+      overview.query.ts
+      valuation.query.ts
+      monthlySales.query.ts
+      movementLedger.query.ts
+      aiReorder.query.ts
+      stockAlerts.query.ts
+      fieldStock.query.ts
+
+  validators/
+    stock/
+      supplierImport.validator.ts
+      dispatch.validator.ts
+      receipt.validator.ts
+      transfer.validator.ts
+      inventory.validator.ts
+      orders.validator.ts
+      writeOff.validator.ts
+      batch.validator.ts
+
+  types/
+    stock/
+      stock.types.ts
+      api.types.ts
+      movement.types.ts
+      valuation.types.ts
+      summary.types.ts
+
+  utils/
+    stock/
+      dateRange.ts
+      pagination.ts
+      money.ts
+      quantity.ts
+      stockFilters.ts
+```
+
+---
+
+# 2. REQUIRED ROOT STOCK ROUTER
+
+Create one root stock router and mount all stock modules under it.
+
+## File
+
+```text
+src/api/routes/stock/index.ts
+```
+
+## Example
+
+```ts
+import { Router } from "express";
+import aiCommandRoutes from "./aiCommand.routes";
+import overviewRoutes from "./overview.routes";
+import branchStockRoutes from "./branchStock.routes";
+import stockReportsRoutes from "./stockReports.routes";
+import supplierImportsRoutes from "./supplierImports.routes";
+import countryStockRoutes from "./countryStock.routes";
+import warehousesRoutes from "./warehouses.routes";
+import distributionRoutes from "./distribution.routes";
+import transfersRoutes from "./transfers.routes";
+import inventoryRoutes from "./inventory.routes";
+import ordersRoutes from "./orders.routes";
+import monthlySalesRoutes from "./monthlySales.routes";
+import countryInventoryRoutes from "./countryInventory.routes";
+import valuationRoutes from "./valuation.routes";
+import barcodeRoutes from "./barcode.routes";
+import aiReorderRoutes from "./aiReorder.routes";
+import batchRoutes from "./batch.routes";
+import realtimeRoutes from "./realtime.routes";
+import fieldStockRoutes from "./fieldStock.routes";
+import editRequestsRoutes from "./editRequests.routes";
+
+const router = Router();
+
+router.use("/ai-command", aiCommandRoutes);
+router.use("/overview", overviewRoutes);
+router.use("/branch-stock", branchStockRoutes);
+router.use("/reports", stockReportsRoutes);
+router.use("/supplier-imports", supplierImportsRoutes);
+router.use("/country-stock", countryStockRoutes);
+router.use("/warehouses", warehousesRoutes);
+router.use("/distribution", distributionRoutes);
+router.use("/transfers", transfersRoutes);
+router.use("/inventory", inventoryRoutes);
+router.use("/orders", ordersRoutes);
+router.use("/monthly-sales", monthlySalesRoutes);
+router.use("/country-inventory", countryInventoryRoutes);
+router.use("/valuation", valuationRoutes);
+router.use("/barcode", barcodeRoutes);
+router.use("/ai-reorder", aiReorderRoutes);
+router.use("/batches", batchRoutes);
+router.use("/realtime", realtimeRoutes);
+router.use("/field-stock", fieldStockRoutes);
+router.use("/edit-requests", editRequestsRoutes);
+
+export default router;
+```
+
+---
+
+# 3. EXACT ROUTE FILE CONTENT MAP
+
+---
+
+## A. AI Command
+
+### File
+
+```text
+src/api/routes/stock/aiCommand.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/ai-command
+```
+
+### Controller methods
+
+```ts
+getAICommandSummary
+```
+
+### Service methods
+
+```ts
+getAIAlerts
+getAIInsights
+getReorderSuggestions
+getStockAnomalies
+```
+
+---
+
+## B. Overview
+
+### File
+
+```text
+src/api/routes/stock/overview.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/overview
+```
+
+### Controller methods
+
+```ts
+getOverviewSummary
+```
+
+### Service methods
+
+```ts
+getOverviewTopCards
+getOverviewLocationCards
+getOverviewBranchCards
+getOverviewAllBranchesTotals
+```
+
+---
+
+## C. Branch Stock
+
+### File
+
+```text
+src/api/routes/stock/branchStock.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/branch-stock
+GET /api/stock/branch-stock/:branchId
+GET /api/stock/branch-stock/:branchId/items
+GET /api/stock/branch-stock/:branchId/movements
+```
+
+### Controller methods
+
+```ts
+listBranchStockSummaries
+getBranchStockDetails
+getBranchStockItems
+getBranchStockMovements
+```
+
+### Service methods
+
+```ts
+getBranchStockSummaries
+getBranchStockSummary
+getBranchStockItems
+getBranchMovementLedger
+```
+
+---
+
+## D. Stock Reports
+
+### File
+
+```text
+src/api/routes/stock/stockReports.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/reports/summary
+GET /api/stock/reports/branch-stock
+GET /api/stock/reports/movements
+GET /api/stock/reports/expiry
+GET /api/stock/reports/low-stock
+GET /api/stock/reports/company
+```
+
+### Service methods
+
+```ts
+getStockReportSummary
+getBranchStockReport
+getMovementReport
+getExpiryReport
+getLowStockReport
+getCompanyStockReport
+```
+
+---
+
+## E. Supplier Imports
+
+### File
+
+```text
+src/api/routes/stock/supplierImports.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/supplier-imports
+GET /api/stock/supplier-imports/:importId
+POST /api/stock/supplier-imports/receive
+PATCH /api/stock/supplier-imports/:importId
+```
+
+### Service methods
+
+```ts
+listSupplierImports
+getSupplierImportById
+receiveSupplierImport
+updateSupplierImport
+```
+
+---
+
+## F. Country Stock
+
+### File
+
+```text
+src/api/routes/stock/countryStock.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/country-stock
+GET /api/stock/country-stock/items
+GET /api/stock/country-stock/summary
+```
+
+### Service methods
+
+```ts
+getCountryStockSummary
+getCountryStockItems
+```
+
+---
+
+## G. Warehouses
+
+### File
+
+```text
+src/api/routes/stock/warehouses.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/warehouses/:warehouseId/summary
+GET /api/stock/warehouses/:warehouseId/inventory
+GET /api/stock/warehouses/:warehouseId/incoming
+GET /api/stock/warehouses/:warehouseId/outbound
+GET /api/stock/warehouses/:warehouseId/movements
+POST /api/stock/warehouses/:warehouseId/confirm-receipt
+```
+
+### Service methods
+
+```ts
+getWarehouseSummary
+getWarehouseInventory
+getWarehouseIncoming
+getWarehouseOutbound
+getWarehouseMovements
+confirmWarehouseReceipt
+```
+
+---
+
+## H. Distribution
+
+### File
+
+```text
+src/api/routes/stock/distribution.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/distribution/requests
+GET /api/stock/distribution/requests/:requestId
+POST /api/stock/distribution/dispatch
+GET /api/stock/distribution/pending
+```
+
+### Service methods
+
+```ts
+listDistributionRequests
+getDistributionRequest
+dispatchToBranch
+getPendingDistributionItems
+```
+
+---
+
+## I. Transfers
+
+### File
+
+```text
+src/api/routes/stock/transfers.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/transfers
+GET /api/stock/transfers/:transferId
+POST /api/stock/transfers
+POST /api/stock/transfers/:transferId/confirm
+PATCH /api/stock/transfers/:transferId
+```
+
+### Service methods
+
+```ts
+listTransfers
+getTransferById
+createTransfer
+confirmTransferReceipt
+updateTransfer
+```
+
+---
+
+## J. Inventory
+
+### File
+
+```text
+src/api/routes/stock/inventory.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/inventory
+GET /api/stock/inventory/line/:lineId
+PATCH /api/stock/inventory/line/:lineId
+```
+
+### Service methods
+
+```ts
+getInventoryLines
+getInventoryLine
+updateInventoryLine
+```
+
+---
+
+## K. Orders
+
+### File
+
+```text
+src/api/routes/stock/orders.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/orders
+GET /api/stock/orders/:orderId
+POST /api/stock/orders
+PATCH /api/stock/orders/:orderId
+POST /api/stock/orders/:orderId/approve
+POST /api/stock/orders/:orderId/reject
+```
+
+### Service methods
+
+```ts
+listOrders
+getOrderById
+createOrder
+updateOrder
+approveOrder
+rejectOrder
+```
+
+---
+
+## L. Monthly Sales
+
+### File
+
+```text
+src/api/routes/stock/monthlySales.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/monthly-sales
+GET /api/stock/monthly-sales/branches
+GET /api/stock/monthly-sales/products
+```
+
+### Service methods
+
+```ts
+getMonthlySalesSummary
+getMonthlySalesByBranch
+getMonthlySalesByProduct
+```
+
+---
+
+## M. Country Inventory
+
+### File
+
+```text
+src/api/routes/stock/countryInventory.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/country-inventory
+GET /api/stock/country-inventory/summary
+```
+
+### Service methods
+
+```ts
+getCountryInventoryDetail
+getCountryInventorySummary
+```
+
+---
+
+## N. Valuation
+
+### File
+
+```text
+src/api/routes/stock/valuation.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/valuation
+GET /api/stock/valuation/locations
+GET /api/stock/valuation/products
+```
+
+### Service methods
+
+```ts
+getValuationSummary
+getValuationByLocation
+getValuationByProduct
+```
+
+---
+
+## O. Barcode
+
+### File
+
+```text
+src/api/routes/stock/barcode.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/barcode/:barcode
+GET /api/stock/barcode/label/:productId
+POST /api/stock/barcode/label/:productId
+```
+
+### Service methods
+
+```ts
+findProductByBarcode
+getBarcodeLabelData
+generateBarcodeLabel
+```
+
+---
+
+## P. AI Reorder
+
+### File
+
+```text
+src/api/routes/stock/aiReorder.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/ai-reorder
+GET /api/stock/ai-reorder/:productId
+```
+
+### Service methods
+
+```ts
+getReorderSuggestions
+getReorderSuggestionByProduct
+```
+
+---
+
+## Q. Batch
+
+### File
+
+```text
+src/api/routes/stock/batch.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/batches
+GET /api/stock/batches/:batchNo/trace
+```
+
+### Service methods
+
+```ts
+listBatches
+getBatchTrace
+```
+
+---
+
+## R. Realtime
+
+### File
+
+```text
+src/api/routes/stock/realtime.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/realtime
+GET /api/stock/realtime/movements
+GET /api/stock/realtime/branches
+```
+
+### Service methods
+
+```ts
+getRealtimeSummary
+getRealtimeMovements
+getRealtimeBranchChanges
+```
+
+---
+
+## S. Field Stock
+
+### File
+
+```text
+src/api/routes/stock/fieldStock.routes.ts
+```
+
+### Routes
+
+```ts
+GET /api/stock/field-stock
+GET /api/stock/field-stock/:fieldUserId
+POST /api/stock/field-stock/issue
+POST /api/stock/field-stock/return
+```
+
+### Service methods
+
+```ts
+getFieldStockSummary
+getFieldStockDetail
+issueFieldStock
+returnFieldStock
+```
+
+---
+
+## T. Edit Requests
+
+### File
+
+```text
+src/api/routes/stock/editRequests.routes.ts
+```
+
+### Routes
+
+```ts
+PATCH /api/stock/edit-requests/:requestId
+POST /api/stock/edit-requests/:requestId/items
+DELETE /api/stock/edit-requests/:requestId/items/:itemId
+POST /api/stock/edit-requests/:requestId/approve
+```
+
+### Service methods
+
+```ts
+editRequest
+addRequestItem
+removeRequestItem
+approveEditedRequest
+```
+
+---
+
+# 4. REQUIRED ENGINE FILES
+
+These are the central engines and must not be bypassed.
+
+---
+
+## A. `stockEngine.ts`
+
+Purpose:
+
+* post movements
+* validate availability
+* enforce batch and expiry
+* update inventory balances
+
+### Required methods
+
+```ts
+postStockMovement()
+validateMovement()
+validateAvailableStockForOutward()
+getAvailableStock()
+```
+
+---
+
+## B. `inventoryBalanceEngine.ts`
+
+Purpose:
+
+* recompute line balances
+* compute opening, inward, outward, closing
+* update stock value
+
+### Required methods
+
+```ts
+recomputeInventoryBalance()
+getOpeningStock()
+getMovementTotals()
+getClosingStock()
+```
+
+---
+
+## C. `movementLedgerEngine.ts`
+
+Purpose:
+
+* format movement ledger data for branches, warehouses, stock portal, reports
+
+### Required methods
+
+```ts
+getMovementLedger()
+getRecentMovements()
+getBranchMovements()
+getWarehouseMovements()
+```
+
+---
+
+## D. `stockValuationEngine.ts`
+
+Purpose:
+
+* compute CIF and DPC valuation
+
+### Required methods
+
+```ts
+getValuationSummary()
+getValuationByLocation()
+getValuationByProduct()
+```
+
+---
+
+## E. `stockAlertEngine.ts`
+
+Purpose:
+
+* low stock
+* expiring
+* expired
+* mismatch indicators
+
+### Required methods
+
+```ts
+getLowStockItems()
+getExpiringItems()
+getExpiredItems()
+getStockAlertsSummary()
+```
+
+---
+
+## F. `reorderEngine.ts`
+
+Purpose:
+
+* reorder suggestions based on consumption trend
+
+### Required methods
+
+```ts
+getReorderSuggestions()
+getReorderSignalForProduct()
+```
+
+---
+
+## G. `branchSummaryEngine.ts`
+
+Purpose:
+
+* build branch stock cards
+* branch totals
+* branch stock values
+
+### Required methods
+
+```ts
+getBranchSummary()
+getAllBranchSummaries()
+```
+
+---
+
+## H. `warehouseSummaryEngine.ts`
+
+Purpose:
+
+* warehouse cards
+* incoming/outbound counts
+* warehouse value
+
+### Required methods
+
+```ts
+getWarehouseSummary()
+getWarehouseCard()
+```
+
+---
+
+## I. `countrySummaryEngine.ts`
+
+Purpose:
+
+* national totals
+* company stock split
+
+### Required methods
+
+```ts
+getCountrySummary()
+getOverviewCountryCards()
+```
+
+---
+
+# 5. REQUIRED REPOSITORY FILES
+
+Create repositories to isolate DB logic.
+
+---
+
+## Stock repositories
+
+```text
+src/repositories/stock/stockMovement.repository.ts
+src/repositories/stock/inventoryBalance.repository.ts
+src/repositories/stock/dispatchNote.repository.ts
+src/repositories/stock/transfer.repository.ts
+src/repositories/stock/supplierImport.repository.ts
+src/repositories/stock/branchRequest.repository.ts
+src/repositories/stock/warehouse.repository.ts
+src/repositories/stock/countryStock.repository.ts
+src/repositories/stock/batch.repository.ts
+src/repositories/stock/writeOff.repository.ts
+src/repositories/stock/fieldStock.repository.ts
+```
+
+---
+
+## Sales repositories used by stock reports
+
+```text
+src/repositories/sales/salesTransaction.repository.ts
+src/repositories/sales/prescription.repository.ts
+src/repositories/sales/consultation.repository.ts
+```
+
+---
+
+# 6. REQUIRED QUERY FILES / READ MODELS
+
+These should produce fast read-ready dashboard data.
+
+```text
+src/queries/stock/overview.query.ts
+src/queries/stock/branchSummary.query.ts
+src/queries/stock/warehouseSummary.query.ts
+src/queries/stock/countrySummary.query.ts
+src/queries/stock/valuation.query.ts
+src/queries/stock/monthlySales.query.ts
+src/queries/stock/movementLedger.query.ts
+src/queries/stock/aiReorder.query.ts
+src/queries/stock/stockAlerts.query.ts
+src/queries/stock/fieldStock.query.ts
+```
+
+---
+
+# 7. REQUIRED VALIDATORS
+
+```text
+src/validators/stock/supplierImport.validator.ts
+src/validators/stock/dispatch.validator.ts
+src/validators/stock/receipt.validator.ts
+src/validators/stock/transfer.validator.ts
+src/validators/stock/inventory.validator.ts
+src/validators/stock/orders.validator.ts
+src/validators/stock/writeOff.validator.ts
+src/validators/stock/batch.validator.ts
+```
+
+## Example rules
+
+* reject movement without batch if batch-aware stock
+* reject movement without expiry where expiry is required
+* reject dispatch if available stock < requested qty
+* reject receipt if item mismatch invalid
+
+---
+
+# 8. REQUIRED TYPES
+
+```text
+src/types/stock/stock.types.ts
+src/types/stock/api.types.ts
+src/types/stock/movement.types.ts
+src/types/stock/valuation.types.ts
+src/types/stock/summary.types.ts
+```
+
+### Suggested shared types
+
+```ts
+type DateRange = {
+  startDate?: string;
+  endDate?: string;
+};
+
+type Pagination = {
+  page?: number;
+  limit?: number;
+};
+
+type StockFilter = {
+  branchId?: string;
+  warehouseId?: string;
+  productId?: string;
+  batchNo?: string;
+  search?: string;
+};
+```
+
+---
+
+# 9. REQUIRED APP MOUNTING
+
+Mount stock router in main app.
+
+## File
+
+```text
+src/app.ts
+```
+
+## Example
+
+```ts
+import stockRouter from "./api/routes/stock";
+
+app.use("/api/stock", stockRouter);
+```
+
+---
+
+# 10. REQUIRED FRONTEND BINDING MAP
+
+Replit must bind each stock tab to these exact endpoints.
+
+---
+
+## Overview tab
+
+Bind to:
+
+```ts
+GET /api/stock/overview
+```
+
+## Branch Stock tab
+
+Bind to:
+
+```ts
+GET /api/stock/branch-stock
+GET /api/stock/branch-stock/:branchId
+```
+
+## Stock Reports tab
+
+Bind to:
+
+```ts
+GET /api/stock/reports/summary
+GET /api/stock/reports/company
+```
+
+## Supplier Import tab
+
+Bind to:
+
+```ts
+GET /api/stock/supplier-imports
+```
+
+## Country Stock tab
+
+Bind to:
+
+```ts
+GET /api/stock/country-stock
+GET /api/stock/country-stock/items
+```
+
+## Windhoek tab
+
+Bind to:
+
+```ts
+GET /api/stock/warehouses/windhoek/summary
+GET /api/stock/warehouses/windhoek/inventory
+GET /api/stock/warehouses/windhoek/incoming
+GET /api/stock/warehouses/windhoek/outbound
+GET /api/stock/warehouses/windhoek/movements
+```
+
+## Ondangwa tab
+
+Bind to same pattern.
+
+## Distribution tab
+
+Bind to:
+
+```ts
+GET /api/stock/distribution/requests
+POST /api/stock/distribution/dispatch
+```
+
+## Transfers tab
+
+Bind to:
+
+```ts
+GET /api/stock/transfers
+GET /api/stock/transfers/:transferId
+POST /api/stock/transfers/:transferId/confirm
+```
+
+## Inventory tab
+
+Bind to:
+
+```ts
+GET /api/stock/inventory
+```
+
+## Orders tab
+
+Bind to:
+
+```ts
+GET /api/stock/orders
+GET /api/stock/orders/:orderId
+PATCH /api/stock/orders/:orderId
+```
+
+## Monthly Sales tab
+
+Bind to:
+
+```ts
+GET /api/stock/monthly-sales
+GET /api/stock/monthly-sales/branches
+GET /api/stock/monthly-sales/products
+```
+
+## Country Inv. tab
+
+Bind to:
+
+```ts
+GET /api/stock/country-inventory
+GET /api/stock/country-inventory/summary
+```
+
+## Valuation tab
+
+Bind to:
+
+```ts
+GET /api/stock/valuation
+GET /api/stock/valuation/locations
+GET /api/stock/valuation/products
+```
+
+## Barcode tab
+
+Bind to:
+
+```ts
+GET /api/stock/barcode/:barcode
+```
+
+## AI Reorder tab
+
+Bind to:
+
+```ts
+GET /api/stock/ai-reorder
+```
+
+## Batch tab
+
+Bind to:
+
+```ts
+GET /api/stock/batches
+GET /api/stock/batches/:batchNo/trace
+```
+
+## Realtime tab
+
+Bind to:
+
+```ts
+GET /api/stock/realtime
+GET /api/stock/realtime/movements
+```
+
+## Field Stock tab
+
+Bind to:
+
+```ts
+GET /api/stock/field-stock
+```
+
+## Edit Requests tab
+
+Bind to:
+
+```ts
+PATCH /api/stock/edit-requests/:requestId
+```
+
+---
+
+# 11. REQUIRED STOCK MATH ENFORCEMENT
+
+Every route that changes stock must call:
+
+* `stockEngine.postStockMovement`
+* `inventoryBalanceEngine.recomputeInventoryBalance`
+
+Do not allow pages to write stock directly.
+
+---
+
+# 12. REQUIRED FIXES FOR CURRENT SCREEN ISSUES
+
+From the screenshots, these must be corrected through the API/read model layer:
+
+## Issue A
+
+`CIF N$0.00` even though stock exists
+
+### Fix
+
+Bind valuation to real `unitCIF` values from import/stock lines. If missing in records, fix import binding.
+
+## Issue B
+
+Some branches show `0 products` while stock exists
+
+### Fix
+
+Branch stock card must use `count(distinct inventory lines where closingQty > 0)`
+
+## Issue C
+
+Generic request items like `Item x10`
+
+### Fix
+
+Orders/requests APIs must return real product names, qty, and line items.
+
+## Issue D
+
+Expiry still showing `—`
+
+### Fix
+
+Read from exact batch line; if import had expiry, bind it through inventory balances and movements.
+
+## Issue E
+
+Warehouse incoming/outbound cards not aligning with receipt history
+
+### Fix
+
+Use movement-driven summaries, not separate counters.
+
+---
+
+# 13. REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Reply exactly like this:
+
+## Route Files Created
+
+* list
+
+## Controller Files Created
+
+* list
+
+## Service Files Created
+
+* list
+
+## Engine Files Bound
+
+* list
+
+## Repository Files Bound
+
+* list
+
+## Frontend Tabs Bound To Correct APIs
+
+* list
+
+## Remaining Tabs Still Incorrect
+
+* list
+
+## Billing Confirmation
+
+* confirm this is follow-up correction under original paid task
+* confirm no extra billing
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Implement the stock portal backend using the folder and file structure above. Create route, controller, service, engine, repository, validator, and query layers exactly around the listed stock tabs. Bind every stock tab to proper shared APIs and live read models. Do not leave any stock page reading fake summaries, generic labels, or blank values when the information already exists in the system. This is a follow-up correction of the original paid stock task and must be completed with no extra charge.
+
+.
