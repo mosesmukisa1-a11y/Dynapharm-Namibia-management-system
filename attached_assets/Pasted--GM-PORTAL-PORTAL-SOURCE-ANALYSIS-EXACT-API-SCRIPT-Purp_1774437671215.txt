@@ -1,0 +1,855 @@
+
+# 🚨 GM PORTAL — PORTAL-SOURCE ANALYSIS + EXACT API SCRIPT
+
+## Purpose
+
+The **GM portal** must be a **management decision portal**, not a separate calculation engine.
+
+It must consume live data from:
+
+* stock engine
+* sales engine
+* reporting engine
+* finance-ready summaries
+* branch performance summaries
+
+It must not calculate its own totals independently.
+
+## GM portal must receive stock information from
+
+* `stock_movements`
+* `inventory_balances`
+* `branch_summary_view`
+* `warehouse_summary_view`
+* `company_stock_summary_view`
+* `stock_alerts_view`
+
+## GM portal must receive sales information from
+
+* `sales_transactions`
+* `sales_summary_view`
+* `branch_sales_summary_view`
+* `prescription_dispense_sales_view`
+* `consultation_fee_summary_view`
+
+---
+
+## GM portal required dashboard blocks
+
+### 1. Company stock overview
+
+Must show:
+
+* total company stock qty
+* total company stock DP value
+* total warehouses stock
+* total branch stock
+* in-transit stock
+* low stock items
+* expiring items
+
+### 2. Branch performance overview
+
+Must show per branch:
+
+* closing stock
+* stock value DP
+* sales units
+* sales revenue
+* dispensed units
+* low stock count
+* expiry risk count
+* write-off qty/value
+
+### 3. Warehouse overview
+
+Must show:
+
+* Windhoek stock summary
+* Ondangwa stock summary
+* dispatch activity
+* stock value
+* expiry risk
+* low stock
+
+### 4. Sales category summary
+
+Must show:
+
+* consultation fees
+* walk-in sales
+* member sales
+* non-member sales
+* online fulfilled sales
+* prescription dispensing sales
+* total sales
+
+### 5. Profitability / operational view
+
+Must show:
+
+* DP stock value
+* sales totals
+* branch performance ranking
+* top products by movement
+* slow/fast-moving products if available
+
+---
+
+## GM portal required APIs
+
+### A. GM summary
+
+```http
+GET /api/gm/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "companyStock": {
+    "totalQty": 0,
+    "totalValueDP": 0,
+    "warehouseQty": 0,
+    "branchQty": 0,
+    "inTransitQty": 0,
+    "lowStockCount": 0,
+    "expiringCount": 0
+  },
+  "sales": {
+    "consultationFees": 0,
+    "walkinSales": 0,
+    "memberSales": 0,
+    "nonMemberSales": 0,
+    "onlineSales": 0,
+    "prescriptionSales": 0,
+    "totalSales": 0
+  }
+}
+```
+
+---
+
+### B. GM branch performance
+
+```http
+GET /api/gm/branches/performance?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Townshop",
+    "productCount": 0,
+    "closingStock": 0,
+    "stockValueDP": 0,
+    "salesUnits": 0,
+    "salesRevenue": 0,
+    "dispensedUnits": 0,
+    "writeOffQty": 0,
+    "writeOffValueDP": 0,
+    "lowStockCount": 0,
+    "expiringCount": 0,
+    "lastMovementAt": "2026-03-25T10:00:00Z"
+  }
+]
+```
+
+---
+
+### C. GM warehouse summary
+
+```http
+GET /api/gm/warehouses/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "warehouseId": "w1",
+    "warehouseName": "Windhoek",
+    "closingStock": 0,
+    "stockValueDP": 0,
+    "dispatchQty": 0,
+    "lowStockCount": 0,
+    "expiringCount": 0
+  }
+]
+```
+
+---
+
+### D. GM stock alerts
+
+```http
+GET /api/gm/alerts/stock?thresholdDays=90
+```
+
+### Response
+
+```json
+{
+  "lowStock": [],
+  "expiring": [],
+  "writeOffRisk": []
+}
+```
+
+---
+
+## GM service requirements
+
+### Suggested services
+
+* `gmSummaryService.ts`
+* `branchPerformanceService.ts`
+* `stockAlertService.ts`
+
+### Binding rules
+
+* GM cards must read from summary services only
+* summary services must read from central stock/sales engines only
+* no direct page-side formulas
+* DP only for stock value
+
+---
+
+## GM SQL/view requirements
+
+### `branch_summary_view`
+
+Must provide:
+
+* branch id/name
+* product count
+* closing stock
+* stock value dp
+* sales units
+* sales revenue
+* dispensed units
+* low stock count
+* expiry count
+* write-off value
+
+### `company_stock_summary_view`
+
+Must provide:
+
+* total qty
+* total dp value
+* warehouse qty
+* branch qty
+* in-transit qty
+* low stock count
+* expiring count
+
+---
+
+# 🚨 FINANCE PORTAL — PORTAL-SOURCE ANALYSIS + EXACT API SCRIPT
+
+## Purpose
+
+The **Finance portal** must consume financialized stock/sales outputs, not invent separate totals.
+
+Finance must receive:
+
+* completed sales only
+* DP-based stock value
+* write-off value
+* stock-related cost/value movements
+* branch/company totals
+* consultation fees
+* payment method breakdowns if available
+
+Finance must not calculate stock independently from stock engine.
+
+---
+
+## Finance portal must receive stock information from
+
+* `inventory_balances`
+* `stock_movements`
+* `write_off_summary_view`
+* `stock_value_summary_view`
+
+## Finance portal must receive sales information from
+
+* `sales_transactions`
+* `sales_summary_view`
+* `payment_summary_view`
+* `consultation_fee_summary_view`
+* `prescription_dispense_sales_view`
+
+---
+
+## Finance portal required dashboard blocks
+
+### 1. Revenue summary
+
+Must show:
+
+* total completed sales
+* consultation fees
+* walk-in sales
+* member sales
+* non-member sales
+* online sales
+* prescription sales
+
+### 2. Stock value summary
+
+Must show:
+
+* total company stock value by DP
+* warehouse stock value
+* branch stock value
+* write-off value
+* expired stock value if available
+
+### 3. Branch finance summary
+
+Must show per branch:
+
+* sales revenue
+* sales units
+* consultation fees
+* stock value
+* write-off value
+* payment method totals
+
+### 4. Payment method breakdown
+
+Must show:
+
+* cash
+* swipe
+* EFT
+* other configured methods
+
+### 5. Finance basis reports
+
+Must show:
+
+* stock-linked revenue basis
+* DP-based stock movement value
+* branch/company rollups
+
+---
+
+## Finance portal required APIs
+
+### A. Finance summary
+
+```http
+GET /api/finance/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "revenue": {
+    "consultationFees": 0,
+    "walkinSales": 0,
+    "memberSales": 0,
+    "nonMemberSales": 0,
+    "onlineSales": 0,
+    "prescriptionSales": 0,
+    "totalSales": 0
+  },
+  "stockValue": {
+    "companyValueDP": 0,
+    "warehouseValueDP": 0,
+    "branchValueDP": 0,
+    "writeOffValueDP": 0
+  }
+}
+```
+
+---
+
+### B. Finance branch summary
+
+```http
+GET /api/finance/branches/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Townshop",
+    "salesRevenue": 0,
+    "salesUnits": 0,
+    "consultationFees": 0,
+    "stockValueDP": 0,
+    "writeOffValueDP": 0,
+    "cashTotal": 0,
+    "swipeTotal": 0,
+    "eftTotal": 0
+  }
+]
+```
+
+---
+
+### C. Finance stock value report
+
+```http
+GET /api/finance/reports/stock-value?asOfDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "warehouses": [],
+  "branches": [],
+  "totalCompanyValueDP": 0
+}
+```
+
+---
+
+### D. Finance write-off report
+
+```http
+GET /api/finance/reports/writeoffs?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "locationType": "branch",
+    "locationName": "Townshop",
+    "productName": "Noni Juice",
+    "batchNo": "NJ-01",
+    "qty": 0,
+    "unitDP": 0,
+    "valueDP": 0,
+    "reason": "expired",
+    "writeOffDate": "2026-03-25"
+  }
+]
+```
+
+---
+
+## Finance service requirements
+
+### Suggested services
+
+* `financeSummaryService.ts`
+* `stockValuationService.ts`
+* `paymentSummaryService.ts`
+* `writeOffReportingService.ts`
+
+### Binding rules
+
+* finance totals must use completed posted transactions only
+* stock value must use DP only for internal valuation
+* finance must not read from UI summaries
+* finance must not use CP for stock valuation
+* consultation fee is revenue only, not stock movement
+
+---
+
+## Finance view requirements
+
+### `sales_summary_view`
+
+Must separate:
+
+* consultation_fee
+* walkin_sale
+* member_sale
+* non_member_sale
+* online_order_sale
+* prescription_dispense_sale
+
+### `stock_value_summary_view`
+
+Must separate:
+
+* total warehouse dp value
+* total branch dp value
+* total company dp value
+* write-off dp value
+
+---
+
+# 🚨 MIS PORTAL — PORTAL-SOURCE ANALYSIS + EXACT API SCRIPT
+
+## Purpose
+
+The **MIS portal** must be a reconciliation and encoded-sales validation portal.
+
+MIS must consume:
+
+* branch sales records
+* branch stock movement totals
+* product-wise quantities
+* distributor-linked sales if applicable
+* finance totals for reconciliation
+* branch stock math outputs for comparison
+
+MIS must not use disconnected manually re-entered figures where the system already has them.
+
+---
+
+## MIS portal must receive stock information from
+
+* `stock_movements`
+* `inventory_balances`
+* `branch_summary_view`
+* `product_movement_summary_view`
+
+## MIS portal must receive sales information from
+
+* `sales_transactions`
+* `sales_summary_view`
+* `branch_sales_summary_view`
+* `distributor_sales_view` if applicable
+
+---
+
+## MIS portal required dashboard blocks
+
+### 1. Branch reconciliation summary
+
+Must show per branch:
+
+* stock received
+* stock sold
+* stock dispensed
+* write-offs
+* closing stock
+* sales units
+* sales revenue
+* mismatch flag
+
+### 2. Product reconciliation summary
+
+Must show:
+
+* product
+* branch
+* opening
+* inward
+* outward
+* closing
+* sales qty
+* dispensed qty
+* mismatch qty
+
+### 3. Distributor-linked sales validation
+
+If distributor sales are tracked:
+
+* distributor nb
+* branch
+* qty sold
+* sales value
+* encoded value
+* mismatch flag
+
+### 4. MIS reporting controls
+
+Must allow:
+
+* date range
+* branch filter
+* product filter
+* sales category filter
+
+---
+
+## MIS portal required APIs
+
+### A. MIS reconciliation summary
+
+```http
+GET /api/mis/reconciliation/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Townshop",
+    "receivedQty": 0,
+    "soldQty": 0,
+    "dispensedQty": 0,
+    "writeOffQty": 0,
+    "closingQty": 0,
+    "salesRevenue": 0,
+    "mismatchQty": 0,
+    "mismatchValue": 0,
+    "status": "ok"
+  }
+]
+```
+
+---
+
+### B. MIS branch-product reconciliation
+
+```http
+GET /api/mis/reconciliation/products?branchId=b1&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Townshop",
+    "productId": "p1",
+    "productName": "Noni Juice",
+    "batchNo": "NJ-01",
+    "openingQty": 0,
+    "inwardQty": 0,
+    "outwardQty": 0,
+    "soldQty": 0,
+    "dispensedQty": 0,
+    "writeOffQty": 0,
+    "closingQty": 0,
+    "mismatchQty": 0,
+    "status": "ok"
+  }
+]
+```
+
+---
+
+### C. MIS encoded sales vs live sales
+
+```http
+GET /api/mis/reconciliation/sales?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Townshop",
+    "category": "member_sale",
+    "liveSalesValue": 0,
+    "encodedSalesValue": 0,
+    "difference": 0,
+    "status": "ok"
+  }
+]
+```
+
+---
+
+### D. MIS distributor-linked sales
+
+```http
+GET /api/mis/distributors/sales?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "distributorNb": "NB005676",
+    "distributorName": "Dynapharm Namibia",
+    "branchName": "Townshop",
+    "salesQty": 0,
+    "salesValue": 0,
+    "encodedValue": 0,
+    "difference": 0
+  }
+]
+```
+
+---
+
+## MIS service requirements
+
+### Suggested services
+
+* `misReconciliationService.ts`
+* `branchProductReconciliationService.ts`
+* `encodedSalesComparisonService.ts`
+
+### Core reconciliation formulas
+
+#### Branch-level
+
+```text
+expected_closing = opening + received + transfer_in + return_in - sold - dispensed - transfer_out - write_off
+mismatch_qty = actual_closing - expected_closing
+```
+
+#### Sales-level
+
+```text
+sales_difference = live_sales_value - encoded_sales_value
+```
+
+#### Product-level
+
+```text
+product_mismatch = movement_outward_qty - (sold_qty + dispensed_qty + writeoff_qty + transfer_out_qty)
+```
+
+---
+
+## MIS view requirements
+
+### `product_movement_summary_view`
+
+Must provide:
+
+* branch
+* product
+* batch
+* opening
+* inward
+* outward
+* sold
+* dispensed
+* write-off
+* transfer out
+* closing
+* mismatch
+
+### `branch_sales_summary_view`
+
+Must provide:
+
+* branch
+* category
+* total qty
+* total value
+* date range support
+
+---
+
+# 🚨 SHARED IMPLEMENTATION RULES FOR GM, FINANCE, MIS
+
+## 1. Shared engines required
+
+Replit must ensure these portals read from:
+
+* `stockEngine`
+* `salesEngine`
+* `reportingEngine`
+
+## 2. No duplicate formulas
+
+GM, Finance, and MIS must not each calculate stock differently.
+
+## 3. DP rule
+
+All internal stock values must use DP.
+
+## 4. Posted transactions only
+
+Only completed/posted movements and completed/posted sales must feed these portals.
+
+## 5. Prescription rule
+
+Only actually dispensed quantities and actual prescription sales may flow into these portals.
+
+## 6. Blank field rule
+
+If values are zero/blank while records exist, fix the binding source, not the UI.
+
+---
+
+# 🚨 EXACT REPLIT ENCODING INSTRUCTION
+
+Replit must do the following:
+
+## For GM
+
+Create:
+
+* `/api/gm/summary`
+* `/api/gm/branches/performance`
+* `/api/gm/warehouses/summary`
+* `/api/gm/alerts/stock`
+
+Bind GM dashboard cards to these endpoints only.
+
+## For Finance
+
+Create:
+
+* `/api/finance/summary`
+* `/api/finance/branches/summary`
+* `/api/finance/reports/stock-value`
+* `/api/finance/reports/writeoffs`
+
+Bind Finance cards/reports to these endpoints only.
+
+## For MIS
+
+Create:
+
+* `/api/mis/reconciliation/summary`
+* `/api/mis/reconciliation/products`
+* `/api/mis/reconciliation/sales`
+* `/api/mis/distributors/sales`
+
+Bind MIS dashboards/tables to these endpoints only.
+
+---
+
+# 🚨 REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Reply exactly in this structure:
+
+## GM APIs Implemented
+
+* list
+
+## Finance APIs Implemented
+
+* list
+
+## MIS APIs Implemented
+
+* list
+
+## Shared Services Bound
+
+* stockEngine
+* salesEngine
+* reportingEngine
+
+## Remaining Missing Bindings
+
+* list
+
+## Validation Tests Done
+
+* list
+
+## Billing Confirmation
+
+* confirm this is follow-up correction under original paid task
+* confirm no extra billing
+
+---
+
