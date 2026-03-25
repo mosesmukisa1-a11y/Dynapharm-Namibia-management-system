@@ -1895,16 +1895,37 @@ function BranchStockTab() {
   const [availableBranches, setAvailableBranches] = useState([]);
 
   useEffect(() => {
+    // Map of display names / legacy aliases → canonical branch slug
+    const BRANCH_CANONICAL = {
+      'windhoek cbd': 'townshop', 'windhoek_cbd': 'townshop', 'main': 'townshop',
+      'khomasdal': 'khomasdal',
+      'tsumeb': 'tsumeb', 'gobabis': 'gobabis', 'swakopmund': 'swakopmund',
+      'walvis bay': 'walvisbay', 'walvis_bay': 'walvisbay', 'walvisbay': 'walvisbay',
+      'outapi': 'outapi', 'okahao': 'okahao',
+      'oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch',
+      'otjiwarongo': 'otjiwarongo', 'eenhana': 'eenhana',
+      'ondangwa': 'ondangwa', 'rundu': 'rundu',
+      'katima mulilo': 'katima', 'katima': 'katima',
+      'hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park', 'hochland-park': 'hochland-park',
+      'townshop': 'townshop',
+    };
+    const canonicalize = (b) => {
+      if (!b) return '';
+      const slug = b.toLowerCase().replace(/\s+/g, '_');
+      return BRANCH_CANONICAL[slug] || BRANCH_CANONICAL[b.toLowerCase()] || slug;
+    };
     api.branch.inventory('').then(d => {
       const inv = Array.isArray(d) ? d : d.inventory || [];
       const branchIds = [...new Set(inv.map(i => i.branchId || i.branch_id).filter(Boolean))];
       setAvailableBranches(branchIds);
-      const userKey = (user?.branch || '').toLowerCase().replace(/\s+/g, '_');
-      const match = branchIds.find(b => b === userKey || b === userKey + '_branch' || b.replace(/_branch$/, '') === userKey || b.startsWith(userKey));
+      const userCanonical = canonicalize(user?.branch || '');
+      const match = branchIds.find(b => canonicalize(b) === userCanonical);
       if (match) {
         setSelectedBranch(match);
-      } else if (branchIds.length > 0 && !branchIds.includes(userKey)) {
-        setSelectedBranch(branchIds[0]);
+      } else {
+        const direct = branchIds.find(b => b === userCanonical);
+        if (direct) setSelectedBranch(direct);
+        else if (branchIds.length > 0) setSelectedBranch(branchIds[0]);
       }
     }).catch(() => {});
   }, []);

@@ -1287,6 +1287,69 @@ server.on('error', (error) => {
       console.log('Super Admin account seeded (username: admin)');
     }
 
+    // ── Branch ID normalization ─────────────────────────────────────────────
+    // Canonical slug for every known display-name / alias variant.
+    // Applied to branch_walkin_sales, stock_movements, branch_inventory_batches,
+    // branch_inventory_movements, inventory_balances, and users.branch.
+    const BRANCH_ALIAS_MAP = {
+      'Windhoek CBD': 'townshop',  'windhoek cbd': 'townshop',
+      'windhoek_cbd': 'townshop',
+      'main': 'townshop',
+      'Khomasdal': 'khomasdal',
+      'Tsumeb': 'tsumeb',
+      'Gobabis': 'gobabis',
+      'Swakopmund': 'swakopmund',
+      'Walvis Bay': 'walvisbay', 'walvis_bay': 'walvisbay', 'walvis bay': 'walvisbay',
+      'Walvisbay': 'walvisbay',
+      'Outapi': 'outapi',
+      'Okahao': 'okahao',
+      'Oshakati': 'oshakati_branch', 'oshakati': 'oshakati_branch',
+      'Otjiwarongo': 'otjiwarongo',
+      'Eenhana': 'eenhana',
+      'Ondangwa': 'ondangwa',
+      'Rundu': 'rundu',
+      'Katima Mulilo': 'katima', 'katima mulilo': 'katima',
+      'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park',
+    };
+
+    let branchMigrationsApplied = 0;
+    for (const [alias, canonical] of Object.entries(BRANCH_ALIAS_MAP)) {
+      const tables = [
+        { table: 'branch_walkin_sales', col: 'branch_id' },
+        { table: 'stock_movements', col: 'source_location' },
+        { table: 'stock_movements', col: 'destination_location' },
+        { table: 'branch_inventory_batches', col: 'branch_id' },
+        { table: 'branch_inventory_movements', col: 'branch_id' },
+        { table: 'inventory_balances', col: 'location_id' },
+        { table: 'users', col: 'branch' },
+      ];
+      for (const { table, col } of tables) {
+        try {
+          const r = await query(
+            `UPDATE ${table} SET ${col} = $1 WHERE ${col} = $2`,
+            [canonical, alias]
+          );
+          if (r && r.rowCount > 0) branchMigrationsApplied += r.rowCount;
+        } catch {}
+      }
+    }
+    if (branchMigrationsApplied > 0) {
+      console.log(`Branch ID normalization: updated ${branchMigrationsApplied} rows`);
+    }
+
+    // ── Auto-seed inventory_balances if empty ───────────────────────────────
+    const ibCount = await getOne(`SELECT COUNT(*) as cnt FROM inventory_balances`);
+    if (Number(ibCount?.cnt || 0) === 0) {
+      try {
+        const { seedInventoryBalances } = await import('./api/services/stockEngine.js');
+        const seedResult = await seedInventoryBalances();
+        console.log(`inventory_balances seeded: ${seedResult.seeded || 0} balances (${seedResult.errors || 0} errors)`);
+      } catch (seedErr) {
+        console.warn('inventory_balances seed failed:', seedErr.message);
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     const staffUsers = [
       { id: 'USR1759829667953', username: 'moses', password: 'walker33', fullName: 'MOSES MUKISA', email: 'mosesmukisa1@gmail.com', phone: '0817317160', role: 'consultant', branch: 'townshop' },
       { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },

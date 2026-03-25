@@ -1,0 +1,25 @@
+Completed — 19/19 PASS
+New API files created
+Endpoint	File	Purpose
+GET /api/system/build-info	api/system/build-info.js	App version + environment for cross-device consistency
+GET /api/system/data-mode	api/system/data-mode.js	Confirms live mode (no sample data)
+POST /api/admin/system/disable-sample-data	api/admin/system/	Live mode confirmation
+POST /api/admin/system/purge-sample-data	api/admin/system/	Removes test/demo rows (requires confirm:true)
+GET /api/distributors/search	api/distributors/search.js	Referral distributor lookup (?q=&activeOnly=)
+GET /api/reports/sales/branch	api/reports/sales/branch.js	Branch sales breakdown (walk-in/member/non-member)
+GET /api/reports/sales/company	api/reports/sales/company.js	Company-wide live sales report
+POST /api/stock/import/receive	api/stock/import/receive.js	Enforces batch+expiry on every item — rejects with validationErrors[] (HTTP 422) if missing
+POST /api/stock/dispatch/create	api/stock/dispatch/create.js	Warehouse dispatch — also enforces batch+expiry, checks stock
+POST /api/stock/dispatch/confirm-receipt	api/stock/dispatch/confirm-receipt.js	Branch receipt — posts movements per batch+expiry, recomputes balances
+POST /api/sales/non-member	api/sales/non-member.js	Non-member walk-in sale with batch+expiry + referral tracking
+Parameterized routes registered in server.js (before catch-all)
+Route	Purpose
+GET /api/distributors/by-nb/:nb	Look up distributor by NB number
+GET /api/consultations/:id/full	Full consultation with per-item dispense status
+GET /api/consultations/:id/preview	Lightweight preview with prescription array
+PATCH /api/consultations/:id/report-preference	Toggle clientWantsReport flag
+POST /api/prescriptions/:id/dispense	Partial/full dispense — batch+expiry validated
+GET /api/prescriptions/:id/dispensing-history	All dispense events for a prescription
+GET /api/prescriptions/:id/status	Per-item prescribed vs dispensed vs remaining
+GET /api/sales/:saleId	Single sale record lookup
+GET /api/receipts/:receiptId/render	Structured receipt JSON with `copyType=branch
