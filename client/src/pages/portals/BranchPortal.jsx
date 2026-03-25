@@ -3001,16 +3001,40 @@ function BranchStockTab() {
 
       {subTab === 'reports' && (() => {
         const branchName = user?.branch || 'Branch';
-        const todaySales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.toDateString() === t.toDateString(); });
-        const monthSales = sales.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); });
+        // Synthesize prescription sale entries from dispense stock movements
+        const rxMovements = movements.filter(m => {
+          const t = (m.type || m.movement_type || '').toLowerCase();
+          return t === 'dispense' || t === 'prescription_dispense' || t === 'sale_dispense';
+        }).map(m => {
+          const pName = m.product_name || m.productName || m.description || 'Unknown';
+          const pLookup = findProductPrice(pName);
+          const dpPrice = pLookup?.dp ? Number(pLookup.dp) : Number(m.unit_price || m.dp_price || 0);
+          return {
+            created_at: m.created_at || m.date,
+            sale_type: 'prescription_dispense',
+            items: [{ product_name: pName, quantity: Math.abs(Number(m.quantity || 1)), unit_price: dpPrice }],
+          };
+        });
+        const walkinAndRx = [...sales, ...rxMovements];
+        const todaySales = walkinAndRx.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.toDateString() === t.toDateString(); });
+        const monthSales = walkinAndRx.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); });
         const parseItems = (r) => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } };
         const dpTotalFn = (arr) => arr.reduce((s, r) => {
-          return s + parseItems(r).reduce((a, i) => {
+          const items = parseItems(r);
+          if (items.length === 0) {
+            return s + Number(r.total || r.amount || r.total_amount || 0);
+          }
+          return s + items.reduce((a, i) => {
             const p = findProductPrice(i.product_name || i.productName || i.name);
-            return a + (p?.dp ? Number(p.dp) * Number(i.quantity || 1) : 0);
+            const dpVal = p?.dp ? Number(p.dp) : Number(i.unit_price || i.dp || i.price || 0);
+            return a + dpVal * Number(i.quantity || 1);
           }, 0);
         }, 0);
-        const qtyTotalFn = (arr) => arr.reduce((s, r) => s + parseItems(r).reduce((a, i) => a + Number(i.quantity || 1), 0), 0);
+        const qtyTotalFn = (arr) => arr.reduce((s, r) => {
+          const items = parseItems(r);
+          if (items.length === 0) return s + 1;
+          return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0);
+        }, 0);
         const catSales = (list) => {
           const sType = (s) => (s.sale_type || s.saleType || s.type || '').toLowerCase();
           const cType = (s) => (s.customer_type || s.customerType || '').toLowerCase();
