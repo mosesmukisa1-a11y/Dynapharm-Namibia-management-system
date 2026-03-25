@@ -42,6 +42,7 @@ function DashboardTab() {
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState('All Branches');
   const [comparisonPeriod, setComparisonPeriod] = useState('none');
+  const [financeSummary, setFinanceSummary] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -51,6 +52,7 @@ function DashboardTab() {
     ]).then(([sales, deposits, orders]) => {
       setData({ sales, deposits, orders });
     }).finally(() => setLoading(false));
+    api.finance.summary().then(d => { if (d && d.success) setFinanceSummary(d); }).catch(() => {});
   }, []);
 
   if (loading) return <LoadingSpinner />;
@@ -151,6 +153,41 @@ function DashboardTab() {
           </div>
         </div>
       </div>
+
+      {financeSummary && (
+        <Card className="mb-4 bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-200">
+          <CardBody>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <FileSpreadsheet size={16} className="text-indigo-600" /> Backend Finance Summary
+              </h3>
+              <span className="text-xs text-gray-400">Period: {financeSummary.period?.start} → {financeSummary.period?.end}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Total Revenue (All Channels)</p>
+                <p className="text-lg font-bold text-green-700">{formatCurrency(financeSummary.revenue?.totalSales || 0)}</p>
+                <p className="text-xs text-gray-400">Walk-in: {formatCurrency(financeSummary.revenue?.walkinSales || 0)}</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Member Revenue</p>
+                <p className="text-lg font-bold text-blue-700">{formatCurrency(financeSummary.revenue?.memberSales || 0)}</p>
+                <p className="text-xs text-gray-400">Non-member: {formatCurrency(financeSummary.revenue?.nonMemberSales || 0)}</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Company Stock Value (DP)</p>
+                <p className="text-lg font-bold text-purple-700">{formatCurrency(financeSummary.stockValue?.companyValueDP || 0)}</p>
+                <p className="text-xs text-gray-400">Warehouse: {formatCurrency(financeSummary.stockValue?.warehouseValueDP || 0)}</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Branch Stock Value</p>
+                <p className="text-lg font-bold text-orange-700">{formatCurrency(financeSummary.stockValue?.branchValueDP || 0)}</p>
+                <p className="text-xs text-gray-400">Write-off: {formatCurrency(financeSummary.stockValue?.writeOffValueDP || 0)}</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {comparisonPeriod !== 'none' && (
         <Alert type="info" className="mb-4">

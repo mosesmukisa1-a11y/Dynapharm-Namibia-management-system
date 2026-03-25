@@ -253,6 +253,7 @@ function StockAdjustmentsTab({ onCountChange }) {
 function DashboardTab() {
   const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });
   const [loading, setLoading] = useState(true);
+  const [gmSummary, setGmSummary] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -264,6 +265,7 @@ function DashboardTab() {
     ]).then(([orders, branches, products, sales, deposits]) => {
       setData({ orders, branches, products, sales, deposits });
     }).finally(() => setLoading(false));
+    api.gm.summary().then(d => { if (d && d.success) setGmSummary(d); }).catch(() => {});
   }, []);
 
   if (loading) return <LoadingSpinner />;
@@ -325,6 +327,52 @@ function DashboardTab() {
 
   return (
     <div>
+      {gmSummary && (
+        <Card className="mb-6 border-primary/30 bg-gradient-to-r from-red-50 to-rose-50">
+          <CardBody>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <BarChart3 size={18} className="text-primary" /> Company Live Summary
+              </h3>
+              <span className="text-xs text-gray-400">Period: {gmSummary.period?.start} → {gmSummary.period?.end}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Total Sales (All Branches)</p>
+                <p className="text-lg font-bold text-green-700">{formatCurrency(gmSummary.sales?.totalSales || 0)}</p>
+                <p className="text-xs text-gray-400">Walk-in: {formatCurrency(gmSummary.sales?.walkinSales || 0)}</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Member Sales</p>
+                <p className="text-lg font-bold text-blue-700">{formatCurrency(gmSummary.sales?.memberSales || 0)}</p>
+                <p className="text-xs text-gray-400">Non-member: {formatCurrency(gmSummary.sales?.nonMemberSales || 0)}</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Company Stock (DP Value)</p>
+                <p className="text-lg font-bold text-purple-700">{formatCurrency(gmSummary.companyStock?.totalValueDP || 0)}</p>
+                <p className="text-xs text-gray-400">{(gmSummary.companyStock?.totalQty || 0).toLocaleString()} units total</p>
+              </div>
+              <div className="bg-white/80 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500">Stock Alerts</p>
+                <p className={`text-lg font-bold ${(gmSummary.companyStock?.lowStockCount || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {gmSummary.companyStock?.lowStockCount || 0} low stock
+                </p>
+                <p className="text-xs text-gray-400">{gmSummary.companyStock?.expiringCount || 0} expiring soon</p>
+              </div>
+            </div>
+            <div className="flex gap-4 text-xs text-gray-500">
+              <span>Warehouse: {(gmSummary.companyStock?.warehouseQty || 0).toLocaleString()} units</span>
+              <span>•</span>
+              <span>Branches: {(gmSummary.companyStock?.branchQty || 0).toLocaleString()} units</span>
+              <span>•</span>
+              <span>In Transit: {(gmSummary.companyStock?.inTransitQty || 0).toLocaleString()} units</span>
+              <span>•</span>
+              <span>Prescription sales: {formatCurrency(gmSummary.sales?.prescriptionSales || 0)}</span>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {kpiCards.map((kpi) => (
           <div key={kpi.label} style={{ background: kpi.gradient }} className="rounded-xl p-5 shadow-lg text-white">

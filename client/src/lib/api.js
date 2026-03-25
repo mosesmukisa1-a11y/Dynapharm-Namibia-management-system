@@ -67,7 +67,8 @@ export const api = {
     list: () => api.get('/distributors'),
     get: (id) => api.get(`/distributors/${id}`),
     create: (data) => api.post('/distributors', data),
-    search: (q) => api.get(`/distributors?search=${encodeURIComponent(q)}`),
+    search: (q, activeOnly = false) => api.get(`/distributors/search?q=${encodeURIComponent(q)}&activeOnly=${activeOnly}`),
+    byNb: (nb) => api.get(`/distributors/by-nb/${encodeURIComponent(nb)}`),
   },
 
   appointments: {
@@ -174,6 +175,61 @@ export const api = {
     bulkUpdate: (updates) => api.put('/prices', updates),
     create: (data) => api.post('/prices', data),
     delete: (id) => api.delete(`/prices/${id}`),
+  },
+
+  gm: {
+    summary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/summary${qs ? '?' + qs : ''}`); },
+    branchesPerformance: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/branches/performance${qs ? '?' + qs : ''}`); },
+    warehousesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/warehouses/summary${qs ? '?' + qs : ''}`); },
+    stockAlerts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/alerts/stock${qs ? '?' + qs : ''}`); },
+  },
+
+  finance: {
+    summary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/summary${qs ? '?' + qs : ''}`); },
+    branchesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/branches/summary${qs ? '?' + qs : ''}`); },
+    stockValue: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/reports/stock-value${qs ? '?' + qs : ''}`); },
+    writeoffs: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/reports/writeoffs${qs ? '?' + qs : ''}`); },
+  },
+
+  director: {
+    summary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/summary${qs ? '?' + qs : ''}`); },
+    profitLoss: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/profit-loss${qs ? '?' + qs : ''}`); },
+    revenueTrends: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/revenue-trends${qs ? '?' + qs : ''}`); },
+    branchesPerformance: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/branches/performance${qs ? '?' + qs : ''}`); },
+    fastMoving: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/products/fast-moving${qs ? '?' + qs : ''}`); },
+    branchFastMoving: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/products/fast-moving-by-branch${qs ? '?' + qs : ''}`); },
+    branchRevenue: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/branches/revenue-contribution${qs ? '?' + qs : ''}`); },
+    registrations: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/registrations/summary${qs ? '?' + qs : ''}`); },
+  },
+
+  system: {
+    buildInfo: () => api.get('/system/build-info'),
+    dataMode: () => api.get('/system/data-mode'),
+    disableSampleData: () => api.post('/admin/system/disable-sample-data', {}),
+    purgeSampleData: () => api.post('/admin/system/purge-sample-data', { confirm: true }),
+  },
+
+  sales: {
+    nonMember: (data) => api.post('/sales/non-member', data),
+    get: (saleId) => api.get(`/sales/${encodeURIComponent(saleId)}`),
+    branchReport: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/sales/branch${qs ? '?' + qs : ''}`); },
+    companyReport: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/sales/company${qs ? '?' + qs : ''}`); },
+  },
+
+  consultations: {
+    full: (id) => api.get(`/consultations/${encodeURIComponent(id)}/full`),
+    preview: (id) => api.get(`/consultations/${encodeURIComponent(id)}/preview`),
+    setReportPreference: (id, wants) => api.patch(`/consultations/${encodeURIComponent(id)}/report-preference`, { clientWantsReport: wants }),
+  },
+
+  prescriptions: {
+    dispense: (id, data) => api.post(`/prescriptions/${encodeURIComponent(id)}/dispense`, data),
+    history: (id) => api.get(`/prescriptions/${encodeURIComponent(id)}/dispensing-history`),
+    status: (id) => api.get(`/prescriptions/${encodeURIComponent(id)}/status`),
+  },
+
+  receipts: {
+    render: (receiptId, copyType = 'branch') => api.get(`/receipts/${encodeURIComponent(receiptId)}/render?copyType=${copyType}`),
   },
 
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),
