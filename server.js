@@ -832,6 +832,352 @@ app.post('/api/stock/admin/seed-balances', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Parameterized routes registered before catch-all
+
+// GET /api/distributors/by-nb/:nb
+app.get('/api/distributors/by-nb/:nb', async (req, res) => {
+  try {
+    const { getOne } = await import('./api/db.js');
+    const nb = req.params.nb;
+    const dist = await getOne(
+      `SELECT id as distributor_id, distributor_name as full_name, distributor_code as nb_number,
+              branch as branch_id, COALESCE(status,'active') as status, mobile_no, email
+       FROM distributors WHERE distributor_code = $1`,
+      [nb]
+    );
+    if (!dist) return res.status(404).json({ success: false, error: `No distributor found with NB number: ${nb}` });
+    return res.json({ success: true, ...dist });
+  } catch (err) {
+    console.error('[distributors/by-nb]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/consultations/:id/full
+app.get('/api/consultations/:id/full', async (req, res) => {
+  try {
+    const { getOne, getMany } = await import('./api/db.js');
+    const id = req.params.id;
+    const report = await getOne(`SELECT * FROM reports WHERE id = $1`, [id]);
+    if (!report) return res.status(404).json({ success: false, error: 'Consultation not found' });
+    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {});
+    const dispenses = await getMany(
+      `SELECT product_name, batch_no, quantity, created_at FROM branch_inventory_movements
+       WHERE reference = $1 AND type = 'prescription_dispense' ORDER BY created_at`,
+      [id]
+    );
+    const dispensedByProduct = {};
+    for (const d of dispenses) {
+      dispensedByProduct[d.product_name] = (dispensedByProduct[d.product_name] || 0) + Number(d.quantity);
+    }
+    const prescription = (data.prescription || []).map(item => {
+      const dispensed = dispensedByProduct[item.productName || item.product_name] || 0;
+      const prescribed = Number(item.prescribedQty || item.quantity || 0);
+      return {
+        productId: item.productId || null,
+        productName: item.productName || item.product_name,
+        prescribedQty: prescribed,
+        dispensedQtyTotal: dispensed,
+        remainingQty: Math.max(0, prescribed - dispensed),
+        status: dispensed === 0 ? 'pending' : dispensed >= prescribed ? 'fully_dispensed' : 'partially_dispensed',
+      };
+    });
+    return res.json({
+      success: true,
+      consultationId: report.id,
+      client: {
+        fullName: data.clientName || data.full_name || data.client?.fullName || '',
+        phone: data.phone || data.client?.phone || '',
+        clientType: data.clientType || data.client_type || 'non_member',
+        referralDistributorName: data.referralDistributorName || data.referral?.name || null,
+        referralNb: data.referralNb || data.referral?.nb || null,
+      },
+      assessment: { symptoms: data.symptoms || '', notes: data.notes || '' },
+      prescription,
+      reportType: report.report_type,
+      branch: report.branch,
+      consultant: report.consultant,
+      createdAt: report.created_at,
+      clientWantsReport: data.clientWantsReport !== undefined ? data.clientWantsReport : true,
+    });
+  } catch (err) {
+    console.error('[consultations/:id/full]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/consultations/:id/preview
+app.get('/api/consultations/:id/preview', async (req, res) => {
+  try {
+    const { getOne } = await import('./api/db.js');
+    const id = req.params.id;
+    const report = await getOne(`SELECT * FROM reports WHERE id = $1`, [id]);
+    if (!report) return res.status(404).json({ success: false, error: 'Consultation not found' });
+    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {});
+    return res.json({
+      success: true,
+      consultation: { ...data, id: report.id, branch: report.branch, consultant: report.consultant, createdAt: report.created_at },
+      prescription: data.prescription || [],
+      reportEligible: data.clientWantsReport !== false,
+    });
+  } catch (err) {
+    console.error('[consultations/:id/preview]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/consultations/:id/report-preference
+app.patch('/api/consultations/:id/report-preference', async (req, res) => {
+  try {
+    const { getOne, query } = await import('./api/db.js');
+    const id = req.params.id;
+    let body = req.body || {};
+    if (typeof body === 'string') body = JSON.parse(body || '{}');
+    const { clientWantsReport } = body;
+    if (typeof clientWantsReport !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'clientWantsReport (boolean) is required' });
+    }
+    const existing = await getOne(`SELECT data FROM reports WHERE id = $1`, [id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Consultation not found' });
+    const data = typeof existing.data === 'string' ? JSON.parse(existing.data || '{}') : (existing.data || {});
+    data.clientWantsReport = clientWantsReport;
+    await query(`UPDATE reports SET data = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(data), id]);
+    return res.json({ success: true, consultationId: id, clientWantsReport });
+  } catch (err) {
+    console.error('[consultations/:id/report-preference]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/prescriptions/:id/dispense  (partial/full dispensing with batch+expiry)
+app.post('/api/prescriptions/:id/dispense', async (req, res) => {
+  try {
+    const { query: dbQuery, getMany } = await import('./api/db.js');
+    const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
+    const prescriptionId = req.params.id;
+    let body = req.body || {};
+    if (typeof body === 'string') body = JSON.parse(body || '{}');
+    const { branchId, dispensedBy, items, saveMode } = body;
+
+    if (!branchId) return res.status(400).json({ success: false, error: 'branchId is required' });
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, error: 'items required' });
+
+    const errors = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it.batchNo) errors.push(`Item ${i + 1}: batchNo required`);
+      if (!it.expiryDate) errors.push(`Item ${i + 1}: expiryDate required`);
+      if (!it.dispenseQty || Number(it.dispenseQty) <= 0) errors.push(`Item ${i + 1}: dispenseQty must be > 0`);
+    }
+    if (errors.length > 0) return res.status(422).json({ success: false, error: 'Validation failed', errors });
+
+    const ts = Date.now();
+    const dispenseRef = `DISP-${ts}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const posted = [];
+
+    for (const item of items) {
+      const productName = item.productName || item.product_name || '';
+      if (!productName) continue;
+      const qty = Number(item.dispenseQty);
+      const unitDP = Number(item.unitDP || 0);
+
+      // Update branch_inventory_batches if exists
+      await dbQuery(
+        `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW()
+         WHERE branch_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+           AND (batch_no = $4 OR batch_no IS NULL) AND quantity >= $1`,
+        [qty, branchId, productName, item.batchNo]
+      ).catch(() => {});
+
+      // Insert movement record
+      const movId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      await dbQuery(
+        `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+         VALUES ($1,$2,'prescription_dispense',$3,$4,$5,$6,$7,$8,NOW())`,
+        [movId, branchId, productName, item.batchNo, qty, prescriptionId, `Partial dispense ref ${prescriptionId}`, dispensedBy || 'system']
+      );
+
+      // Post to stock_movements
+      const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
+      await dbQuery(
+        `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,'prescription_dispense',$6,'branch','patient',$7,$8,'posted',$9,NOW(),NOW(),NOW())`,
+        [smId, productName, item.batchNo, item.expiryDate, qty, branchId, prescriptionId, `Prescription dispense ${prescriptionId}`, unitDP]
+      );
+
+      posted.push({ productName, batchNo: item.batchNo, dispenseQty: qty, dispenseRef });
+    }
+
+    recomputeLocationBalances('branch', branchId).catch(() => {});
+
+    return res.status(201).json({
+      success: true,
+      prescriptionId,
+      saveMode: saveMode || 'partial',
+      dispenseRef,
+      itemsDispensed: posted.length,
+      items: posted,
+      message: `${saveMode === 'full' ? 'Full' : 'Partial'} dispense recorded for prescription ${prescriptionId}`,
+    });
+  } catch (err) {
+    console.error('[prescriptions/:id/dispense]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/prescriptions/:id/dispensing-history
+app.get('/api/prescriptions/:id/dispensing-history', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const prescriptionId = req.params.id;
+    const rows = await getMany(
+      `SELECT bim.product_name, bim.batch_no, bim.quantity as dispensed_qty,
+              bim.created_by as dispensed_by, bim.created_at as dispense_date,
+              bim.id as receipt_id
+       FROM branch_inventory_movements bim
+       WHERE bim.reference = $1 AND bim.type = 'prescription_dispense'
+       ORDER BY bim.created_at ASC`,
+      [prescriptionId]
+    );
+    const history = rows.map(r => ({
+      dispenseDate: r.dispense_date,
+      productName: r.product_name,
+      batchNo: r.batch_no,
+      dispensedQty: Number(r.dispensed_qty),
+      dispensedBy: r.dispensed_by,
+      receiptId: r.receipt_id,
+    }));
+    return res.json({ success: true, prescriptionId, history, totalRecords: history.length });
+  } catch (err) {
+    console.error('[prescriptions/:id/dispensing-history]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/prescriptions/:id/status
+app.get('/api/prescriptions/:id/status', async (req, res) => {
+  try {
+    const { getOne, getMany } = await import('./api/db.js');
+    const prescriptionId = req.params.id;
+    const report = await getOne(`SELECT data FROM reports WHERE id = $1`, [prescriptionId]);
+    const data = report ? (typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {})) : {};
+    const prescription = data.prescription || [];
+    const dispenses = await getMany(
+      `SELECT product_name, SUM(quantity) as total_dispensed
+       FROM branch_inventory_movements
+       WHERE reference = $1 AND type = 'prescription_dispense'
+       GROUP BY product_name`,
+      [prescriptionId]
+    );
+    const dispensedMap = new Map(dispenses.map(d => [d.product_name, Number(d.total_dispensed)]));
+    const items = prescription.map(item => {
+      const name = item.productName || item.product_name || '';
+      const prescribed = Number(item.prescribedQty || item.quantity || 0);
+      const dispensed = dispensedMap.get(name) || 0;
+      const remaining = Math.max(0, prescribed - dispensed);
+      return {
+        productName: name,
+        prescribedQty: prescribed,
+        dispensedQtyTotal: dispensed,
+        remainingQty: remaining,
+        status: dispensed === 0 ? 'pending' : remaining === 0 ? 'fully_dispensed' : 'partially_dispensed',
+      };
+    });
+    const overallStatus = items.length === 0 ? 'no_prescription'
+      : items.every(i => i.status === 'fully_dispensed') ? 'fully_dispensed'
+      : items.some(i => i.dispensedQtyTotal > 0) ? 'partially_dispensed'
+      : 'pending';
+    return res.json({ success: true, prescriptionId, status: overallStatus, items });
+  } catch (err) {
+    console.error('[prescriptions/:id/status]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/sales/:saleId
+app.get('/api/sales/:saleId', async (req, res) => {
+  try {
+    const { getOne } = await import('./api/db.js');
+    const saleId = req.params.saleId;
+    const sale = await getOne(`SELECT * FROM branch_walkin_sales WHERE id = $1`, [saleId]);
+    if (!sale) return res.status(404).json({ success: false, error: `Sale ${saleId} not found` });
+    const items = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : (sale.items || []);
+    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : (sale.metadata || {});
+    return res.json({
+      success: true,
+      saleId: sale.id,
+      saleNumber: sale.sale_number,
+      branchId: sale.branch_id,
+      saleDate: sale.sale_date,
+      customerName: sale.customer_name,
+      customerType: sale.customer_type,
+      paymentMethod: sale.payment_method,
+      subtotal: Number(sale.subtotal),
+      total: Number(sale.total),
+      status: sale.status,
+      items,
+      referralDistributorName: meta.referralName || null,
+      referralNb: meta.referralNb || null,
+      createdBy: sale.created_by,
+      createdAt: sale.created_at,
+    });
+  } catch (err) {
+    console.error('[sales/:saleId]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/receipts/:receiptId/render?copyType=branch|distributor
+app.get('/api/receipts/:receiptId/render', async (req, res) => {
+  try {
+    const { getOne } = await import('./api/db.js');
+    const receiptId = req.params.receiptId;
+    const copyType = req.query.copyType || 'branch';
+    const copyLabel = copyType === 'distributor' ? 'Distributor Copy' : 'Branch Copy';
+
+    const sale = await getOne(`SELECT * FROM branch_walkin_sales WHERE id = $1`, [receiptId]);
+    if (!sale) return res.status(404).json({ success: false, error: `Receipt ${receiptId} not found` });
+
+    const rawItems = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : (sale.items || []);
+    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : (sale.metadata || {});
+
+    const { getOne: branchRow } = await import('./api/db.js');
+    const branch = await branchRow(`SELECT name FROM branches WHERE id = $1`, [sale.branch_id]);
+
+    const items = rawItems.map(i => ({
+      productName: i.productName || i.name || i.product_name || '',
+      quantity: Number(i.quantity || i.qty || 0),
+      unitPrice: Number(i.unitPrice || i.unit_price || i.price || 0),
+      lineTotal: Number(i.lineTotal || i.line_total || (i.quantity * (i.unitPrice || i.unit_price || 0)) || 0),
+      batchNo: i.batchNo || i.batch_no || null,
+      expiryDate: i.expiryDate || i.expiry_date || null,
+    }));
+
+    return res.json({
+      success: true,
+      receiptId,
+      copyLabel,
+      copyType,
+      branchName: branch?.name || sale.branch_id,
+      saleNumber: sale.sale_number,
+      saleDate: sale.sale_date,
+      customerName: sale.customer_name,
+      customerType: sale.customer_type,
+      paymentMethod: sale.payment_method,
+      items,
+      subtotal: Number(sale.subtotal),
+      total: Number(sale.total),
+      referralDistributorName: meta.referralName || null,
+      referralNb: meta.referralNb || null,
+      createdBy: sale.created_by,
+    });
+  } catch (err) {
+    console.error('[receipts/:receiptId/render]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.all('/api/*', async (req, res) => {
   try {
