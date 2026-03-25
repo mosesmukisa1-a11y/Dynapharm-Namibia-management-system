@@ -14,24 +14,55 @@ export const PORTALS = [
 ];
 
 export const BRANCH_DETAILS = [
-  { name: 'Windhoek CBD', address: '269 Independence Avenue, Shop No 1, Continental Building', phone: '+264 817499757', region: 'Khomas' },
-  { name: 'Tsumeb', address: 'Shop No 35B, Erf 35, Maria Nehoya Street', phone: '+264 814757074', region: 'Oshikoto' },
-  { name: 'Gobabis', address: 'Shop No 8, Erf 939, Wordmann Brock Complex, Church Street', phone: '+264 814685905', region: 'Omaheke' },
-  { name: 'Swakopmund', address: '153 Kuruseb Road, Mondesa, Opposite Mondesa Usave', phone: '+264 814686806', region: 'Erongo' },
-  { name: 'Outapi', address: 'Okasikili Location, Next to Lamek Garage, Main Road from and to Oshakati', phone: '+264 814685886', region: 'Omusati' },
-  { name: 'Okahao', address: 'Erf 331 Taapopi Complex, Tsandi Main Road', phone: '+264 814683963', region: 'Omusati' },
-  { name: 'Oshakati', address: 'Shop No 15 Fantasy Complex, Behind Bank Windhoek, Oshakati Main Road', phone: '+264 814757055', region: 'Oshana' },
-  { name: 'Otjiwarongo', address: 'Shop No 13, Erindi Complex, Albertina Amadhila Street', phone: '+264 814681997', region: 'Otjozondjupa' },
-  { name: 'Eenhana', address: 'Shop No 3, Tangi Complex, Dimo Amambi Street', phone: '+264 814682049', region: 'Ohangwena' },
-  { name: 'Ondangwa', address: 'Shop No 3, Oluno Road, Wordmann Brock Mall, Opposite Fresco', phone: '+264 814685882', region: 'Oshana' },
-  { name: 'Rundu', address: 'Shop No 6, Erf 1736, Markus Siwarongo Street, Nkarapamwe', phone: '+264 814684968', region: 'Kavango East' },
-  { name: 'Walvis Bay', address: 'Shop No 6, Pelican Mall', phone: '+264 814685894', region: 'Erongo' },
-  { name: 'Hochlandpark', address: '21 Robin Road, Tauben Glen, Next to OK Minimarkt Store', phone: '+264 813207195', region: 'Khomas' },
-  { name: 'Khomasdal', address: 'Shop No 2, Khomasdal Funky Town Mall', phone: '+264 814682991', region: 'Khomas' },
-  { name: 'Katima Mulilo', address: 'Shop No 1, Hospital Road, Opposite Open Market next to former MVA Fund', phone: '+264 814682978', region: 'Zambezi' },
+  { id: 'townshop',      name: 'Windhoek CBD',  address: '269 Independence Avenue, Shop No 1, Continental Building', phone: '+264 817499757', region: 'Khomas' },
+  { id: 'tsumeb',        name: 'Tsumeb',         address: 'Shop No 35B, Erf 35, Maria Nehoya Street', phone: '+264 814757074', region: 'Oshikoto' },
+  { id: 'gobabis',       name: 'Gobabis',         address: 'Shop No 8, Erf 939, Wordmann Brock Complex, Church Street', phone: '+264 814685905', region: 'Omaheke' },
+  { id: 'swakopmund',    name: 'Swakopmund',      address: '153 Kuruseb Road, Mondesa, Opposite Mondesa Usave', phone: '+264 814686806', region: 'Erongo' },
+  { id: 'outapi',        name: 'Outapi',          address: 'Okasikili Location, Next to Lamek Garage, Main Road from and to Oshakati', phone: '+264 814685886', region: 'Omusati' },
+  { id: 'okahao',        name: 'Okahao',          address: 'Erf 331 Taapopi Complex, Tsandi Main Road', phone: '+264 814683963', region: 'Omusati' },
+  { id: 'oshakati_branch', name: 'Oshakati',      address: 'Shop No 15 Fantasy Complex, Behind Bank Windhoek, Oshakati Main Road', phone: '+264 814757055', region: 'Oshana' },
+  { id: 'otjiwarongo',   name: 'Otjiwarongo',     address: 'Shop No 13, Erindi Complex, Albertina Amadhila Street', phone: '+264 814681997', region: 'Otjozondjupa' },
+  { id: 'eenhana',       name: 'Eenhana',         address: 'Shop No 3, Tangi Complex, Dimo Amambi Street', phone: '+264 814682049', region: 'Ohangwena' },
+  { id: 'ondangwa',      name: 'Ondangwa',        address: 'Shop No 3, Oluno Road, Wordmann Brock Mall, Opposite Fresco', phone: '+264 814685882', region: 'Oshana' },
+  { id: 'rundu',         name: 'Rundu',           address: 'Shop No 6, Erf 1736, Markus Siwarongo Street, Nkarapamwe', phone: '+264 814684968', region: 'Kavango East' },
+  { id: 'walvisbay',     name: 'Walvis Bay',      address: 'Shop No 6, Pelican Mall', phone: '+264 814685894', region: 'Erongo' },
+  { id: 'hochland-park', name: 'Hochlandpark',    address: '21 Robin Road, Tauben Glen, Next to OK Minimarkt Store', phone: '+264 813207195', region: 'Khomas' },
+  { id: 'khomasdal',     name: 'Khomasdal',       address: 'Shop No 2, Khomasdal Funky Town Mall', phone: '+264 814682991', region: 'Khomas' },
+  { id: 'katima',        name: 'Katima Mulilo',   address: 'Shop No 1, Hospital Road, Opposite Open Market next to former MVA Fund', phone: '+264 814682978', region: 'Zambezi' },
+  { id: 'okongo',        name: 'Okongo',          address: 'Handongo Festus Erf 333 Okongo Village Council', phone: '+264 814684935', region: 'Kavango West' },
+  { id: 'nkurenkuru',    name: 'Nkurenkuru',      address: 'Total Service Station, Next to Oluno Bar', phone: '+264 814684939', region: 'Kavango West' },
 ];
 
 export const BRANCHES = BRANCH_DETAILS.map(b => b.name);
+
+export const BRANCH_ID_TO_NAME = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
+
+export const BRANCH_NAME_TO_ID = Object.fromEntries(BRANCH_DETAILS.map(b => [b.name.toLowerCase(), b.id]));
+
+export function getBranchDisplayName(idOrName) {
+  if (!idOrName) return '';
+  const direct = BRANCH_ID_TO_NAME[idOrName];
+  if (direct) return direct;
+  const lower = idOrName.toLowerCase();
+  const byLower = BRANCH_ID_TO_NAME[lower];
+  if (byLower) return byLower;
+  const byName = BRANCH_NAME_TO_ID[lower];
+  if (byName) return BRANCH_ID_TO_NAME[byName] || idOrName;
+  return idOrName
+    .replace(/_branch$/, '')
+    .replace(/-/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
+export function getBranchId(nameOrId) {
+  if (!nameOrId) return '';
+  const byName = BRANCH_NAME_TO_ID[nameOrId.toLowerCase()];
+  if (byName) return byName;
+  const direct = BRANCH_ID_TO_NAME[nameOrId];
+  if (direct) return nameOrId;
+  return nameOrId.toLowerCase().replace(/\s+/g, '_');
+}
 
 export const WINDHOEK_BRANCHES = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal'];
 
@@ -52,7 +83,7 @@ export const COMPANY_INFO = {
 export const DELIVERY_FEE_RULES = {
   windhoekFee: 0,
   outsideWindhoekFee: 150,
-  isWindhoek: (branch) => WINDHOEK_BRANCHES.includes(branch),
+  isWindhoek: (branch) => WINDHOEK_BRANCHES.includes(getBranchDisplayName(branch)),
 };
 
 export const CURRENCY = 'N$';

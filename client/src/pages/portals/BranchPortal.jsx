@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../../lib/api';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -16,11 +16,14 @@ const fmtLocation = (loc) => {
   if (!loc) return '—';
   const map = {
     country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse',
-    windhoek_cbd: 'Windhoek CBD', windhoek: 'Windhoek CBD', tsumeb: 'Tsumeb', gobabis: 'Gobabis',
-    swakopmund: 'Swakopmund', rundu: 'Rundu', oshakati: 'Oshakati', ondangwa: 'Ondangwa', katima_mulilo: 'Katima Mulilo', okahandja: 'Okahandja',
-    keetmanshoop: 'Keetmanshoop', luderitz: 'Lüderitz', mariental: 'Mariental', otjiwarongo: 'Otjiwarongo',
+    townshop: 'Windhoek CBD', windhoek_cbd: 'Windhoek CBD', windhoek: 'Windhoek CBD',
+    oshakati_branch: 'Oshakati', hochland_park: 'Hochlandpark', 'hochland-park': 'Hochlandpark',
+    walvisbay: 'Walvis Bay', katima: 'Katima Mulilo', katima_mulilo: 'Katima Mulilo',
   };
-  return map[loc.toLowerCase().replace(/\s+/g, '_')] || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const key = loc.toLowerCase().replace(/\s+/g, '_');
+  if (map[key]) return map[key];
+  if (map[loc.toLowerCase()]) return map[loc.toLowerCase()];
+  return getBranchDisplayName(loc) || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
 
 export default function BranchPortal() {
@@ -320,7 +323,7 @@ function WalkInSalesTab() {
             <div>
               <h3 className="text-xl font-bold m-0">Walk-in Sales</h3>
               <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                {user?.branch ? `${user.branch} Branch · Point of Sale` : 'Branch Point of Sale'}
+                {user?.branch ? `${getBranchDisplayName(user.branch)} Branch · Point of Sale` : 'Branch Point of Sale'}
               </p>
             </div>
           </div>
@@ -423,7 +426,7 @@ function WalkInSalesTab() {
                 <div>
                   <div style={{ color: '#fff', fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Branch Point of Sale</div>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 1 }}>
-                    {user?.branch ? `${user.branch} Branch` : 'Dynapharm'} &nbsp;·&nbsp;
+                    {user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : 'Dynapharm'} &nbsp;·&nbsp;
                     <span style={{ color: '#ffd0d8', fontWeight: 600 }}>{isMember ? '🏅 Member — DP Prices' : '👤 Walk-in — CP Prices'}</span>
                     &nbsp;·&nbsp; {cart.length} item{cart.length !== 1 ? 's' : ''} in cart
                   </div>
@@ -1127,7 +1130,7 @@ function PrescriptionsTab() {
           <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.12)' }}>💊</div>
           <div>
             <h3 className="text-xl font-bold m-0">Prescription Dispensing</h3>
-            <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>{user?.branch ? `${user.branch} Branch` : 'Branch'} · Dispense, track and quote</p>
+            <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>{user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : 'Branch'} · Dispense, track and quote</p>
           </div>
         </div>
         <button onClick={refreshDispenserData} className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl cursor-pointer" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>↻ Refresh</button>
@@ -1161,7 +1164,7 @@ function PrescriptionsTab() {
         <div className="flex gap-2 flex-wrap items-center">
           <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
             <option value="">All Branches</option>
-            {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+            {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
           <select value={rxStatusFilter} onChange={e => setRxStatusFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
             <option value="all">All Status</option>
@@ -2299,7 +2302,7 @@ function BranchStockTab() {
         <Card>
           <CardHeader className="flex justify-between items-center flex-wrap gap-3">
             <div>
-              <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {user?.branch || 'All'}</h3>
+              <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {getBranchDisplayName(user?.branch) || 'All'}</h3>
               <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
             <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
@@ -3000,7 +3003,7 @@ function BranchStockTab() {
       })()}
 
       {subTab === 'reports' && (() => {
-        const branchName = user?.branch || 'Branch';
+        const branchName = getBranchDisplayName(user?.branch) || 'Branch';
         // Synthesize prescription sale entries from dispense stock movements
         const rxMovements = movements.filter(m => {
           const t = (m.type || m.movement_type || '').toLowerCase();
@@ -3340,13 +3343,13 @@ function BranchStockTab() {
                   {sectionLabel('Transfer Details')}
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>From Branch</label>
-                    <div style={{ padding: '8px 12px', background: '#dbe6f0', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: '#0f2040' }}>{user?.branch || 'Your Branch'}</div>
+                    <div style={{ padding: '8px 12px', background: '#dbe6f0', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: '#0f2040' }}>{getBranchDisplayName(user?.branch) || 'Your Branch'}</div>
                   </div>
                   <div>
                     <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>To Branch *</label>
                     <select value={transferToBranch} onChange={e => setTransferToBranch(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #c8d8e8', borderRadius: 8, fontSize: '0.87rem', outline: 'none', background: '#fff' }}>
                       <option value="">Select destination branch…</option>
-                      {BRANCHES.filter(b => b !== user?.branch).map(b => <option key={b} value={b}>{b}</option>)}
+                      {BRANCH_DETAILS.filter(b => b.id !== user?.branch).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -5092,14 +5095,14 @@ function FieldProgramTab() {
                   {user?.branch ? (
                     <div style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', background: '#faf9f9', color: '#374151', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ color: '#c41e3a', fontWeight: 700 }}>🏪</span>
-                      <span style={{ fontWeight: 700 }}>{user.branch}</span>
+                      <span style={{ fontWeight: 700 }}>{getBranchDisplayName(user.branch)}</span>
                       <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 4 }}>(your branch)</span>
                     </div>
                   ) : (
                     <select value={requestBranch} onChange={e => setRequestBranch(e.target.value)}
                       style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box', background: '#fff', color: '#374151', cursor: 'pointer' }}>
                       <option value="">Select branch…</option>
-                      {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                      {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   )}
                 </div>

@@ -129,28 +129,52 @@ async function getInventoryByBranch(branchId, enriched = false) {
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
   if (!enriched) return normalized;
 
-  // Use ONLY branch_inventory_movements as the single source of truth for branch-level
-  // movement aggregation. Merging stock_movements causes double-counting since every
-  // sale/receipt is recorded in both tables.
+  // Pull movement aggregates from branch_inventory_movements (for received, dispensed, transferred, etc.)
+  // and separately pull sold quantities from branch_walkin_sales (the authoritative sales source).
   let movAgg = [];
+  let walkinSoldAgg = [];
   try {
-    movAgg = await getMany(
-      `SELECT product_name,
-         type,
-         SUM(ABS(quantity)) as total_qty,
-         MAX(created_at) as last_date,
-         (array_agg(DISTINCT source_branch_id) FILTER (WHERE source_branch_id IS NOT NULL))[1] as source
-       FROM branch_inventory_movements
-       WHERE branch_id = $1
-       GROUP BY product_name, type`,
-      [resolvedId]
-    );
+    [movAgg, walkinSoldAgg] = await Promise.all([
+      getMany(
+        `SELECT product_name,
+           type,
+           SUM(ABS(quantity)) as total_qty,
+           MAX(created_at) as last_date,
+           (array_agg(DISTINCT source_branch_id) FILTER (WHERE source_branch_id IS NOT NULL))[1] as source
+         FROM branch_inventory_movements
+         WHERE branch_id = $1
+         GROUP BY product_name, type`,
+        [resolvedId]
+      ),
+      // Walkin sales: items use camelCase productName and quantity
+      getMany(
+        `SELECT
+           COALESCE(item->>'product_name', item->>'productName') AS product_name,
+           SUM(COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 0)) AS total_sold,
+           MAX(created_at) AS last_date
+         FROM branch_walkin_sales,
+              jsonb_array_elements(items) AS item
+         WHERE branch_id = $1
+           AND status != 'cancelled'
+           AND items IS NOT NULL
+           AND jsonb_array_length(items) > 0
+         GROUP BY COALESCE(item->>'product_name', item->>'productName')`,
+        [resolvedId]
+      ),
+    ]);
   } catch {}
 
-  // Build aggMap keyed by product_name only — branch_inventory_movements does not
-  // reliably store batch_no so matching on batch would miss all records.
+  // Build walkin sold map keyed by product_name (covers both camelCase and snake_case item keys)
+  const walkinSoldMap = {};
+  for (const r of walkinSoldAgg) {
+    const key = (r.product_name || '').trim();
+    if (key) walkinSoldMap[key] = (walkinSoldMap[key] || 0) + Number(r.total_sold || 0);
+  }
+
+  // Build aggMap keyed by product_name.
+  // SOLD = walkin sales + prescription dispenses (per user definition).
   const aggMap = {};
-  const EMPTY_AGG = () => ({ received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
+  const EMPTY_AGG = () => ({ received: 0, walkin_sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
   for (const r of movAgg) {
     const key = (r.product_name || '').trim();
     if (!aggMap[key]) aggMap[key] = EMPTY_AGG();
@@ -158,13 +182,25 @@ async function getInventoryByBranch(branchId, enriched = false) {
     const q = Number(r.total_qty || 0);
     const t = (r.type || '').toLowerCase();
     if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') { a.received += q; if (r.source) a.source_warehouse = r.source; }
-    else if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.sold += q;
+    else if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.walkin_sold += q;
     else if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') a.dispensed += q;
     else if (t === 'transfer_out' || t === 'transfer') a.transferred += q;
     else if (t === 'write_off') a.written_off += q;
     else if (t === 'adjustment' || t === 'return' || t === 'return_in') a.adjusted += q;
     const ld = r.last_date instanceof Date ? r.last_date.toISOString() : r.last_date;
     if (!a.last_movement || (ld && ld > a.last_movement)) a.last_movement = ld;
+  }
+
+  // Merge walkin sold from branch_walkin_sales (authoritative — always recorded even when
+  // stock deduction fails to match a batch). Use whichever is higher to avoid under-reporting.
+  for (const [productName, walkinQty] of Object.entries(walkinSoldMap)) {
+    if (!aggMap[productName]) aggMap[productName] = EMPTY_AGG();
+    aggMap[productName].walkin_sold = Math.max(aggMap[productName].walkin_sold, walkinQty);
+  }
+
+  // Compute combined sold = walkin_sold + dispensed (prescription dispenses count as sales)
+  for (const a of Object.values(aggMap)) {
+    a.sold = a.walkin_sold + a.dispensed;
   }
 
   // When a branch has multiple batches of the same product, distribute aggregated
@@ -538,7 +574,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
-      const enrichedParam = searchParams.get('enriched') === '1' || searchParams.get('include_aggregates') === '1';
+      const _enrichedRaw = searchParams.get('enriched');
+      const enrichedParam = _enrichedRaw === '1' || _enrichedRaw === 'true' || searchParams.get('include_aggregates') === '1';
       const inventory = await getInventoryByBranch(branchId, enrichedParam || includeMovements);
       const response = {
         success: true,
