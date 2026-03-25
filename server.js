@@ -1310,6 +1310,10 @@ server.on('error', (error) => {
       'Rundu': 'rundu',
       'Katima Mulilo': 'katima', 'katima mulilo': 'katima',
       'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park',
+      // Warehouse display names → warehouse slugs (for stock-role users)
+      'Windhoek Warehouse': 'windhoek_warehouse', 'windhoek warehouse': 'windhoek_warehouse',
+      'Ondangwa Warehouse': 'ondangwa_warehouse', 'ondangwa warehouse': 'ondangwa_warehouse',
+      'Country Stock': 'country_stock', 'country stock': 'country_stock',
     };
 
     let branchMigrationsApplied = 0;
@@ -1335,6 +1339,15 @@ server.on('error', (error) => {
     }
     if (branchMigrationsApplied > 0) {
       console.log(`Branch ID normalization: updated ${branchMigrationsApplied} rows`);
+    }
+
+    // ── Normalize status values: legacy 'completed' → 'posted' ─────────────
+    // All new movements use 'posted'. Old records used 'completed'. Align them.
+    const statusFix = await query(
+      `UPDATE stock_movements SET status = 'posted' WHERE status = 'completed'`
+    );
+    if (statusFix && statusFix.rowCount > 0) {
+      console.log(`Status normalization: updated ${statusFix.rowCount} stock_movements rows`);
     }
 
     // ── Auto-seed inventory_balances if empty ───────────────────────────────
