@@ -77,8 +77,30 @@ export async function getAllWarehouseLocations() {
   }));
 }
 
+const BRANCH_DISPLAY_MAP = {
+  townshop: 'Windhoek CBD',
+  windhoek_cbd: 'Windhoek CBD',
+  oshakati_branch: 'Oshakati Branch',
+  'hochland-park': 'Hochlandpark',
+  khomasdal: 'Khomasdal',
+  tsumeb: 'Tsumeb',
+  gobabis: 'Gobabis',
+  swakopmund: 'Swakopmund',
+  walvisbay: 'Walvis Bay',
+  outapi: 'Outapi',
+  okahao: 'Okahao',
+  oshakati: 'Oshakati',
+  otjiwarongo: 'Otjiwarongo',
+  eenhana: 'Eenhana',
+  ondangwa: 'Ondangwa',
+  rundu: 'Rundu',
+  katima: 'Katima Mulilo',
+  windhoek_warehouse: 'Windhoek Warehouse',
+};
+
 function normalizeBranchName(id) {
   if (!id) return id;
+  if (BRANCH_DISPLAY_MAP[id]) return BRANCH_DISPLAY_MAP[id];
   return id
     .replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase());
