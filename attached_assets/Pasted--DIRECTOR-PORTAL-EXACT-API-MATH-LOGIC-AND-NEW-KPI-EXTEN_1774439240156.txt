@@ -1,0 +1,989 @@
+
+# 🚨 DIRECTOR PORTAL — EXACT API, MATH LOGIC, AND NEW KPI EXTENSION SCRIPT
+
+## Dynapharm Namibia System
+
+## ❗IMPORTANT
+
+This is a **follow-up correction under the original paid system work**.
+
+It is **not a new feature request** in the sense of a new standalone module.
+It is an expansion and correction of the current **Director Portal** so it becomes a true executive decision dashboard using live company data.
+
+The current Director portal already shows:
+
+* Total Sales
+* Monthly Revenue
+* CIF Cost of Sales
+* Gross Profit
+* Active Branches
+* Distributors
+* Total Deposits
+* Remittance Due
+* Profit & Loss Overview
+* Revenue Trends
+* Branch Performance (with Profit)
+
+This now needs to be corrected and extended so the Director can make faster strategic decisions.
+
+> **No additional billing**
+>
+> This is follow-up correction and completion of existing portal intelligence.
+
+---
+
+# 1. DIRECTOR PORTAL PURPOSE
+
+The Director portal must become a **read-only strategic intelligence dashboard**.
+
+It must not use manual numbers.
+It must not use isolated page-side math.
+
+It must read from live shared sources:
+
+* stock engine
+* sales engine
+* finance engine
+* reporting engine
+* registration/distributor engine
+* bonus engine
+
+---
+
+# 2. CURRENT DIRECTOR PORTAL BLOCKS TO KEEP AND CORRECT
+
+Keep and correct these current sections:
+
+## Top KPI cards
+
+* Total Sales
+* Monthly Revenue
+* CIF Cost of Sales
+* Gross Profit
+* Active Branches
+* Distributors
+* Total Deposits
+* Remittance Due
+
+## Profit & Loss Overview
+
+* Total Revenue (DP)
+* CIF Cost
+* Gross Profit
+* Deposits Received
+* Remittance Status
+
+## Revenue Trends
+
+* Total Orders
+* Walk-in Sales
+* Product Range
+* Avg Order Value
+
+## Branch Performance (with Profit)
+
+* Branch
+* Sales
+* CIF Cost
+* Profit
+* Transactions
+
+These must be retained, but fed by correct APIs and consistent math.
+
+---
+
+# 3. NEW DIRECTOR KPI REQUIREMENTS TO ADD
+
+Add the following to the Director portal:
+
+## A. Fast Moving Products
+
+Must show:
+
+* top fast-moving products by units sold
+* top fast-moving products by branch
+* graph/chart view
+* period filter support
+
+## B. Fast Moving Branches
+
+Must show:
+
+* branches ranked by sales units
+* branches ranked by sales revenue
+* branches ranked by gross profit
+* graph/chart view
+
+## C. Registrations made at DPC
+
+Must show:
+
+* registrations made per DPC/branch
+* branch count of registrations
+* trend by period
+
+## D. TOTAL registrations made countrywide
+
+Must show:
+
+* all registrations across all branches for selected period
+
+## E. Branch Expenses Extension
+
+Under branch profitability / director analysis, add:
+
+* Rent of each DPC
+* Monthly Overheads of each DPC
+
+### Sources
+
+These must come from:
+
+* Finance Dashboard
+* Finance expense records
+
+## F. Bonus Payout
+
+Must show:
+
+* total bonus payout for period
+* bonus payout by branch if applicable
+* link to revenue/profit analysis
+
+## G. Branch Percentage of Total Revenue
+
+Must show:
+
+* each branch contribution to total company revenue
+* percentage of total revenue for selected period
+
+### Example:
+
+* Windhoek CBD = 62%
+* Townshop = 18%
+* etc.
+
+This KPI is important because it helps identify:
+
+* burden DPCs
+* asset DPCs
+* branches to boost
+* branches to eliminate or restructure
+
+---
+
+# 4. REQUIRED DIRECTOR DATA DOMAINS
+
+The Director portal must now read from these exact domains:
+
+## Sales domain
+
+* completed walk-in sales
+* member sales
+* non-member sales
+* online fulfilled sales
+* prescription dispensing sales
+* consultation fees
+
+## Stock domain
+
+* stock movements
+* branch stock balances
+* warehouse stock balances
+* CIF and DP-based value fields
+* write-offs
+* in-transit stock if needed
+
+## Finance domain
+
+* deposits received
+* expenses
+* rent expense by branch
+* monthly overheads by branch
+* remittance position
+* bonus payout
+
+## Registration domain
+
+* distributor registrations
+* branch-linked registrations
+* DPC registration counts
+* total countrywide registrations
+
+---
+
+# 5. REQUIRED API ENDPOINTS FOR DIRECTOR PORTAL
+
+Implement these endpoints exactly.
+
+---
+
+## A. Director Executive Summary
+
+```http
+GET /api/director/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "sales": {
+    "totalSalesRevenue": 0,
+    "monthlyRevenue": 0,
+    "totalSalesUnits": 0,
+    "totalOrders": 0,
+    "walkinSalesCount": 0,
+    "avgOrderValue": 0
+  },
+  "stock": {
+    "totalCompanyStockQty": 0,
+    "totalCompanyStockValueDP": 0,
+    "totalWarehouseStockQty": 0,
+    "totalBranchStockQty": 0,
+    "totalInTransitQty": 0,
+    "totalWriteOffQty": 0,
+    "totalWriteOffValueDP": 0,
+    "lowStockCount": 0,
+    "expiringCount": 0
+  },
+  "finance": {
+    "cifCostOfSales": 0,
+    "grossProfit": 0,
+    "totalDeposits": 0,
+    "remittanceDue": 0,
+    "bonusPayout": 0
+  },
+  "network": {
+    "activeBranches": 0,
+    "totalDistributors": 0,
+    "productRange": 0,
+    "registrationsCountrywide": 0
+  }
+}
+```
+
+---
+
+## B. Director Profit & Loss Overview
+
+```http
+GET /api/director/profit-loss?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "totalRevenueDP": 0,
+  "cifCost": 0,
+  "grossProfit": 0,
+  "depositsReceived": 0,
+  "remittanceStatusAmount": 0,
+  "bonusPayout": 0
+}
+```
+
+---
+
+## C. Director Branch Performance
+
+```http
+GET /api/director/branches/performance?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD",
+    "salesRevenue": 0,
+    "salesUnits": 0,
+    "cifCost": 0,
+    "grossProfit": 0,
+    "transactions": 0,
+    "revenueContributionPercent": 0,
+    "registrationsCount": 0,
+    "rentExpense": 0,
+    "monthlyOverheads": 0,
+    "bonusPayout": 0,
+    "netContributionAfterExpenses": 0
+  }
+]
+```
+
+---
+
+## D. Director Fast Moving Products
+
+```http
+GET /api/director/products/fast-moving?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&limit=10
+```
+
+### Response
+
+```json
+[
+  {
+    "productId": "p1",
+    "productName": "Noni Juice",
+    "unitsSold": 0,
+    "salesRevenue": 0,
+    "branchesActive": 0
+  }
+]
+```
+
+---
+
+## E. Director Fast Moving Products by Branch
+
+```http
+GET /api/director/products/fast-moving-by-branch?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD",
+    "products": [
+      {
+        "productId": "p1",
+        "productName": "Noni Juice",
+        "unitsSold": 0,
+        "salesRevenue": 0
+      }
+    ]
+  }
+]
+```
+
+---
+
+## F. Director Fast Moving Branches
+
+```http
+GET /api/director/branches/fast-moving?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD",
+    "salesUnits": 0,
+    "salesRevenue": 0,
+    "grossProfit": 0
+  }
+]
+```
+
+---
+
+## G. Director Registration Summary
+
+```http
+GET /api/director/registrations/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "countrywideRegistrations": 0,
+  "branches": [
+    {
+      "branchId": "b1",
+      "branchName": "Windhoek CBD",
+      "registrationsCount": 0
+    }
+  ]
+}
+```
+
+---
+
+## H. Director Expenses by DPC
+
+```http
+GET /api/director/branches/expenses?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD",
+    "rentExpense": 0,
+    "monthlyOverheads": 0,
+    "bonusPayout": 0
+  }
+]
+```
+
+---
+
+## I. Director Revenue Contribution by Branch
+
+```http
+GET /api/director/branches/revenue-contribution?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+[
+  {
+    "branchId": "b1",
+    "branchName": "Windhoek CBD",
+    "salesRevenue": 0,
+    "contributionPercent": 0
+  }
+]
+```
+
+---
+
+## J. Director Revenue Trends
+
+```http
+GET /api/director/revenue-trends?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "totalOrders": 0,
+  "walkinSalesCount": 0,
+  "productRange": 0,
+  "avgOrderValue": 0
+}
+```
+
+---
+
+# 6. EXACT MATH LOGIC FOR DIRECTOR PORTAL
+
+Use these formulas exactly.
+
+---
+
+## A. Total Sales Revenue
+
+```text
+total_sales_revenue =
+walkin_sales_revenue
++ member_sales_revenue
++ non_member_sales_revenue
++ online_fulfilled_sales_revenue
++ prescription_dispense_sales_revenue
++ consultation_fee_revenue
+```
+
+Only use:
+
+* completed
+* posted
+* finalized transactions
+
+Do not include drafts, pending, or unfulfilled orders.
+
+---
+
+## B. Monthly Revenue
+
+```text
+monthly_revenue =
+all completed revenue within selected month/date range
+```
+
+---
+
+## C. CIF Cost of Sales
+
+```text
+cif_cost_of_sales =
+sum(quantity_sold_or_dispensed × unit_cif)
+```
+
+This should come from actual sold/dispensed items only.
+
+Do not use current inventory stock for cost of sales.
+
+---
+
+## D. Gross Profit
+
+```text
+gross_profit = total_revenue_dp - cif_cost_of_sales
+```
+
+Where:
+
+```text
+total_revenue_dp = revenue based on DP-side internal sales logic
+```
+
+If consultation fees are included in top-line revenue, be explicit whether they sit inside or outside gross profit logic.
+
+### Recommended:
+
+* show consultation fees separately
+* gross profit from stock-linked sales only
+* optionally show “total operating revenue” separately
+
+---
+
+## E. Total Company Stock Quantity
+
+```text
+total_company_stock_qty =
+total_warehouse_stock_qty
++ total_branch_stock_qty
++ total_field_stock_qty
++ total_in_transit_qty
+```
+
+If you do not track field separately, exclude it consistently.
+
+---
+
+## F. Total Company Stock DP Value
+
+```text
+total_company_stock_value_dp =
+sum(closing_qty × unit_dp)
+for all stock lines across company
+```
+
+Must use:
+
+* exact branch balances
+* exact warehouse balances
+* exact batch lines
+* DP only
+
+---
+
+## G. Total Warehouse Stock Quantity
+
+```text
+total_warehouse_stock_qty =
+sum(closing_qty for all warehouse stock lines)
+```
+
+---
+
+## H. Total Branch Stock Quantity
+
+```text
+total_branch_stock_qty =
+sum(closing_qty for all branch stock lines)
+```
+
+---
+
+## I. Total In-Transit Stock Quantity
+
+```text
+total_in_transit_qty =
+sum(dispatched_qty not yet confirmed received)
+```
+
+---
+
+## J. Total Sales Units
+
+```text
+total_sales_units =
+sum(all completed sold units + dispensed units)
+```
+
+Use:
+
+* walk-in sales units
+* member sales units
+* non-member sales units
+* online fulfilled sales units
+* prescription dispensed units
+
+---
+
+## K. Total Prescription Dispensed Units
+
+```text
+total_prescription_dispensed_units =
+sum(actual dispensed qty only)
+```
+
+Do not use prescribed quantity.
+
+---
+
+## L. Total Write-Off Quantity
+
+```text
+total_writeoff_qty =
+sum(all posted write-off quantities)
+```
+
+---
+
+## M. Total Write-Off DP Value
+
+```text
+total_writeoff_value_dp =
+sum(writeoff_qty × unit_dp)
+```
+
+---
+
+## N. Total Low Stock Items
+
+```text
+total_low_stock_items =
+count(stock lines where closing_qty <= low_stock_threshold)
+```
+
+Threshold must come from:
+
+* product reorder level
+  or
+* system default threshold if not configured
+
+---
+
+## O. Total Expiring Items
+
+```text
+total_expiring_items =
+count(stock lines where expiry_date <= today + threshold_days and closing_qty > 0)
+```
+
+Recommended threshold:
+
+* 90 days
+  or configured system alert threshold
+
+---
+
+## P. Revenue Contribution % by Branch
+
+```text
+branch_revenue_contribution_percent =
+(branch_sales_revenue / total_company_sales_revenue) × 100
+```
+
+### Example
+
+If total company revenue = N$100,000
+and CBD revenue = N$62,000
+
+Then:
+
+```text
+CBD contribution = 62%
+```
+
+---
+
+## Q. Net Contribution After Expenses
+
+This is very important for Director decisions.
+
+```text
+net_contribution_after_expenses =
+gross_profit
+- rent_expense
+- monthly_overheads
+- bonus_payout
+```
+
+This helps identify:
+
+* burden DPCs
+* asset DPCs
+* branches to boost
+* branches to eliminate
+
+---
+
+## R. Average Order Value
+
+```text
+avg_order_value =
+total_sales_revenue / total_orders
+```
+
+Only use completed orders/transactions.
+
+---
+
+## S. Fast Moving Products
+
+Rank by:
+
+```text
+sum(units_sold) desc
+```
+
+Optional secondary sort:
+
+```text
+sales_revenue desc
+```
+
+---
+
+## T. Fast Moving Branches
+
+Rank by:
+
+* sales units
+* sales revenue
+* gross profit
+
+Depending on chart selected.
+
+---
+
+# 7. REQUIRED SOURCE TABLES / SERVICES
+
+Replit must bind Director APIs to these shared sources:
+
+## Stock
+
+* `stock_movements`
+* `inventory_balances`
+* `branch_summary_view`
+* `warehouse_summary_view`
+* `company_stock_summary_view`
+* `stock_alerts_view`
+
+## Sales
+
+* `sales_transactions`
+* `sales_summary_view`
+* `branch_sales_summary_view`
+* `prescription_dispense_sales_view`
+* `consultation_fee_summary_view`
+
+## Finance
+
+* `finance_expenses`
+* `branch_expense_summary_view`
+* `deposits_summary_view`
+* `bonus_payout_view`
+
+## Registrations
+
+* `distributor_registrations`
+* `branch_registration_summary_view`
+
+---
+
+# 8. REQUIRED NEW CHARTS / GRAPHS
+
+Add these graphs to Director portal:
+
+---
+
+## A. Fast Moving Products Graph
+
+### Type:
+
+* horizontal bar chart
+
+### Source:
+
+`GET /api/director/products/fast-moving`
+
+### X-axis:
+
+* units sold
+
+### Y-axis:
+
+* product name
+
+---
+
+## B. Fast Moving Branches Graph
+
+### Type:
+
+* bar chart
+
+### Source:
+
+`GET /api/director/branches/fast-moving`
+
+### Options:
+
+* by sales units
+* by revenue
+* by gross profit
+
+---
+
+## C. Branch Revenue Contribution Graph
+
+### Type:
+
+* pie chart or donut chart
+
+### Source:
+
+`GET /api/director/branches/revenue-contribution`
+
+### Shows:
+
+* % share of total revenue by branch
+
+---
+
+## D. Registrations by DPC Graph
+
+### Type:
+
+* bar chart
+
+### Source:
+
+`GET /api/director/registrations/summary`
+
+### Shows:
+
+* branch name
+* registrations count
+
+---
+
+# 9. REQUIRED UI SECTIONS TO ADD
+
+Add the following sections to current Director portal:
+
+## Section 1 — Company Executive Summary
+
+Use:
+`/api/director/summary`
+
+## Section 2 — Fast Moving Products
+
+Use:
+`/api/director/products/fast-moving`
+
+## Section 3 — Fast Moving Branches
+
+Use:
+`/api/director/branches/fast-moving`
+
+## Section 4 — Registrations by DPC
+
+Use:
+`/api/director/registrations/summary`
+
+## Section 5 — Branch Expense and Burden Analysis
+
+Use:
+`/api/director/branches/expenses`
+and
+`/api/director/branches/revenue-contribution`
+
+### Columns required in table:
+
+* Branch
+* Sales Revenue
+* Contribution %
+* CIF Cost
+* Gross Profit
+* Rent
+* Monthly Overheads
+* Bonus Payout
+* Net Contribution After Expenses
+* Transactions
+
+This is one of the most important new tables.
+
+---
+
+# 10. REQUIRED REPLIT ENCODING INSTRUCTION
+
+Replit must create these service files:
+
+* `directorSummaryService.ts`
+* `directorProfitLossService.ts`
+* `directorBranchPerformanceService.ts`
+* `directorFastMovingService.ts`
+* `directorRegistrationService.ts`
+* `directorExpenseAnalysisService.ts`
+* `directorRevenueContributionService.ts`
+
+And these route handlers:
+
+* `getDirectorSummary`
+* `getDirectorProfitLoss`
+* `getDirectorBranchPerformance`
+* `getDirectorFastMovingProducts`
+* `getDirectorFastMovingProductsByBranch`
+* `getDirectorFastMovingBranches`
+* `getDirectorRegistrationSummary`
+* `getDirectorBranchExpenses`
+* `getDirectorRevenueContribution`
+* `getDirectorRevenueTrends`
+
+---
+
+# 11. REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Reply exactly in this structure:
+
+## Director APIs Implemented
+
+* list
+
+## Director Math Logic Implemented
+
+* list
+
+## Director New KPIs Added
+
+* list
+
+## Director Charts Added
+
+* list
+
+## Director Tables Added
+
+* list
+
+## Remaining Missing Bindings
+
+* list
+
+## Validation Tests Done
+
+* list
+
+## Billing Confirmation
+
+* confirm this is follow-up correction under original paid task
+* confirm no extra billing
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Use the current Director portal as the base and extend it into a true executive decision dashboard using proper shared APIs and correct math. Keep existing KPI blocks but rebind them to live shared services. Add Company Executive Summary, Fast Moving Products, Fast Moving Branches, Registrations by DPC, countrywide total registrations, Rent by DPC, Monthly Overheads by DPC, Bonus Payout, and Branch Percentage of Total Revenue. Use DP for internal stock value, actual CIF for cost of sales, and completed live transactions only. Add charts for products and branches so the Director can quickly identify asset DPCs, burden DPCs, and where to boost or eliminate.
+

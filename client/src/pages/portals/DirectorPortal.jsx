@@ -1,34 +1,84 @@
 import { useState, useEffect } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
-import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList } from '../../lib/pricing';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
-import { Tabs, Card, CardBody, CardHeader, Button, Input, StatCard, LoadingSpinner, EmptyState, Table, Badge, Alert, Select, Modal } from '../../components/ui';
-import { Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package, ClipboardList, Target, Globe, Ship, AlertTriangle } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { getLiveProductList, findProductPrice } from '../../lib/pricing';
+import { formatCurrency, formatDate, BRANCHES } from '../../lib/constants';
+import {
+  Tabs, Card, CardBody, CardHeader, Button, Input, StatCard,
+  LoadingSpinner, Table, Badge, Alert, Modal,
+} from '../../components/ui';
+import {
+  Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package,
+  AlertTriangle, Ship, Globe, Target, Activity,
+} from 'lucide-react';
+
+const today = new Date().toISOString().slice(0, 10);
+const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+
+const CHART_COLORS = ['#c41e3a', '#8b0000', '#e05c72', '#b03050', '#d44060',
+  '#6b2133', '#a83048', '#cc3355', '#993344', '#dd5566'];
+
+function useDirectorApi(path, params, deps = []) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const qs = new URLSearchParams(params).toString();
+    api.get(`/director/${path}?${qs}`)
+      .then(d => setData(d))
+      .catch(e => setError(e.message || 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, deps);
+
+  return { data, loading, error };
+}
 
 export default function DirectorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(today);
+  const [applied, setApplied] = useState({ start: firstOfMonth, end: today });
+
   const tabs = [
     { id: 'dashboard', label: 'Executive Dashboard', icon: '📊' },
-    { id: 'branches', label: 'Branch Overview', icon: '🏢' },
+    { id: 'fastMoving', label: 'Fast Moving', icon: '🚀' },
+    { id: 'branchAnalysis', label: 'Branch Analysis', icon: '🏢' },
+    { id: 'registrations', label: 'Registrations', icon: '📋' },
     { id: 'distributors', label: 'Distributor Network', icon: '👥' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
 
+  const apply = () => setApplied({ start: startDate, end: endDate });
+
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Briefcase size={24} className="text-primary" /> Director Portal
-        </h1>
-        <p className="text-sm text-gray-500">Strategic KPIs and executive oversight</p>
+      <div className="mb-4 flex flex-wrap gap-4 items-end justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Briefcase size={24} className="text-primary" /> Director Portal
+          </h1>
+          <p className="text-sm text-gray-500">Strategic intelligence dashboard — live company data</p>
+        </div>
+        <div className="flex gap-2 items-end">
+          <Input label="From" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <Input label="To" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <Button onClick={apply} className="mb-0.5">Apply</Button>
+        </div>
       </div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
-        {activeTab === 'dashboard' && <DashboardTab />}
-        {activeTab === 'branches' && <BranchOverviewTab />}
+        {activeTab === 'dashboard' && <DashboardTab start={applied.start} end={applied.end} />}
+        {activeTab === 'fastMoving' && <FastMovingTab start={applied.start} end={applied.end} />}
+        {activeTab === 'branchAnalysis' && <BranchAnalysisTab start={applied.start} end={applied.end} />}
+        {activeTab === 'registrations' && <RegistrationsTab start={applied.start} end={applied.end} />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'staff' && <StaffTab />}
@@ -37,122 +87,58 @@ export default function DirectorPortal() {
   );
 }
 
-function DashboardTab() {
-  const [data, setData] = useState({});
-  const [loading, setLoading] = useState(true);
+function DashboardTab({ start, end }) {
+  const { data: summary, loading: sLoad } = useDirectorApi('summary', { startDate: start, endDate: end }, [start, end]);
+  const { data: pl, loading: plLoad } = useDirectorApi('profit-loss', { startDate: start, endDate: end }, [start, end]);
+  const { data: trends, loading: tLoad } = useDirectorApi('revenue-trends', { startDate: start, endDate: end }, [start, end]);
 
-  useEffect(() => {
-    Promise.all([
-      api.orders.list().then(d => (Array.isArray(d) ? d : d.orders || [])).catch(() => []),
-      api.branches.list().then(d => (Array.isArray(d) ? d : d.branches || [])).catch(() => []),
-      api.products.list().then(d => (Array.isArray(d) ? d : d.products || [])).catch(() => []),
-      api.branch.walkinSales().then(d => (Array.isArray(d) ? d : d.sales || [])).catch(() => []),
-      api.distributors.list().then(d => (Array.isArray(d) ? d : d.distributors || [])).catch(() => []),
-      api.branch.deposits().then(d => (Array.isArray(d) ? d : d.deposits || [])).catch(() => []),
-    ]).then(([orders, branches, products, sales, distributors, deposits]) => {
-      setData({ orders, branches, products, sales, distributors, deposits });
-    }).finally(() => setLoading(false));
-  }, []);
+  if (sLoad || plLoad || tLoad) return <LoadingSpinner />;
 
-  if (loading) return <LoadingSpinner />;
+  const s = summary || {};
+  const sales = s.sales || {};
+  const stock = s.stock || {};
+  const finance = s.finance || {};
+  const network = s.network || {};
+  const p = pl || {};
 
-  const totalRevenue = (data.orders || []).reduce((sum, o) => sum + Number(o.total || 0), 0) +
-    (data.sales || []).reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
-
-  const totalDeposits = (data.deposits || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
-
-  const thisMonth = new Date();
-  thisMonth.setDate(1);
-  const monthlyOrders = (data.orders || []).filter(o => new Date(o.created_at) >= thisMonth);
-  const monthlySales = (data.sales || []).filter(s => new Date(s.created_at) >= thisMonth);
-  const monthlyRevenue = monthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
-    monthlySales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
-
-  const allSalesItems = [];
-  const processItems = (items) => {
-    (items || []).forEach(item => {
-      const rawName = item.name || item.product_name || 'Unknown';
-      const matched = findProductPrice(rawName);
-      const qty = Number(item.quantity || item.qty || 1);
-      const price = matched ? matched.dp : Number(item.price || item.unit_price || 0);
-      const cif = matched ? matched.cif : 0;
-      allSalesItems.push({ product_name: matched ? matched.description : rawName, quantity: qty, price, cif });
-    });
-  };
-  (data.orders || []).forEach(o => processItems(o.items));
-  (data.sales || []).forEach(s => processItems(s.items));
-
-  const totalCIFCost = allSalesItems.reduce((sum, i) => sum + (i.cif * i.quantity), 0);
-  const totalDPRevenue = allSalesItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-  const grossProfit = totalDPRevenue - totalCIFCost;
-  const marginPct = totalDPRevenue > 0 ? ((grossProfit / totalDPRevenue) * 100).toFixed(1) : '0';
-
-  const remittanceDue = totalCIFCost - totalDeposits;
-
-  const branchPerformance = {};
-  (data.sales || []).forEach(s => {
-    const branch = s.branch_id || s.branch || 'Unknown';
-    if (!branchPerformance[branch]) branchPerformance[branch] = { sales: 0, count: 0, cifCost: 0 };
-    branchPerformance[branch].sales += Number(s.total || s.amount || 0);
-    branchPerformance[branch].count += 1;
-    const items = s.items || [];
-    items.forEach(item => {
-      const matched = findProductPrice(item.name || item.product_name || '');
-      if (matched) {
-        branchPerformance[branch].cifCost += matched.cif * Number(item.quantity || item.qty || 1);
-      }
-    });
-  });
-
-  const branchRows = Object.entries(branchPerformance)
-    .map(([name, d]) => ({ name, ...d, profit: d.sales - d.cifCost }))
-    .sort((a, b) => b.sales - a.sales);
+  const remittanceDue = finance.remittanceDue || 0;
 
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Sales" value={formatCurrency(totalRevenue)} color="blue" icon={<TrendingUp size={24} />} />
-        <StatCard title="Monthly Revenue" value={formatCurrency(monthlyRevenue)} subtitle="Current month" color="green" icon={<DollarSign size={24} />} />
-        <StatCard title="CIF Cost of Sales" value={formatCurrency(totalCIFCost)} subtitle="Import cost from Malaysia" color="red" icon={<Ship size={24} />} />
-        <StatCard title="Gross Profit" value={formatCurrency(grossProfit)} subtitle={`${marginPct}% margin`} color={grossProfit >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
+        <StatCard title="Total Sales Revenue" value={formatCurrency(sales.totalSalesRevenue || 0)} subtitle={`${sales.totalOrders || 0} transactions`} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="Monthly Revenue" value={formatCurrency(sales.monthlyRevenue || 0)} subtitle={`${start} → ${end}`} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="CIF Cost of Sales" value={formatCurrency(finance.cifCostOfSales || 0)} subtitle="Import cost" color="red" icon={<Ship size={24} />} />
+        <StatCard title="Gross Profit" value={formatCurrency(finance.grossProfit || 0)} subtitle={sales.totalSalesRevenue > 0 ? `${((finance.grossProfit / sales.totalSalesRevenue) * 100).toFixed(1)}% margin` : ''} color={(finance.grossProfit || 0) >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Active Branches" value={data.branches?.length || 0} color="purple" icon={<Users size={24} />} />
-        <StatCard title="Distributors" value={data.distributors?.length || 0} color="orange" icon={<Package size={24} />} />
-        <StatCard title="Total Deposits" value={formatCurrency(totalDeposits)} color="teal" icon={<DollarSign size={24} />} />
-        <StatCard title="Remittance Due" value={formatCurrency(Math.max(0, remittanceDue))} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
+        <StatCard title="Active Branches" value={network.activeBranches || 0} color="purple" icon={<Users size={24} />} />
+        <StatCard title="Distributors" value={network.totalDistributors || 0} color="orange" icon={<Package size={24} />} />
+        <StatCard title="Total Deposits" value={formatCurrency(finance.totalDeposits || 0)} color="teal" icon={<DollarSign size={24} />} />
+        <StatCard title="Remittance Due" value={formatCurrency(remittanceDue)} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
 
       <Card className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
         <CardBody>
-          <h3 className="font-bold text-indigo-900 mb-3">Profit & Loss Overview</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-white/80 rounded-lg p-3">
-              <p className="text-xs text-gray-500">Total Revenue (DP)</p>
-              <p className="text-lg font-bold text-blue-700">{formatCurrency(totalDPRevenue)}</p>
-            </div>
-            <div className="bg-white/80 rounded-lg p-3">
-              <p className="text-xs text-gray-500">CIF Cost</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(totalCIFCost)}</p>
-            </div>
-            <div className="bg-white/80 rounded-lg p-3">
-              <p className="text-xs text-gray-500">Gross Profit</p>
-              <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(grossProfit)}</p>
-            </div>
-            <div className="bg-white/80 rounded-lg p-3">
-              <p className="text-xs text-gray-500">Deposits Received</p>
-              <p className="text-lg font-bold text-teal-700">{formatCurrency(totalDeposits)}</p>
-            </div>
-            <div className="bg-white/80 rounded-lg p-3">
-              <p className="text-xs text-gray-500">Remittance Status</p>
-              <p className={`text-lg font-bold ${remittanceDue <= 0 ? 'text-green-700' : 'text-orange-600'}`}>
-                {remittanceDue <= 0 ? 'No Remittance Due' : formatCurrency(remittanceDue)}
-              </p>
-            </div>
+          <h3 className="font-bold text-indigo-900 mb-3">Profit &amp; Loss Overview</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[
+              { label: 'Total Revenue (DP)', value: formatCurrency(p.totalRevenueDP || 0), cls: 'text-blue-700' },
+              { label: 'CIF Cost', value: formatCurrency(p.cifCost || 0), cls: 'text-red-600' },
+              { label: 'Gross Profit', value: formatCurrency(p.grossProfit || 0), cls: (p.grossProfit || 0) >= 0 ? 'text-green-700' : 'text-red-600' },
+              { label: 'Deposits Received', value: formatCurrency(p.depositsReceived || 0), cls: 'text-teal-700' },
+              { label: 'Remittance', value: (p.remittanceStatusAmount || 0) <= 0 ? 'Clear' : formatCurrency(p.remittanceStatusAmount), cls: (p.remittanceStatusAmount || 0) <= 0 ? 'text-green-700' : 'text-orange-600' },
+              { label: 'Bonus Payout', value: formatCurrency(p.bonusPayout || 0), cls: 'text-purple-700' },
+            ].map(({ label, value, cls }) => (
+              <div key={label} className="bg-white/80 rounded-lg p-3">
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className={`text-base font-bold ${cls}`}>{value}</p>
+              </div>
+            ))}
           </div>
           <p className="text-xs text-indigo-600 mt-2 font-medium">
-            Profit = DP (Distributor Price) - CIF (Cost, Insurance, Freight from Malaysia)
+            Gross Profit = DP Revenue − CIF Cost &nbsp;|&nbsp; Net = Gross Profit − Rent − Overheads − Bonus
           </p>
         </CardBody>
       </Card>
@@ -167,235 +153,376 @@ function DashboardTab() {
         <Card>
           <CardHeader><h3 className="font-bold text-gray-800">Revenue Trends</h3></CardHeader>
           <CardBody>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                <span className="text-sm text-gray-700">Total Orders</span>
-                <span className="font-bold text-blue-600">{data.orders?.length || 0}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                <span className="text-sm text-gray-700">Walk-in Sales</span>
-                <span className="font-bold text-green-600">{data.sales?.length || 0}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                <span className="text-sm text-gray-700">Product Range</span>
-                <span className="font-bold text-purple-600">{data.products?.length || 0}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                <span className="text-sm text-gray-700">Avg Order Value</span>
-                <span className="font-bold text-orange-600">
-                  {formatCurrency(data.orders?.length ? totalRevenue / (data.orders.length + (data.sales?.length || 0)) : 0)}
-                </span>
-              </div>
+            <div className="space-y-3">
+              {[
+                { label: 'Total Orders', value: trends?.totalOrders || 0, cls: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'Walk-in Sales Count', value: trends?.walkinSalesCount || 0, cls: 'text-green-600', bg: 'bg-green-50' },
+                { label: 'Product Range', value: trends?.productRange || 0, cls: 'text-purple-600', bg: 'bg-purple-50' },
+                { label: 'Avg Order Value', value: formatCurrency(trends?.avgOrderValue || 0), cls: 'text-orange-600', bg: 'bg-orange-50' },
+                { label: 'Member Sales', value: formatCurrency(trends?.memberSales || 0), cls: 'text-teal-600', bg: 'bg-teal-50' },
+                { label: 'Prescription Revenue', value: formatCurrency(trends?.prescriptionSales || 0), cls: 'text-pink-600', bg: 'bg-pink-50' },
+              ].map(({ label, value, cls, bg }) => (
+                <div key={label} className={`flex justify-between items-center p-3 ${bg} rounded-lg`}>
+                  <span className="text-sm text-gray-700">{label}</span>
+                  <span className={`font-bold ${cls}`}>{value}</span>
+                </div>
+              ))}
             </div>
           </CardBody>
         </Card>
 
         <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Branch Performance (with Profit)</h3></CardHeader>
-          {branchRows.length > 0 ? (
-            <Table
-              columns={[
-                { header: 'Branch', key: 'name' },
-                { header: 'Sales', render: r => <span className="font-bold text-green-600">{formatCurrency(r.sales)}</span> },
-                { header: 'CIF Cost', render: r => <span className="text-red-600">{formatCurrency(r.cifCost)}</span> },
-                { header: 'Profit', render: r => <span className={`font-bold ${r.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(r.profit)}</span> },
-                { header: 'Txns', render: r => <Badge variant="info">{r.count}</Badge> },
-              ]}
-              data={branchRows}
-            />
-          ) : (
-            <CardBody>
-              <p className="text-sm text-gray-500 py-4 text-center">Branch comparison metrics will appear when sales data is available.</p>
-            </CardBody>
-          )}
+          <CardHeader><h3 className="font-bold text-gray-800">Stock &amp; Network Health</h3></CardHeader>
+          <CardBody>
+            <div className="space-y-3">
+              {[
+                { label: 'Total Company Stock (units)', value: stock.totalCompanyStockQty || 0, cls: 'text-gray-700', bg: 'bg-gray-50' },
+                { label: 'Warehouse Stock', value: stock.totalWarehouseStockQty || 0, cls: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'Branch Stock', value: stock.totalBranchStockQty || 0, cls: 'text-green-600', bg: 'bg-green-50' },
+                { label: 'In-Transit', value: stock.totalInTransitQty || 0, cls: 'text-orange-600', bg: 'bg-orange-50' },
+                { label: 'Low Stock Items', value: stock.lowStockCount || 0, cls: stock.lowStockCount > 0 ? 'text-red-600' : 'text-green-600', bg: stock.lowStockCount > 0 ? 'bg-red-50' : 'bg-green-50' },
+                { label: 'Expiring (90 days)', value: stock.expiringCount || 0, cls: stock.expiringCount > 0 ? 'text-yellow-600' : 'text-green-600', bg: stock.expiringCount > 0 ? 'bg-yellow-50' : 'bg-green-50' },
+                { label: 'Countrywide Registrations', value: network.registrationsCountrywide || 0, cls: 'text-teal-600', bg: 'bg-teal-50' },
+              ].map(({ label, value, cls, bg }) => (
+                <div key={label} className={`flex justify-between items-center p-2 ${bg} rounded-lg`}>
+                  <span className="text-sm text-gray-700">{label}</span>
+                  <span className={`font-bold ${cls}`}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </CardBody>
         </Card>
       </div>
     </div>
   );
 }
 
-function BranchOverviewTab() {
-  const [branches, setBranches] = useState([]);
-  const [sales, setSales] = useState([]);
-  const [loading, setLoading] = useState(true);
+function FastMovingTab({ start, end }) {
+  const [productMode, setProductMode] = useState('units');
+  const [branchMode, setBranchMode] = useState('revenue');
 
-  useEffect(() => {
-    Promise.all([
-      api.branches.list().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-    ]).then(([b, s]) => { setBranches(b); setSales(s); }).finally(() => setLoading(false));
-  }, []);
+  const { data: fmProducts, loading: pmLoad } = useDirectorApi('products/fast-moving', { startDate: start, endDate: end, limit: 15 }, [start, end]);
+  const { data: fmBranches, loading: bmLoad } = useDirectorApi('branches/fast-moving', { startDate: start, endDate: end }, [start, end]);
+  const { data: fmByBranch, loading: fbbLoad } = useDirectorApi('products/fast-moving-by-branch', { startDate: start, endDate: end, limit: 5 }, [start, end]);
 
-  if (loading) return <LoadingSpinner />;
+  const products = (fmProducts?.products || []).slice(0, 15);
+  const branches = fmBranches?.branches || [];
 
-  const branchStats = {};
-  BRANCHES.forEach(name => { branchStats[name] = { sales: 0, revenue: 0, cifCost: 0 }; });
-  sales.forEach(s => {
-    const b = s.branch_id || s.branch || 'Unknown';
-    if (!branchStats[b]) branchStats[b] = { sales: 0, revenue: 0, cifCost: 0 };
-    branchStats[b].sales += 1;
-    branchStats[b].revenue += Number(s.total_amount || s.total || s.amount || 0);
-    const items = s.items || [];
-    items.forEach(item => {
-      const matched = findProductPrice(item.name || item.product_name || '');
-      if (matched) {
-        branchStats[b].cifCost += matched.cif * Number(item.quantity || item.qty || 1);
-      }
-    });
-  });
+  const productChartData = products.map(p => ({
+    name: p.productName?.length > 30 ? p.productName.slice(0, 28) + '…' : p.productName,
+    units: p.unitsSold,
+    revenue: p.salesRevenue,
+  }));
 
-  const rows = Object.entries(branchStats).map(([name, d]) => ({ name, ...d, profit: d.revenue - d.cifCost })).sort((a, b) => b.revenue - a.revenue);
-
-  return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Globe size={18} /> All Branches Performance</h3></CardHeader>
-      <Table
-        columns={[
-          { header: 'Branch', render: r => <span className="font-medium">{r.name}</span> },
-          { header: 'Transactions', render: r => <Badge variant="info">{r.sales}</Badge> },
-          { header: 'Revenue', render: r => <span className="font-bold text-green-600">{formatCurrency(r.revenue)}</span> },
-          { header: 'CIF Cost', render: r => <span className="text-red-600">{formatCurrency(r.cifCost)}</span> },
-          { header: 'Profit', render: r => <span className={`font-bold ${r.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(r.profit)}</span> },
-          { header: 'Status', render: r => <Badge variant={r.sales > 0 ? 'success' : 'default'}>{r.sales > 0 ? 'Active' : 'No Sales'}</Badge> },
-        ]}
-        data={rows}
-      />
-    </Card>
-  );
-}
-
-function DistributorNetworkTab() {
-  const [distributors, setDistributors] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.distributors.list()
-      .then(d => setDistributors(Array.isArray(d) ? d : d.distributors || []))
-      .catch(() => [])
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingSpinner />;
-
-  const byBranch = {};
-  distributors.forEach(d => {
-    const b = d.branch || 'Unassigned';
-    byBranch[b] = (byBranch[b] || 0) + 1;
-  });
+  const branchChartData = branches.map(b => ({
+    name: b.branchName?.length > 18 ? b.branchName.slice(0, 16) + '…' : b.branchName,
+    salesUnits: b.salesUnits,
+    salesRevenue: b.salesRevenue,
+    grossProfit: b.grossProfit,
+  }));
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Total Distributors" value={distributors.length} color="blue" />
-        <StatCard title="Branches Covered" value={Object.keys(byBranch).length} color="green" />
-        <StatCard title="Active" value={distributors.filter(d => d.status === 'active' || !d.status).length} color="purple" />
-        <StatCard title="New This Month" value={distributors.filter(d => {
-          const created = new Date(d.created_at);
-          const now = new Date();
-          return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
-        }).length} color="orange" />
-      </div>
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Distributors by Branch</h3></CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {Object.entries(byBranch).sort((a, b) => b[1] - a[1]).map(([branch, count]) => (
-              <div key={branch} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm font-medium text-gray-700">{branch}</span>
-                <Badge variant="primary">{count}</Badge>
-              </div>
-            ))}
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Fast Moving Products</h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant={productMode === 'units' ? 'primary' : 'secondary'} onClick={() => setProductMode('units')}>By Units</Button>
+              <Button size="sm" variant={productMode === 'revenue' ? 'primary' : 'secondary'} onClick={() => setProductMode('revenue')}>By Revenue</Button>
+            </div>
           </div>
+        </CardHeader>
+        <CardBody>
+          {pmLoad ? <LoadingSpinner /> : products.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">No sales data for this period.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(products.length * 36, 200)}>
+              <BarChart layout="vertical" data={productChartData} margin={{ left: 10, right: 30, top: 4, bottom: 4 }}>
+                <XAxis type="number" tick={{ fontSize: 11 }}
+                  tickFormatter={v => productMode === 'revenue' ? `N$${v.toLocaleString()}` : v} />
+                <YAxis type="category" dataKey="name" width={220} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => productMode === 'revenue' ? formatCurrency(v) : v + ' units'} />
+                <Bar dataKey={productMode === 'units' ? 'units' : 'revenue'} fill="#c41e3a" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardBody>
       </Card>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Fast Moving Branches</h3>
+              <div className="flex gap-1">
+                {['revenue', 'salesUnits', 'grossProfit'].map(m => (
+                  <button key={m} onClick={() => setBranchMode(m)}
+                    className={`px-2 py-0.5 text-xs rounded ${branchMode === m ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    {m === 'salesUnits' ? 'Units' : m === 'grossProfit' ? 'Profit' : 'Revenue'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            {bmLoad ? <LoadingSpinner /> : branchChartData.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">No branch data for this period.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={branchChartData.slice(0, 10)} margin={{ left: 4, right: 16, top: 4, bottom: 40 }}>
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v => branchMode === 'salesUnits' ? v : `N$${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={v => branchMode === 'salesUnits' ? v + ' units' : formatCurrency(v)} />
+                  <Bar dataKey={branchMode} fill="#8b0000" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Top Products by Branch</h3></CardHeader>
+          <CardBody>
+            {fbbLoad ? <LoadingSpinner /> : (fmByBranch?.branches || []).length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">No data for this period.</p>
+            ) : (
+              <div className="space-y-4 max-h-72 overflow-y-auto">
+                {(fmByBranch?.branches || []).map(b => (
+                  <div key={b.branchId}>
+                    <p className="text-sm font-bold text-gray-700 mb-1">{b.branchName}</p>
+                    <div className="space-y-1">
+                      {b.products.map((p, i) => (
+                        <div key={p.productName} className="flex justify-between text-xs px-2 py-1 bg-gray-50 rounded">
+                          <span className="text-gray-600 truncate max-w-[180px]">{i + 1}. {p.productName}</span>
+                          <span className="font-medium text-primary ml-2 shrink-0">{p.unitsSold} units</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Recent Distributors</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">Fast Moving Products — Detail Table</h3></CardHeader>
         <Table
           columns={[
-            { header: 'Code', render: r => <span className="font-mono text-sm">{r.distributor_code || r.id}</span> },
-            { header: 'Name', key: 'distributor_name' },
-            { header: 'Branch', key: 'branch' },
-            { header: 'Joined', render: r => formatDate(r.created_at) },
+            { header: '#', render: (r, i) => <span className="text-gray-400 font-mono text-xs">{i + 1}</span> },
+            { header: 'Product', key: 'productName' },
+            { header: 'Units Sold', render: r => <span className="font-bold text-primary">{r.unitsSold.toLocaleString()}</span> },
+            { header: 'Sales Revenue', render: r => <span className="text-green-700 font-medium">{formatCurrency(r.salesRevenue)}</span> },
+            { header: 'Branches Active', render: r => <Badge variant="info">{r.branchesActive}</Badge> },
           ]}
-          data={distributors.slice(0, 20)}
-          emptyMessage="No distributors found"
+          data={products}
+          emptyMessage="No product sales data for this period."
         />
       </Card>
     </div>
   );
 }
 
-function StaffTab() {
-  const [form, setForm] = useState({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+function BranchAnalysisTab({ start, end }) {
+  const { data: perf, loading: perfLoad } = useDirectorApi('branches/performance', { startDate: start, endDate: end }, [start, end]);
+  const { data: contrib, loading: cLoad } = useDirectorApi('branches/revenue-contribution', { startDate: start, endDate: end }, [start, end]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.reason) {
-      setMessage('Error: Please provide a reason.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      if (form.request_type === 'leave') {
-        await api.post('/employees/leaves', { leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason, department: 'Executive' });
-      } else {
-        await api.branch.createCashMovement({ type: 'request', amount: Number(form.amount), reason: form.reason, department: 'Executive' });
-      }
-      setMessage('Request submitted successfully!');
-      setForm({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
-    } catch (err) {
-      setMessage('Error: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const branches = perf?.branches || [];
+  const contribBranches = (contrib?.branches || []).filter(b => b.salesRevenue > 0);
+
+  const pieData = contribBranches.map(b => ({
+    name: b.branchName,
+    value: b.contributionPercent,
+    revenue: b.salesRevenue,
+  }));
 
   return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Executive Services</h3></CardHeader>
-      <CardBody>
-        {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
-        <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Request Type</label>
-            <select value={form.request_type} onChange={e => setForm({ ...form, request_type: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              <option value="leave">Leave Request</option>
-              <option value="cash">Cash Request</option>
-            </select>
-          </div>
-          {form.request_type === 'leave' && (
-            <>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Leave Type</label>
-                <select value={form.leave_type} onChange={e => setForm({ ...form, leave_type: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                  <option>Annual</option>
-                  <option>Sick</option>
-                  <option>Personal</option>
-                </select>
+    <div className="space-y-6">
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Revenue Contribution by Branch</h3></CardHeader>
+          <CardBody>
+            {cLoad ? <LoadingSpinner /> : pieData.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">No revenue data for this period.</p>
+            ) : (
+              <div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
+                      label={({ name, value }) => `${value}%`} labelLine={false}>
+                      {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v, n, p) => [`${v}% (${formatCurrency(p.payload.revenue)})`, n]} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="mt-2 grid grid-cols-2 gap-1">
+                  {pieData.map((b, i) => (
+                    <div key={b.name} className="flex items-center gap-1 text-xs">
+                      <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                      <span className="truncate text-gray-600">{b.name}</span>
+                      <span className="ml-auto font-bold text-gray-800 shrink-0">{b.value}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-                <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Revenue Contribution — Top Branches</h3></CardHeader>
+          <CardBody>
+            {cLoad ? <LoadingSpinner /> : contribBranches.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">No revenue data.</p>
+            ) : (
+              <div className="space-y-2">
+                {contribBranches.map((b, i) => (
+                  <div key={b.branchId}>
+                    <div className="flex justify-between text-sm mb-0.5">
+                      <span className="font-medium text-gray-700">{b.branchName}</span>
+                      <span className="text-primary font-bold">{b.contributionPercent}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="h-2 rounded-full" style={{
+                        width: `${b.contributionPercent}%`,
+                        backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                      }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5 text-right">{formatCurrency(b.salesRevenue)}</p>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-          {form.request_type === 'cash' && (
-            <Input label="Amount" type="number" min="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="Enter amount" />
-          )}
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Reason</label>
-            <textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[80px] resize-y"
-              placeholder="Provide details..." />
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Branch Expense &amp; Burden Analysis</h3></CardHeader>
+        {perfLoad ? <CardBody><LoadingSpinner /></CardBody> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 text-left">
+                  {['Branch', 'Sales Revenue', 'Contrib %', 'CIF Cost', 'Gross Profit',
+                    'Rent', 'Overheads', 'Bonus', 'Net Contribution', 'Transactions'].map(h => (
+                    <th key={h} className="px-3 py-2.5 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {branches.map(b => (
+                  <tr key={b.branchId} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-2 font-medium text-gray-800">{b.branchName}</td>
+                    <td className="px-3 py-2 text-green-700 font-bold">{formatCurrency(b.salesRevenue)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`font-bold ${b.revenueContributionPercent >= 20 ? 'text-green-600' : b.revenueContributionPercent >= 5 ? 'text-blue-600' : 'text-gray-400'}`}>
+                        {b.revenueContributionPercent}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-red-600">{formatCurrency(b.cifCost)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`font-bold ${b.grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(b.grossProfit)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{formatCurrency(b.rentExpense)}</td>
+                    <td className="px-3 py-2 text-gray-600">{formatCurrency(b.monthlyOverheads)}</td>
+                    <td className="px-3 py-2 text-purple-600">{formatCurrency(b.bonusPayout)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`font-bold ${b.netContributionAfterExpenses >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                        {formatCurrency(b.netContributionAfterExpenses)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center"><Badge variant="info">{b.transactions}</Badge></td>
+                  </tr>
+                ))}
+                {branches.length === 0 && (
+                  <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">No branch data for this period.</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <Button type="submit" disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Request'}</Button>
-        </form>
-      </CardBody>
-    </Card>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function RegistrationsTab({ start, end }) {
+  const { data, loading } = useDirectorApi('registrations/summary', { startDate: start, endDate: end }, [start, end]);
+
+  const branches = data?.branches || [];
+  const chartData = branches.slice(0, 15).map(b => ({
+    name: b.branchName?.length > 18 ? b.branchName.slice(0, 16) + '…' : b.branchName,
+    count: b.registrationsCount,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-gradient-to-r from-teal-50 to-cyan-50 border-teal-200">
+          <CardBody>
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-teal-100 flex items-center justify-center">
+                <Users size={28} className="text-teal-600" />
+              </div>
+              <div>
+                <p className="text-sm text-teal-700">Total Countrywide Registrations</p>
+                <p className="text-4xl font-bold text-teal-900">{(data?.countrywideRegistrations || 0).toLocaleString()}</p>
+                <p className="text-xs text-teal-600 mt-1">{start} to {end}</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody>
+            <h3 className="font-bold text-gray-700 mb-2">Registrations by DPC</h3>
+            {loading ? <LoadingSpinner /> : chartData.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No registrations for this period.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={chartData} margin={{ left: 0, right: 12, top: 4, bottom: 40 }}>
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Registrations" fill="#c41e3a" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Registrations per DPC</h3></CardHeader>
+        {loading ? <CardBody><LoadingSpinner /></CardBody> : (
+          <Table
+            columns={[
+              { header: '#', render: (r, i) => <span className="text-gray-400 text-xs">{i + 1}</span> },
+              { header: 'Branch / DPC', key: 'branchName' },
+              { header: 'Registrations', render: r => <span className="font-bold text-primary text-lg">{r.registrationsCount.toLocaleString()}</span> },
+              {
+                header: 'Share', render: r => {
+                  const total = data?.countrywideRegistrations || 1;
+                  const pct = ((r.registrationsCount / total) * 100).toFixed(1);
+                  return (
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 bg-gray-100 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-600">{pct}%</span>
+                    </div>
+                  );
+                }
+              },
+            ]}
+            data={branches}
+            emptyMessage="No registrations for this period."
+          />
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -484,15 +611,9 @@ function ProfitAnalysisTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-semibold text-gray-600">Product</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">CIF</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">DP</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Campaign</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Profit/Unit</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Margin</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Qty Sold</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Total Profit</th>
-                <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
+                {['Product', 'CIF', 'DP', 'Campaign', 'Profit/Unit', 'Margin', 'Qty Sold', 'Total Profit', 'Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 font-semibold text-gray-600">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -526,5 +647,74 @@ function ProfitAnalysisTab() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+function StaffTab() {
+  const [form, setForm] = useState({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.reason) { setMessage('Error: Please provide a reason.'); return; }
+    setSubmitting(true);
+    try {
+      if (form.request_type === 'leave') {
+        await api.post('/employees/leaves', { leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason, department: 'Executive' });
+      } else {
+        await api.branch.createCashMovement({ type: 'request', amount: Number(form.amount), reason: form.reason, department: 'Executive' });
+      }
+      setMessage('Request submitted successfully!');
+      setForm({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><h3 className="font-bold text-gray-800">Executive Services</h3></CardHeader>
+      <CardBody>
+        {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+        <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Request Type</label>
+            <select value={form.request_type} onChange={e => setForm({ ...form, request_type: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+              <option value="leave">Leave Request</option>
+              <option value="cash">Cash Request</option>
+            </select>
+          </div>
+          {form.request_type === 'leave' && (
+            <>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Leave Type</label>
+                <select value={form.leave_type} onChange={e => setForm({ ...form, leave_type: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option>Annual</option><option>Sick</option><option>Personal</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
+                <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
+              </div>
+            </>
+          )}
+          {form.request_type === 'cash' && (
+            <Input label="Amount" type="number" min="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="Enter amount" />
+          )}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Reason</label>
+            <textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[80px] resize-y"
+              placeholder="Provide details..." />
+          </div>
+          <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Request'}</Button>
+        </form>
+      </CardBody>
+    </Card>
   );
 }
