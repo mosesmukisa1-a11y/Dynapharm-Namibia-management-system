@@ -129,39 +129,31 @@ async function getInventoryByBranch(branchId, enriched = false) {
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
   if (!enriched) return normalized;
 
+  // Use ONLY branch_inventory_movements as the single source of truth for branch-level
+  // movement aggregation. Merging stock_movements causes double-counting since every
+  // sale/receipt is recorded in both tables.
   let movAgg = [];
   try {
     movAgg = await getMany(
-      `SELECT product_name, batch_no, type,
+      `SELECT product_name,
+         type,
          SUM(ABS(quantity)) as total_qty,
          MAX(created_at) as last_date,
-         (array_agg(DISTINCT source_branch_id))[1] as source
+         (array_agg(DISTINCT source_branch_id) FILTER (WHERE source_branch_id IS NOT NULL))[1] as source
        FROM branch_inventory_movements
        WHERE branch_id = $1
-       GROUP BY product_name, batch_no, type`,
+       GROUP BY product_name, type`,
       [resolvedId]
     );
   } catch {}
 
-  let smAgg = [];
-  try {
-    smAgg = await getMany(
-      `SELECT product_name, batch_no, movement_type as type,
-         SUM(ABS(quantity)) as total_qty,
-         MAX(created_at) as last_date,
-         NULL as source
-       FROM stock_movements
-       WHERE (source_location ILIKE $1 OR destination_location ILIKE $1)
-       GROUP BY product_name, batch_no, movement_type`,
-      [`%${resolvedId}%`]
-    );
-  } catch {}
-  movAgg = [...movAgg, ...smAgg];
-
+  // Build aggMap keyed by product_name only — branch_inventory_movements does not
+  // reliably store batch_no so matching on batch would miss all records.
   const aggMap = {};
+  const EMPTY_AGG = () => ({ received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
   for (const r of movAgg) {
-    const key = `${r.product_name}||${r.batch_no || ''}`;
-    if (!aggMap[key]) aggMap[key] = { received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null };
+    const key = (r.product_name || '').trim();
+    if (!aggMap[key]) aggMap[key] = EMPTY_AGG();
     const a = aggMap[key];
     const q = Number(r.total_qty || 0);
     const t = (r.type || '').toLowerCase();
@@ -175,17 +167,30 @@ async function getInventoryByBranch(branchId, enriched = false) {
     if (!a.last_movement || (ld && ld > a.last_movement)) a.last_movement = ld;
   }
 
+  // When a branch has multiple batches of the same product, distribute aggregated
+  // quantities proportionally by batch size (or equally if all zero).
+  const productBatches = {};
+  for (const inv of normalized) {
+    const key = (inv.product_name || '').trim();
+    if (!productBatches[key]) productBatches[key] = [];
+    productBatches[key].push(inv);
+  }
+
   return normalized.map(inv => {
-    const key = `${inv.product_name}||${inv.batch_no || ''}`;
-    const agg = aggMap[key] || { received: 0, sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null };
+    const key = (inv.product_name || '').trim();
+    const agg = aggMap[key] || EMPTY_AGG();
+    const siblings = productBatches[key] || [inv];
+    const totalQty = siblings.reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const weight = totalQty > 0 ? Number(inv.quantity || 0) / totalQty : 1 / siblings.length;
+    const scale = (v) => Math.round(v * weight * 100) / 100;
     return {
       ...inv,
-      qty_received: agg.received, qtyReceived: agg.received,
-      qty_sold: agg.sold, qtySold: agg.sold,
-      qty_dispensed: agg.dispensed, qtyDispensed: agg.dispensed,
-      qty_transferred: agg.transferred, qtyTransferred: agg.transferred,
-      qty_written_off: agg.written_off, qtyWrittenOff: agg.written_off,
-      qty_adjusted: agg.adjusted, qtyAdjusted: agg.adjusted,
+      qty_received: scale(agg.received), qtyReceived: scale(agg.received),
+      qty_sold: scale(agg.sold), qtySold: scale(agg.sold),
+      qty_dispensed: scale(agg.dispensed), qtyDispensed: scale(agg.dispensed),
+      qty_transferred: scale(agg.transferred), qtyTransferred: scale(agg.transferred),
+      qty_written_off: scale(agg.written_off), qtyWrittenOff: scale(agg.written_off),
+      qty_adjusted: scale(agg.adjusted), qtyAdjusted: scale(agg.adjusted),
       source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
       last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement,
     };

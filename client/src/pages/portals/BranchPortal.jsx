@@ -1780,22 +1780,22 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const periodLabel = now.toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
 
-  // Compute formula components from movements
-  const movsPeriod = movements.filter(m => m.created_at && new Date(m.created_at) >= monthStart);
-  const received = movsPeriod.filter(m => (m.movement_type||'').includes('received') || (m.type||'').includes('receive')).reduce((s, m) => s + Number(m.quantity||0), 0);
-  const returns_ = movsPeriod.filter(m => (m.movement_type||'').includes('return') || (m.type||'').includes('return')).reduce((s, m) => s + Number(m.quantity||0), 0);
-  const writeOffs = movsPeriod.filter(m => (m.movement_type||'').includes('write_off') || (m.type||'').includes('write_off')).reduce((s, m) => s + Number(m.quantity||0), 0);
+  // Use enriched inventory data (qty_received/sold/dispensed/written_off) as the
+  // single source of truth — avoids double-counting from raw movement logs.
+  const received  = inventory.reduce((s, i) => s + Number(i.qty_received   || i.qtyReceived   || 0), 0);
+  const sold      = inventory.reduce((s, i) => s + Number(i.qty_sold       || i.qtySold       || 0), 0);
+  const dispensed = inventory.reduce((s, i) => s + Number(i.qty_dispensed  || i.qtyDispensed  || 0), 0);
+  const writeOffs = inventory.reduce((s, i) => s + Number(i.qty_written_off|| i.qtyWrittenOff || 0), 0);
+  const transferred = inventory.reduce((s, i) => s + Number(i.qty_transferred|| i.qtyTransferred|| 0), 0);
+  const returns_  = inventory.reduce((s, i) => s + Number(i.qty_adjusted   || i.qtyAdjusted   || 0), 0);
+  const closingQty   = inventory.reduce((s, i) => s + Number(i.quantity || 0), 0);
+  const closingValue = inventory.reduce((s, i) => s + (Number(i.quantity || 0) * Number(i.unit_price || 0)), 0);
   const expiryItems = inventory.filter(i => i.expiry_date && new Date(i.expiry_date) < now);
-  const expiryQty = expiryItems.reduce((s, i) => s + Number(i.quantity||0), 0);
-  const closingQty = inventory.reduce((s, i) => s + Number(i.quantity||0), 0);
-  const closingValue = inventory.reduce((s, i) => s + (Number(i.quantity||0) * Number(i.unit_price||0)), 0);
-  const salesPeriod = sales.filter(s => s.created_at && new Date(s.created_at) >= monthStart);
-  const salesQty = salesPeriod.reduce((s, r) => {
-    const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items||[]); } catch { return []; } })();
-    return s + items.reduce((si, i) => si + Number(i.quantity||0), 0);
-  }, 0);
-  // Opening = Closing − Issued + Sales + Returns + Expiring + Write-offs (backwards from closing)
-  const opening = Math.max(0, closingQty - received + salesQty + returns_ + expiryQty + writeOffs);
+  const expiryQty   = expiryItems.reduce((s, i) => s + Number(i.quantity || 0), 0);
+  // Formula: Opening + Received = Closing + Sold + Dispensed + Write-offs + Transferred
+  // => Opening = Closing + Sold + Dispensed + WriteOffs + Transferred − Received
+  const opening = Math.max(0, closingQty + sold + dispensed + writeOffs + transferred - received);
+  const salesQty = sold + dispensed;
 
   const win = window.open('', '_blank');
   if (!win) return;
