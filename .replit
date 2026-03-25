@@ -64,4 +64,4 @@ externalPort = 3002
 [deployment]
 deploymentTarget = "autoscale"
 run = ["node", "server.js"]
-build = ["npx", "vite", "build"]
+build = ["npm", "run", "build"]
