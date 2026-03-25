@@ -44,6 +44,7 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/stock-batches',
   '/api/stock-requests',
   '/api/stock-movements',
+  '/api/stock/',
   '/api/stock/transfers',
   '/api/stock/import',
   '/api/stock/dispatch',

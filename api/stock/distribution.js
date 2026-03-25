@@ -1,0 +1,32 @@
+import { applyAuthCors } from '../_lib/auth.js';
+import { getMany } from '../db.js';
+
+export default async function handler(req, res) {
+  applyAuthCors(req, res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+  try {
+    const transfers = await getMany(
+      `SELECT id, status, from_warehouse, to_branch, created_at FROM stock_transfers ORDER BY created_at DESC LIMIT 200`
+    );
+
+    const pending = transfers.filter(t => ['pending', 'submitted', 'pending_approval'].includes(t.status));
+    const inTransit = transfers.filter(t => ['in_transit', 'dispatched'].includes(t.status));
+    const completed = transfers.filter(t => ['completed', 'received', 'delivered'].includes(t.status));
+
+    res.status(200).json({
+      success: true,
+      summary: {
+        pendingCount: pending.length,
+        inTransitCount: inTransit.length,
+        completedCount: completed.length,
+      },
+      pending,
+      inTransit,
+    });
+  } catch (err) {
+    console.error('Distribution error:', err);
+    if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+  }
+}
