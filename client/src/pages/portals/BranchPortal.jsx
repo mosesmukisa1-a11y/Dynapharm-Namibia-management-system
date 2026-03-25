@@ -1898,6 +1898,18 @@ function BranchStockTab() {
   const [availableBranches, setAvailableBranches] = useState([]);
 
   useEffect(() => {
+    const isAdmin = user?.role === 'admin';
+
+    // Non-admin users are always locked to their assigned branch — no lookup needed.
+    if (!isAdmin) {
+      if (user?.branch) {
+        setSelectedBranch(user.branch);
+        setAvailableBranches([user.branch]);
+      }
+      return;
+    }
+
+    // Admin: load all branches from inventory so they can switch.
     // Map of display names / legacy aliases → canonical branch slug
     const BRANCH_CANONICAL = {
       'windhoek cbd': 'townshop', 'windhoek_cbd': 'townshop', 'main': 'townshop',
@@ -2248,7 +2260,8 @@ function BranchStockTab() {
 
       {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
-      {availableBranches.length > 1 && (
+      {/* Admin can switch branches; non-admin users are locked to their assigned branch */}
+      {user?.role === 'admin' && availableBranches.length > 1 && (
         <div className="mb-4 flex items-center gap-3 p-3 rounded-lg" style={{ background: '#f8f9fa', border: '1px solid #e2e8f0' }}>
           <label className="text-sm font-semibold text-gray-600">Branch:</label>
           <select
@@ -2258,7 +2271,7 @@ function BranchStockTab() {
             style={{ borderColor: '#cbd5e1', background: '#fff', minWidth: 180 }}
           >
             {availableBranches.map(b => (
-              <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+              <option key={b} value={b}>{getBranchDisplayName(b) || b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
             ))}
           </select>
         </div>
@@ -3138,7 +3151,7 @@ function BranchStockTab() {
             <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
                 <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>📋 Request Stock from Warehouse</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{user?.branch ? `${user.branch} Branch` : ''} · Select products from catalogue</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : ''} · Select products from catalogue</div>
               </div>
               <button onClick={() => setShowRequestForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
@@ -4191,7 +4204,7 @@ function OnlineOrdersTab() {
       <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>
-            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` — ${user.branch}` : ''}</h3>
+            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` — ${getBranchDisplayName(user.branch)}` : ''}</h3>
             <p className="text-white/75 text-sm mt-1 m-0">Full order details, product breakdown, and payment processing.</p>
           </div>
           <button onClick={loadOrders} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
@@ -5048,7 +5061,7 @@ function FieldProgramTab() {
             <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
                 <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>🚐 Field Program Stock Request</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{user?.branch ? `${user.branch} Branch` : ''} · Distributor verification required</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : ''} · Distributor verification required</div>
               </div>
               <button onClick={() => setShowForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>

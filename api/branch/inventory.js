@@ -162,7 +162,9 @@ async function getInventoryByBranch(branchId, enriched = false) {
         [resolvedId]
       ),
     ]);
-  } catch {}
+  } catch (err) {
+    console.error('[inventory] enrichment query error:', err.message);
+  }
 
   // Build walkin sold map keyed by product_name (covers both camelCase and snake_case item keys)
   const walkinSoldMap = {};
@@ -174,7 +176,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
   // Build aggMap keyed by product_name.
   // SOLD = walkin sales + prescription dispenses (per user definition).
   const aggMap = {};
-  const EMPTY_AGG = () => ({ received: 0, walkin_sold: 0, dispensed: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
+  const EMPTY_AGG = () => ({ received: 0, walkin_sold: 0, dispensed: 0, sold: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
   for (const r of movAgg) {
     const key = (r.product_name || '').trim();
     if (!aggMap[key]) aggMap[key] = EMPTY_AGG();
