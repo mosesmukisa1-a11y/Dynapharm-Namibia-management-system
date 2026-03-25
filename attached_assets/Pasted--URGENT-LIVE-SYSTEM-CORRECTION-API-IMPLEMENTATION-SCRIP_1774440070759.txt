@@ -1,0 +1,637 @@
+
+
+# 🚨 URGENT LIVE SYSTEM CORRECTION — API IMPLEMENTATION SCRIPT
+
+## Dynapharm Namibia System
+
+## ❗IMPORTANT
+
+This is **follow-up correction of already billed work**.
+
+It is **not a new feature request**.
+
+The live system still has serious failures in:
+
+* stock batch/expiry enforcement
+* cross-device version consistency
+* referral distributor search
+* consultant full form/prescription visibility
+* client report choice
+* sample/demo data appearing in live system
+* partial dispensing/history
+* non-member sale logic
+* receipt copy consistency
+* sales reports showing zero
+
+These must now be corrected through proper **APIs, validation rules, and data binding**.
+
+> **No additional billing**
+
+---
+
+# 1. STOCK MUST NOT MOVE WITHOUT BATCH + EXPIRY
+
+## Required APIs
+
+### A. Import stock
+
+```http
+POST /api/stock/import/receive
+```
+
+### Request body
+
+```json
+{
+  "supplierId": "sup_001",
+  "warehouseId": "wh_windhoek",
+  "items": [
+    {
+      "productId": "prod_001",
+      "quantity": 100,
+      "batchNo": "BATCH-001",
+      "expiryDate": "2027-03-31",
+      "unitDP": 300,
+      "unitCIF": 180
+    }
+  ],
+  "receivedBy": "user_001",
+  "notes": "Initial import"
+}
+```
+
+### Validation
+
+* reject if `batchNo` missing
+* reject if `expiryDate` missing
+* reject if quantity <= 0
+
+---
+
+### B. Dispatch stock
+
+```http
+POST /api/stock/dispatch/create
+```
+
+### Request body
+
+```json
+{
+  "sourceWarehouseId": "wh_windhoek",
+  "destinationBranchId": "branch_cbd",
+  "items": [
+    {
+      "productId": "prod_001",
+      "batchNo": "BATCH-001",
+      "expiryDate": "2027-03-31",
+      "quantity": 20
+    }
+  ],
+  "preparedBy": "user_001"
+}
+```
+
+### Validation
+
+* dispatch must fail if batch missing
+* dispatch must fail if expiry missing
+* dispatch must fail if stock for exact batch not available
+
+---
+
+### C. Branch receipt
+
+```http
+POST /api/stock/dispatch/confirm-receipt
+```
+
+### Request body
+
+```json
+{
+  "dispatchNoteId": "disp_001",
+  "branchId": "branch_cbd",
+  "receivedBy": "user_002",
+  "signature": "Naem",
+  "items": [
+    {
+      "productId": "prod_001",
+      "batchNo": "BATCH-001",
+      "expiryDate": "2027-03-31",
+      "qtyReceived": 20,
+      "discrepancyNote": ""
+    }
+  ]
+}
+```
+
+### Required effect
+
+* branch inventory increases by exact batch
+* movement created
+* stock reports update
+* batch/expiry visible everywhere
+
+---
+
+# 2. IOS VERSION IS CORRECT — WINDOWS/ANDROID MUST MATCH
+
+This is mostly UI, but Replit should expose version/build consistency info through API so wrong builds can be detected.
+
+## Required API
+
+### App build info
+
+```http
+GET /api/system/build-info
+```
+
+### Response
+
+```json
+{
+  "appVersion": "2026.03.25.1",
+  "buildHash": "abc123",
+  "environment": "production",
+  "frontendBundleVersion": "web-main-001"
+}
+```
+
+## Required rule
+
+* iOS, Windows, Android must all load the same production data/API layer
+* if device-specific bundle differs, fix deployment/build pipeline
+
+---
+
+# 3. REFERRAL DISTRIBUTOR SEARCH IN FULL BODY CHECK UP
+
+## Required APIs
+
+### A. Search distributors for referral
+
+```http
+GET /api/distributors/search?q=moses&activeOnly=true
+```
+
+### Response
+
+```json
+[
+  {
+    "distributorId": "dist_001",
+    "fullName": "Moses Mukisa",
+    "nbNumber": "NB005676",
+    "branchId": "branch_cbd",
+    "status": "active"
+  }
+]
+```
+
+### B. Get distributor by NB
+
+```http
+GET /api/distributors/by-nb/NB005676
+```
+
+### Response
+
+```json
+{
+  "distributorId": "dist_001",
+  "fullName": "Moses Mukisa",
+  "nbNumber": "NB005676",
+  "branchId": "branch_cbd",
+  "status": "active"
+}
+```
+
+## Required fix
+
+When consultant selects **Non-member**:
+
+* referral search field must appear
+* distributor names must populate
+* consultant can select name + NB
+* referral data must save with consultation
+
+---
+
+# 4. CONSULTANT MUST SEE FULL FORM + FULL PRESCRIPTION
+
+## Required APIs
+
+### A. Get full consultation form
+
+```http
+GET /api/consultations/:consultationId/full
+```
+
+### Response
+
+```json
+{
+  "consultationId": "con_001",
+  "client": {
+    "fullName": "Client A",
+    "phone": "0810000000",
+    "clientType": "non_member",
+    "referralDistributorName": "Moses Mukisa",
+    "referralNb": "NB005676"
+  },
+  "assessment": {
+    "symptoms": "headache",
+    "notes": "full body check findings"
+  },
+  "prescription": [
+    {
+      "productId": "prod_001",
+      "productName": "Noni Juice",
+      "prescribedQty": 2,
+      "dispensedQtyTotal": 1,
+      "remainingQty": 1,
+      "status": "partially_dispensed"
+    }
+  ]
+}
+```
+
+### B. Get printable preview
+
+```http
+GET /api/consultations/:consultationId/preview
+```
+
+### Response
+
+```json
+{
+  "consultation": {},
+  "prescription": [],
+  "reportEligible": true
+}
+```
+
+## Required fix
+
+Consultant page must bind to these full endpoints, not truncated summaries.
+
+---
+
+# 5. CLIENT REPORT CHOICE MUST EXIST
+
+## Required API
+
+### Update report preference
+
+```http
+PATCH /api/consultations/:consultationId/report-preference
+```
+
+### Request body
+
+```json
+{
+  "clientWantsReport": true
+}
+```
+
+### Response
+
+```json
+{
+  "consultationId": "con_001",
+  "clientWantsReport": true
+}
+```
+
+## Required UI effect
+
+Show field:
+
+* Client wants report: Yes / No
+
+And use it to:
+
+* allow print/report generation if yes
+* suppress report generation if no
+
+---
+
+# 6. REMOVE SAMPLE / DEMO DATA FROM LIVE SYSTEM
+
+## Required APIs
+
+### A. Get data source mode
+
+```http
+GET /api/system/data-mode
+```
+
+### Response
+
+```json
+{
+  "mode": "live",
+  "sampleDataEnabled": false
+}
+```
+
+### B. Disable sample/demo data
+
+```http
+POST /api/admin/system/disable-sample-data
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "sampleDataEnabled": false
+}
+```
+
+### C. Purge sample/demo records
+
+```http
+POST /api/admin/system/purge-sample-data
+```
+
+### Request body
+
+```json
+{
+  "confirm": true
+}
+```
+
+## Required rule
+
+Live environment must show only:
+
+* real branches
+* real products
+* real users
+* real stock
+* real sales
+* real consultations
+
+---
+
+# 7. PARTIAL DISPENSING + HISTORY API
+
+## Required APIs
+
+### A. Save partial dispensing
+
+```http
+POST /api/prescriptions/:prescriptionId/dispense
+```
+
+### Request body
+
+```json
+{
+  "branchId": "branch_cbd",
+  "dispensedBy": "user_003",
+  "items": [
+    {
+      "prescriptionItemId": "item_001",
+      "productId": "prod_001",
+      "batchNo": "BATCH-001",
+      "expiryDate": "2027-03-31",
+      "dispenseQty": 1,
+      "unitDP": 300
+    }
+  ],
+  "saveMode": "partial"
+}
+```
+
+### Required effect
+
+* deduct only dispensed qty
+* save history
+* keep remaining qty pending
+* status becomes `partially_dispensed`
+
+---
+
+### B. Get dispensing history
+
+```http
+GET /api/prescriptions/:prescriptionId/dispensing-history
+```
+
+### Response
+
+```json
+[
+  {
+    "dispenseDate": "2026-03-25T12:00:00Z",
+    "productName": "Noni Juice",
+    "batchNo": "BATCH-001",
+    "dispensedQty": 1,
+    "dispensedBy": "user_003",
+    "receiptId": "rcp_001"
+  }
+]
+```
+
+### C. Get prescription status
+
+```http
+GET /api/prescriptions/:prescriptionId/status
+```
+
+### Response
+
+```json
+{
+  "status": "partially_dispensed",
+  "items": [
+    {
+      "productName": "Noni Juice",
+      "prescribedQty": 2,
+      "dispensedQtyTotal": 1,
+      "remainingQty": 1
+    }
+  ]
+}
+```
+
+---
+
+# 8. NON-MEMBER SALE LOGIC API
+
+## Required APIs
+
+### A. Create non-member sale
+
+```http
+POST /api/sales/non-member
+```
+
+### Request body
+
+```json
+{
+  "branchId": "branch_cbd",
+  "customerName": "Client A",
+  "referralDistributorId": "dist_001",
+  "items": [
+    {
+      "productId": "prod_001",
+      "batchNo": "BATCH-001",
+      "expiryDate": "2027-03-31",
+      "quantity": 2,
+      "unitDP": 300
+    }
+  ],
+  "soldBy": "user_002"
+}
+```
+
+### Required effect
+
+* save sale as `non_member_sale`
+* stock reduces correctly
+* referral distributor linked correctly
+* appears in reports correctly
+
+### B. Get sale details
+
+```http
+GET /api/sales/:saleId
+```
+
+---
+
+# 9. BRANCH RECEIPT COPY MUST MATCH DISTRIBUTOR COPY
+
+## Required API
+
+### Receipt render endpoint
+
+```http
+GET /api/receipts/:receiptId/render?copyType=branch
+GET /api/receipts/:receiptId/render?copyType=distributor
+```
+
+## Required rule
+
+Both endpoints must return the same structure and same line items.
+Only `copyLabel` may differ.
+
+### Response example
+
+```json
+{
+  "receiptId": "rcp_001",
+  "copyLabel": "Branch Copy",
+  "branchName": "Windhoek CBD",
+  "items": [
+    {
+      "productName": "Noni Juice",
+      "quantity": 2,
+      "unitPrice": 300,
+      "lineTotal": 600
+    }
+  ],
+  "total": 600,
+  "referralDistributorName": "Moses Mukisa",
+  "referralNb": "NB005676"
+}
+```
+
+---
+
+# 10. SALES REPORT SHOWING ZERO MUST BE FIXED
+
+## Required APIs
+
+### Branch sales report
+
+```http
+GET /api/reports/sales/branch?branchId=branch_cbd&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Company sales report
+
+```http
+GET /api/reports/sales/company?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+```
+
+### Response
+
+```json
+{
+  "consultationFees": 0,
+  "walkinSales": 0,
+  "memberSales": 0,
+  "nonMemberSales": 0,
+  "onlineSales": 0,
+  "prescriptionSales": 0,
+  "totalSales": 0,
+  "totalUnits": 0
+}
+```
+
+## Required rule
+
+Use only completed/posted sales, but once posted they must never stay zero if sales exist.
+
+---
+
+# 11. REQUIRED SHARED SERVICES
+
+Replit must create or fix these services:
+
+* `stockEngine.ts`
+* `salesEngine.ts`
+* `prescriptionDispenseService.ts`
+* `receiptRenderService.ts`
+* `consultationService.ts`
+* `referralSearchService.ts`
+* `reportingEngine.ts`
+* `systemDataModeService.ts`
+
+All portals must read from these, not separate formulas.
+
+---
+
+# 12. REQUIRED RESPONSE FORMAT FROM REPLIT
+
+Reply exactly in this structure:
+
+## APIs Implemented
+
+* list
+
+## Live Issues Fixed
+
+* list
+
+## Still Failing
+
+* list
+
+## Validation Tests Run
+
+* list
+
+## Billing Confirmation
+
+* confirm this is correction of already billed work
+* confirm no additional billing
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Implement these corrections through proper shared APIs. Enforce batch and expiry across the full stock chain, make Windows and Android use the same correct live version as iOS, fix referral distributor search in Full Body Check Up, bind consultant pages to full consultation and prescription records, add client report choice, remove sample/demo data from production, implement real partial dispensing history, fix non-member sale flow, make branch and distributor receipt copies structurally identical, and connect sales reports to completed live branch sales so they stop showing zero. This is correction of already billed work and must be completed at no extra charge.
+
+---
+
