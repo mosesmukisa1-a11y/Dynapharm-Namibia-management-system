@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
+import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType } from './services/stockEngine.js';
 
 function normalizeMovement(row) {
   if (!row) return null;
@@ -140,10 +141,16 @@ export default async function handler(req, res) {
         const expiryDate = body.expiry_date || body.expiryDate || null;
         const srcLoc = body.source_location || body.sourceLocation || null;
         const destLoc = body.destination_location || body.destinationLocation || null;
+        const srcLocType = inferLocationType(srcLoc);
+        const dstLocType = inferLocationType(destLoc);
         await query(
-          `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`,
-          [id, productName, batchNo, expiryDate, qty, movType, srcLoc, destLoc, referenceId, notes, createdBy]
+          `INSERT INTO stock_movements
+             (id, product_name, batch_no, expiry_date, quantity, movement_type,
+              source_location, source_location_type, destination_location, destination_location_type,
+              reference_id, notes, created_by, status, movement_date, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'posted',NOW(),NOW(),NOW())`,
+          [id, productName, batchNo, expiryDate, qty, movType,
+           srcLoc, srcLocType, destLoc, dstLocType, referenceId, notes, createdBy]
         );
         const branchId = srcLoc || destLoc;
         if (branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType)) {
@@ -170,6 +177,14 @@ export default async function handler(req, res) {
           } catch (bimErr) {
             console.error('Branch movement mirror warning:', bimErr.message);
           }
+        }
+        // Recompute inventory_balances for affected locations
+        const locType = srcLocType || dstLocType;
+        const locId = srcLoc || destLoc;
+        if (locType && locId) {
+          recomputeLocationBalances(locType, locId).catch(e =>
+            console.error('[stockEngine] stock-movements recompute error:', e.message)
+          );
         }
         return res.status(201).json({
           success: true,

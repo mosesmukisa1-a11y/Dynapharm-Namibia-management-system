@@ -639,6 +639,200 @@ app.delete('/api/prices/:id', async (req, res) => {
 });
 // ── End Product Price Routes ────────────────────────────────────────────────────
 
+// ─── Centralized Stock Engine Read Endpoints ─────────────────────────────────
+
+app.get('/api/stock/branch/:branchId/card', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const branchId = req.params.branchId;
+    const startDate = req.query.from || new Date(new Date().setDate(1)).toISOString().slice(0, 10);
+    const endDate = req.query.to || new Date().toISOString().slice(0, 10);
+
+    const [balances, movements] = await Promise.all([
+      getMany(
+        `SELECT * FROM inventory_balances WHERE location_type = 'branch' AND location_id = $1`,
+        [branchId]
+      ),
+      getMany(
+        `SELECT movement_type, quantity, source_location, destination_location, product_name
+         FROM stock_movements
+         WHERE status = 'posted'
+           AND created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp
+           AND (source_location = $3 OR destination_location = $3)`,
+        [startDate, endDate, branchId]
+      ),
+    ]);
+
+    const productCount = new Set(balances.filter(b => Number(b.closing_qty) > 0).map(b => b.product_name)).size;
+    const closingStock = balances.reduce((s, b) => s + Number(b.closing_qty || 0), 0);
+    const stockValueDP = balances.reduce((s, b) => s + Number(b.stock_value_dp || 0), 0);
+    const salesUnits = movements
+      .filter(m => ['walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'sale'].includes(m.movement_type) && m.source_location === branchId)
+      .reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const dispensedUnits = movements
+      .filter(m => m.movement_type === 'prescription_dispense' && m.source_location === branchId)
+      .reduce((s, m) => s + Number(m.quantity || 0), 0);
+
+    res.json({ success: true, branchId, productCount, closingStock, stockValueDP, salesUnits, dispensedUnits });
+  } catch (err) {
+    console.error('[stock/branch/card]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const branchId = req.params.branchId;
+    const rows = await getMany(
+      `SELECT *, GREATEST(closing_qty, 0) as available_qty
+       FROM inventory_balances
+       WHERE location_type = 'branch' AND location_id = $1
+       ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+      [branchId]
+    );
+    const fmt = (d) => d ? (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)) : null;
+    const inventory = rows.map(r => ({
+      id: r.id,
+      locationId: r.location_id,
+      productName: r.product_name,
+      batchNo: r.batch_no,
+      expiryDate: fmt(r.expiry_date),
+      openingQty: Number(r.opening_qty || 0),
+      inwardQty: Number(r.inward_qty || 0),
+      outwardQty: Number(r.outward_qty || 0),
+      closingQty: Number(r.closing_qty || 0),
+      availableQty: Number(r.available_qty || 0),
+      unitDP: r.unit_dp ? Number(r.unit_dp) : null,
+      stockValueDP: Number(r.stock_value_dp || 0),
+      lastMovementDate: r.last_movement_date,
+    }));
+    res.json({ success: true, branchId, inventory });
+  } catch (err) {
+    console.error('[stock/branch/inventory]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/stock/branch/:branchId/movements', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const branchId = req.params.branchId;
+    const limit = Math.min(parseInt(req.query.limit || '200'), 1000);
+    const from = req.query.from || null;
+    const to = req.query.to || null;
+
+    const params = [branchId, branchId, limit];
+    let dateFilter = '';
+    if (from) { params.push(from); dateFilter += ` AND created_at >= $${params.length}::date`; }
+    if (to) { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}::timestamp`; }
+
+    const rows = await getMany(
+      `SELECT id, product_name, batch_no, expiry_date, quantity, movement_type,
+              source_location, source_location_type, destination_location, destination_location_type,
+              reference_id, notes, created_by, status, movement_date, created_at
+       FROM stock_movements
+       WHERE status = 'posted'
+         AND (source_location = $1 OR destination_location = $2)
+         ${dateFilter}
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      params
+    );
+
+    const fmt = (d) => d ? (d instanceof Date ? d.toISOString() : String(d)) : null;
+    const movements = rows.map(r => ({
+      id: r.id,
+      productName: r.product_name,
+      batchNo: r.batch_no,
+      expiryDate: fmt(r.expiry_date),
+      quantity: Number(r.quantity || 0),
+      movementType: r.movement_type,
+      sourceLocation: r.source_location,
+      sourceLocationType: r.source_location_type,
+      destinationLocation: r.destination_location,
+      destinationLocationType: r.destination_location_type,
+      referenceId: r.reference_id,
+      notes: r.notes,
+      createdBy: r.created_by,
+      createdAt: fmt(r.created_at),
+    }));
+    res.json({ success: true, branchId, movements });
+  } catch (err) {
+    console.error('[stock/branch/movements]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/stock/warehouse/:warehouseId/inventory', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const warehouseId = req.params.warehouseId;
+    const rows = await getMany(
+      `SELECT * FROM inventory_balances
+       WHERE location_type = 'warehouse' AND location_id = $1
+       ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+      [warehouseId]
+    );
+    const inventory = rows.map(r => ({
+      id: r.id,
+      productName: r.product_name,
+      batchNo: r.batch_no,
+      expiryDate: r.expiry_date ? String(r.expiry_date).slice(0, 10) : null,
+      closingQty: Number(r.closing_qty || 0),
+      inwardQty: Number(r.inward_qty || 0),
+      outwardQty: Number(r.outward_qty || 0),
+      unitDP: r.unit_dp ? Number(r.unit_dp) : null,
+      stockValueDP: Number(r.stock_value_dp || 0),
+    }));
+    res.json({ success: true, warehouseId, inventory });
+  } catch (err) {
+    console.error('[stock/warehouse/inventory]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/stock/country/summary', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const rows = await getMany(
+      `SELECT product_name,
+              SUM(inward_qty) as total_in,
+              SUM(outward_qty) as total_out,
+              SUM(closing_qty) as closing_qty,
+              SUM(stock_value_dp) as stock_value_dp
+       FROM inventory_balances
+       WHERE location_type = 'country'
+       GROUP BY product_name
+       ORDER BY product_name ASC`
+    );
+    const summary = rows.map(r => ({
+      productName: r.product_name,
+      totalIn: Number(r.total_in || 0),
+      totalOut: Number(r.total_out || 0),
+      closingQty: Number(r.closing_qty || 0),
+      stockValueDP: Number(r.stock_value_dp || 0),
+    }));
+    res.json({ success: true, summary });
+  } catch (err) {
+    console.error('[stock/country/summary]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/stock/admin/seed-balances', async (req, res) => {
+  try {
+    const { seedInventoryBalances } = await import('./api/services/stockEngine.js');
+    const result = await seedInventoryBalances();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[stock/admin/seed-balances]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.all('/api/*', async (req, res) => {
   try {
     const handler = await getHandler(req.path);

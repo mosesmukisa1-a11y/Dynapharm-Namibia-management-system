@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
+import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -305,14 +306,22 @@ export default async function handler(req, res) {
               );
               const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
               await client.query(
-                `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'customer', $8, $9, NOW())`,
-                [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale']
+                `INSERT INTO stock_movements
+                   (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                    source_location, source_location_type, destination_location, destination_location_type,
+                    reference_id, notes, status, movement_date, created_at, updated_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',NOW(),NOW(),NOW())`,
+                [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
+                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale']
               );
               remaining -= take;
             }
           }
         });
+        // Recompute inventory_balances for the branch after sale
+        recomputeLocationBalances('branch', branchId).catch(e =>
+          console.error('[stockEngine] walkin-sale recompute error:', e.message)
+        );
       } catch (txErr) {
         console.error('Stock deduction transaction error:', txErr.message);
       }

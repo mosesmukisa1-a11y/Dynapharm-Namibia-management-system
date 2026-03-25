@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
+import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
   const batches = await client.query(
@@ -768,6 +769,22 @@ export default async function handler(req, res) {
             }
           }
         });
+
+        // Recompute inventory_balances for affected locations after status change
+        if (statusChanged) {
+          const srcWarehouse = transfer.from_warehouse;
+          const dstBranch = transfer.to_branch;
+          if (['dispatched', 'approved'].includes(transfer.status) && srcWarehouse) {
+            recomputeLocationBalances('warehouse', srcWarehouse).catch(e =>
+              console.error('[stockEngine] transfer dispatch recompute error:', e.message)
+            );
+          }
+          if (['delivered', 'partially_received', 'received'].includes(transfer.status) && dstBranch) {
+            recomputeLocationBalances('branch', dstBranch).catch(e =>
+              console.error('[stockEngine] transfer receipt recompute error:', e.message)
+            );
+          }
+        }
       }
 
       let dispatchNote = null;

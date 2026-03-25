@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
+import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -62,8 +63,11 @@ export default async function handler(req, res) {
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
             await client.query(
-              `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'patient', $8, $9, NOW())`,
+              `INSERT INTO stock_movements
+                 (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                  source_location, source_location_type, destination_location, destination_location_type,
+                  reference_id, notes, status, movement_date, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','patient',NULL,$8,$9,'posted',NOW(),NOW(),NOW())`,
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, 'Prescription dispense']
             );
 
@@ -80,6 +84,11 @@ export default async function handler(req, res) {
           throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
         }
       });
+
+      // Recompute inventory_balances for the branch after dispense
+      recomputeLocationBalances('branch', branchId).catch(e =>
+        console.error('[stockEngine] dispense recompute error:', e.message)
+      );
 
       return res.status(200).json({ success: true, deductions, message: `Dispensed ${deductions.length} batch(es) successfully` });
     }

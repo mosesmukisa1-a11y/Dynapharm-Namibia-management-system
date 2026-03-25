@@ -1,0 +1,1125 @@
+
+# 🚨 DEVELOPER-GRADE IMPLEMENTATION INSTRUCTION
+
+## REBUILD STOCK MATH ENGINE WITH CENTRALIZED MOVEMENT LOGIC
+
+## Dynapharm Namibia System
+
+## ❗IMPORTANT
+
+This is a **follow-up correction under the original paid stock task**.
+
+It is **not a new feature**.
+
+The current stock problem is architectural:
+
+* stock math is inconsistent
+* screens are using shallow totals
+* branch, warehouse, stock portal, admin, and reports are not reconciling properly
+* prescription dispensing logic is still wrong
+* movement visibility is incomplete
+
+This must now be fixed by implementing **one centralized stock movement engine** and deriving all balances from it.
+
+> **No additional billing**
+>
+> This is correction and completion of the original scope.
+
+---
+
+# 1. REQUIRED ARCHITECTURE
+
+## Source of truth
+
+The source of truth for stock must be:
+
+> **stock_movements**
+
+Not manual totals, not static summaries, not page-specific formulas.
+
+Everything below must come from the same movement engine:
+
+* branch inventory
+* warehouse inventory
+* country stock
+* stock portal branch dashboard
+* admin stock views
+* movement ledgers
+* stock reports
+* company report PDF
+* finance stock basis
+
+---
+
+# 2. REQUIRED DATABASE / DATA MODEL
+
+Implement or normalize the following tables/models.
+
+## A. `stock_movements`
+
+This is the core ledger table.
+
+```ts
+type StockMovement = {
+  id: string;
+  movementDate: Date;
+  movementType:
+    | "supplier_import_receipt"
+    | "warehouse_receipt"
+    | "warehouse_dispatch"
+    | "branch_receipt"
+    | "transfer_out"
+    | "transfer_in"
+    | "walkin_sale"
+    | "walkin_member_sale"
+    | "walkin_non_member_sale"
+    | "online_order_fulfilment"
+    | "prescription_dispense"
+    | "write_off"
+    | "return_out"
+    | "return_in"
+    | "positive_adjustment"
+    | "negative_adjustment";
+
+  sourceLocationType: "country" | "warehouse" | "branch" | "field" | "in_transit" | null;
+  sourceLocationId: string | null;
+
+  destinationLocationType: "country" | "warehouse" | "branch" | "field" | "in_transit" | null;
+  destinationLocationId: string | null;
+
+  productId: string;
+  productName: string;
+  productDescription: string;
+
+  batchNo: string;
+  expiryDate: Date;
+
+  quantity: number;
+
+  unitDP: number;
+  unitCIF?: number | null;
+
+  referenceType:
+    | "import"
+    | "dispatch_note"
+    | "receipt"
+    | "sale"
+    | "prescription"
+    | "transfer"
+    | "write_off"
+    | "return"
+    | "adjustment";
+
+  referenceId: string;
+  status: "posted" | "void" | "pending";
+
+  createdBy: string;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+```
+
+---
+
+## B. `inventory_balances`
+
+This is a derived balance table for fast reads.
+
+Key must be:
+
+> `locationType + locationId + productId + batchNo + expiryDate`
+
+```ts
+type InventoryBalance = {
+  id: string;
+  locationType: "country" | "warehouse" | "branch" | "field" | "in_transit";
+  locationId: string;
+
+  productId: string;
+  productName: string;
+  productDescription: string;
+
+  batchNo: string;
+  expiryDate: Date;
+
+  openingQty: number;
+  inwardQty: number;
+  outwardQty: number;
+  closingQty: number;
+
+  unitDP: number;
+  unitCIF?: number | null;
+
+  stockValueDP: number;
+  stockValueCIF?: number | null;
+
+  lastMovementDate?: Date | null;
+  sourceWarehouseId?: string | null;
+
+  updatedAt: Date;
+};
+```
+
+---
+
+## C. `dispatch_notes`
+
+```ts
+type DispatchNote = {
+  id: string;
+  dispatchNo: string;
+  sourceWarehouseId: string;
+  destinationType: "branch" | "warehouse" | "field";
+  destinationId: string;
+  status: "draft" | "approved" | "dispatched" | "partially_received" | "received" | "cancelled";
+  preparedBy: string;
+  approvedBy?: string | null;
+  dispatchedAt?: Date | null;
+  receivedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+```
+
+## D. `dispatch_note_items`
+
+```ts
+type DispatchNoteItem = {
+  id: string;
+  dispatchNoteId: string;
+  productId: string;
+  productName: string;
+  productDescription: string;
+  batchNo: string;
+  expiryDate: Date;
+  qtyDispatched: number;
+  qtyReceived?: number | null;
+  unitDP: number;
+  unitCIF?: number | null;
+};
+```
+
+---
+
+## E. `prescription_items`
+
+```ts
+type PrescriptionItem = {
+  id: string;
+  prescriptionId: string;
+  productId: string;
+  productName: string;
+  prescribedQty: number;
+  dispensedQtyTotal: number;
+  remainingQty: number;
+  dispensingStatus: "not_dispensed" | "partially_dispensed" | "fully_dispensed";
+  unitDP: number;
+};
+```
+
+---
+
+# 3. CENTRAL STOCK SERVICE — REQUIRED
+
+Create one reusable service.
+
+## Suggested file
+
+```ts
+src/services/stockEngine.ts
+```
+
+## Required methods
+
+```ts
+export async function postStockMovement(input: StockMovementInput): Promise<void>;
+export async function getAvailableStock(params: StockKey): Promise<number>;
+export async function recomputeInventoryBalance(params: StockKey): Promise<void>;
+export async function recomputeLocationSummary(params: LocationSummaryKey): Promise<void>;
+export async function getOpeningStock(params: StockPeriodKey): Promise<number>;
+export async function getMovementTotals(params: StockPeriodKey): Promise<MovementTotals>;
+export async function getClosingStock(params: StockPeriodKey): Promise<number>;
+```
+
+---
+
+# 4. REQUIRED KEY TYPES
+
+```ts
+type StockKey = {
+  locationType: "country" | "warehouse" | "branch" | "field" | "in_transit";
+  locationId: string;
+  productId: string;
+  batchNo: string;
+  expiryDate: string; // ISO
+};
+
+type StockPeriodKey = {
+  locationType: "country" | "warehouse" | "branch" | "field" | "in_transit";
+  locationId: string;
+  productId: string;
+  batchNo: string;
+  expiryDate: string;
+  startDate: string; // ISO
+  endDate: string;   // ISO
+};
+
+type MovementTotals = {
+  inwardQty: number;
+  outwardQty: number;
+};
+
+type LocationSummaryKey = {
+  locationType: "warehouse" | "branch" | "field";
+  locationId: string;
+  startDate?: string;
+  endDate?: string;
+};
+```
+
+---
+
+# 5. REQUIRED CORE POSTING LOGIC
+
+## A. Single posting function
+
+Every stock-affecting workflow must call one posting function.
+
+```ts
+export async function postStockMovement(input: StockMovementInput): Promise<void> {
+  await validateMovement(input);
+
+  await db.stock_movements.create({
+    data: {
+      ...input,
+      status: "posted",
+    },
+  });
+
+  if (input.sourceLocationType && input.sourceLocationId) {
+    await recomputeInventoryBalance({
+      locationType: input.sourceLocationType,
+      locationId: input.sourceLocationId,
+      productId: input.productId,
+      batchNo: input.batchNo,
+      expiryDate: input.expiryDate,
+    });
+  }
+
+  if (input.destinationLocationType && input.destinationLocationId) {
+    await recomputeInventoryBalance({
+      locationType: input.destinationLocationType,
+      locationId: input.destinationLocationId,
+      productId: input.productId,
+      batchNo: input.batchNo,
+      expiryDate: input.expiryDate,
+    });
+  }
+
+  if (input.sourceLocationType && input.sourceLocationId) {
+    await recomputeLocationSummary({
+      locationType: input.sourceLocationType as "warehouse" | "branch" | "field",
+      locationId: input.sourceLocationId,
+    }).catch(() => null);
+  }
+
+  if (input.destinationLocationType && input.destinationLocationId) {
+    await recomputeLocationSummary({
+      locationType: input.destinationLocationType as "warehouse" | "branch" | "field",
+      locationId: input.destinationLocationId,
+    }).catch(() => null);
+  }
+}
+```
+
+---
+
+# 6. REQUIRED BALANCE CALCULATION LOGIC
+
+```ts
+const INWARD_TYPES = new Set([
+  "supplier_import_receipt",
+  "warehouse_receipt",
+  "branch_receipt",
+  "transfer_in",
+  "return_in",
+  "positive_adjustment",
+]);
+
+const OUTWARD_TYPES = new Set([
+  "warehouse_dispatch",
+  "transfer_out",
+  "walkin_sale",
+  "walkin_member_sale",
+  "walkin_non_member_sale",
+  "online_order_fulfilment",
+  "prescription_dispense",
+  "write_off",
+  "return_out",
+  "negative_adjustment",
+]);
+```
+
+```ts
+export async function recomputeInventoryBalance(key: StockKey): Promise<void> {
+  const movements = await db.stock_movements.findMany({
+    where: {
+      status: "posted",
+      productId: key.productId,
+      batchNo: key.batchNo,
+      expiryDate: new Date(key.expiryDate),
+      OR: [
+        {
+          sourceLocationType: key.locationType,
+          sourceLocationId: key.locationId,
+        },
+        {
+          destinationLocationType: key.locationType,
+          destinationLocationId: key.locationId,
+        },
+      ],
+    },
+    orderBy: { movementDate: "asc" },
+  });
+
+  let inwardQty = 0;
+  let outwardQty = 0;
+  let productName = "";
+  let productDescription = "";
+  let unitDP = 0;
+  let unitCIF = 0;
+  let lastMovementDate: Date | null = null;
+
+  for (const m of movements) {
+    productName = m.productName;
+    productDescription = m.productDescription;
+    unitDP = m.unitDP ?? unitDP;
+    unitCIF = m.unitCIF ?? unitCIF;
+    lastMovementDate = m.movementDate;
+
+    const isInboundToLocation =
+      m.destinationLocationType === key.locationType &&
+      m.destinationLocationId === key.locationId &&
+      INWARD_TYPES.has(m.movementType);
+
+    const isOutboundFromLocation =
+      m.sourceLocationType === key.locationType &&
+      m.sourceLocationId === key.locationId &&
+      OUTWARD_TYPES.has(m.movementType);
+
+    if (isInboundToLocation) inwardQty += m.quantity;
+    if (isOutboundFromLocation) outwardQty += m.quantity;
+  }
+
+  const closingQty = inwardQty - outwardQty;
+
+  await db.inventory_balances.upsert({
+    where: {
+      unique_inventory_key: {
+        locationType: key.locationType,
+        locationId: key.locationId,
+        productId: key.productId,
+        batchNo: key.batchNo,
+        expiryDate: new Date(key.expiryDate),
+      },
+    },
+    create: {
+      locationType: key.locationType,
+      locationId: key.locationId,
+      productId: key.productId,
+      productName,
+      productDescription,
+      batchNo: key.batchNo,
+      expiryDate: new Date(key.expiryDate),
+      openingQty: 0,
+      inwardQty,
+      outwardQty,
+      closingQty,
+      unitDP,
+      unitCIF,
+      stockValueDP: closingQty * unitDP,
+      stockValueCIF: closingQty * unitCIF,
+      lastMovementDate,
+    },
+    update: {
+      productName,
+      productDescription,
+      inwardQty,
+      outwardQty,
+      closingQty,
+      unitDP,
+      unitCIF,
+      stockValueDP: closingQty * unitDP,
+      stockValueCIF: closingQty * unitCIF,
+      lastMovementDate,
+    },
+  });
+}
+```
+
+---
+
+# 7. REQUIRED AVAILABLE STOCK VALIDATION
+
+Before any outward movement, validate available stock using exact batch.
+
+```ts
+export async function getAvailableStock(key: StockKey): Promise<number> {
+  const row = await db.inventory_balances.findUnique({
+    where: {
+      unique_inventory_key: {
+        locationType: key.locationType,
+        locationId: key.locationId,
+        productId: key.productId,
+        batchNo: key.batchNo,
+        expiryDate: new Date(key.expiryDate),
+      },
+    },
+  });
+
+  return row?.closingQty ?? 0;
+}
+```
+
+```ts
+async function validateAvailableStockForOutward(input: StockMovementInput) {
+  if (!input.sourceLocationType || !input.sourceLocationId) return;
+
+  const outwardTypes = [
+    "warehouse_dispatch",
+    "transfer_out",
+    "walkin_sale",
+    "walkin_member_sale",
+    "walkin_non_member_sale",
+    "online_order_fulfilment",
+    "prescription_dispense",
+    "write_off",
+    "return_out",
+    "negative_adjustment",
+  ];
+
+  if (!outwardTypes.includes(input.movementType)) return;
+
+  const available = await getAvailableStock({
+    locationType: input.sourceLocationType,
+    locationId: input.sourceLocationId,
+    productId: input.productId,
+    batchNo: input.batchNo,
+    expiryDate: input.expiryDate,
+  });
+
+  if (available < input.quantity) {
+    throw new Error(
+      `Insufficient stock for ${input.productName}. Available: ${available}, Requested: ${input.quantity}`
+    );
+  }
+}
+```
+
+---
+
+# 8. REQUIRED VALIDATION RULES
+
+```ts
+async function validateMovement(input: StockMovementInput) {
+  if (!input.productId) throw new Error("Missing productId");
+  if (!input.batchNo) throw new Error("Batch number is required");
+  if (!input.expiryDate) throw new Error("Expiry date is required");
+  if (!input.quantity || input.quantity <= 0) throw new Error("Quantity must be greater than zero");
+  if (!input.unitDP || input.unitDP < 0) throw new Error("DP unit price is required");
+
+  await validateAvailableStockForOutward(input);
+}
+```
+
+---
+
+# 9. REQUIRED WORKFLOW CODE HOOKS
+
+## A. Supplier Import → Warehouse Receipt
+
+On supplier import approval/receipt:
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "supplier_import_receipt",
+  sourceLocationType: "country",
+  sourceLocationId: "external_supplier_source",
+  destinationLocationType: "warehouse",
+  destinationLocationId: receivingWarehouseId,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity,
+  unitDP,
+  unitCIF,
+  referenceType: "import",
+  referenceId: importId,
+  createdBy: userId,
+  notes: "Initial supplier import received",
+});
+```
+
+---
+
+## B. Warehouse Dispatch
+
+Dispatch reduces warehouse and creates in-transit.
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "warehouse_dispatch",
+  sourceLocationType: "warehouse",
+  sourceLocationId: warehouseId,
+  destinationLocationType: "in_transit",
+  destinationLocationId: dispatchNoteId,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity: qtyDispatched,
+  unitDP,
+  unitCIF,
+  referenceType: "dispatch_note",
+  referenceId: dispatchNoteId,
+  createdBy: userId,
+  notes: "Warehouse dispatched stock to branch",
+});
+```
+
+### Important
+
+Do **not** add this quantity to branch stock yet.
+
+---
+
+## C. Branch Receipt
+
+Only on receipt confirmation:
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "branch_receipt",
+  sourceLocationType: "in_transit",
+  sourceLocationId: dispatchNoteId,
+  destinationLocationType: "branch",
+  destinationLocationId: branchId,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity: qtyReceived,
+  unitDP,
+  unitCIF,
+  referenceType: "receipt",
+  referenceId: receiptId,
+  createdBy: userId,
+  notes: "Branch confirmed receipt",
+});
+```
+
+---
+
+## D. Walk-in Sale
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: customerType === "member" ? "walkin_member_sale" : "walkin_non_member_sale",
+  sourceLocationType: "branch",
+  sourceLocationId: branchId,
+  destinationLocationType: null,
+  destinationLocationId: null,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity: soldQty,
+  unitDP,
+  referenceType: "sale",
+  referenceId: saleId,
+  createdBy: userId,
+  notes: `Walk-in sale: ${customerType}`,
+});
+```
+
+---
+
+## E. Online Order Fulfilment
+
+Do **not** deduct stock when order is created.
+
+Deduct only when branch actually fulfills the order:
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "online_order_fulfilment",
+  sourceLocationType: "branch",
+  sourceLocationId: fulfillingBranchId,
+  destinationLocationType: null,
+  destinationLocationId: null,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity: fulfilledQty,
+  unitDP,
+  referenceType: "sale",
+  referenceId: onlineOrderId,
+  createdBy: userId,
+  notes: "Online order fulfilled by branch",
+});
+```
+
+---
+
+# 10. STRICT PRESCRIPTION DISPENSING CODE
+
+This part must be corrected fully.
+
+## A. Update prescription item quantities
+
+```ts
+async function dispensePrescriptionItem(params: {
+  prescriptionId: string;
+  prescriptionItemId: string;
+  branchId: string;
+  batchNo: string;
+  expiryDate: string;
+  dispenseQty: number;
+  unitDP: number;
+  userId: string;
+  receiptId: string;
+}) {
+  const item = await db.prescription_items.findUniqueOrThrow({
+    where: { id: params.prescriptionItemId },
+  });
+
+  const newDispensedTotal = item.dispensedQtyTotal + params.dispenseQty;
+
+  if (newDispensedTotal > item.prescribedQty) {
+    throw new Error("Cannot dispense more than prescribed quantity");
+  }
+
+  const remainingQty = item.prescribedQty - newDispensedTotal;
+
+  let dispensingStatus: "not_dispensed" | "partially_dispensed" | "fully_dispensed" = "not_dispensed";
+  if (newDispensedTotal === 0) dispensingStatus = "not_dispensed";
+  else if (remainingQty === 0) dispensingStatus = "fully_dispensed";
+  else dispensingStatus = "partially_dispensed";
+
+  await postStockMovement({
+    movementDate: new Date(),
+    movementType: "prescription_dispense",
+    sourceLocationType: "branch",
+    sourceLocationId: params.branchId,
+    destinationLocationType: null,
+    destinationLocationId: null,
+    productId: item.productId,
+    productName: item.productName,
+    productDescription: item.productName,
+    batchNo: params.batchNo,
+    expiryDate: params.expiryDate,
+    quantity: params.dispenseQty,
+    unitDP: params.unitDP,
+    referenceType: "prescription",
+    referenceId: params.prescriptionId,
+    createdBy: params.userId,
+    notes: "Prescription dispensed",
+  });
+
+  await db.prescription_items.update({
+    where: { id: item.id },
+    data: {
+      dispensedQtyTotal: newDispensedTotal,
+      remainingQty,
+      dispensingStatus,
+    },
+  });
+}
+```
+
+---
+
+## B. Receipt must show only dispensed items
+
+When generating prescription receipt:
+
+```ts
+const dispensedItems = await db.prescription_items.findMany({
+  where: {
+    prescriptionId,
+    dispensedQtyTotal: { gt: 0 },
+  },
+});
+```
+
+Display only:
+
+* items with dispensedQtyTotal > 0
+* the quantity actually dispensed in that transaction or cumulatively, depending on receipt type
+
+Do **not** print non-dispensed items.
+
+---
+
+# 11. STRICT WRITE-OFF CODE
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "write_off",
+  sourceLocationType: currentLocationType,
+  sourceLocationId: currentLocationId,
+  destinationLocationType: null,
+  destinationLocationId: null,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity: writeOffQty,
+  unitDP,
+  unitCIF,
+  referenceType: "write_off",
+  referenceId: writeOffId,
+  createdBy: userId,
+  notes: writeOffReason,
+});
+```
+
+---
+
+# 12. STRICT TRANSFER CODE
+
+## Transfer out:
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "transfer_out",
+  sourceLocationType: sourceType,
+  sourceLocationId: sourceId,
+  destinationLocationType: "in_transit",
+  destinationLocationId: transferId,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity,
+  unitDP,
+  unitCIF,
+  referenceType: "transfer",
+  referenceId: transferId,
+  createdBy: userId,
+  notes: "Transfer out",
+});
+```
+
+## Transfer in after confirmation:
+
+```ts
+await postStockMovement({
+  movementDate: new Date(),
+  movementType: "transfer_in",
+  sourceLocationType: "in_transit",
+  sourceLocationId: transferId,
+  destinationLocationType: destinationType,
+  destinationLocationId: destinationId,
+  productId,
+  productName,
+  productDescription,
+  batchNo,
+  expiryDate,
+  quantity,
+  unitDP,
+  unitCIF,
+  referenceType: "transfer",
+  referenceId: transferId,
+  createdBy: userId,
+  notes: "Transfer received",
+});
+```
+
+---
+
+# 13. REQUIRED BRANCH STOCK SUMMARY QUERY
+
+Branch dashboard at `/stock` must read from movement-derived balances.
+
+## Suggested logic
+
+```ts
+async function getBranchStockCard(branchId: string, startDate: Date, endDate: Date) {
+  const balances = await db.inventory_balances.findMany({
+    where: {
+      locationType: "branch",
+      locationId: branchId,
+      closingQty: { gt: 0 },
+    },
+  });
+
+  const movements = await db.stock_movements.findMany({
+    where: {
+      status: "posted",
+      OR: [
+        { sourceLocationType: "branch", sourceLocationId: branchId },
+        { destinationLocationType: "branch", destinationLocationId: branchId },
+      ],
+      movementDate: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+  });
+
+  const productCount = balances.filter(b => b.closingQty > 0).length;
+  const closingStock = balances.reduce((sum, b) => sum + b.closingQty, 0);
+  const stockValueDP = balances.reduce((sum, b) => sum + b.stockValueDP, 0);
+
+  const salesUnits = movements
+    .filter(m =>
+      ["walkin_sale", "walkin_member_sale", "walkin_non_member_sale", "online_order_fulfilment"].includes(m.movementType) &&
+      m.sourceLocationType === "branch" &&
+      m.sourceLocationId === branchId
+    )
+    .reduce((sum, m) => sum + m.quantity, 0);
+
+  const dispensedUnits = movements
+    .filter(m =>
+      m.movementType === "prescription_dispense" &&
+      m.sourceLocationType === "branch" &&
+      m.sourceLocationId === branchId
+    )
+    .reduce((sum, m) => sum + m.quantity, 0);
+
+  return {
+    productCount,
+    closingStock,
+    stockValueDP,
+    salesUnits,
+    dispensedUnits,
+  };
+}
+```
+
+---
+
+# 14. REQUIRED PERIOD STOCK MATH
+
+Opening stock must not be guessed.
+
+```ts
+async function getOpeningStock(params: StockPeriodKey): Promise<number> {
+  const allBefore = await db.stock_movements.findMany({
+    where: {
+      productId: params.productId,
+      batchNo: params.batchNo,
+      expiryDate: new Date(params.expiryDate),
+      movementDate: { lt: new Date(params.startDate) },
+      status: "posted",
+      OR: [
+        {
+          sourceLocationType: params.locationType,
+          sourceLocationId: params.locationId,
+        },
+        {
+          destinationLocationType: params.locationType,
+          destinationLocationId: params.locationId,
+        },
+      ],
+    },
+  });
+
+  let inward = 0;
+  let outward = 0;
+
+  for (const m of allBefore) {
+    const inbound =
+      m.destinationLocationType === params.locationType &&
+      m.destinationLocationId === params.locationId &&
+      INWARD_TYPES.has(m.movementType);
+
+    const outbound =
+      m.sourceLocationType === params.locationType &&
+      m.sourceLocationId === params.locationId &&
+      OUTWARD_TYPES.has(m.movementType);
+
+    if (inbound) inward += m.quantity;
+    if (outbound) outward += m.quantity;
+  }
+
+  return inward - outward;
+}
+```
+
+---
+
+# 15. REQUIRED API ENDPOINTS
+
+Implement or correct these endpoints so all pages use the same engine.
+
+## Write endpoints
+
+```ts
+POST /api/stock/import/receive
+POST /api/stock/dispatch/create
+POST /api/stock/dispatch/confirm
+POST /api/stock/branch/sale
+POST /api/stock/prescription/dispense
+POST /api/stock/transfer/create
+POST /api/stock/transfer/confirm
+POST /api/stock/writeoff
+POST /api/stock/return/create
+POST /api/stock/return/confirm
+```
+
+## Read endpoints
+
+```ts
+GET /api/stock/branch/:branchId/card
+GET /api/stock/branch/:branchId/inventory
+GET /api/stock/branch/:branchId/movements
+GET /api/stock/warehouse/:warehouseId/inventory
+GET /api/stock/country/summary
+GET /api/stock/reports/branch
+GET /api/stock/reports/company
+```
+
+All of them must use:
+
+* `stock_movements`
+* `inventory_balances`
+* one shared stock engine
+
+---
+
+# 16. REQUIRED UI BINDING RULES
+
+Replit must also fix all blank fields by binding to the correct data.
+
+## If batch/expiry is captured at source:
+
+it must show in:
+
+* inventory
+* movement ledger
+* stock portal
+* transfers
+* receive stock
+* reports
+* alerts
+
+## If stock exists:
+
+branch cards must not show:
+
+* 0 products
+* 0 closing stock
+* N$0 value
+
+If they do, the read model is broken and must be fixed.
+
+---
+
+# 17. REQUIRED TESTS BEFORE CLAIMING DONE
+
+Replit must test and confirm all of these with real data:
+
+## Test 1 — Import receipt
+
+* import stock into warehouse with batch and expiry
+* confirm warehouse inventory increases
+* confirm country stock increases
+* confirm stock value updates
+
+## Test 2 — Warehouse dispatch
+
+* dispatch to branch
+* confirm warehouse decreases
+* confirm in-transit exists
+* confirm branch does not increase yet
+
+## Test 3 — Branch receipt
+
+* confirm receipt
+* confirm branch increases
+* confirm in-transit clears
+* confirm batch preserved
+
+## Test 4 — Branch walk-in sale
+
+* complete sale
+* confirm branch stock reduces
+* confirm movement visible
+* confirm stock portal updates
+
+## Test 5 — Partial prescription dispense
+
+* prescribe multiple items
+* dispense some only
+* confirm only dispensed items deducted
+* confirm remaining pending
+* confirm receipt only shows dispensed items
+
+## Test 6 — Write-off
+
+* write off one batch
+* confirm branch/warehouse stock reduces
+* confirm movement visible
+* confirm reports update
+
+## Test 7 — Transfer
+
+* transfer between branches
+* confirm source reduces
+* confirm destination increases only after confirmation
+* confirm movement on both sides
+
+---
+
+# 18. REQUIRED RESPONSE FORMAT
+
+Reply exactly in this structure:
+
+## Implemented
+
+* exact services, models, and endpoints fixed
+
+## Corrected
+
+* exact workflows corrected
+
+## Tests Passed
+
+* exact real tests completed
+
+## Remaining Issues
+
+* exact unresolved items
+
+## Billing Confirmation
+
+* confirm this is follow-up correction under the original paid task
+* confirm no additional billing
+
+---
+
+# FINAL INSTRUCTION TO REPLIT
+
+Stop using page-specific stock calculations. Implement one centralized stock movement engine and one centralized balance model. Every stock-affecting event must write a movement record first, and all balances must be derived per location, product, batch, and expiry. Dispatch must create in-transit state, receipt must complete destination increase, sales must deduct only once, prescription must deduct only actually dispensed items, and all stock portal, admin, branch, warehouse, and report screens must read from the same movement-driven source. Fix all blank, zero, and mismatched fields by binding them to the correct live data. This is a correction of the original paid stock work and must be completed at no extra fee.
+
+---
+
