@@ -76,6 +76,7 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/branch-client-visits',
   '/api/reports/branch-sales',
   '/api/jobs/',
+  '/api/hr/',
 ];
 
 function isPublicRoute(routePath) {

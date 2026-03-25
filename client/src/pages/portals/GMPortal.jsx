@@ -499,7 +499,7 @@ function ApprovalsTab() {
     setLoading(true);
     Promise.all([
       api.branch.cashMovements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-      api.get('/employees/leaves').then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
+      api.get('/hr/leaves?status=pending').then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
       api.stock.requests().then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
       api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
     ]).then(([cash, leaves, stock, transfers]) => {
@@ -519,7 +519,7 @@ function ApprovalsTab() {
         await api.put(`/branch/cash-movements/${id}`, { status: action, notes: note });
         setCashRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'leave') {
-        await api.put(`/employees/leaves/${id}`, { status: action, notes: note });
+        await api.hr.updateLeave(id, { status: action, approved_by: user?.full_name || user?.username || 'GM' });
         setLeaveRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'stock') {
         await api.put(`/stock-requests/${id}`, { status: action, notes: note });

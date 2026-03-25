@@ -153,39 +153,57 @@ function LeaveTab() {
   const [form, setForm] = useState({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.leaves().then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
+    ]).then(([emps, lvs]) => {
+      setEmployees(emps);
+      setLeaves(lvs);
+    }).finally(() => setLoading(false));
+  };
 
-  const handleSubmit = (e) => {
+  useEffect(() => { loadData(); }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.employee_name || !form.start_date || !form.end_date) {
       setError('Employee, start date, and end date are required');
       return;
     }
     setError('');
-    const leave = {
-      ...form,
-      id: Date.now(),
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-    setLeaves(prev => [leave, ...prev]);
-    setSuccess('Leave request submitted');
-    setForm({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-    setTimeout(() => setSuccess(''), 3000);
+    setSubmitting(true);
+    try {
+      await api.hr.createLeave(form);
+      setSuccess('Leave request submitted');
+      setForm({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to submit leave request');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleApprove = (id) => {
-    setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'approved' } : l));
+  const handleApprove = async (id) => {
+    try {
+      await api.hr.updateLeave(id, { status: 'approved' });
+      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'approved' } : l));
+    } catch (err) {
+      setError(err.message || 'Failed to approve leave');
+    }
   };
 
-  const handleReject = (id) => {
-    setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'rejected' } : l));
+  const handleReject = async (id) => {
+    try {
+      await api.hr.updateLeave(id, { status: 'rejected' });
+      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'rejected' } : l));
+    } catch (err) {
+      setError(err.message || 'Failed to reject leave');
+    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -264,31 +282,39 @@ function WarningsTab() {
   const [form, setForm] = useState({ employee_name: '', warning_type: 'Verbal', reason: '', date: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('warning').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => {
+      setEmployees(emps);
+      setWarnings(recs);
+    }).finally(() => setLoading(false));
+  };
 
-  const handleSubmit = (e) => {
+  useEffect(() => { loadData(); }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.employee_name || !form.reason) {
       setError('Employee and reason are required');
       return;
     }
     setError('');
-    const warning = {
-      ...form,
-      id: Date.now(),
-      date: form.date || new Date().toISOString().slice(0, 10),
-      created_at: new Date().toISOString(),
-    };
-    setWarnings(prev => [warning, ...prev]);
-    setSuccess('Warning issued successfully');
-    setForm({ employee_name: '', warning_type: 'Verbal', reason: '', date: '' });
-    setTimeout(() => setSuccess(''), 3000);
+    setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'warning', subtype: form.warning_type, employee_name: form.employee_name, reason: form.reason, date: form.date || new Date().toISOString().slice(0, 10) });
+      setSuccess('Warning issued successfully');
+      setForm({ employee_name: '', warning_type: 'Verbal', reason: '', date: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to issue warning');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -336,9 +362,10 @@ function WarningsTab() {
         <Table
           columns={[
             { header: 'Employee', key: 'employee_name' },
-            { header: 'Type', render: r => (
-              <Badge variant={r.warning_type === 'Final' ? 'danger' : r.warning_type === 'Written' ? 'warning' : 'info'}>{r.warning_type}</Badge>
-            )},
+            { header: 'Type', render: r => {
+              const wt = r.subtype || r.warning_type || 'Verbal';
+              return <Badge variant={wt === 'Final' ? 'danger' : wt === 'Written' ? 'warning' : 'info'}>{wt}</Badge>;
+            }},
             { header: 'Reason', key: 'reason' },
             { header: 'Date', render: r => formatDate(r.date) },
           ]}
@@ -357,13 +384,19 @@ function TerminationsTab() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [terminations, setTerminations] = useState([]);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('termination').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => {
+      setEmployees(emps);
+      setTerminations(recs);
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -375,16 +408,19 @@ function TerminationsTab() {
     setShowConfirm(true);
   };
 
-  const confirmTermination = () => {
-    const termination = {
-      ...form,
-      id: Date.now(),
-      severance: form.severance ? Number(form.severance) : 0,
-      created_at: new Date().toISOString(),
-    };
-    setTerminations(prev => [termination, ...prev]);
-    setShowConfirm(false);
-    setForm({ employee_name: '', reason: '', effective_date: '', severance: '' });
+  const confirmTermination = async () => {
+    setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'termination', employee_name: form.employee_name, reason: form.reason, effective_date: form.effective_date, severance: form.severance ? Number(form.severance) : 0 });
+      setShowConfirm(false);
+      setForm({ employee_name: '', reason: '', effective_date: '', severance: '' });
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to process termination');
+      setShowConfirm(false);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -455,23 +491,37 @@ function AttendanceTab() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '', status: 'Present' });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('attendance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => {
+      setEmployees(emps);
+      setRecords(recs);
+    }).finally(() => setLoading(false));
+  };
 
-  const handleSubmit = (e) => {
+  useEffect(() => { loadData(); }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.employee_name || !form.date) {
       setError('Employee and date are required');
       return;
     }
     setError('');
-    setRecords(prev => [{ ...form, id: Date.now() }, ...prev]);
-    setForm({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '', status: 'Present' });
+    setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'attendance', employee_name: form.employee_name, date: form.date, clock_in: form.clock_in, clock_out: form.clock_out, subtype: form.status });
+      setForm({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '', status: 'Present' });
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to log attendance');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -520,9 +570,10 @@ function AttendanceTab() {
             { header: 'Date', render: r => formatDate(r.date) },
             { header: 'Clock In', key: 'clock_in' },
             { header: 'Clock Out', key: 'clock_out' },
-            { header: 'Status', render: r => (
-              <Badge variant={r.status === 'Present' ? 'success' : r.status === 'Late' ? 'warning' : 'danger'}>{r.status}</Badge>
-            )},
+            { header: 'Status', render: r => {
+              const s = r.subtype || r.status || 'Present';
+              return <Badge variant={s === 'Present' ? 'success' : s === 'Late' ? 'warning' : 'danger'}>{s}</Badge>;
+            }},
           ]}
           data={records}
           emptyMessage="No attendance records"
@@ -539,31 +590,39 @@ function PerformanceTab() {
   const [form, setForm] = useState({ employee_name: '', rating: '3', strengths: '', improvements: '', goals: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('performance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => {
+      setEmployees(emps);
+      setReviews(recs);
+    }).finally(() => setLoading(false));
+  };
 
-  const handleSubmit = (e) => {
+  useEffect(() => { loadData(); }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.employee_name) {
       setError('Employee is required');
       return;
     }
     setError('');
-    const review = {
-      ...form,
-      id: Date.now(),
-      rating: Number(form.rating),
-      created_at: new Date().toISOString(),
-    };
-    setReviews(prev => [review, ...prev]);
-    setSuccess('Performance review saved');
-    setForm({ employee_name: '', rating: '3', strengths: '', improvements: '', goals: '' });
-    setTimeout(() => setSuccess(''), 3000);
+    setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'performance', employee_name: form.employee_name, rating: Number(form.rating), strengths: form.strengths, improvements: form.improvements, goals: form.goals });
+      setSuccess('Performance review saved');
+      setForm({ employee_name: '', rating: '3', strengths: '', improvements: '', goals: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to save review');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;

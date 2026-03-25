@@ -225,8 +225,10 @@ function RemittanceTab() {
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
       api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
-    ]).then(([sales, deposits, orders]) => {
+      api.finance.remittances().then(d => Array.isArray(d) ? d : d.remittances || []).catch(() => []),
+    ]).then(([sales, deposits, orders, remittanceHistory]) => {
       setData({ sales, deposits, orders });
+      setRemittances(remittanceHistory);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -250,7 +252,7 @@ function RemittanceTab() {
   const totalRemitted = remittances.reduce((sum, r) => sum + Number(r.amount || 0), 0);
   const remittanceDue = Math.max(0, totalCIFCost - totalDeposits - totalRemitted);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.amount || Number(form.amount) <= 0) {
       setMessage('Error: Please enter a valid amount.');
@@ -260,33 +262,39 @@ function RemittanceTab() {
       setMessage('Error: Please enter a payment reference.');
       return;
     }
-    const newRemittance = {
-      id: Date.now(),
-      amount: Number(form.amount),
-      reference: form.reference,
-      date: form.date,
-      notes: form.notes,
-      status: 'completed',
-      created_at: new Date().toISOString(),
-    };
-    setRemittances(prev => [newRemittance, ...prev]);
-    setForm({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
-    setShowForm(false);
-    setMessage('Remittance recorded successfully! Status updated.');
+    try {
+      const saved = await api.finance.createRemittance({
+        amount: Number(form.amount),
+        reference: form.reference,
+        date: form.date,
+        notes: form.notes,
+        status: 'completed',
+      });
+      const newRemittance = saved.remittance || { id: Date.now(), amount: Number(form.amount), reference: form.reference, payment_date: form.date, notes: form.notes, status: 'completed', created_at: new Date().toISOString() };
+      setRemittances(prev => [newRemittance, ...prev]);
+      setForm({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+      setShowForm(false);
+      setMessage('Remittance recorded successfully! Status updated.');
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Failed to save remittance'));
+    }
   };
 
-  const markNoRemittanceDue = () => {
-    const entry = {
-      id: Date.now(),
-      amount: 0,
-      reference: 'STATUS-UPDATE',
-      date: new Date().toISOString().slice(0, 10),
-      notes: 'Status updated: No remittance due',
-      status: 'no_remittance_due',
-      created_at: new Date().toISOString(),
-    };
-    setRemittances(prev => [entry, ...prev]);
-    setMessage('Remittance status updated to: No Remittance Due');
+  const markNoRemittanceDue = async () => {
+    try {
+      const saved = await api.finance.createRemittance({
+        amount: 0,
+        reference: 'STATUS-UPDATE',
+        date: new Date().toISOString().slice(0, 10),
+        notes: 'Status updated: No remittance due',
+        status: 'no_remittance_due',
+      });
+      const entry = saved.remittance || { id: Date.now(), amount: 0, reference: 'STATUS-UPDATE', payment_date: new Date().toISOString().slice(0, 10), notes: 'Status updated: No remittance due', status: 'no_remittance_due', created_at: new Date().toISOString() };
+      setRemittances(prev => [entry, ...prev]);
+      setMessage('Remittance status updated to: No Remittance Due');
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Failed to update status'));
+    }
   };
 
   return (
@@ -337,7 +345,7 @@ function RemittanceTab() {
         </CardHeader>
         <Table
           columns={[
-            { header: 'Date', render: r => formatDate(r.date) },
+            { header: 'Date', render: r => formatDate(r.payment_date || r.date) },
             { header: 'Amount', render: r => r.amount > 0 ? <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> : '-' },
             { header: 'Reference', key: 'reference' },
             { header: 'Status', render: r => (

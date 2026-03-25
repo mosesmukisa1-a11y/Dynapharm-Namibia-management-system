@@ -235,6 +235,16 @@ export const api = {
     branchesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/branches/summary${qs ? '?' + qs : ''}`); },
     stockValue: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/reports/stock-value${qs ? '?' + qs : ''}`); },
     writeoffs: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/reports/writeoffs${qs ? '?' + qs : ''}`); },
+    remittances: () => api.get('/finance/remittances'),
+    createRemittance: (data) => api.post('/finance/remittances', data),
+  },
+
+  hr: {
+    leaves: (params = '') => api.get(`/hr/leaves${params ? '?' + params : ''}`),
+    createLeave: (data) => api.post('/hr/leaves', data),
+    updateLeave: (id, data) => api.put(`/hr/leaves?id=${id}`, data),
+    records: (type) => api.get(`/hr/records${type ? '?type=' + type : ''}`),
+    createRecord: (data) => api.post('/hr/records', data),
   },
 
   director: {

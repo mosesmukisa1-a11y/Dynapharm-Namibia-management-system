@@ -47,7 +47,25 @@ The backend is an Express.js server providing API services. It features file-bas
 - **Database Startup Migration**: Normalizes branch ID aliases and auto-seeds `inventory_balances` if empty on server boot.
 
 ### Database
-A PostgreSQL database with 40 fully migrated tables, pre-seeded with key data and a super admin user.
+A PostgreSQL database with 42 fully migrated tables, pre-seeded with key data and a super admin user. New tables added: `finance_remittances` (remittance payments to suppliers) and `hr_records` (HR operational records for warnings, terminations, attendance, performance) and `hr_leave_requests` (employee leave requests with approval workflow).
+
+### Finance Portal Backend
+- **Remittance Tab**: Fully wired to `api/finance/remittances.js` and `finance_remittances` DB table. Records and lists supplier remittance payments with amount, reference, date, and status.
+- **Finance API**: `api.finance.remittances()` and `api.finance.createRemittance()` added to client `api.js`.
+
+### HR Portal Backend
+- **All tabs wired to live backend**: Leave, Warnings, Terminations, Attendance, Performance all use real API calls.
+- **Leave API** (`api/hr/leaves.js`): GET/POST/PUT `/api/hr/leaves` — supports listing, submitting, and approving leave requests.
+- **Records API** (`api/hr/records.js`): GET/POST `/api/hr/records?type=...` — supports warnings (subtype: Verbal/Written/Final), terminations, attendance (subtype: Present/Late/Absent/On Leave), performance reviews.
+- **HR API client**: `api.hr.leaves()`, `api.hr.submitLeave()`, `api.hr.updateLeave()`, `api.hr.records()`, `api.hr.createRecord()` added to client `api.js`.
+
+### GM Portal Fixes
+- **Leave approval** calls `PUT /api/hr/leaves?id={id}` (fixed from `/employees/leaves/{id}`)
+- **Transfer approvals** query `GET /api/stock/transfers?status=pending_approval`
+
+### Country Stock → Warehouse Dispatch
+- Transfers now use `status: 'pending_approval'` so they appear in GM approval queue
+- Transfer `from_warehouse='country_stock'`, `to_branch=warehouse_key` (e.g. 'windhoek_warehouse')
 
 ### Authentication
 Authentication is optional, allowing all portals to be accessible without login. JWT tokens stored in httpOnly cookies provide user identity. Staff and distributor registrations require admin approval.

@@ -2372,10 +2372,10 @@ function DistributionTab({ branch }) {
         from_location: 'country_stock',
         to_location: destination,
         items,
-        status: 'submitted',
+        status: 'pending_approval',
         dispatchNotes: transferNote || undefined,
       });
-      setAlert({ type: 'success', msg: `Distribution of ${cart.length} product(s) to ${fmtLocation(destination)} submitted successfully` });
+      setAlert({ type: 'success', msg: `Distribution of ${cart.length} product(s) to ${fmtLocation(destination)} submitted for GM approval` });
       setCart([]);
       setDestination('');
       setTransferNote('');
