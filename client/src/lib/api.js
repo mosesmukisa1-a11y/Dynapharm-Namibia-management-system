@@ -180,10 +180,20 @@ export const api = {
     stockSummary: (params = '') => api.get(`/branch/stock-summary${params ? '?' + params : ''}`),
   },
 
+  branchActivity: {
+    capture: (data) => api.post('/branch-activity/capture', data),
+    list: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch-activity/capture${qs ? '?' + qs : ''}`); },
+    dailyReport: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily${qs ? '?' + qs : ''}`); },
+    checkin: (data) => api.post('/branch-client-visits/checkin', data),
+    visits: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch-client-visits/checkin${qs ? '?' + qs : ''}`); },
+    rebuildReport: (data) => api.post('/jobs/rebuild-daily-branch-report', data),
+  },
+
   reports: {
     list: () => api.get('/reports'),
     create: (data) => api.post('/reports', data),
     update: (id, data) => api.put('/reports', { ...data, id }),
+    branchSalesDaily: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily${qs ? '?' + qs : ''}`); },
   },
 
   admin: {

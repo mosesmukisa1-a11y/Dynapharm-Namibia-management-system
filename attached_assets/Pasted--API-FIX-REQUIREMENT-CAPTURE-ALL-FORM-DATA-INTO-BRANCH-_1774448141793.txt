@@ -1,0 +1,605 @@
+
+---
+
+# API FIX REQUIREMENT — CAPTURE ALL FORM DATA INTO BRANCH SALES + RELEVANT PORTALS
+
+## Main problem to fix
+
+Clients are physically attending the branch today, but the daily report still shows **0** for sections that should contain activity.
+
+This means:
+
+* the form is being filled
+* the client exists in branch activity
+* but the transaction is **not being mapped into the reporting engine**
+* or the record is saved without a **sale category / branch / workflow status**
+* or consultation/prescription records are saved separately and never posted into branch sales summary tables
+
+The system must stop treating these records as isolated forms.
+
+Every submitted branch-facing form must create a **real transactional record** that updates:
+
+* Branch Sales
+* Branch Dashboard
+* GM Portal
+* MIS Portal
+* Director Portal
+* Finance Portal where relevant
+* Stock deduction flow where relevant
+* Consultation / Prescription logs where relevant
+
+The report must only show **0** when there was truly no client activity at that branch on that date.
+
+The current report confirms that totals are being generated, but category-level capture is incomplete. 
+
+---
+
+# Required API design
+
+## 1) Single source of truth
+
+Create one central transactional table / collection:
+
+## `branch_activity_transactions`
+
+Each form or action must post into this structure.
+
+### Required fields
+
+```json
+{
+  "id": "uuid",
+  "branch_id": "string",
+  "branch_name": "string",
+  "client_id": "string|null",
+  "client_name": "string",
+  "client_phone": "string|null",
+  "client_type": "member|non_member|walk_in|online|referral",
+  "nb_number": "string|null",
+  "referral_nb": "string|null",
+  "service_date": "2026-03-25",
+  "service_time": "15:50:00",
+  "activity_type": "consultation|full_body_checkup|walkin_sale|member_sale|non_member_sale|online_order|prescription_dispensing",
+  "workflow_source": "branch_portal|consultant_portal|online_shop|prescription_portal|full_body_checkup",
+  "form_reference_id": "string",
+  "consultation_fee": 0,
+  "product_total_dp": 0,
+  "product_total_cp": 0,
+  "total_qty": 0,
+  "grand_total": 0,
+  "payment_status": "pending|paid|part_paid|waived",
+  "payment_method": "cash|eft|swipe|mixed|none",
+  "stock_impact": true,
+  "stock_status": "not_required|pending_deduction|deducted",
+  "prescription_status": "none|created|dispensed",
+  "consultation_status": "booked|seen|completed",
+  "reporting_status": "pending|posted|failed",
+  "captured_by": "user_id",
+  "created_at": "timestamp",
+  "updated_at": "timestamp"
+}
+```
+
+---
+
+## 2) Every form must post through one capture API
+
+## `POST /api/branch-activity/capture`
+
+This is the master endpoint.
+
+It must accept any branch client interaction and classify it properly.
+
+### Request example
+
+```json
+{
+  "branch_id": "WINDHOEK_CBD",
+  "branch_name": "Windhoek CBD",
+  "client_name": "Jane Doe",
+  "client_phone": "0812345678",
+  "client_type": "member",
+  "nb_number": "NB001234",
+  "referral_nb": null,
+  "service_date": "2026-03-25",
+  "service_time": "15:50:00",
+  "activity_type": "consultation",
+  "workflow_source": "full_body_checkup",
+  "form_reference_id": "FBC-20260325-001",
+  "consultation_fee": 200,
+  "product_total_dp": 0,
+  "product_total_cp": 0,
+  "total_qty": 0,
+  "grand_total": 200,
+  "payment_status": "paid",
+  "payment_method": "cash",
+  "stock_impact": false,
+  "prescription_status": "none",
+  "consultation_status": "completed",
+  "captured_by": "branch_user_1"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Branch activity captured and posted successfully",
+  "transaction_id": "uuid",
+  "reporting_status": "posted"
+}
+```
+
+---
+
+# 3) Classification rules
+
+The backend must not wait for the report page to guess categories.
+
+It must classify on save.
+
+## Rule mapping
+
+* `activity_type = consultation` or `full_body_checkup`
+
+  * update **Consultation Fees**
+  * update branch daily client count
+  * update consultant dashboard
+  * update GM / MIS / Director consultation analytics
+
+* `activity_type = walkin_sale`
+
+  * update **Walk-in Sales (General)**
+  * deduct stock
+  * update branch sales totals
+  * update finance
+
+* `activity_type = member_sale`
+
+  * update **Member Sales**
+  * attach NB number
+  * deduct stock
+  * update distributor-linked sales analytics
+
+* `activity_type = non_member_sale`
+
+  * update **Non-member Sales**
+  * if referral exists, store referral NB
+  * deduct stock
+  * update branch revenue
+
+* `activity_type = online_order`
+
+  * update **Online Order Sales**
+  * only after payment/branch receipt confirmation
+  * deduct stock when fulfilled by branch
+
+* `activity_type = prescription_dispensing`
+
+  * update **Prescription Dispensing**
+  * deduct stock
+  * link to prescription id
+  * update consultant/branch logs
+
+---
+
+# 4) Reporting engine endpoint
+
+## `GET /api/reports/branch-sales/daily?branch_id=WINDHOEK_CBD&date=2026-03-25`
+
+This endpoint must not read from random UI state.
+
+It must aggregate directly from `branch_activity_transactions`.
+
+### Aggregation logic
+
+```ts
+consultationFees = SUM(grand_total where activity_type in ['consultation','full_body_checkup'] and payment_status='paid')
+
+walkInSales = SUM(product_total_dp where activity_type='walkin_sale')
+
+memberSales = SUM(product_total_dp where activity_type='member_sale')
+
+nonMemberSales = SUM(product_total_dp where activity_type='non_member_sale')
+
+onlineOrderSales = SUM(product_total_dp where activity_type='online_order' and payment_status='paid')
+
+prescriptionDispensing = SUM(product_total_dp where activity_type='prescription_dispensing')
+
+totalTransactions = COUNT(*)
+totalQtySold = SUM(total_qty)
+grandTotal = consultationFees + walkInSales + memberSales + nonMemberSales + onlineOrderSales + prescriptionDispensing
+```
+
+### Important
+
+If there are consultation forms completed today in that branch, then **Consultation Fees must not show 0**.
+
+If there are prescriptions dispensed today, then **Prescription Dispensing must not show 0**.
+
+If clients were attended but not yet paid, the report should show:
+
+* activity count
+* unpaid count
+* pending payment value
+
+instead of hiding them as zero.
+
+---
+
+# 5) Add branch attendance / client visit count
+
+To stop “0” when clients came but did not buy products, create:
+
+## `POST /api/branch-client-visits/checkin`
+
+This captures mere presence.
+
+```json
+{
+  "branch_id": "WINDHOEK_CBD",
+  "client_name": "Jane Doe",
+  "client_phone": "0812345678",
+  "visit_type": "consultation|inquiry|review|purchase|prescription",
+  "checkin_time": "2026-03-25T15:10:00",
+  "served_by": "user_id"
+}
+```
+
+Then show on dashboard:
+
+* clients checked in
+* clients seen
+* clients converted to sales
+* clients pending payment
+* clients with prescriptions
+* clients with consultation only
+
+This prevents false impression that nobody came.
+
+---
+
+# 6) Relevant portal integrations
+
+## Branch Portal
+
+Must show:
+
+* today client visits
+* consultation count
+* paid consultations
+* walk-in sales
+* member sales
+* non-member sales
+* online order fulfilments
+* prescription dispensing
+* pending branch activity not yet posted
+
+## GM Portal
+
+Must show:
+
+* branch-by-branch real-time totals
+* consultation revenue by branch
+* client traffic vs actual sales conversion
+* underperforming branches with high visits but low revenue
+
+## MIS Portal
+
+Must reconcile:
+
+* branch activity count
+* branch sales totals
+* category-level transactions
+* stock movement vs sales
+
+## Director Portal
+
+Must show:
+
+* real branch productivity
+* true client traffic
+* consultation conversion rate
+* asset vs burden branches
+
+## Finance Portal
+
+Must show:
+
+* paid vs unpaid branch activity
+* consultation cash
+* product sales by payment method
+* revenue by branch/date/category
+
+---
+
+# 7) Required supporting endpoints
+
+## Create consultation record
+
+`POST /api/consultations/create`
+
+## Complete consultation and post to branch activity
+
+`POST /api/consultations/:id/complete`
+
+This must automatically call:
+`POST /api/branch-activity/capture`
+
+---
+
+## Create prescription
+
+`POST /api/prescriptions/create`
+
+## Dispense prescription
+
+`POST /api/prescriptions/:id/dispense`
+
+This must:
+
+* deduct stock
+* create branch transaction
+* update prescription dispensing totals
+
+---
+
+## Create walk-in sale
+
+`POST /api/sales/walkin`
+
+Must:
+
+* validate member/non-member logic
+* save product lines
+* deduct stock
+* post to branch activity
+
+---
+
+## Confirm online branch fulfilment
+
+`POST /api/orders/:id/branch-fulfil`
+
+Must:
+
+* mark as fulfilled
+* deduct stock
+* post into online order sales category
+
+---
+
+# 8) Database tables needed
+
+## `branch_activity_transactions`
+
+Main reporting source
+
+## `branch_client_visits`
+
+Tracks physical attendance
+
+## `consultations`
+
+Stores consultation form data
+
+## `prescriptions`
+
+Stores prescriptions
+
+## `sales_headers`
+
+Stores sale header
+
+## `sales_items`
+
+Stores product lines
+
+## `daily_branch_report_cache`
+
+Optional precomputed table for fast loading
+
+---
+
+# 9) Stop zero values caused by bad joins
+
+Common cause of current bug:
+
+* consultation form saves in `consultations`
+* sales save in `sales`
+* report page only reads `sales`
+* therefore consultation section stays zero
+
+Fix:
+Every finalized workflow must write a normalized record into:
+
+## `branch_activity_transactions`
+
+No exception.
+
+---
+
+# 10) Daily auto-refresh job
+
+Create a server job:
+
+## `POST /api/jobs/rebuild-daily-branch-report`
+
+This rebuilds the day from raw transactions.
+
+### It should:
+
+* recalculate all categories
+* repair missing report rows
+* detect orphan consultations not posted
+* detect dispensed prescriptions not posted
+* detect stock deductions without sales headers
+* detect visit records without completed workflow
+
+---
+
+# 11) Validation rules
+
+The API must reject incomplete records.
+
+### Required:
+
+* branch_id
+* service_date
+* activity_type
+* workflow_source
+* client_name or client_id
+* captured_by
+
+### Conditional:
+
+* `nb_number` required for `member_sale`
+* `referral_nb` optional for non-member, default to `NB00 5676` if business rule says so
+* product items required for all stock-impact sales
+* consultation fee required for paid consultations
+
+---
+
+# 12) Report display rule
+
+The report must not simply display 0 because category amount is empty.
+
+Instead:
+
+### show:
+
+* `0` only if there were truly no records
+* `Pending capture` if raw visit/form exists but posting failed
+* `Unpaid` if service happened but payment not completed
+* `Draft` if started but not finalized
+
+This will make branch reports honest.
+
+---
+
+# 13) Suggested response payload for report page
+
+```json
+{
+  "branch_id": "WINDHOEK_CBD",
+  "date": "2026-03-25",
+  "client_visits": 14,
+  "consultations": {
+    "count": 6,
+    "paid_count": 5,
+    "value": 1000
+  },
+  "walkin_sales": {
+    "transactions": 3,
+    "qty": 7,
+    "value": 2450
+  },
+  "member_sales": {
+    "transactions": 2,
+    "qty": 3,
+    "value": 1033
+  },
+  "non_member_sales": {
+    "transactions": 1,
+    "qty": 2,
+    "value": 530
+  },
+  "online_order_sales": {
+    "transactions": 0,
+    "qty": 0,
+    "value": 0
+  },
+  "prescription_dispensing": {
+    "transactions": 2,
+    "qty": 4,
+    "value": 800
+  },
+  "pending_unposted_records": 1,
+  "grand_total": 5813
+}
+```
+
+---
+
+# 14) Exact instruction to Replit
+
+Use this as your copy-paste instruction:
+
+```text
+URGENT SYSTEM API FIX – CAPTURE ALL BRANCH FORM DATA INTO SALES REPORTS
+
+The current daily DP Sales Report is inaccurate. It is showing 0 in some categories even when clients actually came to the branch and were attended to. The report currently shows Member Sales with value, but other categories such as Consultation Fees, Walk-in Sales, Non-member Sales, Online Order Sales, and Prescription Dispensing remain 0 unless manually triggered. This means workflow records are not being posted correctly into the reporting engine.
+
+THIS MUST BE FIXED IMMEDIATELY.
+
+Do not redesign the portals.
+Do not remove current forms.
+Do not create disconnected new modules.
+Retrieve and use the exact existing workflow code where available.
+The problem is data capture and posting into reports.
+
+REQUIRED FIX:
+1. Create a central transactional source called branch_activity_transactions.
+2. Every finalized form or workflow action must post a normalized record into this table.
+3. All branch-facing forms must submit through a master API endpoint:
+   POST /api/branch-activity/capture
+4. Supported activity types:
+   consultation
+   full_body_checkup
+   walkin_sale
+   member_sale
+   non_member_sale
+   online_order
+   prescription_dispensing
+5. Each record must store:
+   branch_id, branch_name, client_id/client_name, client_type,
+   nb_number/referral_nb, service_date, service_time,
+   activity_type, workflow_source, form_reference_id,
+   consultation_fee, product_total_dp, product_total_cp,
+   total_qty, grand_total, payment_status, payment_method,
+   stock_impact, stock_status, prescription_status,
+   consultation_status, reporting_status, captured_by,
+   created_at, updated_at.
+6. Branch daily reports must aggregate directly from branch_activity_transactions, not from UI state and not from only one module.
+7. If consultations happened today, Consultation Fees must not be 0.
+8. If prescriptions were dispensed today, Prescription Dispensing must not be 0.
+9. If clients came but did not buy, track them through branch_client_visits so the dashboard still reflects attendance and service volume.
+10. Add endpoint:
+   POST /api/branch-client-visits/checkin
+11. Add repair/rebuild endpoint:
+   POST /api/jobs/rebuild-daily-branch-report
+   This must recalculate category totals and detect orphan records not posted into reports.
+12. Relevant portals to update automatically:
+   Branch Portal
+   GM Portal
+   MIS Portal
+   Director Portal
+   Finance Portal
+13. Required integrations:
+   - consultation complete -> post to branch_activity_transactions
+   - walk-in sale complete -> post to branch_activity_transactions
+   - member/non-member sale complete -> post to branch_activity_transactions
+   - online order branch fulfilment -> post to branch_activity_transactions
+   - prescription dispense -> deduct stock and post to branch_activity_transactions
+14. The report must show 0 only when there was truly no activity.
+15. If raw records exist but posting failed, display Pending Capture instead of false zero.
+16. Keep all internal values in DP where report is DP-based.
+
+Also verify the report against today’s actual branch forms and repair all missing postings for the current date.
+```
+
+---
+
+# 15) What is happening in your current report
+
+Your current report is already confirming a mismatch:
+
+* **Member Sales are captured**
+* but other branch activities are not flowing into the report categories correctly 
+
+So this is not a “no clients” problem.
+
+It is a **data posting / classification / aggregation bug**.
+
+

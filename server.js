@@ -72,6 +72,10 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/product_images',
   '/api/notifications',
   '/api/media',
+  '/api/branch-activity',
+  '/api/branch-client-visits',
+  '/api/reports/branch-sales',
+  '/api/jobs/',
 ];
 
 function isPublicRoute(routePath) {

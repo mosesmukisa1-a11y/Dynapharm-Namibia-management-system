@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -89,6 +90,32 @@ export default async function handler(req, res) {
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] dispense recompute error:', e.message)
       );
+
+      // Post into branch_activity_transactions for unified reporting
+      const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
+      postActivityRecord({
+        id: generateBatId(),
+        branch_id: branchId,
+        branch_name: branchId,
+        client_name: 'Prescription Patient',
+        client_type: customerType || 'patient',
+        service_date: new Date().toISOString().slice(0, 10),
+        service_time: new Date().toTimeString().slice(0, 8),
+        activity_type: 'prescription_dispensing',
+        workflow_source: 'branch_portal',
+        form_reference_id: reportId,
+        product_total_dp: 0,
+        total_qty: totalDispensedQty,
+        grand_total: 0,
+        payment_status: 'paid',
+        payment_method: 'cash',
+        stock_impact: true,
+        stock_status: 'deducted',
+        prescription_status: 'dispensed',
+        consultation_status: 'none',
+        reporting_status: 'posted',
+        captured_by: createdBy || null,
+      }).catch(e => console.error('[activityCapture] dispense post error:', e.message));
 
       return res.status(200).json({ success: true, deductions, message: `Dispensed ${deductions.length} batch(es) successfully` });
     }

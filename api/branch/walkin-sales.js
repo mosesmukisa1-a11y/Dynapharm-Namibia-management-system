@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -325,6 +326,38 @@ export default async function handler(req, res) {
       } catch (txErr) {
         console.error('Stock deduction transaction error:', txErr.message);
       }
+
+      // Post into branch_activity_transactions for unified reporting
+      const actType = record.customer_type === 'member' ? 'member_sale'
+        : record.customer_type === 'non_member' ? 'non_member_sale'
+        : 'walkin_sale';
+      const totalQty = saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
+      postActivityRecord({
+        id: generateBatId(),
+        branch_id: record.branch_id,
+        branch_name: record.branch_id,
+        client_name: record.customer_name || 'Walk-in',
+        client_phone: record.customer_phone || null,
+        client_type: record.customer_type || 'walk_in',
+        nb_number: JSON.parse(record.metadata || '{}').referralId || null,
+        service_date: record.sale_date,
+        service_time: record.sale_date ? new Date(record.sale_date).toTimeString().slice(0, 8) : null,
+        activity_type: actType,
+        workflow_source: 'branch_portal',
+        form_reference_id: record.id,
+        product_total_dp: record.total,
+        product_total_cp: record.total,
+        total_qty: totalQty,
+        grand_total: record.total,
+        payment_status: record.status === 'completed' ? 'paid' : 'pending',
+        payment_method: record.payment_method || 'cash',
+        stock_impact: true,
+        stock_status: 'deducted',
+        prescription_status: 'none',
+        consultation_status: 'none',
+        reporting_status: 'posted',
+        captured_by: record.created_by || null,
+      }).catch(e => console.error('[activityCapture] walkin-sale post error:', e.message));
 
       return res.status(201).json({
         success: true,
