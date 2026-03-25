@@ -166,19 +166,28 @@ async function getInventoryByBranch(branchId, enriched = false) {
     console.error('[inventory] enrichment query error:', err.message);
   }
 
-  // Build walkin sold map keyed by product_name (covers both camelCase and snake_case item keys)
-  const walkinSoldMap = {};
+  // Normalise a product name for matching: lowercase + collapse whitespace.
+  // This ensures "Noni Juice 1L" matches "NONI JUICE 1L", "noni juice 1l", etc.
+  const norm = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  // Build walkin sold map keyed by normalised product name.
+  // Also keep the original-case name so we can create synthetic rows later.
+  const walkinSoldMap = {}; // normKey → { qty, originalName }
   for (const r of walkinSoldAgg) {
-    const key = (r.product_name || '').trim();
-    if (key) walkinSoldMap[key] = (walkinSoldMap[key] || 0) + Number(r.total_sold || 0);
+    const origName = (r.product_name || '').trim();
+    const key = norm(origName);
+    if (!key) continue;
+    if (!walkinSoldMap[key]) walkinSoldMap[key] = { qty: 0, originalName: origName };
+    walkinSoldMap[key].qty += Number(r.total_sold || 0);
   }
 
-  // Build aggMap keyed by product_name.
+  // Build aggMap keyed by normalised product_name.
   // SOLD = walkin sales + prescription dispenses (per user definition).
   const aggMap = {};
   const EMPTY_AGG = () => ({ received: 0, walkin_sold: 0, dispensed: 0, sold: 0, transferred: 0, written_off: 0, adjusted: 0, source_warehouse: null, last_movement: null });
   for (const r of movAgg) {
-    const key = (r.product_name || '').trim();
+    const key = norm(r.product_name);
+    if (!key) continue;
     if (!aggMap[key]) aggMap[key] = EMPTY_AGG();
     const a = aggMap[key];
     const q = Number(r.total_qty || 0);
@@ -194,10 +203,10 @@ async function getInventoryByBranch(branchId, enriched = false) {
   }
 
   // Merge walkin sold from branch_walkin_sales (authoritative — always recorded even when
-  // stock deduction fails to match a batch). Use whichever is higher to avoid under-reporting.
-  for (const [productName, walkinQty] of Object.entries(walkinSoldMap)) {
-    if (!aggMap[productName]) aggMap[productName] = EMPTY_AGG();
-    aggMap[productName].walkin_sold = Math.max(aggMap[productName].walkin_sold, walkinQty);
+  // stock deduction fails to match a batch). Use whichever is higher.
+  for (const [normKey, { qty: walkinQty }] of Object.entries(walkinSoldMap)) {
+    if (!aggMap[normKey]) aggMap[normKey] = EMPTY_AGG();
+    aggMap[normKey].walkin_sold = Math.max(aggMap[normKey].walkin_sold, walkinQty);
   }
 
   // Compute combined sold = walkin_sold + dispensed (prescription dispenses count as sales)
@@ -205,17 +214,20 @@ async function getInventoryByBranch(branchId, enriched = false) {
     a.sold = a.walkin_sold + a.dispensed;
   }
 
+  // Track which norm keys already have a batch record
+  const batchNormKeys = new Set(normalized.map(inv => norm(inv.product_name)));
+
   // When a branch has multiple batches of the same product, distribute aggregated
   // quantities proportionally by batch size (or equally if all zero).
   const productBatches = {};
   for (const inv of normalized) {
-    const key = (inv.product_name || '').trim();
+    const key = norm(inv.product_name);
     if (!productBatches[key]) productBatches[key] = [];
     productBatches[key].push(inv);
   }
 
-  return normalized.map(inv => {
-    const key = (inv.product_name || '').trim();
+  const batchRows = normalized.map(inv => {
+    const key = norm(inv.product_name);
     const agg = aggMap[key] || EMPTY_AGG();
     const siblings = productBatches[key] || [inv];
     const totalQty = siblings.reduce((s, b) => s + Number(b.quantity || 0), 0);
@@ -233,6 +245,38 @@ async function getInventoryByBranch(branchId, enriched = false) {
       last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement,
     };
   });
+
+  // Add synthetic rows for products that were sold/dispensed but have NO batch record.
+  // These appear as "sold out / no batch" lines so the SOLD count is always visible.
+  const syntheticRows = [];
+  for (const [normKey, { qty: walkinQty, originalName }] of Object.entries(walkinSoldMap)) {
+    if (batchNormKeys.has(normKey)) continue; // already covered by a batch row
+    const agg = aggMap[normKey] || EMPTY_AGG();
+    agg.sold = agg.walkin_sold + agg.dispensed;
+    if (agg.sold <= 0) continue; // nothing to show
+    syntheticRows.push({
+      id: `synthetic-${normKey}`,
+      branch_id: resolvedId,
+      product_name: originalName,
+      batch_no: '—',
+      expiry_date: null,
+      quantity: 0,
+      unit: 'units',
+      unit_price: null,
+      status: 'out_of_stock',
+      is_synthetic: true,
+      qty_received: agg.received,  qtyReceived: agg.received,
+      qty_sold: agg.sold,           qtySold: agg.sold,
+      qty_dispensed: agg.dispensed, qtyDispensed: agg.dispensed,
+      qty_transferred: agg.transferred, qtyTransferred: agg.transferred,
+      qty_written_off: agg.written_off,  qtyWrittenOff: agg.written_off,
+      qty_adjusted: agg.adjusted,   qtyAdjusted: agg.adjusted,
+      source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
+      last_movement_date: agg.last_movement,  lastMovementDate: agg.last_movement,
+    });
+  }
+
+  return [...batchRows, ...syntheticRows];
 }
 
 async function getMovementsByBranch(branchId, limit = 100) {

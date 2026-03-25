@@ -1909,40 +1909,13 @@ function BranchStockTab() {
       return;
     }
 
-    // Admin: load all branches from inventory so they can switch.
-    // Map of display names / legacy aliases → canonical branch slug
-    const BRANCH_CANONICAL = {
-      'windhoek cbd': 'townshop', 'windhoek_cbd': 'townshop', 'main': 'townshop',
-      'khomasdal': 'khomasdal',
-      'tsumeb': 'tsumeb', 'gobabis': 'gobabis', 'swakopmund': 'swakopmund',
-      'walvis bay': 'walvisbay', 'walvis_bay': 'walvisbay', 'walvisbay': 'walvisbay',
-      'outapi': 'outapi', 'okahao': 'okahao',
-      'oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch',
-      'otjiwarongo': 'otjiwarongo', 'eenhana': 'eenhana',
-      'ondangwa': 'ondangwa', 'rundu': 'rundu',
-      'katima mulilo': 'katima', 'katima': 'katima',
-      'hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park', 'hochland-park': 'hochland-park',
-      'townshop': 'townshop',
-    };
-    const canonicalize = (b) => {
-      if (!b) return '';
-      const slug = b.toLowerCase().replace(/\s+/g, '_');
-      return BRANCH_CANONICAL[slug] || BRANCH_CANONICAL[b.toLowerCase()] || slug;
-    };
-    api.branch.inventory('').then(d => {
-      const inv = Array.isArray(d) ? d : d.inventory || [];
-      const branchIds = [...new Set(inv.map(i => i.branchId || i.branch_id).filter(Boolean))];
-      setAvailableBranches(branchIds);
-      const userCanonical = canonicalize(user?.branch || '');
-      const match = branchIds.find(b => canonicalize(b) === userCanonical);
-      if (match) {
-        setSelectedBranch(match);
-      } else {
-        const direct = branchIds.find(b => b === userCanonical);
-        if (direct) setSelectedBranch(direct);
-        else if (branchIds.length > 0) setSelectedBranch(branchIds[0]);
-      }
-    }).catch(() => {});
+    // Admin: use the full branch list from BRANCH_DETAILS so ALL branches appear,
+    // not just branches that happen to have existing inventory batches.
+    const allBranchIds = BRANCH_DETAILS.map(b => b.id);
+    setAvailableBranches(allBranchIds);
+    // Default to admin's own branch, or the first branch in the list
+    const adminBranch = user?.branch && allBranchIds.includes(user.branch) ? user.branch : allBranchIds[0];
+    setSelectedBranch(adminBranch);
   }, []);
 
   useEffect(() => { if (selectedBranch) loadData(); }, [selectedBranch]);
