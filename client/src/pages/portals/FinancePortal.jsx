@@ -13,6 +13,7 @@ export default function FinancePortal() {
     { id: 'deposits', label: 'Deposit Inbox', icon: '🏦' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'expenses', label: 'Expenses', icon: '💸' },
+    { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
@@ -30,6 +31,7 @@ export default function FinancePortal() {
         {activeTab === 'deposits' && <DepositsTab />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'expenses' && <ExpensesTab />}
+        {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>
@@ -624,31 +626,57 @@ function BonusTab() {
 
 function ExpensesTab() {
   const CATEGORIES = ['Office Supplies', 'Transport', 'Utilities', 'Maintenance', 'Marketing', 'Other'];
-  const emptyForm = { description: '', amount: '', category: 'Office Supplies', date: new Date().toISOString().slice(0, 10), branch: BRANCHES[0], receipt_number: '' };
+  const emptyForm = { description: '', amount: '', category: 'Office Supplies', date: new Date().toISOString().slice(0, 10), branch_id: BRANCHES[0], receipt_number: '' };
   const [expenses, setExpenses] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleAdd = (e) => {
+  useEffect(() => {
+    api.branch.expenses().then(d => {
+      const list = Array.isArray(d) ? d : d.expenses || [];
+      setExpenses(list);
+    }).catch(() => setExpenses([])).finally(() => setLoading(false));
+  }, []);
+
+  const handleAdd = async (e) => {
     e.preventDefault();
     if (!form.description || !form.amount || !form.date) {
       setMessage('Error: Please fill in description, amount, and date.');
       return;
     }
-    const newExpense = {
-      id: Date.now(),
-      ...form,
-      amount: Number(form.amount),
-      created_at: new Date().toISOString(),
-    };
-    setExpenses(prev => [newExpense, ...prev]);
-    setForm(emptyForm);
-    setMessage('Expense added successfully!');
+    setSubmitting(true);
+    try {
+      const result = await api.branch.createExpense({
+        branchId: form.branch_id,
+        date: form.date,
+        amount: Number(form.amount),
+        description: form.description,
+        category: form.category,
+        paymentMethod: 'cash',
+        metadata: form.receipt_number ? { receipt_number: form.receipt_number } : null,
+      });
+      const saved = result.expense || result;
+      setExpenses(prev => [saved, ...prev]);
+      setForm(emptyForm);
+      setMessage('Expense recorded successfully!');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = (id) => {
-    setExpenses(prev => prev.filter(e => e.id !== id));
-    setMessage('Expense deleted.');
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/branch/expenses?id=${id}`);
+      setExpenses(prev => prev.filter(e => e.id !== id));
+      setMessage('Expense deleted.');
+    } catch {
+      setExpenses(prev => prev.filter(e => e.id !== id));
+      setMessage('Expense removed.');
+    }
   };
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -663,6 +691,8 @@ function ExpensesTab() {
     const map = { 'Office Supplies': 'info', 'Transport': 'warning', 'Utilities': 'primary', 'Maintenance': 'danger', 'Marketing': 'success', 'Other': 'default' };
     return map[cat] || 'default';
   };
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
@@ -690,14 +720,14 @@ function ExpensesTab() {
             <Input label="Date" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">Branch</label>
-              <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+              <select value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
             <Input label="Receipt Number" value={form.receipt_number} onChange={e => setForm({ ...form, receipt_number: e.target.value })} placeholder="REC-001" />
             <div className="flex items-end">
-              <Button type="submit">Add Expense</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Add Expense'}</Button>
             </div>
           </form>
         </CardBody>
@@ -711,8 +741,8 @@ function ExpensesTab() {
             { header: 'Description', key: 'description' },
             { header: 'Category', render: r => <Badge variant={categoryVariant(r.category)}>{r.category}</Badge> },
             { header: 'Amount', render: r => <span className="font-bold text-red-600">{formatCurrency(r.amount)}</span> },
-            { header: 'Branch', key: 'branch' },
-            { header: 'Receipt #', key: 'receipt_number' },
+            { header: 'Branch', render: r => r.branchId || r.branch_id || r.branch || '' },
+            { header: 'Receipt #', render: r => r.metadata?.receipt_number || r.receipt_number || '—' },
             { header: 'Actions', render: r => (
               <Button size="sm" variant="danger" onClick={() => handleDelete(r.id)}>
                 <Trash2 size={14} />
@@ -814,6 +844,82 @@ function CommunicationTab() {
           )}
         </CardBody>
       </Card>
+    </div>
+  );
+}
+
+function ReportsTab() {
+  const [branchSummary, setBranchSummary] = useState([]);
+  const [stockValue, setStockValue] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('month');
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get('/finance/branches/summary').then(d => Array.isArray(d) ? d : d.branches || d.summary || []).catch(() => []),
+      api.get('/finance/reports/stock-value').then(d => d).catch(() => null),
+    ]).then(([branches, stock]) => {
+      setBranchSummary(branches);
+      setStockValue(stock);
+    }).finally(() => setLoading(false));
+  }, [period]);
+
+  const totalRevenue = branchSummary.reduce((s, b) => s + parseFloat(b.salesRevenue || 0), 0);
+  const totalCash = branchSummary.reduce((s, b) => s + parseFloat(b.cashTotal || 0), 0);
+  const totalSwipe = branchSummary.reduce((s, b) => s + parseFloat(b.swipeTotal || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {loading ? <LoadingSpinner /> : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} color="green" icon={<TrendingUp size={24} />} />
+            <StatCard title="Cash Collected" value={formatCurrency(totalCash)} color="blue" icon={<DollarSign size={24} />} />
+            <StatCard title="Swipe/EFT" value={formatCurrency(totalSwipe)} color="purple" icon={<Landmark size={24} />} />
+          </div>
+
+          <Card>
+            <CardHeader><h3 className="font-bold text-gray-800">Branch Financial Summary</h3></CardHeader>
+            <Table
+              columns={[
+                { header: 'Branch', render: r => r.branchName || r.branchId || '—' },
+                { header: 'Sales Revenue', render: r => <span className="font-semibold text-green-700">{formatCurrency(r.salesRevenue || 0)}</span> },
+                { header: 'Units Sold', render: r => r.salesUnits || 0 },
+                { header: 'Cash', render: r => formatCurrency(r.cashTotal || 0) },
+                { header: 'Swipe', render: r => formatCurrency(r.swipeTotal || 0) },
+                { header: 'EFT', render: r => formatCurrency(r.eftTotal || 0) },
+              ]}
+              data={branchSummary}
+              emptyMessage="No branch summary data available"
+            />
+          </Card>
+
+          {stockValue && (
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800">Stock Value Report</h3>
+                <span className="text-xs text-gray-400">As of {stockValue.asOfDate ? new Date(stockValue.asOfDate).toLocaleDateString() : 'today'}</span>
+              </CardHeader>
+              <CardBody>
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600">Total Company Stock Value (Selling Price)</p>
+                  <p className="text-3xl font-bold text-primary">{formatCurrency(stockValue.totalCompanyValueDP || 0)}</p>
+                </div>
+                <Table
+                  columns={[
+                    { header: 'Location', render: r => r.branchName || r.branchId || '—' },
+                    { header: 'Retail Value (DP)', render: r => <span className="font-semibold text-blue-700">{formatCurrency(r.totalValueDP || 0)}</span> },
+                    { header: 'SKUs', render: r => Array.isArray(r.items) ? r.items.length : '—' },
+                  ]}
+                  data={[...(stockValue.warehouses || []), ...(stockValue.branches || [])]}
+                  emptyMessage="No stock value breakdown available"
+                />
+              </CardBody>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
