@@ -1918,9 +1918,14 @@ function BranchStockTab() {
     setSelectedBranch(adminBranch);
   }, []);
 
-  useEffect(() => { if (selectedBranch) loadData(); }, [selectedBranch]);
+  const loadDataRef = useRef(0);
+  useEffect(() => {
+    if (selectedBranch) loadData();
+    return () => { loadDataRef.current++; };
+  }, [selectedBranch]);
 
   const loadData = async () => {
+    const loadId = ++loadDataRef.current;
     setLoading(true);
     try {
       const activeBranch = selectedBranch;
@@ -1935,6 +1940,7 @@ function BranchStockTab() {
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),
       ]);
+      if (loadId !== loadDataRef.current) return;
       const invData = Array.isArray(inv) ? inv : inv.inventory || [];
       const branchMovs = inv.movements || [];
       setInventory(invData);
@@ -1946,7 +1952,7 @@ function BranchStockTab() {
       setProducts(Array.isArray(prods) ? prods : prods.products || []);
       setSales(Array.isArray(sl) ? sl : sl.sales || []);
     } catch {}
-    setLoading(false);
+    if (loadId === loadDataRef.current) setLoading(false);
   };
 
   const now = new Date();

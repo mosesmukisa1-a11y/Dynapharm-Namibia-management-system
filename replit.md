@@ -42,8 +42,11 @@ The backend is an Express.js server providing API services. It features file-bas
 - **Director Portal**: Fully data-connected via `useDirectorApi` hook calling `/api/director/*` endpoints (summary, profit-loss, revenue-trends, branches/performance, fast-moving products, registrations).
 - **Transactional Stock Deduction**: Walk-in sales utilize transactional FEFO multi-batch stock deduction with row locking and movement recording.
 - **Prescription Dispensing Workflow**: Full dispensing pipeline in the BranchPortal with draft, preview, and transactional dispense functionalities, including stock sufficiency validation.
-- **Branch Portal Stock Module**: Enhanced stock engine with 7 sub-tabs: Inventory, Alerts (batch/expiry), Requests, Transfers, Movements, Write-Off, and Reports.
-- **Branch ID Matching**: Flexible matching of branch names to database branch IDs across the Stock Portal and Branch Portal using a `BRANCH_CANONICAL` map.
+- **Branch Portal Stock Module**: Enhanced stock engine with 7 sub-tabs: Inventory, Alerts (batch/expiry), Requests, Transfers, Movements, Write-Off, and Reports. Receive Stock flow shows the full GM-approved dispatch note read-only; receiver just confirms receipt with zero manual input — only marks discrepancies if needed (toggle button per item). Receiver is auto-signed from login.
+- **Branch ID Matching**: Optimized single-query resolution using `ANY($1)` array match instead of sequential queries. Flexible matching of branch names to database branch IDs across the Stock Portal and Branch Portal using a `BRANCH_CANONICAL` map.
+- **FEFO Stock Deduction**: Exact product name matching prioritized over fuzzy ILIKE to prevent cross-product deduction errors.
+- **Batch Upsert**: `ON CONFLICT DO UPDATE` for branch inventory batch insertion prevents duplicate key errors when receiving stock with existing batch records.
+- **Stale State Prevention**: Data loading effects use ref-based generation counters to discard stale responses when branch selection changes rapidly.
 - **Database Startup Migration**: Normalizes branch ID aliases and auto-seeds `inventory_balances` if empty on server boot.
 
 ### Database

@@ -106,18 +106,15 @@ function normalizeBranchId(raw) {
 async function resolveBranchId(raw) {
   const key = normalizeBranchId(raw);
   if (!key) return key;
-  const exact = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [key]);
-  if (exact) return exact.branch_id;
-  const withSuffix = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [key + '_branch']);
-  if (withSuffix) return withSuffix.branch_id;
   const stripped = key.replace(/_branch$/, '');
-  if (stripped !== key) {
-    const noSuffix = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id = $1 LIMIT 1', [stripped]);
-    if (noSuffix) return noSuffix.branch_id;
-  }
-  const like = await getOne('SELECT branch_id FROM branch_inventory_batches WHERE branch_id ILIKE $1 LIMIT 1', [`%${key}%`]);
-  if (like) return like.branch_id;
-  return key;
+  const candidates = [key];
+  if (!key.endsWith('_branch')) candidates.push(key + '_branch');
+  if (stripped !== key) candidates.push(stripped);
+  const result = await getOne(
+    `SELECT branch_id FROM branch_inventory_batches WHERE branch_id = ANY($1) LIMIT 1`,
+    [candidates]
+  );
+  return result ? result.branch_id : key;
 }
 
 async function getInventoryByBranch(branchId, enriched = false) {

@@ -6,11 +6,13 @@ async function fefoDeductStockBatches(client, locationFilter, productName, total
   const batches = await client.query(
     `SELECT id, remaining_quantity FROM stock_batches
      WHERE (location = $1 OR warehouse_id = $1)
-       AND description ILIKE $2
+       AND (LOWER(description) = LOWER($2) OR description ILIKE $3)
        AND remaining_quantity > 0
-     ORDER BY expiry_date ASC NULLS LAST
+     ORDER BY
+       CASE WHEN LOWER(description) = LOWER($2) THEN 0 ELSE 1 END,
+       expiry_date ASC NULLS LAST
      FOR UPDATE`,
-    [locationFilter, '%' + productName + '%']
+    [locationFilter, productName, '%' + productName + '%']
   );
   let remaining = totalQty;
   for (const batch of batches.rows) {
@@ -33,11 +35,13 @@ async function fefoDeductWarehouseInventory(client, warehouseId, productName, to
   const inv = await client.query(
     `SELECT id, quantity FROM warehouse_inventory
      WHERE warehouse_id = $1
-       AND product_name ILIKE $2
+       AND (LOWER(product_name) = LOWER($2) OR product_name ILIKE $3)
        AND quantity > 0
-     ORDER BY expiry_date ASC NULLS LAST
+     ORDER BY
+       CASE WHEN LOWER(product_name) = LOWER($2) THEN 0 ELSE 1 END,
+       expiry_date ASC NULLS LAST
      FOR UPDATE`,
-    [warehouseId, '%' + productName + '%']
+    [warehouseId, productName, '%' + productName + '%']
   );
   let remaining = totalQty;
   for (const row of inv.rows) {
@@ -106,17 +110,17 @@ function normalizeTransferItem(item) {
   };
 }
 
-function parseItems(items) {
+function parseItems(items, keepZeroQty = false) {
   if (!items) return [];
   if (typeof items === 'string') {
     try {
-      return parseItems(JSON.parse(items));
+      return parseItems(JSON.parse(items), keepZeroQty);
     } catch (_) {
       return [];
     }
   }
   if (!Array.isArray(items)) return [];
-  return items.map(normalizeTransferItem).filter(Boolean).filter((item) => item.quantity > 0);
+  return items.map(normalizeTransferItem).filter(Boolean).filter((item) => keepZeroQty ? item.quantity >= 0 : item.quantity > 0);
 }
 
 async function replaceTransferItems(transferId, items) {
@@ -613,7 +617,7 @@ export default async function handler(req, res) {
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
 
       if (body.items !== undefined || body.itemsArray !== undefined) {
-        const normalizedItems = parseItems(body.items || body.itemsArray);
+        const normalizedItems = parseItems(body.items || body.itemsArray, true);
         await replaceTransferItems(id, normalizedItems);
       }
 
