@@ -175,59 +175,99 @@ app.options('/api/*', async (req, res) => {
   res.status(200).end();
 });
 
-const _leaveRequests = [];
-const _cashRequests = [];
-
-app.get('/api/leave-requests', (req, res) => {
-  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-  const mine = _leaveRequests.filter(r => (r.staff || '').toLowerCase() === username);
-  res.json(mine);
-});
-
-app.post('/api/leave-requests', (req, res) => {
-  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-  const { type, startDate, endDate, reason, urgent } = req.body;
-  if (!type || !startDate || !endDate || !reason) {
-    return res.status(400).json({ success: false, error: 'Missing required fields' });
+app.get('/api/leave-requests', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const { rows } = await query(
+      `SELECT id, employee_id AS staff, employee_name AS "staffName", leave_type AS type,
+              start_date AS "startDate", end_date AS "endDate", reason,
+              INITCAP(status) AS status,
+              COALESCE(urgent, false) AS urgent,
+              created_at AS "submittedAt"
+       FROM hr_leave_requests
+       WHERE LOWER(employee_id) = $1
+       ORDER BY created_at DESC`,
+      [username]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('leave-requests GET:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
-  _leaveRequests.push({
-    id: Date.now(),
-    staff: username,
-    staffName: req.user?.name || username,
-    type,
-    startDate,
-    endDate,
-    reason,
-    urgent: !!urgent,
-    status: 'Pending',
-    submittedAt: new Date().toISOString(),
-  });
-  res.json({ success: true });
 });
 
-app.get('/api/cash-requests', (req, res) => {
-  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-  const mine = _cashRequests.filter(r => (r.staff || '').toLowerCase() === username);
-  res.json(mine);
-});
-
-app.post('/api/cash-requests', (req, res) => {
-  const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-  const { amount, purpose, urgent } = req.body;
-  if (!amount || !purpose) {
-    return res.status(400).json({ success: false, error: 'Missing required fields' });
+app.post('/api/leave-requests', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const staffName = req.user?.name || req.user?.full_name || username;
+    const { type, startDate, endDate, reason, urgent } = req.body;
+    if (!type || !startDate || !endDate || !reason) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+    await query(
+      `INSERT INTO hr_leave_requests (employee_id, employee_name, leave_type, start_date, end_date, reason, urgent, status, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NOW(), NOW())`,
+      [username, staffName, type, startDate, endDate, reason, !!urgent, username]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('leave-requests POST:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
-  _cashRequests.push({
-    id: Date.now(),
-    staff: username,
-    staffName: req.user?.name || username,
-    amount: String(amount),
-    purpose,
-    urgent: !!urgent,
-    status: 'Pending',
-    submittedAt: new Date().toISOString(),
-  });
-  res.json({ success: true });
+});
+
+app.get('/api/cash-requests', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const { rows } = await query(
+      `SELECT id, requested_by AS staff, data->>'staffName' AS "staffName",
+              CAST(amount AS TEXT) AS amount, purpose,
+              INITCAP(status) AS status,
+              (data->>'urgent')::boolean AS urgent,
+              created_at AS "submittedAt"
+       FROM finance_cash_requests
+       WHERE LOWER(requested_by) = $1
+       ORDER BY created_at DESC`,
+      [username]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('cash-requests GET:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/cash-requests', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const staffName = req.user?.name || req.user?.full_name || username;
+    const { amount, purpose, urgent } = req.body;
+    if (!amount || !purpose) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+    const reqNum = 'CR-' + Date.now();
+    await query(
+      `INSERT INTO finance_cash_requests (id, request_number, branch, amount, purpose, status, requested_by, created_at, data)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW(), $7::jsonb)`,
+      [
+        'CR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        reqNum,
+        req.user?.branch || 'unknown',
+        parseFloat(amount),
+        purpose,
+        username,
+        JSON.stringify({ staffName, urgent: !!urgent }),
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('cash-requests POST:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ── Stock Adjustment Requests (requires GM approval) ──────────────────────────

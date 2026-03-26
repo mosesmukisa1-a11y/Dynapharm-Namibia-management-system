@@ -26,7 +26,7 @@ export default function TrainingPortal() {
         {activeTab === 'videos' && <VideosTab />}
         {activeTab === 'photos' && <PhotosTab />}
         {activeTab === 'upload' && isTrainer && <UploadTab />}
-        {activeTab === 'schedule' && <ScheduleTab />}
+        {activeTab === 'schedule' && <ScheduleTab isTrainer={isTrainer} />}
       </div>
     </div>
   );
@@ -86,47 +86,95 @@ function MaterialsTab() {
 }
 
 function VideosTab() {
-  return (
-    <div>
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/media')
+      .then(data => {
+        const rows = Array.isArray(data) ? data : [];
+        setVideos(rows.filter(r => r.mime_type?.startsWith('video/')));
+      })
+      .catch(() => setVideos([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  if (videos.length === 0) {
+    return (
       <EmptyState
         icon={<Video size={48} />}
-        title="Training Videos"
+        title="No Training Videos Yet"
         description="Training videos will appear here once uploaded by trainers. Videos cover product knowledge, sales techniques, and health assessment procedures."
       />
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[
-          { title: 'Product Introduction', duration: '15:30', category: 'Products' },
-          { title: 'Sales Closing Techniques', duration: '22:45', category: 'Sales' },
-          { title: 'Health Check-Up Procedures', duration: '18:20', category: 'Health' },
-        ].map((vid, idx) => (
-          <Card key={idx} className="hover:shadow-md transition-shadow">
-            <div className="h-40 bg-gray-100 flex items-center justify-center rounded-t-xl">
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {videos.map(vid => (
+        <Card key={vid.id} className="hover:shadow-md transition-shadow">
+          <div className="h-40 bg-gray-100 flex items-center justify-center rounded-t-xl">
+            {vid.file_url ? (
+              <video src={vid.file_url} className="h-full w-full object-cover rounded-t-xl" />
+            ) : (
               <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
                 <Play size={24} className="text-primary ml-1" />
               </div>
+            )}
+          </div>
+          <CardBody>
+            <h3 className="font-semibold text-gray-900 text-sm">{vid.entity_name || vid.filename || 'Untitled Video'}</h3>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="info">{vid.upload_type || 'video'}</Badge>
+              {vid.file_size && <span className="text-xs text-gray-400">{(vid.file_size / 1024 / 1024).toFixed(1)} MB</span>}
             </div>
-            <CardBody>
-              <h3 className="font-semibold text-gray-900 text-sm">{vid.title}</h3>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant="info">{vid.category}</Badge>
-                <span className="text-xs text-gray-400">{vid.duration}</span>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+          </CardBody>
+        </Card>
+      ))}
     </div>
   );
 }
 
 function PhotosTab() {
-  return (
-    <div>
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/media')
+      .then(data => {
+        const rows = Array.isArray(data) ? data : [];
+        setPhotos(rows.filter(r => r.mime_type?.startsWith('image/')));
+      })
+      .catch(() => setPhotos([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  if (photos.length === 0) {
+    return (
       <EmptyState
         icon={<Image size={48} />}
-        title="Training Photos"
+        title="No Training Photos Yet"
         description="Training photos and event galleries will be displayed here once uploaded by trainers."
       />
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {photos.map(photo => (
+        <Card key={photo.id} className="hover:shadow-md transition-shadow overflow-hidden">
+          <div className="h-40 bg-gray-100">
+            <img src={photo.file_url} alt={photo.entity_name || photo.filename} className="w-full h-full object-cover" />
+          </div>
+          <CardBody className="py-2 px-3">
+            <p className="text-xs text-gray-700 truncate">{photo.entity_name || photo.filename || 'Photo'}</p>
+          </CardBody>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -135,12 +183,40 @@ function UploadTab() {
   const [uploadType, setUploadType] = useState('video');
   const [form, setForm] = useState({ title: '', description: '', category: 'Products', file: null });
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title) { setMessage('Error: Please enter a title'); return; }
-    setMessage('Content uploaded successfully! It will be reviewed and made available to staff and distributors.');
-    setForm({ title: '', description: '', category: 'Products', file: null });
+    if (!form.file) { setMessage('Error: Please select a file'); return; }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', form.file);
+      formData.append('type', uploadType === 'photo' ? 'image' : uploadType);
+      formData.append('entityName', form.title);
+      formData.append('uploadType', uploadType === 'photo' ? 'image' : uploadType);
+
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
+
+      setMessage('Content uploaded successfully! It will be available to staff and distributors.');
+      setForm({ title: '', description: '', category: 'Products', file: null });
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Upload failed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -186,40 +262,104 @@ function UploadTab() {
               onChange={e => setForm({ ...form, file: e.target.files?.[0] || null })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary/10 file:text-primary" />
           </div>
-          <Button type="submit"><Upload size={14} /> Upload {uploadType}</Button>
+          <Button type="submit" disabled={loading}>
+            <Upload size={14} /> {loading ? 'Uploading...' : `Upload ${uploadType}`}
+          </Button>
         </form>
       </CardBody>
     </Card>
   );
 }
 
-function ScheduleTab() {
+function ScheduleTab({ isTrainer }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: '', date: '', time: '', location: '', trainer: '' });
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const loadSchedules = () => {
+    setLoading(true);
+    api.get('/training-schedules')
+      .then(data => setEvents(Array.isArray(data) ? data : []))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadSchedules(); }, []);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.title || !form.date) { setMessage('Error: Title and date are required'); return; }
+    setSaving(true);
+    setMessage('');
+    try {
+      await api.post('/training-schedules', form);
+      setForm({ title: '', date: '', time: '', location: '', trainer: '' });
+      setShowForm(false);
+      loadSchedules();
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Failed to save'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
-        <h3 className="font-bold text-gray-800 flex items-center gap-2"><BookOpen size={18} /> Training Schedule</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2"><BookOpen size={18} /> Training Schedule</h3>
+          {isTrainer && (
+            <Button size="sm" onClick={() => setShowForm(v => !v)}>
+              {showForm ? 'Cancel' : '+ Add Event'}
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardBody>
-        <div className="space-y-4">
-          {[
-            { title: 'New Product Launch Training', date: '2025-04-15', time: '09:00', location: 'Windhoek CBD', trainer: 'Head Office' },
-            { title: 'Sales Mastery Workshop', date: '2025-04-22', time: '14:00', location: 'Online (Zoom)', trainer: 'Sales Team' },
-            { title: 'Health Assessment Certification', date: '2025-05-01', time: '08:30', location: 'Ondangwa Branch', trainer: 'Medical Team' },
-          ].map((event, idx) => (
-            <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex flex-col items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-primary">{new Date(event.date).toLocaleDateString('en', { month: 'short' })}</span>
-                <span className="text-sm font-bold text-gray-800">{new Date(event.date).getDate()}</span>
-              </div>
-              <div className="flex-1">
-                <h4 className="font-semibold text-gray-800 text-sm">{event.title}</h4>
-                <p className="text-xs text-gray-500 mt-1">{event.time} | {event.location}</p>
-                <p className="text-xs text-gray-400">Trainer: {event.trainer}</p>
-              </div>
-              <Badge variant="info">Upcoming</Badge>
+        {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+        {showForm && isTrainer && (
+          <form onSubmit={handleAdd} className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
+            <Input label="Title *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Event title" />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Date *" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+              <Input label="Time" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
             </div>
-          ))}
-        </div>
+            <Input label="Location" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Windhoek CBD" />
+            <Input label="Trainer" value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })} placeholder="e.g. Head Office" />
+            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Event'}</Button>
+          </form>
+        )}
+
+        {loading ? (
+          <LoadingSpinner />
+        ) : events.length === 0 ? (
+          <EmptyState icon={<BookOpen size={48} />} title="No Scheduled Events" description="No training events have been scheduled yet." />
+        ) : (
+          <div className="space-y-4">
+            {events.map(event => (
+              <div key={event.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex flex-col items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-primary">{new Date(event.date).toLocaleDateString('en', { month: 'short' })}</span>
+                  <span className="text-sm font-bold text-gray-800">{new Date(event.date).getDate()}</span>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-gray-800 text-sm">{event.title}</h4>
+                  {(event.time || event.location) && (
+                    <p className="text-xs text-gray-500 mt-1">{[event.time, event.location].filter(Boolean).join(' | ')}</p>
+                  )}
+                  {event.trainer && <p className="text-xs text-gray-400">Trainer: {event.trainer}</p>}
+                </div>
+                <Badge variant={new Date(event.date) >= new Date() ? 'info' : 'default'}>
+                  {new Date(event.date) >= new Date() ? 'Upcoming' : 'Past'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
       </CardBody>
     </Card>
   );

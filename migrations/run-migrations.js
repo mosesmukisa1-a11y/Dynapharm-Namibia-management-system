@@ -97,7 +97,12 @@ async function main() {
       '010_create_stock_management_tables.sql',
       '011_create_mis_tables.sql',
       '012_alter_distributors_add_branch_fields.sql',
-      '013_stock_enhancements.sql'
+      '013_stock_enhancements.sql',
+      '014_centralized_stock_engine.sql',
+      '015_hr_finance_tables.sql',
+      '016_branch_inventory_unit_price.sql',
+      '017_create_stock_adjustments_table.sql',
+      '018_create_training_schedules_table.sql',
     ];
     
     for (const migration of migrations) {

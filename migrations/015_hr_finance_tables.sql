@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS hr_leave_requests (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   reason TEXT,
+  urgent BOOLEAN DEFAULT FALSE,
   status VARCHAR(40) DEFAULT 'pending',
   approved_by VARCHAR(120),
   approved_at TIMESTAMPTZ,
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS hr_leave_requests (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE hr_leave_requests ADD COLUMN IF NOT EXISTS urgent BOOLEAN DEFAULT FALSE;
 
 -- HR Records Table (warnings, terminations, attendance, performance)
 CREATE TABLE IF NOT EXISTS hr_records (
