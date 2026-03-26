@@ -1775,7 +1775,39 @@ function WarehouseTab({ name }) {
   const [dispatchCart, setDispatchCart] = useState([]);
   const [dispatchBranch, setDispatchBranch] = useState('');
   const [dispatchNote, setDispatchNote] = useState('');
+  const [dispatchBatchSelections, setDispatchBatchSelections] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!showDispatch) return;
+    setDispatchBatchSelections(prev => {
+      const next = { ...prev };
+      let changed = false;
+      const cartDescs = new Set(dispatchCart.map(c => c.description));
+      Object.keys(next).forEach(desc => {
+        if (!cartDescs.has(desc)) { delete next[desc]; changed = true; }
+      });
+      dispatchCart.forEach(item => {
+        if (!next[item.description]) {
+          const available = batches
+            .filter(b => {
+              const nm = (b.product_name || b.description || '').toLowerCase();
+              const rem = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+              return nm === item.description.toLowerCase() && rem > 0;
+            })
+            .sort((a, b) => {
+              const da = a.expiry_date || a.expiryDate || '';
+              const db = b.expiry_date || b.expiryDate || '';
+              if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
+              return da < db ? -1 : da > db ? 1 : 0;
+            });
+          if (available.length > 0) { next[item.description] = available[0].id; changed = true; }
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [dispatchCart, showDispatch, batches]);
+
   const [receivingId, setReceivingId] = useState(null);
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
@@ -1845,19 +1877,63 @@ function WarehouseTab({ name }) {
     }
   };
 
+  const getAvailableBatchesForProduct = (productDesc) => {
+    return batches
+      .filter(b => {
+        const name = (b.product_name || b.description || '').toLowerCase();
+        const remaining = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+        return name === productDesc.toLowerCase() && remaining > 0;
+      })
+      .sort((a, b) => {
+        const da = a.expiry_date || a.expiryDate || '';
+        const db = b.expiry_date || b.expiryDate || '';
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+  };
+
+  const getBatchSource = (batch) => {
+    const notes = (batch.notes || '').toLowerCase();
+    const batchNo = (batch.batch_no || batch.batchNo || batch.batch_number || '').toUpperCase();
+    if (notes.includes('country stock') || batchNo.startsWith('RCV-')) return 'Country Stock';
+    return 'Supplier Import';
+  };
+
   const handleDispatchToBranch = async (e) => {
     e.preventDefault();
     if (!dispatchBranch) { setAlert({ type: 'error', msg: 'Please select a destination branch' }); return; }
     if (dispatchCart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to dispatch' }); return; }
+    for (const c of dispatchCart) {
+      const available = getAvailableBatchesForProduct(c.description);
+      if (available.length === 0) {
+        setAlert({ type: 'error', msg: `"${c.description}" has no available stock batches in this warehouse and cannot be dispatched.` });
+        return;
+      }
+      const selectedBatchId = dispatchBatchSelections[c.description];
+      const selectedBatch = selectedBatchId ? available.find(b => b.id === selectedBatchId) : null;
+      if (!selectedBatch) {
+        setAlert({ type: 'error', msg: `Please select a batch for "${c.description}" before submitting.` });
+        return;
+      }
+      const batchRemaining = Number(selectedBatch.remaining_quantity ?? selectedBatch.remainingQuantity ?? selectedBatch.quantity ?? 0);
+      if (c.qty > batchRemaining) {
+        setAlert({ type: 'error', msg: `Dispatch quantity (${c.qty}) for "${c.description}" exceeds selected batch's available stock (${batchRemaining}).` });
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const items = dispatchCart.map(c => {
-        const matchBatch = batches.find(b => (b.product_name || b.description || '').toLowerCase() === c.description.toLowerCase());
+        const selectedBatchId = dispatchBatchSelections[c.description];
+        const available = getAvailableBatchesForProduct(c.description);
+        const selectedBatch = available.find(b => b.id === selectedBatchId);
         return {
           productName: c.description,
           quantity: c.qty,
-          batchNo: matchBatch?.batch_no || matchBatch?.batch_number || null,
-          expiryDate: matchBatch?.expiry_date || null,
+          batchNo: selectedBatch?.batch_no || selectedBatch?.batchNo || selectedBatch?.batch_number || null,
+          expiryDate: selectedBatch?.expiry_date || selectedBatch?.expiryDate || null,
         };
       });
       await api.stock.createTransfer({
@@ -1872,6 +1948,7 @@ function WarehouseTab({ name }) {
       setDispatchCart([]);
       setDispatchBranch('');
       setDispatchNote('');
+      setDispatchBatchSelections({});
       setAlert({ type: 'success', msg: `Dispatch submitted for GM approval. ${dispatchCart.length} product(s) → ${fmtLocation(dispatchBranch)}` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
@@ -2186,13 +2263,87 @@ function WarehouseTab({ name }) {
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
             <ProductMultiCart cart={dispatchCart} onCartChange={setDispatchCart} />
           </div>
+          {dispatchCart.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Batch Selection</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {dispatchCart.map(item => {
+                  const availableBatches = getAvailableBatchesForProduct(item.description);
+                  const selectedId = dispatchBatchSelections[item.description];
+                  const effectiveBatch = selectedId
+                    ? availableBatches.find(b => b.id === selectedId) || availableBatches[0]
+                    : availableBatches[0];
+                  return (
+                    <div key={item.description} style={{ border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: '0.83rem', color: '#1e293b' }}>
+                        📦 {item.description}
+                      </div>
+                      {availableBatches.length === 0 ? (
+                        <div style={{ padding: '10px 12px', fontSize: '0.82rem', color: '#ef4444' }}>
+                          ⚠️ No available batches found for this product in the warehouse
+                        </div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f1f5f9' }}>
+                              <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b', width: 32 }}></th>
+                              <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Batch #</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Expiry</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>Avail. Qty</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Source</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {availableBatches.map((batch, idx) => {
+                              const isSelected = (selectedId || effectiveBatch?.id) === batch.id;
+                              const source = getBatchSource(batch);
+                              const remaining = Number(batch.remaining_quantity ?? batch.remainingQuantity ?? batch.quantity ?? 0);
+                              const expiry = batch.expiry_date || batch.expiryDate || null;
+                              return (
+                                <tr key={batch.id || idx}
+                                  onClick={() => setDispatchBatchSelections(prev => ({ ...prev, [item.description]: batch.id }))}
+                                  style={{ cursor: 'pointer', background: isSelected ? '#eff6ff' : idx % 2 === 0 ? '#fff' : '#fafafa', borderTop: '1px solid #f1f5f9' }}>
+                                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                                    <input type="radio" readOnly checked={isSelected} style={{ accentColor: '#2563eb' }} />
+                                  </td>
+                                  <td style={{ padding: '7px 10px', fontWeight: isSelected ? 700 : 500, color: '#1e293b', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                                    {batch.batch_no || batch.batchNo || batch.batch_number || '—'}
+                                  </td>
+                                  <td style={{ padding: '7px 10px', color: expiry ? '#1e293b' : '#94a3b8' }}>
+                                    {expiry ? expiry.slice(0, 7) : 'No expiry'}
+                                  </td>
+                                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: remaining > 0 ? '#16a34a' : '#94a3b8' }}>
+                                    {remaining}
+                                  </td>
+                                  <td style={{ padding: '7px 10px' }}>
+                                    <span style={{
+                                      display: 'inline-block', padding: '2px 8px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 600,
+                                      background: source === 'Country Stock' ? '#ecfdf5' : '#eff6ff',
+                                      color: source === 'Country Stock' ? '#059669' : '#2563eb',
+                                      border: source === 'Country Stock' ? '1px solid #6ee7b7' : '1px solid #bfdbfe'
+                                    }}>
+                                      {source}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Notes (optional)</label>
             <textarea className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 resize-y" rows={2}
               value={dispatchNote} onChange={e => setDispatchNote(e.target.value)} placeholder="Delivery instructions, urgency, etc..." />
           </div>
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting || dispatchCart.length === 0}>
+            <Button type="submit" disabled={submitting || dispatchCart.length === 0 || dispatchCart.some(c => getAvailableBatchesForProduct(c.description).length === 0)}>
               {submitting ? 'Submitting...' : `📤 Submit for GM Approval (${dispatchCart.reduce((s, c) => s + c.qty, 0)} units)`}
             </Button>
             <Button variant="secondary" type="button" onClick={() => setShowDispatch(false)}>Cancel</Button>
