@@ -126,8 +126,9 @@ function WalkInSalesTab() {
 
   const normalizeDistributor = (d) => ({
     ...d,
-    name: d.name || d.distributor_name || d.full_name || '',
-    nb_number: d.nb_number || d.distributor_code || '',
+    id: d.id || d.distributorId || d.distributor_id || '',
+    name: d.name || d.fullName || d.distributor_name || d.full_name || '',
+    nb_number: d.nb_number || d.nbNumber || d.distributor_code || '',
     phone: d.phone || d.mobile_no || '',
   });
 
@@ -380,8 +381,8 @@ function WalkInSalesTab() {
                 totalBV: s.totalBV || s.total_bv || 0,
                 paymentMethod: s.paymentMethod || s.payment_method || '',
                 customerType: s.customerType || s.customer_type || 'non_member',
-                customerName: s.distributor_name || s.customerName || s.customer_name || (sIsM ? null : 'Walk-in Customer'),
-                nbNumber: sIsM ? (s.distributor_nb || s.distributorReferral?.nb_number || null) : null,
+                customerName: s.customerName || s.customer_name || s.distributor_name || s.fullName || (sIsM ? null : 'Walk-in Customer'),
+                nbNumber: sIsM ? (s.nbNumber || s.nb_number || s.distributor_nb || s.distributorReferral?.nb_number || null) : null,
                 referralName: !sIsM ? (s.referral_name || s.distributorReferral?.name || null) : null,
                 referralNB: !sIsM ? (s.referral_nb || s.distributorReferral?.nb_number || null) : null,
                 cashier: s.soldBy || '',
@@ -397,6 +398,7 @@ function WalkInSalesTab() {
                       {sIsM ? '🏅 Member' : '👤 Walk-in'}
                     </span>
                     <span className="text-gray-500 truncate">{saleParams.customerName || '—'}</span>
+                    {saleParams.nbNumber && <span className="text-xs text-gray-400 shrink-0">NB#{saleParams.nbNumber}</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
@@ -476,8 +478,8 @@ function WalkInSalesTab() {
                           {regResults.map(d => (
                             <button key={d.id} onClick={() => selectRegistered(d)}
                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fff5f5', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
-                              <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.full_name}</div>
-                              <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.distributor_code}</div>
+                              <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
+                              <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.nbNumber || d.distributor_code}</div>
                             </button>
                           ))}
                         </div>
@@ -514,8 +516,8 @@ function WalkInSalesTab() {
                             {referralResults.map(d => (
                               <button key={d.id} onClick={() => selectReferral(d)}
                                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fffbeb', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.full_name}</div>
-                                <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.distributor_code}</div>
+                                <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
+                                <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.nbNumber || d.distributor_code}</div>
                               </button>
                             ))}
                           </div>
@@ -1678,10 +1680,12 @@ function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions)
 
   const walkinRows = filtered.map(r => {
     const isM = (r.customerType || r.customer_type) === 'member';
+    const rNB = r.nbNumber || r.nb_number || r.distributor_nb || r.distributor_code || '';
     return `<tr>
       <td>${r.receipt_number || r.saleNumber || r.id || '-'}</td>
       <td><span style="color:${isM ? '#1d4ed8' : '#374151'};font-weight:600">${isM ? '👤 Member' : '🚶 Walk-in'}</span></td>
-      <td>${r.distributor_name || r.customer_name || r.customerName || 'Walk-in'}</td>
+      <td>${r.customerName || r.customer_name || r.fullName || r.distributor_name || 'Walk-in'}</td>
+      <td>${rNB ? `NB#${rNB}` : '-'}</td>
       <td>${r.paymentMethod || r.payment_method || '-'}</td>
       <td style="font-weight:700;color:#166534;text-align:right">${fmtC(r.total || r.totalAmount || r.total_amount || 0)}</td>
       <td>${r.created_at ? new Date(r.created_at).toLocaleDateString('en-NA') : '-'}</td>
@@ -1748,9 +1752,9 @@ ${sectionTitle('Walk-in Sales Breakdown')}
   ${statCard('Other Payments', fmtC(walkinTotal - cashTotal - cardTotal), `${filtered.length - cashSales.length - cardSales.length} transactions`, '#92400e')}
 </div>
 <table>
-  <thead><tr><th>Receipt #</th><th>Customer Type</th><th>Customer</th><th>Payment</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
-  <tbody>${walkinRows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:12px">No walk-in sales in this period</td></tr>'}</tbody>
-  ${filtered.length > 0 ? `<tfoot><tr class="total-row"><td colspan="3"><strong>WALK-IN TOTAL</strong></td><td></td><td style="text-align:right"><strong>${fmtC(walkinTotal)}</strong></td><td></td></tr></tfoot>` : ''}
+  <thead><tr><th>Receipt #</th><th>Customer Type</th><th>Customer</th><th>NB#</th><th>Payment</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
+  <tbody>${walkinRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:12px">No walk-in sales in this period</td></tr>'}</tbody>
+  ${filtered.length > 0 ? `<tfoot><tr class="total-row"><td colspan="4"><strong>WALK-IN TOTAL</strong></td><td></td><td style="text-align:right"><strong>${fmtC(walkinTotal)}</strong></td><td></td></tr></tfoot>` : ''}
 </table>
 
 ${sectionTitle('Online Orders Breakdown')}

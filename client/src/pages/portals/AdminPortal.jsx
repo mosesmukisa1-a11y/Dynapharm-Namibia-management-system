@@ -702,8 +702,8 @@ function DistributorsTab() {
       <Card>
         <Table
           columns={[
-            { header: 'NB Number', key: 'distributor_code' },
-            { header: 'Name', key: 'distributor_name' },
+            { header: 'NB Number', render: r => r.distributor_code || r.nb_number || r.id || '-' },
+            { header: 'Name', render: r => r.distributor_name || r.full_name || r.name || '-' },
             { header: 'Position', render: r => r.position || r.position_code || '-' },
             { header: 'Branch', render: r => r.branch || r.location || '-' },
             { header: 'Phone', render: r => r.mobile_no || '-' },
