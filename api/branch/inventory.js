@@ -110,11 +110,21 @@ async function resolveBranchId(raw) {
   const candidates = [key];
   if (!key.endsWith('_branch')) candidates.push(key + '_branch');
   if (stripped !== key) candidates.push(stripped);
+  // Exact match first
   const result = await getOne(
     `SELECT branch_id FROM branch_inventory_batches WHERE branch_id = ANY($1) LIMIT 1`,
     [candidates]
   );
-  return result ? result.branch_id : key;
+  if (result) return result.branch_id;
+  // Case-insensitive + whitespace-normalised fallback:
+  // Normalise DB values the same way normalizeBranchId does (lowercase + spaces→underscores)
+  // so "Oshakati Branch", "oshakati_branch", and "oshakati" all match.
+  const ciResult = await getOne(
+    `SELECT branch_id FROM branch_inventory_batches
+     WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1) LIMIT 1`,
+    [candidates]
+  );
+  return ciResult ? ciResult.branch_id : key;
 }
 
 async function getInventoryByBranch(branchId, enriched = false) {

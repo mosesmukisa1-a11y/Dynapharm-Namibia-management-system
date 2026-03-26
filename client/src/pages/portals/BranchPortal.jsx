@@ -2037,17 +2037,32 @@ function BranchStockTab() {
         }
       }
       for (const item of itemsToReceive) {
+          const productName = item.product_name || item.productName || item.productId || 'Unknown';
+          const batchNo = item.batch_no?.trim() || '';
+          const expiryDate = item.expiry_date || null;
+          const qty = Number(item.received_qty);
           await api.stock.createMovement({
-            product_name: item.product_name || item.productName || item.productId || 'Unknown',
-            quantity: Number(item.received_qty),
+            product_name: productName,
+            quantity: qty,
             movement_type: 'received',
             source_location: 'Warehouse',
             destination_location: user?.branch || 'Branch',
-            batch_no: item.batch_no?.trim() || '',
-            expiry_date: item.expiry_date || null,
-            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}. Batch: ${item.batch_no || 'N/A'}, Expiry: ${item.expiry_date || 'N/A'}`,
+            destination_location_type: 'branch',
+            batch_no: batchNo,
+            expiry_date: expiryDate,
+            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}. Batch: ${batchNo || 'N/A'}, Expiry: ${expiryDate || 'N/A'}`,
             reference_id: selectedRequest.id,
             created_by: receiveReceivedBy || user?.full_name || user?.username || null,
+          });
+          await api.branch.receiveInventory({
+            action: 'receive',
+            branchId: user?.branch || 'Branch',
+            productName,
+            batchNo,
+            expiryDate,
+            quantity: qty,
+            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}`,
+            createdBy: receiveReceivedBy || user?.full_name || user?.username || null,
           });
       }
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
