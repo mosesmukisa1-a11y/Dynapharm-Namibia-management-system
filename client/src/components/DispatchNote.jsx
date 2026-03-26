@@ -204,6 +204,10 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const createdBy = t.createdBy || t.created_by || null;
   const dispatchedBy = t.dispatchedBy || t.dispatched_by || null;
   const receivedBy = t.receivedBy || t.received_by || signatureName || null;
+  const preparedByRole = t.preparedByRole || t.prepared_by_role || null;
+  const destinationBranchStaff = t.destinationBranchStaff || t.destination_branch_staff || null;
+  const gmApprovedAt = t.gmApprovedAt || t.gm_approved_at || null;
+  const gmApprovedBy = t.gmApprovedBy || t.gm_approved_by || null;
 
   const sourceKey = t.from_location || t.fromWarehouse || '';
   const destKey = t.to_location || t.toBranch || '';
@@ -257,9 +261,10 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
               </span>
             </span>
             <span style={lbl}>Prepared By:</span><span style={val}>{createdBy || dispatchedBy || '—'}</span>
-            <span style={lbl}>Role:</span><span style={val}>{t.preparedByRole || 'Stock Controller'}</span>
+            <span style={lbl}>Role:</span><span style={val}>{preparedByRole || 'Stock Controller'}</span>
             {gmAction && <><span style={lbl}>GM Approval:</span><span style={val}>{GM_ACTION_LABELS[gmAction] || gmAction}</span></>}
-            {(gmAction === 'approve' || gmAction === 'amend_approve') && <><span style={lbl}>GM Approval Date:</span><span style={val}>{fmtDateTime(amendedAt || updatedAt)}</span></>}
+            {(gmAction === 'approve' || gmAction === 'amend_approve') && <><span style={lbl}>GM Name:</span><span style={val}>{gmApprovedBy || approvedBy || '—'}</span></>}
+            {(gmAction === 'approve' || gmAction === 'amend_approve') && <><span style={lbl}>GM Approval Date:</span><span style={val}>{fmtDateTime(gmApprovedAt || amendedAt || updatedAt)}</span></>}
           </div>
         </div>
         <div style={{ textAlign: 'center' }}>
@@ -284,6 +289,33 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
           {destBranch?.region && <div style={infoRow}><span style={lbl}>Region:</span><span style={val}>{destBranch.region}</span></div>}
         </div>
       </div>
+
+      {/* === B2. DESTINATION BRANCH STAFF === */}
+      {Array.isArray(destinationBranchStaff) && destinationBranchStaff.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={sectionTitle}>Destination Branch Staff</div>
+          <div style={{ ...sectionBoxStyle, background: '#f0fdf4', borderColor: '#86efac' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={{ background: '#166534', color: 'white', padding: '5px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700 }}>Name</th>
+                  <th style={{ background: '#166534', color: 'white', padding: '5px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700 }}>Role</th>
+                  <th style={{ background: '#166534', color: 'white', padding: '5px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700 }}>Phone</th>
+                </tr>
+              </thead>
+              <tbody>
+                {destinationBranchStaff.map((s, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f0fdf4' }}>
+                    <td style={{ padding: '4px 8px', borderBottom: '1px solid #d1fae5', fontWeight: 600 }}>{s.name}</td>
+                    <td style={{ padding: '4px 8px', borderBottom: '1px solid #d1fae5', textTransform: 'capitalize' }}>{(s.role || '').replace(/_/g, ' ')}</td>
+                    <td style={{ padding: '4px 8px', borderBottom: '1px solid #d1fae5', color: '#6b7280' }}>{s.phone || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* === C. DISPATCH ITEM TABLE === */}
       <div style={{ marginBottom: 16 }}>
@@ -382,9 +414,9 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
             <span style={{ fontWeight: 700, color: gmAction === 'approve' || gmAction === 'amend_approve' ? '#065f46' : gmAction === 'reject' ? '#991b1b' : '#92400e' }}>
               {hasGMAction ? (GM_ACTION_LABELS[gmAction] || gmAction) : 'Pending'}
             </span>
-            <span style={lbl}>GM Name:</span><span style={val}>{approvedBy || rejectedBy || '—'}</span>
+            <span style={lbl}>GM Name:</span><span style={val}>{gmApprovedBy || approvedBy || rejectedBy || '—'}</span>
             {(gmAction === 'approve' || gmAction === 'amend_approve') && (
-              <><span style={lbl}>Approval Date/Time:</span><span style={val}>{fmtDateTime(amendedAt || updatedAt)}</span></>
+              <><span style={lbl}>Approval Date/Time:</span><span style={val}>{fmtDateTime(gmApprovedAt || amendedAt || updatedAt)}</span></>
             )}
             {gmAction === 'reject' && (
               <><span style={lbl}>Rejection Date/Time:</span><span style={val}>{fmtDateTime(updatedAt)}</span></>
@@ -521,14 +553,14 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
       {/* === AUDIT FOOTER === */}
       <div style={{ marginTop: 18, paddingTop: 10, borderTop: '1px solid #e5e7eb', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, fontSize: 10, color: '#9ca3af' }}>
         <div>
-          <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 9 }}>Created</div>
+          <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 9 }}>Prepared</div>
           <div>{fmtDateTime(createdAt)}</div>
-          <div>By: {createdBy || '—'}</div>
+          <div>By: {createdBy || '—'}{preparedByRole ? ` (${preparedByRole.replace(/_/g, ' ')})` : ''}</div>
         </div>
         <div>
-          <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 9 }}>Approved</div>
-          <div>{hasGMAction ? fmtDateTime(amendedAt || updatedAt) : '—'}</div>
-          <div>By: {approvedBy || rejectedBy || '—'}</div>
+          <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 9 }}>GM Approved</div>
+          <div>{hasGMAction ? fmtDateTime(gmApprovedAt || amendedAt || updatedAt) : '—'}</div>
+          <div>By: {gmApprovedBy || approvedBy || rejectedBy || '—'}</div>
         </div>
         <div>
           <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 9 }}>Received</div>

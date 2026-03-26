@@ -1,8 +1,10 @@
 /**
  * POST /api/stock/dispatch/create
  * Create a warehouse dispatch to a branch. Enforces batch + expiry per item.
+ * Captures preparer identity from authenticated session, snapshots destination branch staff,
+ * and sets status to 'pending_approval' — consistent with the transfers endpoint.
  */
-import { query, getOne } from '../../db.js';
+import { query, getOne, getMany } from '../../db.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -18,6 +20,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   const body = await parseBody(req);
+  const currentUser = req.user || null;
+
   const { sourceWarehouseId, destinationBranchId, items, preparedBy, notes } = body;
 
   if (!sourceWarehouseId) return res.status(400).json({ success: false, error: 'sourceWarehouseId is required' });
@@ -62,16 +66,62 @@ export default async function handler(req, res) {
     return res.status(409).json({ success: false, error: 'Insufficient stock for dispatch', stockErrors });
   }
 
-  // Create a stock_transfer record
+  // Capture preparer identity from authenticated session.
+  // Name falls back to session-provided identity only; body.preparedBy is not used for security-sensitive fields.
+  const preparedById = currentUser?.id || currentUser?.userId || null;
+  const preparedByRole = currentUser?.role || null;
+  const preparedByName = currentUser?.fullName || currentUser?.username || null;
+
+  // Snapshot destination branch staff at dispatch creation time.
+  let destinationBranchStaff = null;
+  try {
+    const branchStaff = await getMany(
+      `SELECT id, full_name, role, branch, email, phone FROM users
+       WHERE is_active = TRUE
+         AND (REPLACE(LOWER(branch), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
+              OR EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(
+                  CASE WHEN jsonb_typeof(branches) = 'array' THEN branches ELSE '[]'::jsonb END
+                ) AS b WHERE REPLACE(LOWER(b), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
+              ))
+       ORDER BY role, full_name`,
+      [destinationBranchId]
+    );
+    if (branchStaff.length > 0) {
+      destinationBranchStaff = branchStaff.map(u => ({
+        id: u.id,
+        name: u.full_name,
+        role: u.role,
+        phone: u.phone || null,
+        email: u.email || null,
+      }));
+    }
+  } catch (e) {
+    console.warn('[dispatch/create] Could not snapshot destination branch staff:', e.message);
+  }
+
+  // Create a stock_transfer record with 'pending_approval' status (consistent with transfers endpoint).
   const ts = Date.now();
   const dispatchId = `DISP-${ts}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
   await query(
-    `INSERT INTO stock_transfers (id, from_warehouse, to_branch, dispatch_notes, status, dispatched_by, created_by, created_at, updated_at, metadata)
-     VALUES ($1, $2, $3, $4, 'pending_dispatch', $5, $5, NOW(), NOW(), $6)`,
-    [dispatchId, sourceWarehouseId, destinationBranchId, notes || `Dispatch from ${sourceWarehouseId}`,
-      preparedBy || 'system',
-      JSON.stringify({ sourceWarehouseId, destinationBranchId, items, preparedBy })]
+    `INSERT INTO stock_transfers
+       (id, from_warehouse, to_branch, dispatch_notes, status,
+        created_by, prepared_by_id, prepared_by_role,
+        destination_branch_staff,
+        created_at, updated_at, metadata)
+     VALUES ($1, $2, $3, $4, 'pending_approval', $5, $6, $7, $8, NOW(), NOW(), $9)`,
+    [
+      dispatchId,
+      sourceWarehouseId,
+      destinationBranchId,
+      notes || `Dispatch from ${sourceWarehouseId}`,
+      preparedByName,
+      preparedById,
+      preparedByRole,
+      destinationBranchStaff ? JSON.stringify(destinationBranchStaff) : null,
+      JSON.stringify({ sourceWarehouseId, destinationBranchId, items }),
+    ]
   );
 
   return res.status(201).json({
@@ -80,7 +130,7 @@ export default async function handler(req, res) {
     sourceWarehouseId,
     destinationBranchId,
     itemsCount: items.length,
-    status: 'pending_dispatch',
-    message: `Dispatch ${dispatchId} created. Items have batch and expiry validated.`,
+    status: 'pending_approval',
+    message: `Dispatch ${dispatchId} created and awaiting GM approval. Items have batch and expiry validated.`,
   });
 }

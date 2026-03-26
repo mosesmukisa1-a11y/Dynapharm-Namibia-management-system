@@ -811,15 +811,32 @@ function ApprovalsTab() {
                             <div className="text-xs text-red-500 font-semibold uppercase">Destination Branch</div>
                             <div className="font-bold text-red-800 text-sm">{toLoc}</div>
                           </div>
-                          <div className="px-3 py-2 rounded-lg bg-gray-50 border">
-                            <div className="text-xs text-gray-500 font-semibold uppercase">Prepared By</div>
+                          <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
+                            <div className="text-xs text-blue-600 font-semibold uppercase">Prepared By</div>
                             <div className="font-bold text-gray-800 text-sm">{t.createdBy || t.dispatchedBy || '—'}</div>
+                            {t.preparedByRole && <div className="text-xs text-blue-600 capitalize mt-0.5">{t.preparedByRole.replace(/_/g, ' ')}</div>}
                           </div>
                           <div className="px-3 py-2 rounded-lg bg-gray-50 border">
-                            <div className="text-xs text-gray-500 font-semibold uppercase">Date</div>
+                            <div className="text-xs text-gray-500 font-semibold uppercase">Date Prepared</div>
                             <div className="font-bold text-gray-800 text-sm">{fmtDate(t.createdAt || t.created_at)}</div>
                           </div>
                         </div>
+
+                        {Array.isArray(t.destinationBranchStaff) && t.destinationBranchStaff.length > 0 && (
+                          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+                            <div className="text-xs font-semibold text-green-700 uppercase mb-2">👥 Destination Branch Staff ({toLoc})</div>
+                            <div className="grid grid-cols-1 gap-1">
+                              {t.destinationBranchStaff.map((s, si) => (
+                                <div key={si} className="flex items-center gap-2 text-xs text-gray-700">
+                                  <span className="font-semibold">{s.name}</span>
+                                  <span className="text-gray-400">·</span>
+                                  <span className="capitalize text-green-700 font-medium">{(s.role || '').replace(/_/g, ' ')}</span>
+                                  {s.phone && <><span className="text-gray-400">·</span><span className="text-gray-500">{s.phone}</span></>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <table className="w-full text-xs border-collapse mb-3">
                           <thead>

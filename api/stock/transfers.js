@@ -303,12 +303,18 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     receivedAt: row.received_at instanceof Date ? row.received_at.toISOString() : row.received_at,
     gmAction: row.gm_action || meta.gm_action || null,
     gmComment: row.gm_comment || meta.gm_comment || null,
+    gmApprovedAt: row.gm_approved_at instanceof Date ? row.gm_approved_at.toISOString() : (row.gm_approved_at || null),
+    gmApprovedBy: row.gm_approved_by || null,
     amendedByGm: row.amended_by_gm || meta.amended_by_gm || null,
     amendedAt: row.amended_at instanceof Date ? row.amended_at.toISOString() : (row.amended_at || null),
     signatureName: row.signature_name || null,
     branchReceiptNote: row.branch_receipt_note || null,
     discrepancyFlag: row.discrepancy_flag || false,
     receiptStatus: row.receipt_status || null,
+    preparedById: row.prepared_by_id || null,
+    preparedByRole: row.prepared_by_role || null,
+    destinationBranchStaff: safeParseJson(row.destination_branch_staff) || null,
+    gmApprovedById: row.gm_approved_by_id || null,
     metadata: meta,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     createdBy: row.created_by,
@@ -408,6 +414,43 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Destination location is required' });
       }
 
+      // Snapshot destination branch staff at dispatch creation time
+      let destinationBranchStaff = null;
+      if (toLocation) {
+        try {
+          const branchStaff = await getMany(
+            `SELECT id, full_name, role, branch, email, phone FROM users
+             WHERE is_active = TRUE
+               AND (REPLACE(LOWER(branch), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
+                 OR EXISTS (
+                   SELECT 1 FROM jsonb_array_elements_text(COALESCE(branches, '[]'::jsonb)) AS b
+                   WHERE REPLACE(LOWER(b), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
+                 ))
+             ORDER BY role ASC, full_name ASC`,
+            [toLocation]
+          );
+          if (branchStaff.length > 0) {
+            destinationBranchStaff = branchStaff.map(u => ({
+              id: u.id,
+              name: u.full_name || u.username || u.id,
+              role: u.role,
+              phone: u.phone || null,
+              email: u.email || null,
+            }));
+          }
+        } catch (e) {
+          console.warn('[transfers] Could not snapshot destination branch staff:', e.message);
+        }
+      }
+
+      // Preparer identity is always taken from the authenticated session (currentUser).
+      // Body-supplied values are only used as a fallback for legacy/non-authenticated flows
+      // where body.created_by is a display name entered by the client (not a security-sensitive ID).
+      // The security-sensitive fields (preparedById, preparedByRole) are strictly from auth context.
+      const preparedByName = currentUser?.fullName || currentUser?.username || body.createdBy || body.created_by || null;
+      const preparedByRole = currentUser?.role || null;
+      const preparedById = currentUser?.id || currentUser?.userId || null;
+
       const transferData = {
         id: body.id || generateId('TRF'),
         request_id: body.requestId || body.request_id || null,
@@ -424,12 +467,36 @@ export default async function handler(req, res) {
         received_by: body.receivedBy || null,
         received_at: body.receivedAt || null,
         metadata: body.metadata ? JSON.stringify(body.metadata) : null,
-        created_by: currentUser?.fullName || currentUser?.username || body.createdBy || null,
+        created_by: preparedByName,
+        prepared_by_id: preparedById,
+        prepared_by_role: preparedByRole,
+        destination_branch_staff: destinationBranchStaff ? JSON.stringify(destinationBranchStaff) : null,
       };
 
       Object.keys(transferData).forEach((key) => {
         if (transferData[key] === undefined) delete transferData[key];
       });
+
+      // POST-level hard gate: creating a dispatch directly in any stock-advancing status requires GM role.
+      // Normal dispatch creation sets status to 'pending_approval'; only privileged callers (GM/admin)
+      // can create directly in any advanced status (e.g., retroactive entries).
+      // When a privileged caller creates in an advanced status, persist GM approval evidence immediately.
+      const GM_ROLES_POST = ['gm', 'general_manager', 'director', 'admin', 'super_admin'];
+      const ALL_STOCK_ADVANCING_STATUSES = ['approved', 'dispatched', 'in_transit', 'received', 'partially_received', 'delivered', 'completed'];
+      const creationStatus = transferData.status || 'pending';
+      if (ALL_STOCK_ADVANCING_STATUSES.includes(creationStatus)) {
+        const callerRole = (currentUser?.role || '').toLowerCase().trim();
+        if (!callerRole || !GM_ROLES_POST.includes(callerRole)) {
+          return res.status(403).json({
+            success: false,
+            error: `Creating a dispatch with status '${creationStatus}' requires General Manager authorization. Use 'pending_approval' for normal dispatch creation.`,
+          });
+        }
+        // Record GM approval evidence atomically for direct creation in advanced status
+        transferData.gm_approved_at = new Date().toISOString();
+        transferData.gm_approved_by = currentUser?.fullName || currentUser?.username || 'GM';
+        transferData.gm_approved_by_id = currentUser?.id || currentUser?.userId || null;
+      }
 
       const productName = body.product_name || body.productName || null;
       const quantity = Number(body.quantity || 0);
@@ -497,6 +564,20 @@ export default async function handler(req, res) {
       delete updatePayload.items;
       delete updatePayload.itemsArray;
       delete updatePayload.dispatchMeta;
+
+      // Strip any client-supplied approval-evidence fields — these are only ever written
+      // server-side as a result of a verified GM action. Allowing clients to set them directly
+      // would enable privilege escalation (forging GM approval state).
+      delete updatePayload.gm_approved_at;
+      delete updatePayload.gm_approved_by;
+      delete updatePayload.gm_approved_by_id;
+      delete updatePayload.gmApprovedAt;
+      delete updatePayload.gmApprovedBy;
+      delete updatePayload.gmApprovedById;
+      delete updatePayload.prepared_by_id;
+      delete updatePayload.prepared_by_role;
+      delete updatePayload.preparedById;
+      delete updatePayload.preparedByRole;
 
       if (updatePayload.from_location) {
         updatePayload.from_warehouse = updatePayload.from_location;
@@ -593,6 +674,19 @@ export default async function handler(req, res) {
       if (updatePayload.approvedBy) { metaExtras.approved_by = updatePayload.approvedBy; delete updatePayload.approvedBy; }
       if (updatePayload.rejected_by) { metaExtras.rejected_by = updatePayload.rejected_by; delete updatePayload.rejected_by; }
 
+      const gmActionProvided = body.gmAction || body.gm_action || updatePayload.gm_action;
+      const isGmApprovalAction = gmActionProvided === 'approve' || gmActionProvided === 'amend_approve';
+
+      // Record GM approval timestamp and approver when a GM approval action is present.
+      // These fields are written here server-side; they are stripped from updatePayload at the top so clients cannot forge them.
+      if (isGmApprovalAction) {
+        const gmName = metaExtras.approved_by || currentUser?.fullName || currentUser?.username || 'GM';
+        const gmId = currentUser?.id || currentUser?.userId || null;
+        updatePayload.gm_approved_at = new Date().toISOString();
+        updatePayload.gm_approved_by = gmName;
+        updatePayload.gm_approved_by_id = gmId;
+      }
+
       if (body.gmAction === 'amend_approve' || body.gm_action === 'amend_approve') {
         updatePayload.amended_by_gm = metaExtras.approved_by || currentUser?.fullName || currentUser?.username || 'GM';
         updatePayload.amended_at = new Date().toISOString();
@@ -612,8 +706,48 @@ export default async function handler(req, res) {
         updatePayload.metadata = JSON.stringify(updatePayload.metadata);
       }
 
-      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch FROM stock_transfers WHERE id = $1', [id]);
+      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch, gm_action, gm_approved_by FROM stock_transfers WHERE id = $1', [id]);
       const previousStatus = oldTransfer?.status;
+
+      // Hard gate: block ANY stock-advancing status transition without a prior or current GM approval.
+      // Covers all statuses that represent stock in motion or completed: approved, dispatched, in_transit,
+      // received, partially_received, delivered, completed.
+      // The gate passes ONLY when: (a) a valid GM approval action is present in this request, OR
+      // (b) the record already has a persisted GM approval (gm_approved_by set from a prior approval event).
+      const targetStatus = updatePayload.status || body.status;
+      const STOCK_ADVANCING_STATUSES = ['approved', 'dispatched', 'in_transit', 'received', 'partially_received', 'delivered', 'completed'];
+      const ALREADY_PAST_GATE_STATUSES = ['approved', 'dispatched', 'in_transit', 'received', 'partially_received', 'delivered', 'completed'];
+      const isStockAdvancingTransition = targetStatus &&
+        STOCK_ADVANCING_STATUSES.includes(targetStatus) &&
+        previousStatus !== targetStatus &&
+        !ALREADY_PAST_GATE_STATUSES.includes(previousStatus || '');
+      if (isStockAdvancingTransition && !isGmApprovalAction && !oldTransfer?.gm_approved_by) {
+        return res.status(403).json({
+          success: false,
+          error: 'GM approval is required before this dispatch can proceed. A General Manager must approve this transfer before status can advance.',
+        });
+      }
+
+      // Extra safety: non-approval GM actions (reject/return) MUST NOT be combined with stock-advancing status transitions.
+      if (gmActionProvided && !isGmApprovalAction && targetStatus && STOCK_ADVANCING_STATUSES.includes(targetStatus)) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot set status to '${targetStatus}' with GM action '${gmActionProvided}'. Only approve or amend_approve actions can advance a dispatch.`,
+        });
+      }
+
+      // GM role enforcement (deny-by-default): only authenticated users with an explicitly allowed GM role
+      // may execute gmAction. If user is not authenticated or role is missing/unrecognized, deny.
+      const GM_ROLES = ['gm', 'general_manager', 'director', 'admin', 'super_admin'];
+      if (gmActionProvided) {
+        const userRole = (currentUser?.role || '').toLowerCase().trim();
+        if (!userRole || !GM_ROLES.includes(userRole)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Only a General Manager or Director may approve, reject, or return dispatch requests.',
+          });
+        }
+      }
 
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
 

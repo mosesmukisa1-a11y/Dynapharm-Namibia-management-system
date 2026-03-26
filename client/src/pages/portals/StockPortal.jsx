@@ -1949,6 +1949,7 @@ function WarehouseTab({ name }) {
         status: 'pending_approval',
         dispatchNotes: dispatchNote || undefined,
         created_by: user?.full_name || user?.username,
+        preparedByRole: user?.role || null,
       });
       setShowDispatch(false);
       setDispatchCart([]);
@@ -2466,6 +2467,7 @@ function WarehouseTab({ name }) {
 }
 
 function DistributionTab({ branch }) {
+  const { user } = useAuth();
   const [cart, setCart] = useState([]);
   const [destination, setDestination] = useState('');
   const [transferNote, setTransferNote] = useState('');
@@ -2531,6 +2533,8 @@ function DistributionTab({ branch }) {
         items,
         status: 'pending_approval',
         dispatchNotes: transferNote || undefined,
+        created_by: user?.full_name || user?.username,
+        preparedByRole: user?.role || null,
       });
       setAlert({ type: 'success', msg: `Distribution of ${cart.length} product(s) to ${fmtLocation(destination)} submitted for GM approval` });
       setCart([]);

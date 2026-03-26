@@ -58,29 +58,64 @@ export default async function handler(req, res) {
     return res.status(422).json({ success: false, error: 'Receipt validation failed', validationErrors });
   }
 
-  // Resolve the actual source warehouse from the dispatch note or transfer record
+  // Resolve the transfer record — dispatchNoteId may be either a stock_transfers.id or a dispatch_notes.id/barcode.
+  // In both cases we must find the underlying stock_transfers row to enforce the GM approval gate.
   let sourceLocation = null;
+  let resolvedTransfer = null;
   try {
-    const transferRow = await getOne(
-      `SELECT from_warehouse FROM stock_transfers WHERE id = $1 LIMIT 1`,
+    // First attempt: dispatchNoteId is a stock_transfers.id directly
+    resolvedTransfer = await getOne(
+      `SELECT id, from_warehouse, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
+       FROM stock_transfers WHERE id = $1 LIMIT 1`,
       [dispatchNoteId]
     );
-    if (transferRow?.from_warehouse) {
-      sourceLocation = transferRow.from_warehouse;
-    } else {
+
+    if (!resolvedTransfer) {
+      // Second attempt: dispatchNoteId is a dispatch_notes.id or barcode — look up the linked transfer
       const dnRow = await getOne(
-        `SELECT from_warehouse FROM dispatch_notes WHERE id = $1 OR transfer_id = $1 LIMIT 1`,
+        `SELECT from_warehouse, transfer_id FROM dispatch_notes WHERE id = $1 OR barcode = $1 LIMIT 1`,
         [dispatchNoteId]
       );
-      if (dnRow?.from_warehouse) {
-        sourceLocation = dnRow.from_warehouse;
+      if (dnRow?.transfer_id) {
+        resolvedTransfer = await getOne(
+          `SELECT id, from_warehouse, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
+           FROM stock_transfers WHERE id = $1 LIMIT 1`,
+          [dnRow.transfer_id]
+        );
       }
     }
   } catch (e) {
-    console.warn('[confirm-receipt] Could not resolve source warehouse:', e.message);
+    console.warn('[confirm-receipt] Could not resolve transfer record:', e.message);
   }
+
+  if (!resolvedTransfer) {
+    // If we could not resolve the transfer at all, deny to be safe.
+    console.warn(`[confirm-receipt] Could not resolve transfer for dispatchNoteId=${dispatchNoteId}; denying receipt`);
+    return res.status(404).json({
+      success: false,
+      error: 'Dispatch record not found. Cannot confirm receipt for an unrecognised dispatch reference.',
+    });
+  }
+
+  sourceLocation = resolvedTransfer.from_warehouse || null;
+
+  // Hard gate: every receipt confirmation requires persisted GM approval evidence.
+  // Primary evidence: gm_approved_by_id + gm_approved_by (set server-side on approval).
+  // Secondary fallback: gm_action=approve|amend_approve (for records created before this enhancement).
+  const hasPersistedGmApproval = !!(resolvedTransfer.gm_approved_by_id && resolvedTransfer.gm_approved_by);
+  const hasLegacyGmApproval = (
+    resolvedTransfer.gm_action === 'approve' ||
+    resolvedTransfer.gm_action === 'amend_approve'
+  );
+  if (!hasPersistedGmApproval && !hasLegacyGmApproval) {
+    return res.status(403).json({
+      success: false,
+      error: 'Receipt cannot be confirmed: this dispatch has not been approved by a General Manager. GM approval must be recorded before stock can be received.',
+    });
+  }
+
   if (!sourceLocation) {
-    console.warn(`[confirm-receipt] Source warehouse not found for dispatchNoteId=${dispatchNoteId}; source_location will be null`);
+    console.warn(`[confirm-receipt] Source warehouse not found for resolvedTransfer.id=${resolvedTransfer.id}; source_location will be null`);
   }
 
   const ts = Date.now();
@@ -142,10 +177,12 @@ export default async function handler(req, res) {
         result.push({ productName, batchNo, expiryDate, qtyReceived });
       }
 
-      // Update dispatch status within the same transaction
+      // Update dispatch status within the same transaction.
+      // Use resolvedTransfer.id (the actual stock_transfers.id) to ensure correct update
+      // regardless of whether dispatchNoteId was a transfer ID or a dispatch note reference.
       await client.query(
         `UPDATE stock_transfers SET status = 'received', updated_at = NOW() WHERE id = $1`,
-        [dispatchNoteId]
+        [resolvedTransfer.id]
       );
 
       return result;
