@@ -32,12 +32,11 @@
         .table { width:100%; border-collapse: collapse; font-size: 13px; }
         .table th, .table td { padding: 8px 10px; border-bottom: 1px solid #1e2a44; text-align: left; }
         .section { margin: 12px 0; }
-        iframe { width:100%; height: 72vh; border: 1px solid #1e2a44; border-radius: 10px; background:#0b1020; }
+        #inventoryDashboard { min-height: 200px; }
         
         @media (max-width: 768px) {
             .filters { flex-direction: column; align-items: stretch; }
             .select, .input, .btn { width: 100%; min-height: 44px; font-size: 16px; }
-            iframe { height: 66vh; }
         }
     </style>
     <script defer src="./cloud-sync.js"></script>
@@ -46,69 +45,61 @@
     <script type="module">
         import { getDispatchNotes, updateDispatchNoteStatus, updateTransferStatus } from './web-modules/stock-requests.js';
 
-        // Try to import transactions, but handle gracefully if missing
-        let getTransactions;
-        
-        // Initialize getTransactions with fallback
-        (async function() {
-            try {
-                const transactionsModule = await import('./web-modules/transactions.js');
-                getTransactions = transactionsModule.getTransactions;
-            } catch (error) {
-                console.warn('transactions.js module not found, using fallback');
-                // Fallback function
-                getTransactions = async function({ dateRange = 'month', branch = 'all' } = {}) {
-                try {
-                    // Try to get from localStorage
-                    const sales = JSON.parse(localStorage.getItem('dyna_walkin_sales') || '[]');
-                    const onlineOrders = JSON.parse(localStorage.getItem('dyna_online_orders') || '[]');
-                    const transactions = [...sales, ...onlineOrders].map(t => ({
-                        id: t.id || t.receiptNo || `TXN-${Date.now()}`,
-                        clientName: t.clientName || t.customerName || 'Unknown',
-                        branch: t.branch || 'Unknown',
-                        amount: t.total || t.amount || 0,
-                        date: t.date || new Date().toISOString().split('T')[0],
-                        status: t.status || 'completed'
-                    }));
-                    
-                    // Filter by date range
-                    const now = new Date();
-                    let startDate = new Date(now);
-                    switch(dateRange) {
-                        case 'today':
-                            startDate.setHours(0,0,0,0);
-                            break;
-                        case 'week':
-                            startDate.setDate(now.getDate() - 7);
-                            break;
-                        case 'month':
-                            startDate.setMonth(now.getMonth() - 1);
-                            break;
-                        case 'year':
-                            startDate.setFullYear(now.getFullYear() - 1);
-                            break;
-                        default:
-                            startDate = new Date(0);
-                    }
-                    
-                    let filtered = transactions.filter(t => {
-                        const tDate = new Date(t.date);
-                        return tDate >= startDate;
-                    });
-                    
-                    // Filter by branch
-                    if (branch && branch !== 'all') {
-                        filtered = filtered.filter(t => t.branch === branch);
-                    }
-                    
-                    return { transactions: filtered };
-                } catch (err) {
-                    console.error('Error loading transactions:', err);
-                    return { transactions: [] };
-                }
-            };
+        // Live API helpers — no localStorage fallbacks needed
+        function getDateBounds(range) {
+            const now = new Date();
+            let from = new Date(now);
+            switch (range) {
+                case 'today': from.setHours(0, 0, 0, 0); break;
+                case 'week': from.setDate(now.getDate() - 7); break;
+                case 'month': from.setMonth(now.getMonth() - 1); break;
+                case 'year': from.setFullYear(now.getFullYear() - 1); break;
+                default: from = new Date(0); break;
             }
-        })();
+            return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
+        }
+
+        async function fetchWalkinSales({ branch = 'all', dateRange = 'month' } = {}) {
+            const { from, to } = getDateBounds(dateRange);
+            const params = new URLSearchParams({ from, to });
+            if (branch && branch !== 'all') params.set('branch', branch);
+            try {
+                const resp = await fetch('/api/branch/walkin-sales?' + params.toString(), { credentials: 'include' });
+                if (!resp.ok) return [];
+                const data = await resp.json();
+                return Array.isArray(data) ? data : (data.sales || []);
+            } catch (err) {
+                console.error('fetchWalkinSales error:', err);
+                return [];
+            }
+        }
+
+        async function fetchBranchPayments({ branch = 'all' } = {}) {
+            const params = new URLSearchParams({});
+            if (branch && branch !== 'all') params.set('branch', branch);
+            try {
+                const resp = await fetch('/api/branch/payments?' + params.toString(), { credentials: 'include' });
+                if (!resp.ok) return [];
+                const data = await resp.json();
+                return Array.isArray(data) ? data : (data.payments || []);
+            } catch (err) {
+                console.error('fetchBranchPayments error:', err);
+                return [];
+            }
+        }
+
+        async function fetchBranchInventory(branch) {
+            if (!branch || branch === 'all') return [];
+            try {
+                const resp = await fetch(`/api/branch/inventory?branch=${encodeURIComponent(branch)}&include_movements=0`, { credentials: 'include' });
+                if (!resp.ok) return [];
+                const data = await resp.json();
+                return Array.isArray(data) ? data : (data.inventory || []);
+            } catch (err) {
+                console.error('fetchBranchInventory error:', err);
+                return [];
+            }
+        }
 
         let branches = [];
         let incomingDispatchNotes = [];
@@ -220,7 +211,7 @@
             if (name === 'sales') renderSales();
             if (name === 'invoices') renderInvoices();
             if (name === 'inventory') {
-                setIframe();
+                renderInventoryDashboard();
                 loadIncomingDispatches();
             }
         }
@@ -232,122 +223,81 @@
             return { branch, range, q };
         }
 
-        function setIframe(){
-            const iframe = document.getElementById('invFrame');
-            if (!iframe) return;
-            
-            // Load the main system with the stock tab preselected
-            iframe.src = './dynapharm-complete-system.html#stock';
-            
-            // Handle iframe load errors
-            iframe.onerror = function() {
-                    console.warn('dynapharm-complete-system.html#stock failed to load');
-                showIframeFallback();
-            };
-            
-            // Also check if iframe loads but content is blocked
-            iframe.onload = function() {
-                try {
-                    // Check if iframe loaded successfully by trying to access its content
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                    if (!iframeDoc) {
-                        // Iframe might be blocked by CORS, show fallback
-                        setTimeout(() => {
-                    if (iframe.contentWindow?.location?.href === 'about:blank' || 
-                                iframe.contentWindow?.location?.href?.includes('refused')) {
-                                showIframeFallback();
-                            }
-                        }, 1000);
-                    }
-                } catch (e) {
-                    // CORS error - this is expected for cross-origin iframes
-                    // Iframe is likely loading, just wait
-                    console.log('Iframe CORS check (expected):', e.message);
-                }
-            };
-            
-            // Timeout fallback - if iframe doesn't load in 3 seconds, show fallback
-            setTimeout(() => {
-                try {
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                    if (!iframeDoc || !iframeDoc.body) {
-                        showIframeFallback();
-                    }
-                } catch (e) {
-                    // This might be CORS, which is OK - don't show fallback yet
-                    // Check if URL is blocked
-                    if (iframe.contentWindow?.location?.href?.includes('refused') || 
-                        iframe.contentWindow?.location?.href === 'about:blank') {
-                        showIframeFallback();
-                    }
-                }
-            }, 3000);
-        }
-        
-        function showIframeFallback() {
-            const iframe = document.getElementById('invFrame');
-            if (!iframe) return;
-            
-            const container = iframe.parentElement;
-            if (container) {
-                iframe.style.display = 'none';
-                container.innerHTML = `
-                    <div style="padding: 40px; text-align: center; background: #0e162b; border-radius: 12px; border: 1px solid #1e2a44;">
-                        <h3 style="color: var(--text); margin-bottom: 15px;">📦 Stock Management Portal</h3>
-                        <p style="color: var(--muted); margin-bottom: 20px;">The stock management portal can be accessed directly from the main system.</p>
-                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                            <a href="./dynapharm-complete-system.html#stock" class="btn primary" style="text-decoration: none; display: inline-block;">Open Stock Portal</a>
-                <a href="./dynapharm-complete-system.html#stock" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open in New Tab ↗</a>
-                        </div>
-                        <div style="margin-top: 30px; padding: 20px; background: #0b1020; border-radius: 8px; border: 1px solid #1e2a44;">
-                            <h4 style="color: var(--text); margin-bottom: 10px;">Quick Inventory Summary</h4>
-                            <div id="quickInventorySummary" style="color: var(--muted);">
-                                <p>Loading inventory data...</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                loadQuickInventorySummary();
+        async function renderInventoryDashboard() {
+            const container = document.getElementById('inventoryDashboard');
+            if (!container) return;
+            const { branch } = applyFilters();
+            if (!branch || branch === 'all') {
+                container.innerHTML = '<p class="muted">Select a branch to view its inventory.</p>';
+                return;
             }
-        }
-        
-        function loadQuickInventorySummary() {
-            const summaryDiv = document.getElementById('quickInventorySummary');
-            if (!summaryDiv) return;
-            
-            try {
-                const inventory = JSON.parse(localStorage.getItem('dynapharm_inventory') || '[]');
-                const branchStock = JSON.parse(localStorage.getItem('dyna_barcode_stock') || '[]');
-                
-                if (inventory.length === 0 && branchStock.length === 0) {
-                    summaryDiv.innerHTML = '<p>No inventory data available. Please add stock items.</p>';
-                    return;
-                }
-                
-                const totalItems = inventory.length + branchStock.length;
-                const totalQuantity = [...inventory, ...branchStock].reduce((sum, item) => {
-                    return sum + (parseInt(item.quantity) || 0);
-                }, 0);
-                
-                summaryDiv.innerHTML = `
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; text-align: left;">
-                        <div>
-                            <strong style="color: var(--accent);">Total Products:</strong>
-                            <div style="font-size: 1.5rem; color: var(--text);">${totalItems}</div>
-                        </div>
-                        <div>
-                            <strong style="color: var(--accent);">Total Quantity:</strong>
-                            <div style="font-size: 1.5rem; color: var(--text);">${totalQuantity}</div>
-                        </div>
-                    </div>
-                    <p style="margin-top: 15px; color: var(--muted); font-size: 0.9rem;">
-                        Click "Open Stock Portal" above to access full inventory management features.
-                    </p>
-                `;
-            } catch (error) {
-                console.error('Error loading inventory summary:', error);
-                summaryDiv.innerHTML = '<p>Error loading inventory data. Please try opening the stock portal.</p>';
+            container.innerHTML = '<p class="muted">Loading inventory...</p>';
+            const items = await fetchBranchInventory(branch);
+            if (!items.length) {
+                container.innerHTML = '<p class="muted">No inventory records found for this branch.</p>';
+                return;
             }
+            const totalQty = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
+            const totalValue = items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || i.unitPrice || 0), 0);
+            const inStock = items.filter(i => Number(i.quantity || 0) > 0).length;
+            const outStock = items.filter(i => Number(i.quantity || 0) <= 0).length;
+            container.innerHTML = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">
+                    <div style="background:#0e162b;border:1px solid #1e2a44;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${items.length}</div>
+                        <div class="muted" style="font-size:12px;">SKUs</div>
+                    </div>
+                    <div style="background:#0e162b;border:1px solid #1e2a44;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${totalQty.toLocaleString()}</div>
+                        <div class="muted" style="font-size:12px;">Total Units</div>
+                    </div>
+                    <div style="background:#0e162b;border:1px solid #1e2a44;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${inStock}</div>
+                        <div class="muted" style="font-size:12px;">In Stock</div>
+                    </div>
+                    <div style="background:#0e162b;border:1px solid #1e2a44;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.4rem;font-weight:800;color:var(--warn);">${outStock}</div>
+                        <div class="muted" style="font-size:12px;">Out of Stock</div>
+                    </div>
+                    <div style="background:#0e162b;border:1px solid #1e2a44;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.1rem;font-weight:800;color:var(--accent);">N$ ${totalValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                        <div class="muted" style="font-size:12px;">Stock Value</div>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Batch</th>
+                                <th>Expiry</th>
+                                <th>Qty</th>
+                                <th>Unit Price</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(i => {
+                                const qty = Number(i.quantity || 0);
+                                const exp = i.expiry_date || i.expiryDate;
+                                const isExpired = exp && new Date(exp) < new Date();
+                                const isLow = qty > 0 && qty < 10;
+                                const statusColor = qty <= 0 ? 'var(--danger)' : isExpired ? 'var(--warn)' : isLow ? 'var(--warn)' : 'var(--accent)';
+                                const statusLabel = qty <= 0 ? 'Out of Stock' : isExpired ? 'Expired' : isLow ? 'Low Stock' : 'In Stock';
+                                const price = Number(i.unit_price || i.unitPrice || 0);
+                                return `<tr>
+                                    <td style="font-weight:600">${(i.product_name || i.productName || '—').toString()}</td>
+                                    <td style="font-family:monospace;font-size:12px">${(i.batch_no || i.batchNo || '—').toString()}</td>
+                                    <td style="font-size:12px">${exp ? String(exp).slice(0,10) : '—'}</td>
+                                    <td style="font-weight:700;color:${statusColor}">${qty}</td>
+                                    <td>${price > 0 ? 'N$ ' + price.toFixed(2) : '—'}</td>
+                                    <td style="color:${statusColor};font-weight:600;font-size:12px">${statusLabel}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         }
 
         async function renderSales(){
@@ -355,31 +305,26 @@
             if (!tbody) return;
             tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
             const { branch, range, q } = applyFilters();
-            
-            // Ensure getTransactions is available
-            if (!getTransactions) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                if (!getTransactions) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="muted">Error: Transactions module not available</td></tr>';
-                    return;
-                }
-            }
-            
-            const res = await getTransactions({ dateRange: range, branch: branch });
-            let rows = res.transactions;
-            if (q) {
-                rows = rows.filter(t => [t.id, t.clientName, t.branch].filter(Boolean).join(' ').toLowerCase().includes(q));
-            }
+            const sales = await fetchWalkinSales({ branch, dateRange: range });
+            let rows = sales.map(s => ({
+                id: s.id || s.saleNumber || '—',
+                clientName: s.customerName || s.customer_name || 'Walk-in',
+                branch: s.branch || s.branch_id || s.branchId || '—',
+                amount: Number(s.total || s.totalAmount || s.total_amount || 0),
+                date: (s.created_at || s.sale_date || s.timestamp || '').toString().slice(0,10),
+                status: s.status || 'completed',
+            }));
+            if (q) rows = rows.filter(t => [t.id, t.clientName, t.branch].filter(Boolean).join(' ').toLowerCase().includes(q));
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="muted">No sales found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="muted">No sales found for this period</td></tr>';
                 return;
             }
             tbody.innerHTML = rows.slice(0,50).map(t => `
                 <tr>
-                    <td>${t.id}</td>
+                    <td style="font-family:monospace;font-size:12px">${t.id}</td>
                     <td>${t.clientName}</td>
                     <td>${t.branch}</td>
-                    <td>N$ ${parseFloat(t.amount).toFixed(2)}</td>
+                    <td>N$ ${t.amount.toFixed(2)}</td>
                     <td>${t.date}</td>
                     <td>${t.status}</td>
                 </tr>
@@ -387,37 +332,31 @@
         }
 
         async function renderInvoices(){
-            // For now, invoices mirror sales transactions list
             const tbody = document.getElementById('invBody');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
-            const { branch, range, q } = applyFilters();
-            
-            // Ensure getTransactions is available
-            if (!getTransactions) {
-                // Wait a bit for it to initialize
-                await new Promise(resolve => setTimeout(resolve, 100));
-                if (!getTransactions) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="muted">Error: Transactions module not available</td></tr>';
-                    return;
-                }
-            }
-            
-            const res = await getTransactions({ dateRange: range, branch: branch });
-            let rows = res.transactions;
-            if (q) {
-                rows = rows.filter(t => [t.id, t.clientName, t.branch].filter(Boolean).join(' ').toLowerCase().includes(q));
-            }
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+            const { branch, q } = applyFilters();
+            const payments = await fetchBranchPayments({ branch });
+            let rows = payments.map(r => ({
+                id: r.invoiceNumber || r.invoice_number || r.id || '—',
+                clientName: r.clientName || r.client_name || '—',
+                branch: r.branchId || r.branch_id || branch || '—',
+                amount: Number(r.amount || 0),
+                method: r.method || '—',
+                date: (r.date || r.recordedAt || r.recorded_at || '').toString().slice(0,10),
+            }));
+            if (q) rows = rows.filter(t => [t.id, t.clientName, t.branch, t.method].filter(Boolean).join(' ').toLowerCase().includes(q));
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="muted">No invoices found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="muted">No payment records found for this branch</td></tr>';
                 return;
             }
             tbody.innerHTML = rows.slice(0,50).map(t => `
                 <tr>
-                    <td>${t.id}</td>
+                    <td style="font-family:monospace;font-size:12px">${t.id}</td>
                     <td>${t.clientName}</td>
                     <td>${t.branch}</td>
-                    <td>N$ ${parseFloat(t.amount).toFixed(2)}</td>
+                    <td>N$ ${t.amount.toFixed(2)}</td>
+                    <td style="font-size:11px">${t.method}</td>
                     <td>${t.date}</td>
                 </tr>
             `).join('');
@@ -425,8 +364,7 @@
 
         function onFiltersChanged(){
             const active = document.querySelector('.tab.active')?.dataset.tab || 'inventory';
-            if (active === 'inventory') setIframe();
-            if (active === 'inventory') loadIncomingDispatches();
+            if (active === 'inventory') { renderInventoryDashboard(); loadIncomingDispatches(); }
             if (active === 'sales') renderSales();
             if (active === 'invoices') renderInvoices();
         }
@@ -435,7 +373,6 @@
             loadGmPendingCache();
             try {
                 await loadBranches();
-                setIframe();
                 switchTab('inventory');
                 
                 const branchFilter = document.getElementById('branchFilter');
@@ -458,9 +395,11 @@
                 document.querySelectorAll('.tab').forEach(t => {
                     t.addEventListener('click', () => switchTab(t.dataset.tab));
                 });
+
+                const invRefreshBtn = document.getElementById('invRefreshBtn');
+                if (invRefreshBtn) invRefreshBtn.addEventListener('click', () => renderInventoryDashboard());
             } catch (error) {
                 console.error('Error initializing branch stock inventory:', error);
-                // Show error message to user
                 const main = document.querySelector('main');
                 if (main) {
                     main.innerHTML = `
@@ -894,8 +833,13 @@
         </div>
 
         <section class="section card" data-view="inventory">
-            <div class="muted" style="margin-bottom:8px;">Embedded stock dashboard with movements, requests, transfers and warehouse snapshot.</div>
-            <iframe id="invFrame" title="Stock Management"></iframe>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div class="muted" style="font-size:13px;">Live inventory for selected branch — updated in real time from the database.</div>
+                <button id="invRefreshBtn" class="btn" style="font-size:12px;padding:6px 10px;">↻ Refresh</button>
+            </div>
+            <div id="inventoryDashboard">
+                <p class="muted">Select a branch to view its inventory.</p>
+            </div>
         </section>
 
         <section class="section card" data-view="inventory" id="incomingDispatchSection" style="margin-top:12px;">
@@ -926,7 +870,7 @@
         </section>
 
         <section class="section card" data-view="invoices" style="display:none;">
-            <div class="muted" style="margin-bottom:8px;">Invoices overview (based on sales transactions).</div>
+            <div class="muted" style="margin-bottom:8px;">Branch payment records (invoice payments recorded at branch front desk) — distinct from walk-in sales transactions.</div>
             <div style="overflow:auto;">
                 <table class="table">
                     <thead>
@@ -935,6 +879,7 @@
                             <th>Client</th>
                             <th>Branch</th>
                             <th>Amount</th>
+                            <th>Method</th>
                             <th>Date</th>
                         </tr>
                     </thead>

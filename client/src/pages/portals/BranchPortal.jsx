@@ -1576,19 +1576,32 @@ function printStockDocument(title, htmlBody, branch = '') {
 }
 
 function printPhysicalStockReport(inventory, branch) {
+  const safeStr = (v, fallback = '[missing]') => (v != null && String(v).trim() !== '') ? String(v) : fallback;
   let totalDP = 0;
   const rows = inventory.map(r => {
-    const pName = r.product_name || r.productName || r.description || '-';
+    const pName = safeStr(r.product_name || r.productName || r.description, '[no product name]');
+    const batchNo = safeStr(r.batch_no || r.batchNo || r.batch_number, '—');
     const q = Number(r.quantity || 0);
-    const p = findProductPrice(pName);
+    const p = findProductPrice(pName !== '[no product name]' ? pName : '');
     const dpUnit = p?.dp ? Number(p.dp) : 0;
     const dpVal = dpUnit * q;
     totalDP += dpVal;
-    const exp = r.expiry_date || r.expiryDate;
-    const isExp = exp ? new Date(exp) < new Date() : false;
+    const expRaw = r.expiry_date || r.expiryDate;
+    let expLabel = '—';
+    let isExp = false;
+    if (expRaw) {
+      const expDate = new Date(expRaw);
+      if (!Number.isNaN(expDate.getTime())) {
+        expLabel = expDate.toLocaleDateString('en-NA');
+        isExp = expDate < new Date();
+      } else {
+        expLabel = '[invalid date]';
+      }
+    }
     const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : 'OK';
     const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
-    return `<tr><td>${pName}</td><td>${r.batch_no||r.batchNo||r.batch_number||'-'}</td><td style="font-weight:700;color:${q<=0?'#c41e3a':q<10?'#d97706':'#166534'}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit>0?`N$ ${dpUnit.toFixed(2)}`:'-'}</td><td style="font-weight:700">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${exp?new Date(exp).toLocaleDateString('en-NA'):'—'}</td></tr>`;
+    const qColor = q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
+    return `<tr><td>${pName}</td><td>${batchNo}</td><td style="font-weight:700;color:${qColor}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td><td style="font-weight:700">${dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td><td>${expLabel}</td></tr>`;
   }).join('');
   const total = inventory.reduce((s, r) => s + Number(r.quantity||0), 0);
   printStockDocument('Physical Stock Report (DP Valued)', `
@@ -1597,33 +1610,61 @@ function printPhysicalStockReport(inventory, branch) {
 }
 
 function printStockMovementsReport(movements, branch) {
+  const safeStr = (v, fallback = '[missing]') => (v != null && String(v).trim() !== '') ? String(v) : fallback;
+  const fmtDate = (d) => {
+    if (!d) return '[no date]';
+    const parsed = new Date(d);
+    if (Number.isNaN(parsed.getTime())) return '[invalid date]';
+    return parsed.toLocaleDateString('en-NA', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
+      parsed.toLocaleTimeString('en-NA', { hour: '2-digit', minute: '2-digit' });
+  };
+  const inTypes = ['received','receive','stock_receipt','transfer_in','return','return_in','adjustment'];
   let totalDPVal = 0;
   const rows = movements.map(r => {
-    const pName = r.product_name || r.productName || '-';
-    const mType = (r.movement_type || r.type || '').replace(/_/g, ' ');
-    const p = findProductPrice(pName);
+    const pName = safeStr(r.product_name || r.productName, '[no product name]');
+    const rawType = r.movement_type || r.type || '';
+    const mType = safeStr(rawType.replace(/_/g, ' '), '[no type]');
+    const p = findProductPrice(pName !== '[no product name]' ? pName : '');
     const absQty = Math.abs(Number(r.quantity || 0));
     const dpVal = p?.dp ? Number(p.dp) * absQty : 0;
     totalDPVal += dpVal;
-    const staff = r.created_by || r.createdBy || '-';
-    const inTypes = ['received','receive','stock_receipt','transfer_in','return','return_in','adjustment'];
-    const isOutward = !inTypes.includes(mType.toLowerCase());
+    const staff = safeStr(r.created_by || r.createdBy, '—');
+    const isOutward = !inTypes.includes(rawType.toLowerCase().replace(/ /g, '_'));
     const signedQty = isOutward ? `-${absQty}` : `+${absQty}`;
-    return `<tr><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA',{day:'2-digit',month:'short',year:'numeric'})+ ' '+new Date(r.created_at).toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'}):'-'}</td><td>${pName}</td><td>${r.batch_no||r.batchNo||'-'}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700;color:${isOutward?'#c41e3a':'#166534'}">${signedQty}</td><td style="text-align:right">${dpVal>0?`N$ ${dpVal.toFixed(2)}`:'-'}</td><td>${r.source_location||r.sourceLocation||'-'}</td><td>${r.destination_location||r.destinationLocation||'-'}</td><td style="font-size:9px">${staff}</td></tr>`;
+    const qColor = isOutward ? '#c41e3a' : '#166534';
+    const batchNo = safeStr(r.batch_no || r.batchNo, '—');
+    const fromLoc = safeStr(r.source_location || r.sourceLocation, '—');
+    const toLoc = safeStr(r.destination_location || r.destinationLocation, '—');
+    return `<tr><td>${fmtDate(r.created_at || r.createdAt)}</td><td>${pName}</td><td>${batchNo}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700;color:${qColor}">${signedQty}</td><td style="text-align:right">${dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td><td>${fromLoc}</td><td>${toLoc}</td><td style="font-size:9px">${staff}</td></tr>`;
   }).join('');
+  const totalQty = movements.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0);
   printStockDocument('Stock Movements Report (DP Valued)', `
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
-    <table><thead><tr><th>Date</th><th>Product</th><th>Batch</th><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">DP Value</th><th>From</th><th>To</th><th>Staff</th></tr></thead><tbody>${rows||'<tr><td colspan="9" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}
-    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${movements.reduce((s,r)=>s+Math.abs(Number(r.quantity||0)),0)}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
+    <table><thead><tr><th>Date</th><th>Product</th><th>Batch</th><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">DP Value</th><th>From</th><th>To</th><th>Staff</th></tr></thead><tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}
+    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${totalQty}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
 }
 
 function printReceivingStockReport(requests, branch) {
+  const safeStr = (v, fallback = '[missing]') => (v != null && String(v).trim() !== '') ? String(v) : fallback;
+  const fmtDate = (d) => {
+    if (!d) return '[no date]';
+    const parsed = new Date(d);
+    return Number.isNaN(parsed.getTime()) ? '[invalid date]' : parsed.toLocaleDateString('en-NA');
+  };
   const received = requests.filter(r => r.status === 'received' || r.status === 'approved' || r.status === 'dispatched');
   const rows = received.map(r => {
-    const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items||[]); } catch { return []; } })();
-    return `<tr><td>${r.request_number||r.id||'-'}</td><td>${r.requesting_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td>${r.priority||'normal'}</td><td><span class="badge ${r.status==='received'?'badge-green':r.status==='approved'||r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`;
+    const items = (() => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch { return []; } })();
+    const reqNum = safeStr(r.request_number || r.id, '[no ref]');
+    const fromBranch = safeStr(r.requesting_branch || r.from_branch, '—');
+    const itemsStr = items.length > 0
+      ? items.map(i => `${safeStr(i.product_name || i.name, '[unnamed]')} ×${Number(i.quantity || 0)}`).join(', ')
+      : '[no items listed]';
+    const priority = safeStr(r.priority, 'normal');
+    const status = safeStr(r.status, 'unknown');
+    const badgeClass = status === 'received' ? 'badge-green' : (status === 'approved' || status === 'dispatched') ? 'badge-blue' : 'badge-amber';
+    return `<tr><td>${reqNum}</td><td>${fromBranch}</td><td style="font-size:9px">${itemsStr}</td><td>${priority}</td><td><span class="badge ${badgeClass}">${status}</span></td><td>${fmtDate(r.created_at)}</td></tr>`;
   }).join('');
-  printStockDocument('Receiving Stock Report', `<table><thead><tr><th>Request #</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No receiving records</td></tr>'}</tbody></table>`, branch);
+  printStockDocument('Receiving Stock Report', `<table><thead><tr><th>Request #</th><th>Branch</th><th>Items</th><th>Priority</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8">No receiving records with dispatched/approved/received status</td></tr>'}</tbody></table>`, branch);
 }
 
 function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions) {
@@ -1898,6 +1939,9 @@ function BranchStockTab() {
   const [viewTransfer, setViewTransfer] = useState(null);
   const [invFilter, setInvFilter] = useState({ search: '', status: 'all', batch: '', expiry: '' });
   const [movFilter, setMovFilter] = useState({ search: '', type: 'all', dateFrom: '', dateTo: '' });
+  const [stockCardModal, setStockCardModal] = useState(null);
+  const [stockCardData, setStockCardData] = useState(null);
+  const [stockCardLoading, setStockCardLoading] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(user?.branch || '');
   const [availableBranches, setAvailableBranches] = useState([]);
 
@@ -2284,7 +2328,115 @@ function BranchStockTab() {
         ))}
       </div>
 
+      {/* Stock Card Modal */}
+      {stockCardModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,0,20,0.65)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 12px', overflowY: 'auto', backdropFilter: 'blur(3px)' }} onClick={e => { if (e.target === e.currentTarget) { setStockCardModal(null); setStockCardData(null); } }}>
+          <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)', marginBottom: 24 }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem' }}>📋 Stock Card — {stockCardModal}</div>
+                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', marginTop: 2 }}>{getBranchDisplayName(selectedBranch || user?.branch)} · Chronological movement ledger with running balances</div>
+              </div>
+              <button onClick={() => { setStockCardModal(null); setStockCardData(null); }} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <div style={{ padding: '18px 22px' }}>
+              {stockCardLoading && <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>Loading stock card...</div>}
+              {!stockCardLoading && stockCardData && (() => {
+                const { ledger, summary, batches } = stockCardData;
+                return (
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(115px,1fr))', gap: 10, marginBottom: 16 }}>
+                      {[
+                        { label: 'Opening Balance', value: summary.openingBalance, color: '#1e3a5f' },
+                        { label: '+ Received', value: `+${summary.totalReceived}`, color: '#166534' },
+                        { label: '− Walk-in Sales', value: `−${summary.totalWalkinSold}`, color: '#c41e3a' },
+                        { label: '− Dispensed (Rx)', value: `−${summary.totalDispensed}`, color: '#6366f1' },
+                        ...(summary.totalTransferOut > 0 ? [{ label: '− Transfer Out', value: `−${summary.totalTransferOut}`, color: '#9333ea' }] : []),
+                        ...(summary.totalWriteOff > 0 ? [{ label: '− Write Off', value: `−${summary.totalWriteOff}`, color: '#d97706' }] : []),
+                        { label: 'Closing Balance', value: summary.closingBalance, color: summary.closingBalance > 0 ? '#166534' : '#c41e3a' },
+                      ].map(card => (
+                        <div key={card.label} style={{ background: '#f8f9fb', border: '1.5px solid #e8d5d8', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontWeight: 900, fontSize: '1.2rem', color: card.color }}>{card.value}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 3 }}>{card.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {summary.formula && (
+                      <div style={{ marginBottom: 12, padding: '8px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 8, fontSize: '0.78rem', color: '#1e3a5f', fontFamily: 'monospace' }}>
+                        <strong style={{ fontFamily: 'inherit' }}>Formula:</strong> {summary.formula}
+                      </div>
+                    )}
+                    {batches && batches.length > 0 && (
+                      <div style={{ marginBottom: 14, padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: '0.79rem', color: '#166534' }}>
+                        <strong>Current Batches:</strong> {batches.map(b => `${b.batchNo || '—'} × ${b.quantity}${b.expiryDate ? ` (exp: ${String(b.expiryDate).slice(0,10)})` : ''}`).join(' · ')}
+                      </div>
+                    )}
+                    {ledger.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No movement records found for this product at this branch.</div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.77rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f8f5f5' }}>
+                              {['#','Date','Type','Batch','Qty','Direction','Opening','Closing','Reference','By'].map((h, i) => (
+                                <th key={h} style={{ padding: '7px 8px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.67rem', textTransform: 'uppercase', textAlign: i >= 4 && i <= 7 ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ledger.map((row, i) => {
+                              const isIn = row.direction === 'in';
+                              const isOut = row.direction === 'out';
+                              const qColor = isIn ? '#166534' : isOut ? '#c41e3a' : '#64748b';
+                              return (
+                                <tr key={row.id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f0e8ea' }}>
+                                  <td style={{ padding: '6px 8px', color: '#94a3b8', fontSize: '0.68rem' }}>{row.rowIndex}</td>
+                                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontSize: '0.72rem', color: '#475569' }}>{row.date ? new Date(row.date).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' }) : '—'}</td>
+                                  <td style={{ padding: '6px 8px' }}>
+                                    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 12, fontSize: '0.65rem', fontWeight: 700, background: '#f1f5f9', border: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{row.typeLabel || row.type || '—'}</span>
+                                  </td>
+                                  <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#6b7280' }}>{row.batchNo || '—'}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: qColor }}>{isIn ? '+' : isOut ? '−' : ''}{row.quantity}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: qColor }}>{isIn ? 'IN ↑' : isOut ? 'OUT ↓' : 'NEUTRAL'}</span>
+                                  </td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right', color: '#475569' }}>{row.balanceBefore}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: row.balanceAfter > 0 ? '#166534' : '#c41e3a' }}>{row.balanceAfter}</td>
+                                  <td style={{ padding: '6px 8px', fontSize: '0.68rem', color: '#94a3b8', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.reference || ''}>{row.reference || '—'}</td>
+                                  <td style={{ padding: '6px 8px', fontSize: '0.68rem', color: '#94a3b8' }}>{row.createdBy || '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {!stockCardLoading && !stockCardData && <div style={{ textAlign: 'center', padding: '40px 0', color: '#c41e3a' }}>Failed to load stock card data.</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {subTab === 'inventory' && (() => {
+        const openStockCard = async (productName) => {
+          setStockCardModal(productName);
+          setStockCardData(null);
+          setStockCardLoading(true);
+          try {
+            const branchParam = selectedBranch || user?.branch || '';
+            const qs = new URLSearchParams({ branchId: branchParam, productName }).toString();
+            const resp = await api.get(`/branch/stock-card?${qs}`);
+            setStockCardData(resp);
+          } catch (e) {
+            console.error('[openStockCard] error:', e);
+          } finally {
+            setStockCardLoading(false);
+          }
+        };
+
         const filteredInv = inventory.filter(r => {
           const pName = (r.product_name || r.productName || r.description || '').toLowerCase();
           if (invFilter.search && !pName.includes(invFilter.search.toLowerCase())) return false;
@@ -2318,7 +2470,10 @@ function BranchStockTab() {
               <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {getBranchDisplayName(user?.branch) || 'All'}</h3>
               <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
-            <button onClick={() => printPhysicalStockReport(inventory, user?.branch || '')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
+            <button onClick={() => {
+              if (!inventory || inventory.length === 0) { alert('No inventory data loaded yet. Please wait a moment and try again.'); return; }
+              printPhysicalStockReport(inventory, user?.branch || '');
+            }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
           </CardHeader>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <input type="text" placeholder="Search product..." value={invFilter.search} onChange={e => setInvFilter(p => ({ ...p, search: e.target.value }))}
@@ -2384,7 +2539,7 @@ function BranchStockTab() {
                   const lastMov = r.last_movement_date || r.lastMovementDate;
                   const cellStyle = { padding: '7px 6px', fontSize: '0.76rem' };
                   return (
-                    <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                    <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0', cursor: 'pointer' }} onClick={() => openStockCard(pName)} title={`Click to view stock card for ${pName}`}>
                       <td style={{ ...cellStyle, fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pName}>{pName}</td>
                       <td style={{ ...cellStyle, color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{r.batch_no || r.batchNo || '—'}</td>
                       <td style={{ ...cellStyle, color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
@@ -3273,10 +3428,19 @@ function BranchStockTab() {
             {[
               { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
               { icon: '📈', title: 'Monthly DP Sales Report', desc: `${monthLabel} — complete DP report with payment breakdown and Rx patient detail lines. No data load limits.`, action: handleMonthlyReport },
-              { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => printPhysicalStockReport(inventory, branchName) },
+              { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => {
+                if (!inventory || inventory.length === 0) { alert('No inventory data loaded for this branch. Please wait for data to load or select a branch first.'); return; }
+                printPhysicalStockReport(inventory, branchName);
+              }},
               { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Received − Sold − Dispensed − Transfers − Write-offs = Closing (server-side per product)', action: handleStockFormulaReport },
-              { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: receipts, sales, write-offs, transfers, dispenses', action: () => printStockMovementsReport(movements, branchName) },
-              { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse with dispatch details', action: () => printReceivingStockReport(requests, branchName) },
+              { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: receipts, sales, write-offs, transfers, dispenses', action: () => {
+                if (!movements || movements.length === 0) { alert('No movement records loaded for this branch. Please navigate to the Movements tab first to load data, or check if this branch has any recorded movements.'); return; }
+                printStockMovementsReport(movements, branchName);
+              }},
+              { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse with dispatch details', action: () => {
+                if (!requests || requests.length === 0) { alert('No stock requests loaded for this branch. Please navigate to the Stock Requests tab first to load data.'); return; }
+                printReceivingStockReport(requests, branchName);
+              }},
             ].map(card => (
               <div key={card.title} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '18px 20px', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: '2rem' }}>{card.icon}</div>
