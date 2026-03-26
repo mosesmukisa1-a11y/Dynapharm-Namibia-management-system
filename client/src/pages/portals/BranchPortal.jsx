@@ -1930,12 +1930,11 @@ function BranchStockTab() {
     try {
       const activeBranch = selectedBranch;
       const branchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}` : '';
-      const branchKey = activeBranch ? activeBranch.toLowerCase().replace(/\s+/g, '_') : '';
       const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=10000` : 'limit=10000';
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
         api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
-        api.stock.transfers(branchKey ? `branch=${encodeURIComponent(branchKey)}` : '').catch(() => ({ transfers: [] })),
+        api.stock.transfers(branchParam).catch(() => ({ transfers: [] })),
         api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),

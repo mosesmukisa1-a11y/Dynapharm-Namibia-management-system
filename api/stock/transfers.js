@@ -347,8 +347,9 @@ async function listTransfers(searchParams) {
     conditions.push(`status = $${params.length}`);
   }
   if (toBranch && toBranch !== 'all') {
-    params.push(toBranch);
-    conditions.push(`to_branch = $${params.length}`);
+    const normalizedBranch = toBranch.replace(/_/g, ' ');
+    params.push(normalizedBranch);
+    conditions.push(`REPLACE(LOWER(to_branch), '_', ' ') = REPLACE(LOWER($${params.length}), '_', ' ')`);
   }
   if (fromWarehouse && fromWarehouse !== 'all') {
     params.push(fromWarehouse);

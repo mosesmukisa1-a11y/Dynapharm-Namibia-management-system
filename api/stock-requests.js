@@ -235,8 +235,9 @@ export default async function handler(req, res) {
         params.push(id);
       }
       if (branch) {
-        conditions.push('requesting_branch = $' + (params.length + 1));
-        params.push(branch);
+        const normalizedBranch = branch.replace(/_/g, ' ');
+        conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = REPLACE(LOWER($${params.length + 1}), '_', ' ')`);
+        params.push(normalizedBranch);
       }
       if (status) {
         conditions.push('status = $' + (params.length + 1));
