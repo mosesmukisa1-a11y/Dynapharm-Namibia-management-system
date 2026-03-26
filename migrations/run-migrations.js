@@ -78,6 +78,8 @@ async function runMigration(filename) {
 
 // Main function
 async function main() {
+  const migrationsOnly = process.argv.includes('--migrations-only');
+
   console.log('🚀 Starting database migrations...\n');
   
   try {
@@ -109,7 +111,9 @@ async function main() {
       await runMigration(migration);
     }
 
-    await seedDefaultUsers();
+    if (!migrationsOnly) {
+      await seedDefaultUsers();
+    }
     
     console.log('\n✅ All migrations completed successfully!');
     process.exit(0);
