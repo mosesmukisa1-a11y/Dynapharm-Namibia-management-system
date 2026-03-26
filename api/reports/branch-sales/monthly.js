@@ -35,7 +35,7 @@ export default async function handler(req, res) {
         params
       ),
       getMany(
-        `SELECT reference as form_reference_id, product_name, batch_no, SUM(ABS(quantity)) as qty, SUM(COALESCE(unit_price, 0) * ABS(quantity)) as dp_value
+        `SELECT reference as form_reference_id, product_name, batch_no, SUM(ABS(quantity)) as qty, 0 as dp_value
          FROM branch_inventory_movements
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, product_name, batch_no`,
