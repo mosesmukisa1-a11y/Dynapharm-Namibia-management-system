@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../../_lib/auth.js';
-import { getMany } from '../../db.js';
+import { getMany, getOne } from '../../db.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -136,6 +136,25 @@ export default async function handler(req, res) {
     ).toFixed(2));
 
     const pendingCapture = txRows.filter(r => r.reporting_status === 'pending').length;
+
+    // Try to attach pre-computed stock snapshot for this month/branch
+    let stockSnapshot = null;
+    try {
+      const snapshotId = branchId && branchId !== 'all'
+        ? `monthly-${monthParam}-${(branchId).replace(/[^a-zA-Z0-9_]/g, '_')}`
+        : `monthly-${monthParam}-all`;
+      const snapshotRow = await getOne(
+        `SELECT report_data, computed_at FROM stock_report_summaries WHERE id = $1`,
+        [snapshotId]
+      ).catch(() => null);
+      if (snapshotRow) {
+        stockSnapshot = {
+          source: 'precomputed',
+          computed_at: snapshotRow.computed_at,
+          data: typeof snapshotRow.report_data === 'string' ? JSON.parse(snapshotRow.report_data) : snapshotRow.report_data,
+        };
+      }
+    } catch {}
 
     res.status(200).json({
       success: true,

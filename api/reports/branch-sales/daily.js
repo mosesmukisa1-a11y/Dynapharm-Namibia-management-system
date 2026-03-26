@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../../_lib/auth.js';
-import { getMany } from '../../db.js';
+import { getMany, getOne } from '../../db.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -139,10 +139,30 @@ export default async function handler(req, res) {
 
     const pendingCapture = txRows.filter(r => r.reporting_status === 'pending').length;
 
+    // Try to attach pre-computed stock snapshot for this date/branch
+    let stockSnapshot = null;
+    try {
+      const snapshotId = branchId && branchId !== 'all'
+        ? `daily-${date}-${(branchId).replace(/[^a-zA-Z0-9_]/g, '_')}`
+        : `daily-${date}-all`;
+      const snapshotRow = await getOne(
+        `SELECT report_data, computed_at FROM stock_report_summaries WHERE id = $1`,
+        [snapshotId]
+      ).catch(() => null);
+      if (snapshotRow) {
+        stockSnapshot = {
+          source: 'precomputed',
+          computed_at: snapshotRow.computed_at,
+          data: typeof snapshotRow.report_data === 'string' ? JSON.parse(snapshotRow.report_data) : snapshotRow.report_data,
+        };
+      }
+    } catch {}
+
     res.status(200).json({
       success: true,
       branch_id: branchId || 'all',
       date,
+      stock_snapshot: stockSnapshot,
       client_visits: visitRows.length,
       client_visit_types: visitRows.reduce((acc, v) => { acc[v.visit_type] = (acc[v.visit_type] || 0) + 1; return acc; }, {}),
       consultations: consultObj,

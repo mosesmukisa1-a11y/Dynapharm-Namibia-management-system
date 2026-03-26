@@ -7,6 +7,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -255,6 +256,12 @@ function DashboardTab() {
   const [loading, setLoading] = useState(true);
   const [gmSummary, setGmSummary] = useState(null);
 
+  const refreshGmSummary = useCallback(() => {
+    api.gm.summary().then(d => { if (d && d.success) setGmSummary(d); }).catch(() => {});
+  }, []);
+
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: refreshGmSummary });
+
   useEffect(() => {
     Promise.all([
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
@@ -265,7 +272,7 @@ function DashboardTab() {
     ]).then(([orders, branches, products, sales, deposits]) => {
       setData({ orders, branches, products, sales, deposits });
     }).finally(() => setLoading(false));
-    api.gm.summary().then(d => { if (d && d.success) setGmSummary(d); }).catch(() => {});
+    refreshGmSummary();
   }, []);
 
   if (loading) return <LoadingSpinner />;
@@ -333,6 +340,7 @@ function DashboardTab() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <BarChart3 size={18} className="text-primary" /> Company Live Summary
+                {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
               </h3>
               <span className="text-xs text-gray-400">Period: {gmSummary.period?.start} → {gmSummary.period?.end}</span>
             </div>

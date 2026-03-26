@@ -3,7 +3,7 @@
  * Single source of truth: stock_movements
  * Fast-read cache: inventory_balances
  */
-import { query, getOne } from '../db.js';
+import { query, getOne, publishRealtimeEvent } from '../db.js';
 
 // Movement types that INCREASE stock at the destination location
 export const INWARD_TYPES = new Set([
@@ -271,6 +271,16 @@ export async function postStockMovement(input) {
       console.error('[stockEngine] recomputeInventoryBalance error:', err.message);
     }
   }
+
+  // Publish realtime event so portals update live
+  publishRealtimeEvent('stock', 'movement', {
+    movementId: id,
+    productName: input.productName,
+    movementType: input.movementType,
+    quantity: Number(input.quantity),
+    sourceLocation: srcLoc,
+    destinationLocation: dstLoc,
+  }).catch(() => {});
 
   return id;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -15,6 +15,7 @@ import {
   Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package,
   AlertTriangle, Ship, Globe, Target, Activity,
 } from 'lucide-react';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 
 const today = new Date().toISOString().slice(0, 10);
 const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -91,6 +92,15 @@ function DashboardTab({ start, end }) {
   const { data: summary, loading: sLoad } = useDirectorApi('summary', { startDate: start, endDate: end }, [start, end]);
   const { data: pl, loading: plLoad } = useDirectorApi('profit-loss', { startDate: start, endDate: end }, [start, end]);
   const { data: trends, loading: tLoad } = useDirectorApi('revenue-trends', { startDate: start, endDate: end }, [start, end]);
+  const [liveStockSummary, setLiveStockSummary] = useState(null);
+
+  const onStockUpdate = useCallback(() => {
+    api.stock.realtime().then(d => { if (d && d.success) setLiveStockSummary(d); }).catch(() => {});
+  }, []);
+
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: onStockUpdate });
+
+  useEffect(() => { onStockUpdate(); }, []);
 
   if (sLoad || plLoad || tLoad) return <LoadingSpinner />;
 
@@ -118,6 +128,34 @@ function DashboardTab({ start, end }) {
         <StatCard title="Total Deposits" value={formatCurrency(finance.totalDeposits || 0)} color="teal" icon={<DollarSign size={24} />} />
         <StatCard title="Remittance Due" value={formatCurrency(remittanceDue)} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
+
+      {liveStockSummary && (
+        <Card className="mb-6 border-primary/20 bg-gradient-to-r from-red-50 to-rose-50">
+          <CardBody>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Activity size={16} className="text-primary" /> Live Inventory Snapshot
+                {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
+              </h3>
+              <span className="text-xs text-gray-400">Updates automatically on stock movements</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {(liveStockSummary.stockCards || []).slice(0, 4).map((item, i) => (
+                <div key={i} className="bg-white/80 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500 truncate">{item.name}</p>
+                  <p className="text-lg font-bold text-primary">{(item.qty || 0).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">units</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-4 text-xs text-gray-500 mt-2">
+              <span>Today's sales: {liveStockSummary.todayStats?.salesCount || 0} transactions</span>
+              <span>•</span>
+              <span>Revenue: {formatCurrency(liveStockSummary.todayStats?.revenue || 0)}</span>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
         <CardBody>

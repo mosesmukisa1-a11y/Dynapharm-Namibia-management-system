@@ -27,6 +27,8 @@ if (process.env.DATABASE_URL) {
     dbPool.query('LISTEN orders_changes').catch(err => console.error('Failed to listen orders_changes:', err));
     dbPool.query('LISTEN reports_changes').catch(err => console.error('Failed to listen reports_changes:', err));
     dbPool.query('LISTEN products_changes').catch(err => console.error('Failed to listen products_changes:', err));
+    dbPool.query('LISTEN stock_movements_changes').catch(err => console.error('Failed to listen stock_movements_changes:', err));
+    dbPool.query('LISTEN inventory_balances_changes').catch(err => console.error('Failed to listen inventory_balances_changes:', err));
     
     // Handle notifications
     dbPool.on('notification', (msg) => {
@@ -43,8 +45,14 @@ if (process.env.DATABASE_URL) {
           timestamp: Date.now(),
         };
         
-        // Broadcast to subscribed clients
+        // Broadcast to subscribed clients on the specific resource channel
         broadcast({ type: 'event', ...eventData }, resource);
+        
+        // Also broadcast stock events to the unified 'stock' channel
+        const STOCK_RESOURCES = new Set(['stock_movements', 'inventory_balances']);
+        if (STOCK_RESOURCES.has(resource)) {
+          broadcast({ type: 'event', ...eventData, channel: 'stock' }, 'stock');
+        }
       } catch (error) {
         console.error('Error processing notification:', error);
       }
@@ -195,6 +203,8 @@ app.post('/publish', (req, res) => {
   try {
     const { event = {}, events = [] } = req.body || {};
     
+    const STOCK_RESOURCES = new Set(['stock_movements', 'inventory_balances', 'stock']);
+    
     // Handle single event
     if (event.type || event.resource) {
       const channel = event.resource || event.channel || 'global';
@@ -208,6 +218,10 @@ app.post('/publish', (req, res) => {
       };
       
       broadcast({ type: 'event', ...eventData }, channel);
+      // Also broadcast to unified 'stock' channel for stock-related events
+      if (STOCK_RESOURCES.has(channel) && channel !== 'stock') {
+        broadcast({ type: 'event', ...eventData, channel: 'stock' }, 'stock');
+      }
       return res.json({ success: true, channel, clients: wss.clients.size });
     }
     

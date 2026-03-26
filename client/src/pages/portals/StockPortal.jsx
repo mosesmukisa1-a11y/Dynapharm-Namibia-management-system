@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -327,6 +328,8 @@ function FieldStockTab() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
+
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleIssue = async (e) => {
@@ -424,7 +427,10 @@ function FieldStockTab() {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Field Stock Records</h3>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              Field Stock Records
+              {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
+            </h3>
             <div className="flex gap-2">
               <div className="relative">
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
@@ -2991,6 +2997,8 @@ function InventoryTab({ branch }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: loadMovements });
+
   useEffect(() => { loadMovements(); }, [loadMovements]);
 
   const filtered = movements.filter(m => {
@@ -3040,9 +3048,10 @@ function InventoryTab({ branch }) {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
               Stock Movements
               {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
+              {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
             </h3>
             <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="secondary" onClick={() => {

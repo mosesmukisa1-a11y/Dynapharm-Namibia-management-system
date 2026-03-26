@@ -1419,6 +1419,16 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // ── Start automated stock reporting scheduler ────────────────────────────
+    try {
+      const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');
+      await ensureStockSummaryTable();
+      startStockScheduler();
+    } catch (schedErr) {
+      console.warn('Stock scheduler startup warning:', schedErr.message);
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     const staffUsers = [
       { id: 'USR1759829667953', username: 'moses', password: 'walker33', fullName: 'MOSES MUKISA', email: 'mosesmukisa1@gmail.com', phone: '0817317160', role: 'consultant', branch: 'townshop' },
       { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },

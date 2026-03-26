@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../lib/api';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
@@ -46,6 +47,12 @@ function DashboardTab() {
   const [comparisonPeriod, setComparisonPeriod] = useState('none');
   const [financeSummary, setFinanceSummary] = useState(null);
 
+  const refreshFinanceSummary = useCallback(() => {
+    api.finance.summary().then(d => { if (d && d.success) setFinanceSummary(d); }).catch(() => {});
+  }, []);
+
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: refreshFinanceSummary });
+
   useEffect(() => {
     Promise.all([
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
@@ -54,7 +61,7 @@ function DashboardTab() {
     ]).then(([sales, deposits, orders]) => {
       setData({ sales, deposits, orders });
     }).finally(() => setLoading(false));
-    api.finance.summary().then(d => { if (d && d.success) setFinanceSummary(d); }).catch(() => {});
+    refreshFinanceSummary();
   }, []);
 
   if (loading) return <LoadingSpinner />;
@@ -162,6 +169,7 @@ function DashboardTab() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileSpreadsheet size={16} className="text-indigo-600" /> Backend Finance Summary
+                {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
               </h3>
               <span className="text-xs text-gray-400">Period: {financeSummary.period?.start} → {financeSummary.period?.end}</span>
             </div>

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle } from 'lucide-react';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 
 export default function MISPortal() {
   const [activeTab, setActiveTab] = useState('audit');
@@ -538,7 +539,7 @@ function MISStockTab() {
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [productSearch, setProductSearch] = useState('');
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.mis.stockReport().catch(() => null),
@@ -547,7 +548,9 @@ function MISStockTab() {
       setReportData(report);
       setBasicStock(Array.isArray(stock) ? stock : stock?.rows || stock?.stock || []);
     }).finally(() => setLoading(false));
-  };
+  }, []);
+
+  const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
 
   useEffect(() => { loadData(); }, []);
 
@@ -584,7 +587,10 @@ function MISStockTab() {
         <div>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>MIS · Stock Intelligence</p>
           <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📊 Stock Dashboard — All Branches</h3>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Auto-generated stock formula · {period}</p>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>
+            Auto-generated stock formula · {period}
+            {wsConnected && <span style={{ marginLeft: 8, background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>● LIVE</span>}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>

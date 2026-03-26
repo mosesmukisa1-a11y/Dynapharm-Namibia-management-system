@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../../lib/api';
+import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId } from '../../lib/constants';
@@ -1966,6 +1967,10 @@ function BranchStockTab() {
     setSelectedBranch(adminBranch);
   }, []);
 
+  const { connected: wsConnected } = useStockRealtime({
+    onUpdate: useCallback(() => { if (selectedBranch) loadData(); }, [selectedBranch]),
+  });
+
   const loadDataRef = useRef(0);
   useEffect(() => {
     if (selectedBranch) loadData();
@@ -2292,7 +2297,10 @@ function BranchStockTab() {
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div>
           <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Branch Operations</p>
-          <h3 className="text-white text-lg font-bold m-0">📦 Stock Management</h3>
+          <h3 className="text-white text-lg font-bold m-0 flex items-center gap-2">
+            📦 Stock Management
+            {wsConnected && <span style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>● LIVE</span>}
+          </h3>
           <p className="text-white/70 text-sm mt-1 m-0">Inventory · Request Stock · Receive · Reports</p>
         </div>
         <div className="flex gap-2 flex-wrap">

@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../../_lib/auth.js';
-import { getMany } from '../../db.js';
+import { getMany, getOne } from '../../db.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -10,6 +10,30 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const from = url.searchParams.get('date_from') || null;
     const to = url.searchParams.get('date_to') || null;
+    const period = url.searchParams.get('period') || null;
+    const branchId = url.searchParams.get('branch_id') || null;
+
+    // Precomputed-first: when a specific period is requested, serve stored summary immediately
+    if (period) {
+      let periodType, periodKey;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(period)) { periodType = 'daily'; periodKey = period; }
+      else if (/^\d{4}-W\d{2}$/.test(period)) { periodType = 'weekly'; periodKey = period; }
+      else if (/^\d{4}-\d{2}$/.test(period)) { periodType = 'monthly'; periodKey = period; }
+
+      if (periodType) {
+        const id = branchId
+          ? `${periodType}-${periodKey}-${branchId.replace(/[^a-zA-Z0-9_]/g, '_')}`
+          : `${periodType}-${periodKey}-all`;
+        const stored = await getOne(
+          `SELECT report_data, computed_at FROM stock_report_summaries WHERE id = $1`,
+          [id]
+        ).catch(() => null);
+        if (stored) {
+          const data = typeof stored.report_data === 'string' ? JSON.parse(stored.report_data) : stored.report_data;
+          return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: stored.computed_at, ...data });
+        }
+      }
+    }
 
     let dateFilter = '';
     const params = [];
