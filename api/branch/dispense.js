@@ -34,6 +34,7 @@ export default async function handler(req, res) {
         for (const item of items) {
           const productName = item.product_name || item.name || '';
           const qty = Number(item.quantity || 1);
+          const unitPrice = Number(item.unit_price || item.dp_price || item.dp || 0) || null;
           if (!productName || qty <= 0) continue;
 
           let remaining = qty;
@@ -57,9 +58,9 @@ export default async function handler(req, res) {
             const ts = Date.now();
             const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
             await client.query(
-              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-              [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take, reportId, 'Prescription dispense', createdBy || '']
+              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+              [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take, unitPrice, reportId, 'Prescription dispense', createdBy || '']
             );
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
@@ -67,12 +68,12 @@ export default async function handler(req, res) {
               `INSERT INTO stock_movements
                  (id, product_name, batch_no, expiry_date, quantity, movement_type,
                   source_location, source_location_type, destination_location, destination_location_type,
-                  reference_id, notes, status, movement_date, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','patient',NULL,$8,$9,'posted',NOW(),NOW(),NOW())`,
-              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, 'Prescription dispense']
+                  reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','patient',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
+              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, 'Prescription dispense', unitPrice]
             );
 
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take });
+            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice });
             remaining -= take;
           }
 
@@ -86,13 +87,12 @@ export default async function handler(req, res) {
         }
       });
 
-      // Recompute inventory_balances for the branch after dispense
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] dispense recompute error:', e.message)
       );
 
-      // Post into branch_activity_transactions for unified reporting
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
+      const totalDispensedValue = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0);
       postActivityRecord({
         id: generateBatId(),
         branch_id: branchId,
@@ -104,9 +104,9 @@ export default async function handler(req, res) {
         activity_type: 'prescription_dispensing',
         workflow_source: 'branch_portal',
         form_reference_id: reportId,
-        product_total_dp: 0,
+        product_total_dp: totalDispensedValue,
         total_qty: totalDispensedQty,
-        grand_total: 0,
+        grand_total: totalDispensedValue,
         payment_status: 'paid',
         payment_method: 'cash',
         stock_impact: true,

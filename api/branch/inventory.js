@@ -206,9 +206,9 @@ async function getInventoryByBranch(branchId, enriched = false) {
     aggMap[normKey].walkin_sold = Math.max(aggMap[normKey].walkin_sold, walkinQty);
   }
 
-  // Compute combined sold = walkin_sold + dispensed (prescription dispenses count as sales)
+  // Sold = walk-in/online sales only; dispensed remains separate
   for (const a of Object.values(aggMap)) {
-    a.sold = a.walkin_sold + a.dispensed;
+    a.sold = a.walkin_sold;
   }
 
   // Track which norm keys already have a batch record
@@ -249,8 +249,8 @@ async function getInventoryByBranch(branchId, enriched = false) {
   for (const [normKey, { qty: walkinQty, originalName }] of Object.entries(walkinSoldMap)) {
     if (batchNormKeys.has(normKey)) continue; // already covered by a batch row
     const agg = aggMap[normKey] || EMPTY_AGG();
-    agg.sold = agg.walkin_sold + agg.dispensed;
-    if (agg.sold <= 0) continue; // nothing to show
+    agg.sold = agg.walkin_sold;
+    if (agg.sold <= 0 && agg.dispensed <= 0) continue; // nothing to show
     syntheticRows.push({
       id: `synthetic-${normKey}`,
       branch_id: resolvedId,
@@ -617,9 +617,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
-      const _enrichedRaw = searchParams.get('enriched');
-      const enrichedParam = _enrichedRaw === '1' || _enrichedRaw === 'true' || searchParams.get('include_aggregates') === '1';
-      const inventory = await getInventoryByBranch(branchId, enrichedParam || includeMovements);
+      const inventory = await getInventoryByBranch(branchId, true);
       const response = {
         success: true,
         inventory,

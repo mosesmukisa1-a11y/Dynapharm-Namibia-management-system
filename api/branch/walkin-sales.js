@@ -250,46 +250,52 @@ export default async function handler(req, res) {
       const salePayload = body.sale || body;
       const record = buildSaleRecord(salePayload);
 
-      const columns = Object.keys(record);
-      const values = Object.values(record);
-      const placeholders = columns.map((_, idx) => `$${idx + 1}`).join(', ');
-      const columnNames = columns.map((col) => `"${col}"`).join(', ');
-
-      const result = await query(
-        `INSERT INTO branch_walkin_sales (${columnNames}) VALUES (${placeholders}) RETURNING *`,
-        values,
-      );
-
       const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
       const branchId = record.branch_id;
-
-      const saleId = result.rows[0].id;
       const customerType = record.customer_type || 'customer';
       const saleMovType = customerType === 'member' ? 'walk_in_member_sale' : customerType === 'non_member' ? 'walk_in_non_member_sale' : 'sale';
 
       const deductItems = [];
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
+        const unitPrice = Number(item.unit_price || item.unitPrice || item.dpPrice || item.dp || 0);
         if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
-            deductItems.push({ name: comp.name || comp.product_name || '', qty: Number(comp.quantity || comp.qty || 1) * qty });
+            deductItems.push({
+              name: comp.name || comp.product_name || '',
+              qty: Number(comp.quantity || comp.qty || 1) * qty,
+              unitPrice: Number(comp.unit_price || comp.dp || 0),
+            });
           }
         } else {
-          deductItems.push({ name: item.product_name || item.name || item.description || '', qty });
+          deductItems.push({ name: item.product_name || item.name || item.description || '', qty, unitPrice });
         }
       }
 
+      let insertedRow;
       try {
-        await withTransaction(async (client) => {
+        insertedRow = await withTransaction(async (client) => {
+          const columns = Object.keys(record);
+          const values = Object.values(record);
+          const placeholders = columns.map((_, idx) => `$${idx + 1}`).join(', ');
+          const columnNames = columns.map((col) => `"${col}"`).join(', ');
+
+          const result = await client.query(
+            `INSERT INTO branch_walkin_sales (${columnNames}) VALUES (${placeholders}) RETURNING *`,
+            values,
+          );
+          const saleId = result.rows[0].id;
+
+          const insufficientItems = [];
           for (const item of deductItems) {
             if (!item.name || item.qty <= 0 || !branchId) continue;
             let remaining = item.qty;
             const batches = (await client.query(
               `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
-               WHERE branch_id = $1 AND product_name ILIKE $2 AND quantity > 0
+               WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2)) AND quantity > 0
                ORDER BY expiry_date ASC NULLS LAST
                FOR UPDATE`,
-              [branchId, '%' + item.name + '%']
+              [branchId, item.name]
             )).rows;
             for (const batch of batches) {
               if (remaining <= 0) break;
@@ -301,33 +307,45 @@ export default async function handler(req, res) {
               const ts = Date.now();
               const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
               await client.query(
-                `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
+                `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, item.unitPrice || null, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
               );
               const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
               await client.query(
                 `INSERT INTO stock_movements
                    (id, product_name, batch_no, expiry_date, quantity, movement_type,
                     source_location, source_location_type, destination_location, destination_location_type,
-                    reference_id, notes, status, movement_date, created_at, updated_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',NOW(),NOW(),NOW())`,
+                    reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
                 [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
-                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale']
+                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice || null]
               );
               remaining -= take;
             }
+            if (remaining > 0) {
+              insufficientItems.push({ product_name: item.name, requested: item.qty, available: item.qty - remaining, short: remaining });
+            }
           }
+
+          if (insufficientItems.length > 0) {
+            throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
+          }
+
+          return result.rows[0];
         });
-        // Recompute inventory_balances for the branch after sale
-        recomputeLocationBalances('branch', branchId).catch(e =>
-          console.error('[stockEngine] walkin-sale recompute error:', e.message)
-        );
       } catch (txErr) {
-        console.error('Stock deduction transaction error:', txErr.message);
+        console.error('Walk-in sale transaction error:', txErr.message);
+        if (txErr.message?.startsWith('Insufficient stock')) {
+          return res.status(409).json({ success: false, error: txErr.message });
+        }
+        return res.status(500).json({ success: false, error: txErr.message || 'Failed to record sale' });
       }
 
-      // Post into branch_activity_transactions for unified reporting
+      recomputeLocationBalances('branch', branchId).catch(e =>
+        console.error('[stockEngine] walkin-sale recompute error:', e.message)
+      );
+
       const actType = record.customer_type === 'member' ? 'member_sale'
         : record.customer_type === 'non_member' ? 'non_member_sale'
         : 'walkin_sale';
@@ -344,7 +362,7 @@ export default async function handler(req, res) {
         service_time: record.sale_date ? new Date(record.sale_date).toTimeString().slice(0, 8) : null,
         activity_type: actType,
         workflow_source: 'branch_portal',
-        form_reference_id: record.id,
+        form_reference_id: insertedRow.id,
         product_total_dp: record.total,
         product_total_cp: record.total,
         total_qty: totalQty,
@@ -361,7 +379,7 @@ export default async function handler(req, res) {
 
       return res.status(201).json({
         success: true,
-        sale: normalizeSaleRow(result.rows[0]),
+        sale: normalizeSaleRow(insertedRow),
       });
     }
 
@@ -415,4 +433,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-

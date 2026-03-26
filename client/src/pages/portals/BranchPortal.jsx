@@ -1931,9 +1931,9 @@ function BranchStockTab() {
       const activeBranch = selectedBranch;
       const branchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}` : '';
       const branchKey = activeBranch ? activeBranch.toLowerCase().replace(/\s+/g, '_') : '';
-      const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=500` : 'limit=500';
+      const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=10000` : 'limit=10000';
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
-        api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=500' : 'include_movements=1&limit=500').catch(() => ({ inventory: [], movements: [] })),
+        api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
         api.stock.transfers(branchKey ? `branch=${encodeURIComponent(branchKey)}` : '').catch(() => ({ transfers: [] })),
         api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
@@ -2284,8 +2284,8 @@ function BranchStockTab() {
         });
         const totalQty = filteredInv.reduce((s, r) => s + Number(r.quantity || 0), 0);
         const totalDP = filteredInv.reduce((s, r) => {
-          const p = findProductPrice(r.product_name || r.productName || r.description);
-          return s + (p?.dp ? Number(p.dp) * Number(r.quantity || 0) : 0);
+          const price = Number(r.unit_price || r.unitPrice || 0);
+          return s + price * Number(r.quantity || 0);
         }, 0);
         const lowCount = filteredInv.filter(r => { const q = Number(r.quantity || 0); return q > 0 && q < 10; }).length;
         const nearExpCount = filteredInv.filter(r => { const e = r.expiry_date || r.expiryDate; return e && new Date(e) <= thirtyDays && new Date(e) >= now; }).length;
@@ -2989,8 +2989,8 @@ function BranchStockTab() {
         const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalDPOut = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => {
-          const p = findProductPrice(m.product_name || m.productName);
-          return s + (p?.dp ? Number(p.dp) * Math.abs(Number(m.quantity || 0)) : 0);
+          const capturedPrice = Number(m.unit_price || m.unitPrice || m.unit_dp || m.unitDp || 0);
+          return s + capturedPrice * Math.abs(Number(m.quantity || 0));
         }, 0);
         const typeLabel = (t) => {
           const map = { received: 'Stock Receipt', receive: 'Stock Receipt', stock_receipt: 'Stock Receipt', sale: 'Walk-in Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Prescription Dispense', prescription_dispense: 'Prescription Dispense', online_order_sale: 'Online Order Sale' };
@@ -3063,11 +3063,11 @@ function BranchStockTab() {
               <tbody>
                 {filteredMov.length === 0 ? (
                   <tr><td colSpan={12} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No movements recorded</td></tr>
-                ) : filteredMov.slice(0, 200).map((m, idx) => {
+                ) : filteredMov.map((m, idx) => {
                   const pName = m.product_name || m.productName || '-';
                   const mType = (m.movement_type || m.type || '').toLowerCase();
-                  const p = findProductPrice(pName);
-                  const dpVal = p?.dp ? Number(p.dp) * Math.abs(Number(m.quantity || 0)) : 0;
+                  const capturedPrice = Number(m.unit_price || m.unitPrice || m.unit_dp || m.unitDp || 0);
+                  const dpVal = capturedPrice * Math.abs(Number(m.quantity || 0));
                   const isOut = outwardTypes.includes(mType);
                   return (
                     <tr key={m.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
@@ -3089,121 +3089,174 @@ function BranchStockTab() {
               </tbody>
             </table>
           </div>
-          {filteredMov.length > 200 && <div style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>Showing first 200 of {filteredMov.length} movements</div>}
         </Card>
         );
       })()}
 
       {subTab === 'reports' && (() => {
-        const branchName = getBranchDisplayName(user?.branch) || 'Branch';
-        // Synthesize prescription sale entries from dispense stock movements
-        const rxMovements = movements.filter(m => {
-          const t = (m.type || m.movement_type || '').toLowerCase();
-          return t === 'dispense' || t === 'prescription_dispense' || t === 'sale_dispense';
-        }).map(m => {
-          const pName = m.product_name || m.productName || m.description || 'Unknown';
-          const pLookup = findProductPrice(pName);
-          const dpPrice = pLookup?.dp ? Number(pLookup.dp) : Number(m.unit_price || m.dp_price || 0);
-          return {
-            created_at: m.created_at || m.date,
-            sale_type: 'prescription_dispense',
-            items: [{ product_name: pName, quantity: Math.abs(Number(m.quantity || 1)), unit_price: dpPrice }],
-          };
-        });
-        const walkinAndRx = [...sales, ...rxMovements];
-        const todaySales = walkinAndRx.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.toDateString() === t.toDateString(); });
-        const monthSales = walkinAndRx.filter(s => { const d = new Date(s.created_at || s.date); const t = new Date(); return d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); });
-        const parseItems = (r) => { try { return typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []); } catch { return []; } };
-        const dpTotalFn = (arr) => arr.reduce((s, r) => {
-          const items = parseItems(r);
-          if (items.length === 0) {
-            return s + Number(r.total || r.amount || r.total_amount || 0);
-          }
-          return s + items.reduce((a, i) => {
-            const p = findProductPrice(i.product_name || i.productName || i.name);
-            const dpVal = p?.dp ? Number(p.dp) : Number(i.unit_price || i.dp || i.price || 0);
-            return a + dpVal * Number(i.quantity || 1);
-          }, 0);
-        }, 0);
-        const qtyTotalFn = (arr) => arr.reduce((s, r) => {
-          const items = parseItems(r);
-          if (items.length === 0) return s + 1;
-          return s + items.reduce((a, i) => a + Number(i.quantity || 1), 0);
-        }, 0);
-        const catSales = (list) => {
-          const sType = (s) => (s.sale_type || s.saleType || s.type || '').toLowerCase();
-          const cType = (s) => (s.customer_type || s.customerType || '').toLowerCase();
-          const isMember = (s) => sType(s) === 'member' || sType(s) === 'walk_in_member_sale' || cType(s) === 'member' || cType(s) === 'registered';
-          const isNonMember = (s) => sType(s) === 'non_member' || sType(s) === 'walk_in_non_member_sale' || cType(s) === 'non_member' || cType(s) === 'non-member';
-          const isOnline = (s) => sType(s) === 'online' || sType(s) === 'online_order_sale';
-          const isRx = (s) => sType(s) === 'prescription' || sType(s) === 'dispense' || sType(s) === 'prescription_dispense';
-          const isConsult = (s) => sType(s) === 'consultation' || sType(s) === 'consultation_fee';
-          const member = list.filter(s => isMember(s));
-          const nonMember = list.filter(s => isNonMember(s));
-          const online = list.filter(s => isOnline(s));
-          const rx = list.filter(s => isRx(s));
-          const consultation = list.filter(s => isConsult(s));
-          const walkin = list.filter(s => !isMember(s) && !isNonMember(s) && !isOnline(s) && !isRx(s) && !isConsult(s));
-          return { walkin, member, nonMember, online, rx, consultation, all: list };
+        const branchName = getBranchDisplayName(selectedBranch || user?.branch) || 'Branch';
+        const branchIdParam = selectedBranch || user?.branch || '';
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const monthStr = new Date().toISOString().slice(0, 7);
+        const monthLabel = new Date().toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+
+        const fmtC = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
+        const fmt = (n) => Number(n || 0).toLocaleString();
+
+        const buildPaymentBreakdownHTML = (paymentMethods) => {
+          if (!paymentMethods || Object.keys(paymentMethods).length === 0) return '';
+          const rows = Object.entries(paymentMethods).map(([pm, d]) =>
+            `<tr><td style="padding:4px 8px;font-size:10px;color:#374151;text-transform:capitalize">${pm}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${d.count}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#1e40af">${fmtC(d.value)}</td></tr>`
+          ).join('');
+          return `<table style="width:100%;border-collapse:collapse;margin-top:4px;background:#f0f9ff;border-radius:6px;overflow:hidden">
+            <thead><tr style="background:#1e40af;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Payment Method</th><th style="padding:4px 8px;font-size:9px;text-align:center">Count</th><th style="padding:4px 8px;font-size:9px;text-align:right">Amount</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
         };
-        const printDPSalesReport = (salesList, period) => {
-          const c = catSales(salesList);
-          const sections = [
-            { title: '1. Consultation Fees', data: c.consultation },
-            { title: '2. Walk-in Sales (General)', data: c.walkin },
-            { title: '3. Member Sales', data: c.member },
-            { title: '4. Non-member Sales', data: c.nonMember },
-            { title: '5. Online Order Sales', data: c.online },
-            { title: '6. Prescription Dispensing', data: c.rx },
-          ];
-          const totalDP = dpTotalFn(salesList);
-          const totalQty = qtyTotalFn(salesList);
-          const consultFees = c.consultation.reduce((s, r) => s + Number(r.consultation_fee || r.fee || 0), 0);
-          const totalWithConsult = totalDP + consultFees;
-          const distributorProfit = totalDP * 0.25;
-          const sectionRows = sections.map(sec => {
-            const qty = qtyTotalFn(sec.data);
-            const dp = sec.title.includes('Consultation') ? consultFees : dpTotalFn(sec.data);
-            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.data.length}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${dp.toFixed(2)}</td></tr>`;
+
+        const buildRxLineItemsHTML = (lineItems) => {
+          if (!Array.isArray(lineItems) || lineItems.length === 0) return '<p style="font-size:10px;color:#94a3b8;margin:4px 0">No prescription dispenses recorded</p>';
+          const rows = lineItems.map(li => {
+            const productRows = Array.isArray(li.products) && li.products.length > 0
+              ? li.products.map(p =>
+                  `<tr style="background:#f5f3ff"><td style="padding:3px 8px 3px 20px;font-size:9px;color:#6366f1" colspan="2">&rarr; ${p.product_name || '—'}${p.batch_no ? ` [${p.batch_no}]` : ''}</td><td style="padding:3px 8px;font-size:9px;text-align:center;color:#6366f1">${p.qty}</td><td style="padding:3px 8px;font-size:9px;text-align:right;color:#6366f1">${fmtC(p.dp_value)}</td><td></td></tr>`
+                ).join('')
+              : '';
+            return `<tr><td style="padding:4px 8px;font-size:10px">${li.client_name || 'Patient'}</td><td style="padding:4px 8px;font-size:10px">${li.client_type || '—'}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${li.total_qty || li.qty}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#6366f1">${fmtC(li.total_dp_value || li.value)}</td><td style="padding:4px 8px;font-size:10px;text-transform:capitalize">${li.payment_method || '—'}</td></tr>${productRows}`;
           }).join('');
+          return `<table style="width:100%;border-collapse:collapse;margin-top:4px"><thead><tr style="background:#6366f1;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Patient</th><th style="padding:4px 8px;font-size:9px;text-align:left">Type</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th><th style="padding:4px 8px;font-size:9px;text-align:left">Payment</th></tr></thead><tbody>${rows}</tbody></table>`;
+        };
+
+        const printDPSalesReportFromData = (data, period) => {
+          const c = data.consultations || {};
+          const wi = data.walkin_sales || {};
+          const mem = data.member_sales || {};
+          const nm = data.non_member_sales || {};
+          const on = data.online_order_sales || {};
+          const rx = data.prescription_dispensing || {};
+          const grandTotal = data.grand_total || 0;
+          const totalQty = data.total_qty_sold || 0;
+          const totalTx = data.total_transactions || 0;
+          const sections = [
+            { title: '1. Consultation Fees', tx: c.transactions || 0, qty: c.qty || 0, dp: c.fee_value || c.value || 0, pmBreakdown: c.payment_methods },
+            { title: '2. Walk-in Sales (General)', tx: wi.transactions || 0, qty: wi.qty || 0, dp: wi.value || 0, pmBreakdown: wi.payment_methods },
+            { title: '3. Member Sales (DP)', tx: mem.transactions || 0, qty: mem.qty || 0, dp: mem.value || 0, pmBreakdown: mem.payment_methods },
+            { title: '4. Non-member Sales', tx: nm.transactions || 0, qty: nm.qty || 0, dp: nm.value || 0, pmBreakdown: nm.payment_methods },
+            { title: '5. Online Order Sales', tx: on.transactions || 0, qty: on.qty || 0, dp: on.value || 0, pmBreakdown: on.payment_methods },
+            { title: '6. Prescription Dispensing', tx: rx.transactions || 0, qty: rx.qty || 0, dp: rx.value || 0, pmBreakdown: rx.payment_methods, lineItems: rx.line_items },
+          ];
+          const sectionRows = sections.map(sec =>
+            `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.tx}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${sec.qty}</td><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">${fmtC(sec.dp)}</td></tr>`
+          ).join('');
+          const detailSections = sections.map(sec => {
+            const pmHtml = buildPaymentBreakdownHTML(sec.pmBreakdown);
+            const rxHtml = sec.lineItems ? buildRxLineItemsHTML(sec.lineItems) : '';
+            if (!pmHtml && !rxHtml) return '';
+            return `<h4 style="font-size:10px;color:#374151;margin:10px 0 4px;font-weight:700">${sec.title}</h4>${pmHtml}${rxHtml}`;
+          }).filter(Boolean).join('');
+          const distributorProfit = (grandTotal * 0.25).toFixed(2);
           printStockDocument(`DP Sales Report — ${period}`, `
-            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only</div>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only — aggregated server-side from all sale categories</div>
             <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty Sold</th><th style="text-align:right;padding:8px 12px">DP Total</th></tr></thead>
+              <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty</th><th style="text-align:right;padding:8px 12px">DP Total</th></tr></thead>
               <tbody>${sectionRows}</tbody>
             </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">7. TOTAL DP SALES</h3>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PAYMENT METHOD BREAKDOWN & DISPENSING DETAIL</h3>
+            ${detailSections || '<p style="font-size:10px;color:#94a3b8">No transactions recorded</p>'}
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">TOTALS</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
-              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${salesList.length}</td></tr>
-              <tr><td style="padding:8px 12px;font-weight:700">Total Qty Sold</td><td style="padding:8px 12px;text-align:right;font-weight:700">${totalQty}</td></tr>
-              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Total DP Sales Value</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">N$ ${totalWithConsult.toFixed(2)}</td></tr>
+              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${totalTx}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:700">Total Qty Sold</td><td style="padding:8px 12px;text-align:right;font-weight:700">${fmt(totalQty)}</td></tr>
+              <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Grand Total (DP)</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">${fmtC(grandTotal)}</td></tr>
             </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">8. BRANCH SALES SUMMARY</h3>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">BRANCH SUMMARY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Period</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${period}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Product DP Value</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${totalDP.toFixed(2)}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Consultation Fees</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${consultFees.toFixed(2)}</td></tr>
-              <tr style="background:#fdf2f4"><td style="padding:8px 12px;font-weight:800;color:#c41e3a">Grand Total</td><td style="padding:8px 12px;text-align:right;font-weight:800;color:#c41e3a">N$ ${totalWithConsult.toFixed(2)}</td></tr>
-            </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">9. DISTRIBUTOR PROFIT SUMMARY</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Total DP Sales</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">N$ ${totalDP.toFixed(2)}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Estimated Profit Margin (25%)</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${distributorProfit.toFixed(2)}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Consultation Revenue</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">N$ ${consultFees.toFixed(2)}</td></tr>
-              <tr style="background:#f0fdf4"><td style="padding:8px 12px;font-weight:800;color:#166534">Total Distributor Earnings</td><td style="padding:8px 12px;text-align:right;font-weight:800;color:#166534">N$ ${(distributorProfit + consultFees).toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Total DP Sales</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">${fmtC(grandTotal)}</td></tr>
+              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Estimated Distributor Profit (25%)</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">${fmtC(distributorProfit)}</td></tr>
             </table>`, branchName);
+        };
+
+        const printStockFormulaFromData = (data) => {
+          const products = data.products || [];
+          const totals = data.totals || {};
+          const period = `${data.period_start || ''} to ${data.period_end || ''}`;
+          const now = new Date();
+          const fRow = (label, val, color, bg, borderTop) =>
+            `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px;${bg ? `background:${bg};` : ''}${borderTop ? `border-top:2px solid ${borderTop};` : ''}border-bottom:1px solid #f1f5f9">
+               <span style="font-size:12px;font-weight:700;color:#374151">${label}</span>
+               <span style="font-size:16px;font-weight:900;color:${color || '#1e293b'}">${val}</span>
+             </div>`;
+          const invRows = products.map(p =>
+            `<tr><td style="padding:5px 8px;font-size:9.5px">${p.product_name || '-'}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right">${fmt(p.opening_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;color:#166534">${fmt(p.received_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;color:#2563eb">${fmt(p.sold_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;color:#6366f1">${fmt(p.dispensed_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;color:#9333ea">${fmt(p.transferred_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;color:#c41e3a">${fmt(p.written_off_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;font-weight:800;color:${Number(p.closing_qty) <= 0 ? '#c41e3a' : '#166534'}">${fmt(p.closing_qty)}</td><td style="padding:5px 8px;font-size:9.5px;text-align:right;font-weight:700">${fmtC(p.dp_total_value)}</td></tr>`
+          ).join('');
+          const win = window.open('', '_blank');
+          if (!win) return;
+          win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Formula Report — ${branchName}</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}body{padding:10px}}</style>
+          </head><body>
+          <button class="print-btn" onclick="window.print()">Print</button>
+          <div class="header">
+            <div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">Branch Stock Formula Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${branchName} &nbsp;&middot;&nbsp; ${period}</div></div>
+            <div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${now.toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}<br>Generated by: Branch Portal</div>
+          </div>
+          <div style="border:1.5px solid #f0e8ea;border-radius:12px;overflow:hidden;margin-bottom:16px">
+            <div style="background:linear-gradient(135deg,#c41e3a,#8b0000);color:#fff;padding:12px 18px;font-weight:800;font-size:13px">Stock Calculation — ${period}</div>
+            ${fRow('Opening Stock', fmt(totals.opening_qty || 0), '#1e3a5f', '#f4f7fb')}
+            ${fRow('+ Received', '+' + fmt(totals.received_qty || 0), '#166534', '#f0fdf4')}
+            ${fRow('&minus; Sold (Walk-in)', '&minus;' + fmt(totals.sold_qty || 0), '#c41e3a', '#fef2f2')}
+            ${fRow('&minus; Dispensed (Prescription)', '&minus;' + fmt(totals.dispensed_qty || 0), '#6366f1', '#f5f3ff')}
+            ${fRow('&minus; Transferred Out', '&minus;' + fmt(totals.transferred_qty || 0), '#9333ea', '#fdf4ff')}
+            ${fRow('&minus; Written Off', '&minus;' + fmt(totals.written_off_qty || 0), '#c41e3a', '#fef2f2')}
+            ${fRow('= Closing Stock', fmt(totals.closing_qty || 0), '#15803d', 'linear-gradient(135deg,#f0fdf4,#dcfce7)', '#86efac')}
+            <div style="padding:8px 18px;background:#fafafa;font-size:10px;color:#64748b">Total DP Value of Sales + Dispenses: <strong style="color:#c41e3a">${fmtC(totals.dp_total_value || 0)}</strong></div>
+          </div>
+          <h3 style="font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.12em;margin:14px 0 6px;border-bottom:1px solid #fecaca;padding-bottom:4px">Per-Product Detail</h3>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#c41e3a;color:#fff"><th style="padding:6px 8px;font-size:9px;text-align:left">Product</th><th style="padding:6px 8px;font-size:9px;text-align:right">Opening</th><th style="padding:6px 8px;font-size:9px;text-align:right">+Received</th><th style="padding:6px 8px;font-size:9px;text-align:right">&minus;Sold</th><th style="padding:6px 8px;font-size:9px;text-align:right">&minus;Disp</th><th style="padding:6px 8px;font-size:9px;text-align:right">&minus;Trf</th><th style="padding:6px 8px;font-size:9px;text-align:right">&minus;W/O</th><th style="padding:6px 8px;font-size:9px;text-align:right">Closing</th><th style="padding:6px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead>
+            <tbody>${invRows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:12px">No inventory data</td></tr>'}</tbody>
+            <tfoot><tr style="background:#fdf2f4;border-top:2px solid #c41e3a"><td style="padding:6px 8px;font-size:9.5px;font-weight:800">TOTAL</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800">${fmt(totals.opening_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#166534">${fmt(totals.received_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#2563eb">${fmt(totals.sold_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#6366f1">${fmt(totals.dispensed_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#9333ea">${fmt(totals.transferred_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#c41e3a">${fmt(totals.written_off_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800;color:#166534">${fmt(totals.closing_qty || 0)}</td><td style="padding:6px 8px;font-size:9.5px;text-align:right;font-weight:800">${fmtC(totals.dp_total_value || 0)}</td></tr></tfoot>
+          </table>
+          </body></html>`);
+          win.document.close();
+        };
+
+        const handleDailyReport = async () => {
+          try {
+            const data = await api.reports.branchSalesDaily({ branch_id: branchIdParam, date: todayStr });
+            printDPSalesReportFromData(data, 'Daily — ' + new Date().toLocaleDateString('en-NA'));
+          } catch (e) {
+            alert('Failed to load daily report: ' + (e.message || 'Unknown error'));
+          }
+        };
+
+        const handleMonthlyReport = async () => {
+          try {
+            const data = await api.reports.branchSalesMonthly({ branch_id: branchIdParam, month: monthStr });
+            printDPSalesReportFromData(data, monthLabel);
+          } catch (e) {
+            alert('Failed to load monthly report: ' + (e.message || 'Unknown error'));
+          }
+        };
+
+        const handleStockFormulaReport = async () => {
+          try {
+            const data = await api.reports.branchStockFormula({ branch_id: branchIdParam, month: monthStr });
+            printStockFormulaFromData(data);
+          } catch (e) {
+            alert('Failed to load stock formula report: ' + (e.message || 'Unknown error'));
+          }
         };
 
         return (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
-              { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all 9 sections: consultation, walk-in, member, non-member, online, Rx, totals, summary, profit", action: () => printDPSalesReport(todaySales, 'Daily — ' + new Date().toLocaleDateString('en-NA')) },
-              { icon: '📈', title: 'Monthly DP Sales Report', desc: `${new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})} — complete DP report with distributor profit`, action: () => printDPSalesReport(monthSales, new Date().toLocaleDateString('en-NA',{month:'long',year:'numeric'})) },
+              { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
+              { icon: '📈', title: 'Monthly DP Sales Report', desc: `${monthLabel} — complete DP report with payment breakdown and Rx patient detail lines. No data load limits.`, action: handleMonthlyReport },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => printPhysicalStockReport(inventory, branchName) },
-              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Issued - Sales - Returns - Expiring = Closing', action: () => printStockFormulaReport(inventory, movements, sales, branchName) },
+              { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Received − Sold − Dispensed − Transfers − Write-offs = Closing (server-side per product)', action: handleStockFormulaReport },
               { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: receipts, sales, write-offs, transfers, dispenses', action: () => printStockMovementsReport(movements, branchName) },
               { icon: '📥', title: 'Receiving Stock Report', desc: 'Stock received from warehouse with dispatch details', action: () => printReceivingStockReport(requests, branchName) },
             ].map(card => (
