@@ -4,6 +4,4 @@
 ALTER TABLE branch_inventory_movements
   ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12,4);
 
-INSERT INTO schema_migrations (version, name, applied_at)
-VALUES ('016', 'branch_inventory_unit_price', NOW())
-ON CONFLICT (version) DO NOTHING;
+-- Migration tracking is handled by the migration runner (run-migrations.js)

@@ -70,7 +70,4 @@ CREATE INDEX IF NOT EXISTS idx_inv_bal_product
 CREATE INDEX IF NOT EXISTS idx_inv_bal_closing
   ON inventory_balances (location_type, location_id, closing_qty);
 
--- 8. Record migration
-INSERT INTO schema_migrations (version, name, applied_at)
-VALUES ('014', 'centralized_stock_engine', NOW())
-ON CONFLICT (version) DO NOTHING;
+-- 8. Migration tracking is handled by the migration runner (run-migrations.js)
