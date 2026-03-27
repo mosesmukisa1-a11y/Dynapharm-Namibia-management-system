@@ -799,6 +799,7 @@ function PrescriptionsTab() {
   const [checkupFeeType, setCheckupFeeType] = useState({});
   const [dispensePreview, setDispensePreview] = useState(null);
   const [dispensing, setDispensing] = useState(false);
+  const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
     standard: { label: 'Full Body Check Up', fee: 200, cashback: 50, consultantEarns: 150 },
@@ -880,11 +881,50 @@ function PrescriptionsTab() {
     const membershipStatus = report.membership_status || 'referred';
     const isMember = membershipStatus === 'member';
     const consultFee = getConsultationFee(membershipStatus);
-    const items = meds.map(m => {
+
+    const items = meds.map((m, medIdx) => {
       const p = getEffectivePrice(m.name);
-      return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products };
+      const expanded = isPackageExpanded(report.id, medIdx);
+      const alreadyDispensedComps = Array.isArray(m.dispensed_components) ? new Set(m.dispensed_components) : new Set();
+      if (p.isPackage && expanded && p.products) {
+        const compState = getExpandedComponentState(report.id, medIdx);
+        const components = p.products.map((comp, ci) => {
+          const cp = getComponentPrice(comp.name);
+          return {
+            name: comp.name,
+            quantity: Number(comp.quantity || 1),
+            dp: cp.dp,
+            cp: cp.cp,
+            bv: cp.bv,
+            fromPackage: m.name,
+            selectedForDispense: !!compState[ci],
+            alreadyDispensed: alreadyDispensedComps.has(comp.name),
+          };
+        });
+        return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: true, dispensed: !!m.dispensed, products: p.products, expandedIndividually: true, components, alreadyDispensedComps };
+      }
+      return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products, expandedIndividually: false, alreadyDispensedComps };
     });
-    const pendingItems = items.filter(i => !i.dispensed);
+
+    const pendingItems = [];
+    for (const item of items) {
+      if (item.dispensed) continue;
+      if (item.isPackage && item.expandedIndividually && item.components) {
+        for (const comp of item.components) {
+          if (comp.alreadyDispensed) continue;
+          if (!comp.selectedForDispense) continue;
+          pendingItems.push({ ...comp, isComponent: true });
+        }
+      } else if (item.isPackage && !item.expandedIndividually) {
+        const remainingComps = (item.products || []).filter(c => !item.alreadyDispensedComps.has(c.name));
+        if (remainingComps.length > 0) {
+          pendingItems.push({ ...item, products: remainingComps });
+        }
+      } else {
+        pendingItems.push(item);
+      }
+    }
+
     setDispensePreview({
       report,
       items,
@@ -895,8 +935,18 @@ function PrescriptionsTab() {
       totalDP: items.reduce((s, i) => s + (i.dp || 0) * i.quantity, 0),
       totalCP: items.reduce((s, i) => s + (i.cp || 0) * i.quantity, 0),
       totalBV: items.reduce((s, i) => s + (i.bv || 0) * i.quantity, 0),
-      pendingDP: pendingItems.reduce((s, i) => s + (i.dp || 0) * i.quantity, 0),
-      pendingCP: pendingItems.reduce((s, i) => s + (i.cp || 0) * i.quantity, 0),
+      pendingDP: pendingItems.reduce((s, i) => {
+        if (i.isPackage && i.alreadyDispensedComps && i.alreadyDispensedComps.size > 0) {
+          return s + (i.products || []).reduce((cs, c) => { const cp = getComponentPrice(c.name); return cs + (cp.dp || 0) * Number(c.quantity || 1); }, 0);
+        }
+        return s + (i.dp || 0) * (i.quantity || 1);
+      }, 0),
+      pendingCP: pendingItems.reduce((s, i) => {
+        if (i.isPackage && i.alreadyDispensedComps && i.alreadyDispensedComps.size > 0) {
+          return s + (i.products || []).reduce((cs, c) => { const cp = getComponentPrice(c.name); return cs + (cp.cp || 0) * Number(c.quantity || 1); }, 0);
+        }
+        return s + (i.cp || 0) * (i.quantity || 1);
+      }, 0),
     });
   };
 
@@ -911,12 +961,22 @@ function PrescriptionsTab() {
     try {
       const dispenseItems = [];
       for (const item of pendingItems) {
-        if (item.isPackage && item.products) {
-          for (const comp of item.products) {
-            dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * item.quantity });
+        if (item.isComponent) {
+          const price = isMember ? item.dp : item.cp;
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: price || null, from_package: item.fromPackage || null });
+        } else if (item.isPackage && item.products) {
+          const hasPartialHistory = item.alreadyDispensedComps && item.alreadyDispensedComps.size > 0;
+          if (hasPartialHistory) {
+            for (const comp of item.products) {
+              const cp = getComponentPrice(comp.name);
+              const compPrice = isMember ? cp.dp : cp.cp;
+              dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * (item.quantity || 1), unit_price: compPrice || null, from_package: item.name });
+            }
+          } else {
+            dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
           }
         } else {
-          dispenseItems.push({ product_name: item.name, quantity: item.quantity });
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
         }
       }
       await api.branch.dispense({
@@ -926,10 +986,43 @@ function PrescriptionsTab() {
         createdBy: user?.full_name || user?.username || '',
         customerType: isMember ? 'member' : 'non_member',
       });
-      const pendingNames = new Set(pendingItems.map(i => i.name));
-      const updatedMeds = getMedicines(report).map(m => pendingNames.has(m.name) ? { ...m, dispensed: true } : m);
+
+      const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));
+      const fullPackageNames = new Set();
+      const componentsByPackage = {};
+      for (const item of pendingItems) {
+        if (item.isComponent && item.fromPackage) {
+          if (!componentsByPackage[item.fromPackage]) componentsByPackage[item.fromPackage] = new Set();
+          componentsByPackage[item.fromPackage].add(item.name);
+        }
+        if (item.isPackage && item.products) {
+          const hasPartialHistory = item.alreadyDispensedComps && item.alreadyDispensedComps.size > 0;
+          if (hasPartialHistory) {
+            if (!componentsByPackage[item.name]) componentsByPackage[item.name] = new Set();
+            for (const comp of item.products) {
+              componentsByPackage[item.name].add(comp.name);
+            }
+          } else {
+            fullPackageNames.add(item.name);
+          }
+        }
+      }
+
+      const updatedMeds = getMedicines(report).map((m, medIdx) => {
+        if (pendingNonPkgNames.has(m.name)) return { ...m, dispensed: true };
+        if (fullPackageNames.has(m.name)) return { ...m, dispensed: true };
+        if (componentsByPackage[m.name]) {
+          const p = getEffectivePrice(m.name);
+          const allComponents = p.products || [];
+          const dispensedComps = m.dispensed_components ? new Set(m.dispensed_components) : new Set();
+          componentsByPackage[m.name].forEach(c => dispensedComps.add(c));
+          const allDone = allComponents.every(comp => dispensedComps.has(comp.name));
+          return { ...m, dispensed_components: Array.from(dispensedComps), dispensed: allDone ? true : !!m.dispensed };
+        }
+        return m;
+      });
       const allDispensedNow = updatedMeds.every(m => m.dispensed);
-      const someDispensed = updatedMeds.some(m => m.dispensed);
+      const someDispensed = updatedMeds.some(m => m.dispensed || (Array.isArray(m.dispensed_components) && m.dispensed_components.length > 0));
       const newStatus = allDispensedNow ? 'dispensed' : (someDispensed ? 'partial' : 'draft');
       await api.reports.update(report.id, {
         ...report,
@@ -958,6 +1051,34 @@ function PrescriptionsTab() {
     const p = findProductPrice(medName);
     if (p) return { dp: p.dp, cp: p.cp, bv: p.bv, isPackage: false };
     return { dp: 0, cp: 0, bv: 0, isPackage: false };
+  };
+
+  const getComponentPrice = (compName) => {
+    const p = findProductPrice(compName);
+    if (p) return { dp: p.dp, cp: p.cp, bv: p.bv || 0 };
+    return { dp: 0, cp: 0, bv: 0 };
+  };
+
+  const getPkgKey = (reportId, medIndex) => `${reportId}::${medIndex}`;
+
+  const isPackageExpanded = (reportId, medIndex) => !!expandedPackages[getPkgKey(reportId, medIndex)];
+
+  const togglePackageExpand = (reportId, medIndex) => {
+    const key = getPkgKey(reportId, medIndex);
+    setExpandedPackages(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getExpandedComponentState = (reportId, medIndex) => {
+    const key = getPkgKey(reportId, medIndex);
+    return expandedPackages[key + '_components'] || {};
+  };
+
+  const toggleComponentDispense = (reportId, medIndex, compIndex) => {
+    const key = getPkgKey(reportId, medIndex) + '_components';
+    setExpandedPackages(prev => {
+      const current = prev[key] || {};
+      return { ...prev, [key]: { ...current, [compIndex]: !current[compIndex] } };
+    });
   };
 
   /* ── Prescription QUOTE (Thermal) ─────────────────────────────
@@ -1020,7 +1141,7 @@ function PrescriptionsTab() {
   ────────────────────────────────────────────────────────────── */
   const printPrescriptionReceipt = (report, consultMode, checkupType) => {
     const allMeds = getMedicines(report);
-    const dispensedMeds = allMeds.filter(m => m.dispensed);
+    const dispensedMeds = allMeds.filter(m => m.dispensed || (Array.isArray(m.dispensed_components) && m.dispensed_components.length > 0));
     const meds = dispensedMeds.length > 0 ? dispensedMeds : allMeds;
     const membershipStatus = report.membership_status || 'referred';
     const isMember = membershipStatus === 'member';
@@ -1029,19 +1150,37 @@ function PrescriptionsTab() {
     const isInclusive = consultMode === 'inclusive';
     const checkupOpt = checkupType ? CHECKUP_FEE_OPTIONS[checkupType] : null;
 
-    const medItems = meds.map(m => {
+    const medItems = [];
+    for (const m of meds) {
       const p = getEffectivePrice(m.name);
-      return {
-        product_name: m.name,
-        quantity: 1,
-        unit_price: isMember ? p.dp : p.cp,
-        line_total: isMember ? p.dp : p.cp,
-        bv: p.bv,
-        lineBV: p.bv,
-        dpPrice: p.dp || 0,
-        cpPrice: p.cp || 0,
-      };
-    });
+      if (p.isPackage && Array.isArray(m.dispensed_components) && m.dispensed_components.length > 0) {
+        for (const compName of m.dispensed_components) {
+          const cp = getComponentPrice(compName);
+          medItems.push({
+            product_name: compName,
+            quantity: 1,
+            unit_price: isMember ? cp.dp : cp.cp,
+            line_total: isMember ? cp.dp : cp.cp,
+            bv: cp.bv || 0,
+            lineBV: cp.bv || 0,
+            dpPrice: cp.dp || 0,
+            cpPrice: cp.cp || 0,
+            fromPackage: m.name,
+          });
+        }
+      } else {
+        medItems.push({
+          product_name: m.name,
+          quantity: 1,
+          unit_price: isMember ? p.dp : p.cp,
+          line_total: isMember ? p.dp : p.cp,
+          bv: p.bv,
+          lineBV: p.bv,
+          dpPrice: p.dp || 0,
+          cpPrice: p.cp || 0,
+        });
+      }
+    }
 
     // Append checkup fee as a special item if selected
     const checkupItem = checkupOpt ? {
@@ -1060,12 +1199,11 @@ function PrescriptionsTab() {
 
     const items = checkupItem ? [...medItems, checkupItem] : medItems;
 
-    const medTotal = isMember ? totals.total.dp : totals.total.cp;
     const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
-    const receiptMeds = dispensedMeds.length > 0 ? dispensedMeds : allMeds;
-    const rxBranchAmount = receiptMeds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + (p.dp || 0); }, 0);
-    const rxDistProfit = receiptMeds.reduce((s, m) => { const p = getEffectivePrice(m.name); return s + ((p.cp || 0) - (p.dp || 0)); }, 0);
-    const totalBV = totals.total.bv;
+    const rxBranchAmount = medItems.reduce((s, item) => s + (item.dpPrice || 0), 0);
+    const rxDistProfit = medItems.reduce((s, item) => s + ((item.cpPrice || 0) - (item.dpPrice || 0)), 0);
+    const totalBV = medItems.reduce((s, item) => s + (item.bv || 0), 0);
+    const medTotal = medItems.reduce((s, item) => s + (isMember ? (item.dpPrice || 0) : (item.cpPrice || 0)), 0);
     const totalAmount = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
 
     printReceipt(generateReceiptHTML({
@@ -1256,11 +1394,18 @@ function PrescriptionsTab() {
                   {medicines.map((med, i) => {
                     const price = getEffectivePrice(med.name);
                     const unitPrice = isMember ? price.dp : price.cp;
+                    const pkgExpanded = price.isPackage && isPackageExpanded(report.id, i);
+                    const compState = pkgExpanded ? getExpandedComponentState(report.id, i) : {};
                     return (
                       <div key={i} style={{ borderBottom: i < medicines.length - 1 ? '1px solid #f8fafc' : 'none', padding: '12px 14px', background: med.dispensed ? '#f0fdf4' : '#fff' }}>
                         <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)}
-                            style={{ width: 18, height: 18, marginTop: 2, accentColor: '#16a34a', cursor: 'pointer', flexShrink: 0 }} />
+                          {!pkgExpanded && (
+                            <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)}
+                              style={{ width: 18, height: 18, marginTop: 2, accentColor: '#16a34a', cursor: 'pointer', flexShrink: 0 }} />
+                          )}
+                          {pkgExpanded && (
+                            <div style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }} />
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-semibold text-sm" style={{ color: med.dispensed ? '#16a34a' : '#1e293b', textDecoration: med.dispensed ? 'line-through' : 'none' }}>
@@ -1275,14 +1420,59 @@ function PrescriptionsTab() {
                               </span>
                               {isMember && price.bv > 0 && <span className="text-xs font-semibold" style={{ color: '#f59e0b' }}>{price.bv} BV</span>}
                             </div>
-                            {price.isPackage && price.products && (
+                            {price.isPackage && price.products && !pkgExpanded && (
                               <div className="mt-2 rounded-lg p-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                {price.products.map((pp, pi) => (
-                                  <div key={pi} className="flex justify-between py-0.5" style={{ color: '#64748b' }}>
-                                    <span>{pp.name} ×{pp.quantity}</span>
-                                    <span>{isMember ? `DP: N$${pp.dp}` : `CP: N$${pp.cp}`}</span>
-                                  </div>
-                                ))}
+                                {price.products.map((pp, pi) => {
+                                  const compP = getComponentPrice(pp.name);
+                                  return (
+                                    <div key={pi} className="flex justify-between py-0.5" style={{ color: '#64748b' }}>
+                                      <span>{pp.name} ×{pp.quantity}</span>
+                                      <span>{isMember ? `DP: N$${compP.dp}` : `CP: N$${compP.cp}`}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {price.isPackage && !med.dispensed && (
+                              <div className="mt-2">
+                                <button
+                                  onClick={() => togglePackageExpand(report.id, i)}
+                                  style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 6, border: `1.5px solid ${pkgExpanded ? '#3b82f6' : '#93c5fd'}`, background: pkgExpanded ? '#dbeafe' : '#eff6ff', color: pkgExpanded ? '#1d4ed8' : '#1e40af', cursor: 'pointer', fontWeight: 600, transition: 'all .15s' }}>
+                                  {pkgExpanded ? '🔼 Dispense as full package' : '🔽 Dispense individually from package'}
+                                </button>
+                              </div>
+                            )}
+                            {price.isPackage && pkgExpanded && price.products && (
+                              <div className="mt-2 rounded-lg overflow-hidden" style={{ border: '1.5px solid #3b82f6', background: '#f0f6ff' }}>
+                                <div style={{ padding: '6px 10px', background: '#dbeafe', fontSize: '0.7rem', fontWeight: 700, color: '#1e40af' }}>
+                                  📦 Dispensing components individually from {med.name}
+                                </div>
+                                {price.products.map((pp, pi) => {
+                                  const compP = getComponentPrice(pp.name);
+                                  const alreadyDispensed = Array.isArray(med.dispensed_components) && med.dispensed_components.includes(pp.name);
+                                  const compSelected = !!compState[pi];
+                                  return (
+                                    <div key={pi} style={{ padding: '8px 10px', borderTop: '1px solid #bfdbfe', background: alreadyDispensed ? '#ecfdf5' : compSelected ? '#f0fdf4' : '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <input type="checkbox" checked={alreadyDispensed || compSelected} disabled={alreadyDispensed} onChange={() => !alreadyDispensed && toggleComponentDispense(report.id, i, pi)}
+                                        style={{ width: 16, height: 16, accentColor: '#16a34a', cursor: alreadyDispensed ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: alreadyDispensed ? 0.7 : 1 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: alreadyDispensed ? '#16a34a' : compSelected ? '#15803d' : '#1e293b', textDecoration: alreadyDispensed ? 'line-through' : 'none' }}>
+                                          {pp.name} <span style={{ color: '#64748b', fontWeight: 400 }}>×{pp.quantity}</span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 1 }}>
+                                          from <span style={{ fontWeight: 600, color: '#1e40af' }}>{med.name}</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#16a34a' }}>
+                                          {isMember ? `DP: N$${compP.dp}` : `CP: N$${compP.cp}`}
+                                        </div>
+                                        {alreadyDispensed && <div style={{ fontSize: '0.65rem', color: '#16a34a', fontWeight: 600 }}>✅ Dispensed</div>}
+                                        {!alreadyDispensed && compSelected && <div style={{ fontSize: '0.65rem', color: '#15803d', fontWeight: 600 }}>Pending dispense</div>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                             {med.dispensed && (
@@ -1500,16 +1690,26 @@ function PrescriptionsTab() {
                 </tr></thead>
                 <tbody>
                   {dispensePreview.pendingItems.map((item, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{item.name}{item.isPackage ? ' 📦' : ''}</td>
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: item.isComponent ? '#f0f6ff' : '#fff' }}>
+                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>
+                        <div>{item.name}{item.isPackage && !item.isComponent ? ' 📦' : ''}</div>
+                        {item.isComponent && item.fromPackage && (
+                          <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 500, marginTop: 1 }}>
+                            📦 from {item.fromPackage}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '8px', textAlign: 'center' }}>{item.quantity}</td>
                       <td style={{ padding: '8px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>N$ {(item.dp || 0).toFixed(2)}</td>
-                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {(dispensePreview.isMember ? item.dp : item.cp || 0).toFixed(2)}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: item.isComponent ? '#1e40af' : '#1e293b' }}>
+                        N$ {(dispensePreview.isMember ? item.dp : item.cp || 0).toFixed(2)}
+                        {item.isComponent && <span style={{ fontSize: '0.65rem', marginLeft: 4, color: '#1e40af', fontWeight: 500 }}>(individual)</span>}
+                      </td>
                     </tr>
                   ))}
                   <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
                     <td style={{ padding: '10px 8px' }}>TOTAL</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>{dispensePreview.pendingItems.reduce((s, i) => s + i.quantity, 0)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>{dispensePreview.pendingItems.reduce((s, i) => s + (i.quantity || 1), 0)}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'right', color: '#166534' }}>N$ {dispensePreview.pendingDP.toFixed(2)}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'right', color: '#1e293b' }}>N$ {(dispensePreview.isMember ? dispensePreview.pendingDP : dispensePreview.pendingCP).toFixed(2)}</td>
                   </tr>

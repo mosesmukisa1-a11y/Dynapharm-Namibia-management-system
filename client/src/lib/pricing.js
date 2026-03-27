@@ -247,87 +247,8 @@ export function generateReceiptNumber() {
   return `RCP-${date}-${time}-${rand}`;
 }
 
-export const PACKAGE_DATABASE = {
-  'Gastric Package': {
-    price: { dp: 2054, cp: 2432, bv: 381 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
-      { name: 'PRO-LSB TABLET 150\'s', quantity: 1, dp: 455, cp: 573, bv: 100 },
-      { name: 'INSTANT GINSENG HONEY GINGER 500g', quantity: 1, dp: 350, cp: 455, bv: 43 },
-      { name: 'GOAT\'S MILK TABLET 150\'s', quantity: 1, dp: 286, cp: 372, bv: 48 }
-    ]
-  },
-  'Womens Package': {
-    price: { dp: 2543, cp: 2950, bv: 481 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
-      { name: 'HERBA WARISAN MAHARANI 6 x 10g', quantity: 1, dp: 520, cp: 620, bv: 110 },
-      { name: 'INSTANT COFFEE MIX W/GANO, COLLAGEN & KACIP 15\'s', quantity: 1, dp: 260, cp: 320, bv: 38 },
-      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
-      { name: 'GAMAT FEMININE WASH (2)', quantity: 1, dp: 200, cp: 260, bv: 23 }
-    ]
-  },
-  'Mens Health Package': {
-    price: { dp: 2033, cp: 2362, bv: 388 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'GINALI CAPSULE 100\'s', quantity: 1, dp: 403, cp: 493, bv: 80 },
-      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
-      { name: 'DYNA SERENOA TABLET 100\'s', quantity: 1, dp: 520, cp: 620, bv: 115 },
-      { name: 'INSTANT COFFEE W/ TONGKAT ALI 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 }
-    ]
-  },
-  'Blood Circulation Pack': {
-    price: { dp: 3290, cp: 3854, bv: 657 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
-      { name: 'YEEGARLIC CAPSULE 90\'s', quantity: 1, dp: 300, cp: 390, bv: 64 },
-      { name: 'YEE YANG YEN TABLET 90\'s', quantity: 1, dp: 370, cp: 455, bv: 90 },
-      { name: 'GINSENG CAPSULE 9 x 10\'s', quantity: 1, dp: 546, cp: 655, bv: 115 },
-      { name: 'INSTANT COFFEE W/ TONGKAT ALI 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 },
-      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
-      { name: 'DYNA-RH CAPSULE 100\'s', quantity: 1, dp: 300, cp: 390, bv: 60 }
-    ]
-  },
-  'Cleansing And Detoxification Package': {
-    price: { dp: 2183, cp: 2596, bv: 447 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'YEEGARLIC CAPSULE 90\'s', quantity: 1, dp: 300, cp: 390, bv: 64 },
-      { name: 'YEEGANO CAPSULE 90\'s', quantity: 1, dp: 364, cp: 454, bv: 75 },
-      { name: 'DYNA \'S\' TABLET 120\'s', quantity: 1, dp: 290, cp: 360, bv: 43 },
-      { name: 'MILK THISTLE TABLET 120\'s', quantity: 1, dp: 500, cp: 592, bv: 125 },
-      { name: 'NONI PLUS TEA 30\'s x 3g', quantity: 1, dp: 299, cp: 360, bv: 65 }
-    ]
-  },
-  'Weight Management Pack': {
-    price: { dp: 2283, cp: 2680, bv: 448 },
-    products: [
-      { name: 'GREEN TEA EXTRACT CAPSULE 60\'s', quantity: 1, dp: 344, cp: 430, bv: 85 },
-      { name: 'NONI PLUS TEA 30\'s x 3g', quantity: 1, dp: 299, cp: 360, bv: 65 },
-      { name: 'DYNA \'S\' TABLET 120\'s', quantity: 1, dp: 290, cp: 360, bv: 65 },
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'HIGH FIBER NUTRION FOOD 30\'s x25g', quantity: 1, dp: 660, cp: 780, bv: 120 },
-      { name: 'INSTANT COFFEE MIX W/ GANO & GREEN TEA 20\'s x 21g', quantity: 1, dp: 260, cp: 320, bv: 38 }
-    ]
-  },
-  'Healthy Joints Package': {
-    price: { dp: 3538, cp: 4177, bv: 687.5 },
-    products: [
-      { name: 'DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml', quantity: 1, dp: 430, cp: 530, bv: 75 },
-      { name: 'DYNA RH CAPSULE 100\'s', quantity: 1, dp: 300, cp: 390, bv: 60 },
-      { name: 'NUTMEG OINTMENT 2 x 20g', quantity: 1, dp: 180, cp: 234, bv: 19.5 },
-      { name: 'NONI JUICE 1 LTR', quantity: 1, dp: 750, cp: 950, bv: 175 },
-      { name: 'SEA CUCUMBER JELLY 500ml', quantity: 1, dp: 533, cp: 633, bv: 115 },
-      { name: 'YEEGINKGO TABLET 90\'s', quantity: 1, dp: 420, cp: 500, bv: 80 },
-      { name: 'DYNA TONIC 780ml', quantity: 1, dp: 600, cp: 700, bv: 120 },
-      { name: 'D I INSTANT GOAT MILK POWDER PREMIX 20\'s x 21g', quantity: 1, dp: 325, cp: 400, bv: 43 }
-    ]
-  }
-};
+import PACKAGE_DATA from '../../../shared/package-data.json';
+export const PACKAGE_DATABASE = PACKAGE_DATA;
 
 export function getPackagesForPOS() {
   const liveList = getLiveProductList();

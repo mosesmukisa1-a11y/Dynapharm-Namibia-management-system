@@ -2,6 +2,7 @@ import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
+import { getPackageComponents } from '../_lib/packageDefinitions.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -256,19 +257,43 @@ export default async function handler(req, res) {
       const saleMovType = customerType === 'member' ? 'walk_in_member_sale' : customerType === 'non_member' ? 'walk_in_non_member_sale' : 'sale';
 
       const deductItems = [];
+      const isMemberSale = (record.customer_type === 'member');
+
+      const livePriceRows = await getMany(`SELECT description, dp, cp FROM product_prices`);
+      const livePriceMap = {};
+      for (const row of livePriceRows) {
+        if (row.description) livePriceMap[row.description.toLowerCase()] = row;
+      }
+
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
         const unitPrice = Number(item.unit_price || item.unitPrice || item.dpPrice || item.dp || 0);
-        if (Array.isArray(item.components) && item.components.length > 0) {
+        const itemName = item.product_name || item.name || item.description || '';
+        const pkg = getPackageComponents(itemName);
+        if (pkg) {
+          for (const comp of pkg.products) {
+            const livePrice = livePriceMap[comp.name.toLowerCase()];
+            const dp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
+            const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
+            deductItems.push({
+              name: comp.name,
+              qty: Number(comp.quantity || 1) * qty,
+              unitPrice: isMemberSale ? dp : cp,
+            });
+          }
+        } else if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
+            const compPrice = isMemberSale
+              ? Number(comp.dp || comp.unit_price || 0)
+              : Number(comp.cp || comp.unit_price || comp.dp || 0);
             deductItems.push({
               name: comp.name || comp.product_name || '',
               qty: Number(comp.quantity || comp.qty || 1) * qty,
-              unitPrice: Number(comp.unit_price || comp.dp || 0),
+              unitPrice: compPrice,
             });
           }
         } else {
-          deductItems.push({ name: item.product_name || item.name || item.description || '', qty, unitPrice });
+          deductItems.push({ name: itemName, qty, unitPrice });
         }
       }
 
