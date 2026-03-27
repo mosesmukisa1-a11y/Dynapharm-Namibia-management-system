@@ -107,6 +107,9 @@ function WalkInSalesTab() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+  const [salesDateFrom, setSalesDateFrom] = useState('');
+  const [salesDateTo, setSalesDateTo] = useState('');
 
   const loadSales = () =>
     api.branch.walkinSales().then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
@@ -362,14 +365,55 @@ function WalkInSalesTab() {
 
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
         <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-          <h4 className="m-0 font-semibold text-gray-700">Recent Walk-in Sales</h4>
+          <h4 className="m-0 font-semibold text-gray-700">Previous Walk-in Sales</h4>
           <button onClick={loadSales} className="text-xs px-3 py-1.5 rounded-lg border cursor-pointer" style={{ color: '#64748b', borderColor: '#e2e8f0', background: '#fff' }}>↻ Refresh</button>
         </div>
-        {sales.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">No walk-in sales recorded yet</p>
-        ) : (
+        <div className="px-4 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+          <input
+            type="text"
+            placeholder="Search receipt #, customer name, NB#, payment…"
+            value={salesSearch}
+            onChange={e => setSalesSearch(e.target.value)}
+            className="flex-1 text-sm rounded-lg px-3 py-2"
+            style={{ minWidth: 180, border: '1.5px solid #e2e8f0' }}
+          />
+          <input type="date" value={salesDateFrom} onChange={e => setSalesDateFrom(e.target.value)}
+            className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }} />
+          <span className="text-gray-400 text-xs">to</span>
+          <input type="date" value={salesDateTo} onChange={e => setSalesDateTo(e.target.value)}
+            className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }} />
+          {(salesSearch || salesDateFrom || salesDateTo) && (
+            <button onClick={() => { setSalesSearch(''); setSalesDateFrom(''); setSalesDateTo(''); }}
+              className="text-xs px-3 py-2 rounded-lg cursor-pointer border-none"
+              style={{ background: '#f1f5f9', color: '#64748b' }}>✕ Clear</button>
+          )}
+        </div>
+        {(() => {
+          const q = salesSearch.toLowerCase();
+          const filteredSales = sales.filter(s => {
+            if (salesDateFrom) {
+              const d = new Date(s.created_at || s.timestamp);
+              if (d < new Date(salesDateFrom)) return false;
+            }
+            if (salesDateTo) {
+              const d = new Date(s.created_at || s.timestamp);
+              if (d > new Date(salesDateTo + 'T23:59:59')) return false;
+            }
+            if (q) {
+              const receipt = (s.receipt_number || s.saleNumber || s.id || '').toString().toLowerCase();
+              const name = (s.customerName || s.customer_name || s.fullName || s.distributor_name || '').toLowerCase();
+              const nb = (s.nbNumber || s.nb_number || s.distributor_nb || s.distributor_code || '').toString().toLowerCase();
+              const payment = (s.paymentMethod || s.payment_method || '').toLowerCase();
+              if (!receipt.includes(q) && !name.includes(q) && !nb.includes(q) && !payment.includes(q)) return false;
+            }
+            return true;
+          });
+          if (filteredSales.length === 0) {
+            return <p className="text-center text-gray-400 py-8">{sales.length === 0 ? 'No walk-in sales recorded yet' : 'No sales match your search'}</p>;
+          }
+          return (
           <div className="divide-y">
-            {sales.slice(0, 10).map((s, i) => {
+            {filteredSales.map((s, i) => {
               const sIsM = (s.customerType || s.customer_type) === 'member';
               const saleItems = s.products || s.items || [];
               const sBranchAmt = !sIsM ? saleItems.reduce((sum, it) => sum + ((it.dpPrice || it.dp || 0) * (Number(it.quantity || it.qty || 1))), 0) : null;
@@ -415,7 +459,8 @@ function WalkInSalesTab() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {showModal && (
@@ -1906,7 +1951,8 @@ function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions)
   const rxMember = filteredRx.filter(p => p.membership_status === 'member' || p.customer_type === 'member');
   const rxNonMember = filteredRx.filter(p => p.membership_status !== 'member' && p.customer_type !== 'member');
 
-  const grandTotal = walkinTotal + onlineTotal;
+  const rxConsultRevenue = rxMember.length * 150 + rxNonMember.length * 200;
+  const grandTotal = walkinTotal + onlineTotal + rxConsultRevenue;
 
   const fmtC = n => `N$ ${Number(n || 0).toFixed(2)}`;
   const statCard = (label, value, sub, color) =>
@@ -1981,7 +2027,7 @@ function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions)
     ${statCard('Walk-in Sales Total', fmtC(walkinTotal), `${filtered.length} transactions`, '#c41e3a')}
     ${statCard('Online Orders Total', fmtC(onlineTotal), `${filteredOnline.length} orders`, '#1e40af')}
     ${statCard('Prescription Sales', `${filteredRx.length} Rx`, `${rxMember.length} member · ${rxNonMember.length} non-member`, '#166534')}
-    ${statCard('GRAND TOTAL', fmtC(grandTotal), 'Walk-in + Online', '#7c2d12')}
+    ${statCard('GRAND TOTAL', fmtC(grandTotal), 'Walk-in + Online + Rx Consult', '#7c2d12')}
   </div>
 </div>
 
@@ -3534,7 +3580,6 @@ function BranchStockTab() {
             if (!pmHtml && !rxHtml) return '';
             return `<h4 style="font-size:10px;color:#374151;margin:10px 0 4px;font-weight:700">${sec.title}</h4>${pmHtml}${rxHtml}`;
           }).filter(Boolean).join('');
-          const distributorProfit = (grandTotal * 0.25).toFixed(2);
           printStockDocument(`DP Sales Report — ${period}`, `
             <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only — aggregated server-side from all sale categories</div>
             <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
@@ -3554,8 +3599,7 @@ function BranchStockTab() {
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Period</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${period}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Total DP Sales</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">${fmtC(grandTotal)}</td></tr>
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Estimated Distributor Profit (25%)</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700;color:#166534">${fmtC(distributorProfit)}</td></tr>
+              <tr><td style="padding:6px 12px">Total DP Sales</td><td style="padding:6px 12px;text-align:right;font-weight:700;color:#166534">${fmtC(grandTotal)}</td></tr>
             </table>`, branchName);
         };
 
