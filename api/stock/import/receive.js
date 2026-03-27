@@ -1,9 +1,10 @@
 /**
  * POST /api/stock/import/receive
- * Receive supplier import into warehouse. Enforces batch + expiry on every item.
+ * Receive supplier import into country stock (staging layer).
+ * All imported stock lands at country_stock first — it must be
+ * explicitly released to a warehouse before further distribution.
  */
 import { postStockMovement } from '../../services/stockEngine.js';
-import { getOne } from '../../db.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -19,12 +20,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   const body = await parseBody(req);
-  const { supplierId, warehouseId, items, receivedBy, notes } = body;
+  const { supplierId, items, receivedBy, notes } = body;
 
-  if (!warehouseId) return res.status(400).json({ success: false, error: 'warehouseId is required' });
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, error: 'items array is required and must not be empty' });
 
-  // Validate ALL items before posting any
   const validationErrors = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -58,10 +57,10 @@ export default async function handler(req, res) {
       movementType: 'supplier_import_receipt',
       sourceLocation: supplierId || 'supplier',
       sourceLocationType: 'supplier',
-      destinationLocation: warehouseId,
-      destinationLocationType: 'warehouse',
+      destinationLocation: 'country_stock',
+      destinationLocationType: 'country',
       referenceId: refId,
-      notes: notes || 'Supplier import receipt',
+      notes: notes || 'Supplier import receipt — held at country stock',
       unitDP: Number(item.unitDP || item.unit_dp || 0),
       createdBy: receivedBy || 'system',
       status: 'posted',
@@ -72,9 +71,9 @@ export default async function handler(req, res) {
   return res.status(201).json({
     success: true,
     referenceId: refId,
-    warehouseId,
+    destinationLocation: 'country_stock',
     itemsPosted: posted.length,
     items: posted,
-    message: `${posted.length} item(s) received into warehouse ${warehouseId}`,
+    message: `${posted.length} item(s) received into Country Stock (staging). Use Release to Warehouse to distribute.`,
   });
 }

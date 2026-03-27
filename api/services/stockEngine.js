@@ -209,7 +209,7 @@ export async function getAvailableStock(key) {
  * @param {Date}   [input.movementDate]
  * @returns {string} The movement ID
  */
-export async function postStockMovement(input) {
+async function _postStockMovementInternal(queryFn, input) {
   if (!input.productName) throw new Error('Missing productName');
   if (!input.quantity || Number(input.quantity) <= 0) throw new Error('Quantity must be greater than zero');
   if (!input.movementType) throw new Error('movementType is required');
@@ -229,7 +229,7 @@ export async function postStockMovement(input) {
   const notes = input.notes || null;
   const movementDate = input.movementDate || new Date();
 
-  await query(
+  await queryFn(
     `INSERT INTO stock_movements
        (id, product_name, product_id, batch_no, expiry_date, quantity,
         movement_type, source_location, destination_location,
@@ -242,28 +242,13 @@ export async function postStockMovement(input) {
      unitDP, referenceType, referenceId, notes, createdBy, movementDate]
   );
 
-  // Recompute balances for all affected locations
   const recomputeTargets = [];
-
   if (srcLocType && srcLoc) {
-    recomputeTargets.push({
-      locationType: srcLocType,
-      locationId: srcLoc,
-      productName: input.productName,
-      batchNo: batchNo || '',
-      expiryDate,
-    });
+    recomputeTargets.push({ locationType: srcLocType, locationId: srcLoc, productName: input.productName, batchNo: batchNo || '', expiryDate });
   }
   if (dstLocType && dstLoc) {
-    recomputeTargets.push({
-      locationType: dstLocType,
-      locationId: dstLoc,
-      productName: input.productName,
-      batchNo: batchNo || '',
-      expiryDate,
-    });
+    recomputeTargets.push({ locationType: dstLocType, locationId: dstLoc, productName: input.productName, batchNo: batchNo || '', expiryDate });
   }
-
   for (const target of recomputeTargets) {
     try {
       await recomputeInventoryBalance(target);
@@ -272,7 +257,6 @@ export async function postStockMovement(input) {
     }
   }
 
-  // Publish realtime event so portals update live
   publishRealtimeEvent('stock', 'movement', {
     movementId: id,
     productName: input.productName,
@@ -283,6 +267,61 @@ export async function postStockMovement(input) {
   }).catch(() => {});
 
   return id;
+}
+
+export async function postStockMovement(input) {
+  return _postStockMovementInternal((text, params) => query(text, params), input);
+}
+
+/**
+ * Transactional variant: inserts stock_movement via the provided DB client (within a transaction).
+ * Skips recompute during the call — caller must invoke recomputeInventoryBalance() for each
+ * returned target AFTER the transaction commits so the pool reads the now-committed rows.
+ *
+ * @returns {{ movementId: string, recomputeTargets: Array }} Targets to recompute post-commit.
+ */
+export async function postStockMovementTx(client, input) {
+  if (!input.productName) throw new Error('Missing productName');
+  if (!input.quantity || Number(input.quantity) <= 0) throw new Error('Quantity must be greater than zero');
+  if (!input.movementType) throw new Error('movementType is required');
+
+  const id = input.id || generateId('SM');
+  const srcLoc = input.sourceLocation || input.source_location || null;
+  const dstLoc = input.destinationLocation || input.destination_location || null;
+  const srcLocType = input.sourceLocationType || inferLocationType(srcLoc);
+  const dstLocType = input.destinationLocationType || inferLocationType(dstLoc);
+  const batchNo = input.batchNo || input.batch_no || null;
+  const expiryDate = input.expiryDate || input.expiry_date || null;
+  const unitDP = input.unitDP || input.unit_dp || null;
+  const productId = input.productId || input.product_id || null;
+  const referenceId = input.referenceId || input.reference_id || null;
+  const referenceType = input.referenceType || input.reference_type || null;
+  const createdBy = input.createdBy || input.created_by || null;
+  const notes = input.notes || null;
+  const movementDate = input.movementDate || new Date();
+
+  await client.query(
+    `INSERT INTO stock_movements
+       (id, product_name, product_id, batch_no, expiry_date, quantity,
+        movement_type, source_location, destination_location,
+        source_location_type, destination_location_type,
+        unit_dp, reference_type, reference_id, notes, created_by,
+        movement_date, status, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'posted',NOW(),NOW())`,
+    [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
+     input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
+     unitDP, referenceType, referenceId, notes, createdBy, movementDate]
+  );
+
+  const recomputeTargets = [];
+  if (srcLocType && srcLoc) {
+    recomputeTargets.push({ locationType: srcLocType, locationId: srcLoc, productName: input.productName, batchNo: batchNo || '', expiryDate });
+  }
+  if (dstLocType && dstLoc) {
+    recomputeTargets.push({ locationType: dstLocType, locationId: dstLoc, productName: input.productName, batchNo: batchNo || '', expiryDate });
+  }
+
+  return { movementId: id, recomputeTargets };
 }
 
 /**

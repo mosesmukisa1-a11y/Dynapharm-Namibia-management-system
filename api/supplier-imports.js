@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove } from './db.js';
+import { postStockMovement } from './services/stockEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
           dpcUnit,
           dpcUnit * qty,
           body.date_received || body.dateReceived || new Date().toISOString(),
-          body.destination_warehouse || body.destinationWarehouse || 'country_stock',
+          'country_stock',
           body.origin_country || body.originCountry || 'Malaysia',
           body.notes || null,
           'received',
@@ -108,9 +109,9 @@ export default async function handler(req, res) {
           body.expiry_date || body.expiryDate || null,
           qty, qty,
           body.date_received || body.dateReceived || new Date().toISOString(),
-          body.destination_warehouse || body.destinationWarehouse || 'country_stock',
+          'country_stock',
           body.product_id || body.productId || body.product_name || body.productName || '',
-          body.destination_warehouse || body.destinationWarehouse || null,
+          null,
           cifUnit, cifUnit * qty, dpcUnit, dpcUnit * qty,
           body.supplier_name || body.supplierName || 'Unknown',
           body.import_reference || body.importReference || null,
@@ -119,26 +120,29 @@ export default async function handler(req, res) {
         ]
       );
 
-      const movId = `MOV-IMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      await query(
-        `INSERT INTO stock_movements
-          (id, product_name, product_id, batch_no, expiry_date, quantity, movement_type,
-           source_location, destination_location, reference_id, notes, created_by, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,'import_received',$7,$8,$9,$10,$11,'completed',NOW(),NOW())`,
-        [
-          movId,
-          body.product_name || body.productName || '',
-          body.product_id || body.productId || null,
-          body.batch_no || body.batchNo || null,
-          body.expiry_date || body.expiryDate || null,
-          qty,
-          body.origin_country || 'Malaysia',
-          body.destination_warehouse || body.destinationWarehouse || 'country_stock',
-          id,
-          `Supplier import from ${body.supplier_name || body.supplierName || 'Unknown'} — GRN: ${body.grn_number || body.grnNumber || 'N/A'}`,
-          body.created_by || body.createdBy || null,
-        ]
-      );
+      const productName = body.product_name || body.productName || '';
+      const batchNo = body.batch_no || body.batchNo || null;
+      const expiryDate = body.expiry_date || body.expiryDate || null;
+      const createdBy = body.created_by || body.createdBy || null;
+      const supplierNote = `Supplier import from ${body.supplier_name || body.supplierName || 'Unknown'} — GRN: ${body.grn_number || body.grnNumber || 'N/A'}`;
+
+      if (productName && qty > 0) {
+        await postStockMovement({
+          productName,
+          batchNo,
+          expiryDate,
+          quantity: qty,
+          movementType: 'supplier_import_receipt',
+          sourceLocation: body.origin_country || 'Malaysia',
+          sourceLocationType: 'supplier',
+          destinationLocation: 'country_stock',
+          destinationLocationType: 'country',
+          referenceId: id,
+          notes: supplierNote,
+          unitDP: dpcUnit || null,
+          createdBy,
+        });
+      }
 
       return res.status(201).json(importRecord.rows[0]);
     }

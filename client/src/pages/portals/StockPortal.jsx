@@ -1402,7 +1402,7 @@ function SupplierImportTab() {
           metadata: { carton_no: item.carton_no, shipping_ref: form.shipping_ref, arrival_date: form.arrival_date },
         });
       }
-      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to ${fmtLocation(form.destination_warehouse)} successfully` });
+      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to Country Stock successfully` });
       setItems([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
       setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
       setShowForm(false);
@@ -1502,11 +1502,9 @@ function SupplierImportTab() {
             <Input label="Arrival Date" type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))} />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Destination</label>
-              <select className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.destination_warehouse} onChange={e => setForm(f => ({ ...f, destination_warehouse: e.target.value }))}>
-                <option value="country_stock">Country Stock</option>
-                <option value="windhoek">Windhoek Warehouse</option>
-                <option value="ondangwa">Ondangwa Warehouse</option>
-              </select>
+              <div className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 flex items-center gap-2">
+                <span className="text-base">🏳️</span> Country Stock <span className="text-xs text-gray-400 ml-1">(all imports land here first)</span>
+              </div>
             </div>
           </div>
           <div>
@@ -1595,172 +1593,317 @@ function SupplierImportTab() {
 }
 
 function CountryStockTab() {
-  const [batches, setBatches] = useState([]);
+  const { user } = useAuth();
+  const [data, setData] = useState({ items: [], summary: {}, locationBreakdown: [] });
   const [loading, setLoading] = useState(true);
-  const [showDetail, setShowDetail] = useState(false);
-  const [adjRecord, setAdjRecord] = useState(null);
   const [search, setSearch] = useState('');
+  const [adjRecord, setAdjRecord] = useState(null);
+  const [activeSubTab, setActiveSubTab] = useState('holdings');
 
-  const loadBatches = useCallback(() => {
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [releaseWarehouse, setReleaseWarehouse] = useState('windhoek_warehouse');
+  const [releaseItems, setReleaseItems] = useState([]);
+  const [releaseNotes, setReleaseNotes] = useState('');
+  const [releasing, setReleasing] = useState(false);
+  const [releaseAlert, setReleaseAlert] = useState(null);
+
+  const loadData = useCallback(() => {
     setLoading(true);
-    api.stock.batches()
+    api.stock.countryStock()
       .then(d => {
-        const all = Array.isArray(d) ? d : d.batches || [];
-        setBatches(all.filter(b => b.location === 'country_stock'));
+        setData({
+          items: d.items || [],
+          summary: d.summary || {},
+          locationBreakdown: d.locationBreakdown || [],
+        });
       })
-      .catch(() => {})
+      .catch(() => setData({ items: [], summary: {}, locationBreakdown: [] }))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!releaseOpen) loadData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadData, releaseOpen]);
+
+  const filtered = search.trim()
+    ? data.items.filter(i => (i.productName || '').toLowerCase().includes(search.toLowerCase()) || (i.batchNo || '').toLowerCase().includes(search.toLowerCase()))
+    : data.items;
+
+  const byProduct = {};
+  filtered.forEach(i => {
+    const n = i.productName || 'Unknown';
+    if (!byProduct[n]) byProduct[n] = { productName: n, totalQty: 0, batches: 0, earliestExpiry: null, stockValueDP: 0 };
+    byProduct[n].totalQty += i.closingQty;
+    byProduct[n].batches += 1;
+    byProduct[n].stockValueDP += i.stockValueDP;
+    if (i.expiryDate && (!byProduct[n].earliestExpiry || i.expiryDate < byProduct[n].earliestExpiry)) {
+      byProduct[n].earliestExpiry = i.expiryDate;
+    }
+  });
+  const productRows = Object.values(byProduct).sort((a, b) => b.totalQty - a.totalQty);
+
+  const { distinctProducts = 0, totalUnits = 0, stockValueDP = 0, lowStockItems = 0 } = data.summary;
+
+  const openReleaseModal = (item) => {
+    setReleaseItems([{ productName: item.productName, batchNo: item.batchNo, expiryDate: item.expiryDate, quantity: '', availableQty: item.closingQty }]);
+    setReleaseWarehouse('windhoek_warehouse');
+    setReleaseNotes('');
+    setReleaseAlert(null);
+    setReleaseOpen(true);
+  };
+
+  const handleRelease = async (e) => {
+    e.preventDefault();
+    const toSend = releaseItems.filter(i => Number(i.quantity) > 0);
+    if (toSend.length === 0) { setReleaseAlert({ type: 'error', msg: 'Enter a quantity greater than 0 for at least one item' }); return; }
+    const over = toSend.find(i => Number(i.quantity) > Number(i.availableQty));
+    if (over) { setReleaseAlert({ type: 'error', msg: `Quantity for "${over.productName}" exceeds available country stock (${over.availableQty})` }); return; }
+    setReleasing(true);
+    try {
+      const result = await api.stock.releaseToWarehouse({
+        warehouseId: releaseWarehouse,
+        items: toSend.map(i => ({ productName: i.productName, batchNo: i.batchNo, expiryDate: i.expiryDate, quantity: Number(i.quantity) })),
+        releasedBy: user?.full_name || user?.username || 'system',
+        notes: releaseNotes || undefined,
+      });
+      setReleaseAlert({ type: 'success', msg: `${result.itemsReleased} item(s) released to ${fmtLocation(releaseWarehouse)} (Ref: ${result.referenceId})` });
+      setTimeout(() => { setReleaseOpen(false); loadData(); }, 1800);
+    } catch (err) {
+      setReleaseAlert({ type: 'error', msg: err.message || 'Release failed' });
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const locationTypeLabel = (t) => t === 'country' ? '🌍 Country Stock' : t === 'warehouse' ? '🏢 Warehouse' : '🏪 Branch';
+  const locationTypeBg = (t) => t === 'country' ? '#eff6ff' : t === 'warehouse' ? '#f0fdf4' : '#fefce8';
+  const locationTypeBorder = (t) => t === 'country' ? '#bfdbfe' : t === 'warehouse' ? '#bbf7d0' : '#fde68a';
 
   if (loading) return <LoadingSpinner />;
 
-  const filteredBatches = search.trim()
-    ? batches.filter(b => {
-        const q = search.toLowerCase();
-        return (b.product_name || '').toLowerCase().includes(q) ||
-               (b.batch_number || '').toLowerCase().includes(q) ||
-               (b.notes || '').toLowerCase().includes(q) ||
-               (b.barcode || '').toLowerCase().includes(q);
-      })
-    : batches;
-
-  const totalQty = filteredBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const totalCIFVal = filteredBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-  const totalDPCVal = filteredBatches.reduce((s, b) => {
-    const qty = Number(b.remaining_quantity || b.quantity || 0);
-    const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
-    return s + qty * dpc;
-  }, 0);
-
-  const byProduct = {};
-  filteredBatches.forEach(b => {
-    const name = b.description || b.product_name || 'Unknown';
-    if (!byProduct[name]) byProduct[name] = { product_name: name, total_qty: 0, cif_value: 0, dpc_value: 0, dispatched: 0, batch_count: 0, earliest_expiry: null };
-    const qty = Number(b.remaining_quantity || b.quantity || 0);
-    byProduct[name].total_qty += qty;
-    byProduct[name].dispatched += Number(b.dispatched_quantity || 0);
-    byProduct[name].cif_value += qty * Number(b.cif_unit_cost || b.unit_price || 0);
-    byProduct[name].dpc_value += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(name));
-    byProduct[name].batch_count += 1;
-    if (b.expiry_date) {
-      const d = b.expiry_date;
-      if (!byProduct[name].earliest_expiry || d < byProduct[name].earliest_expiry) byProduct[name].earliest_expiry = d;
-    }
-  });
-  const productRows = Object.values(byProduct).sort((a, b) => b.total_qty - a.total_qty);
-
-  const expiringBatches = batches.filter(b => {
-    if (!b.expiry_date) return false;
-    const days = Math.floor((new Date(b.expiry_date) - new Date()) / 86400000);
-    return days >= 0 && days <= 90;
-  });
-  const lowStockProducts = productRows.filter(p => p.total_qty < 20);
-
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-        <CardBody>
-          <div className="flex items-start gap-4">
-            <Globe size={32} className="text-blue-600 mt-1" />
-            <div>
-              <h3 className="font-bold text-blue-900">Country Stock — National Inventory Pool</h3>
-              <p className="text-sm text-blue-700 mt-1">
-                All imported stock arrives here first. Distribute to warehouses using the Distribution tab.
-                Country Stock is the master source — stock only leaves through Distribution to Warehouses.
-              </p>
+      <div style={{ background: 'linear-gradient(135deg,#1e3a8a,#1e40af)', borderRadius: 14, padding: '16px 22px', color: '#fff' }}>
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Globe size={20} />
+              <h2 style={{ fontWeight: 900, fontSize: '1.1rem', margin: 0 }}>Country Stock — National Staging Area</h2>
             </div>
+            <p style={{ fontSize: '0.82rem', opacity: 0.8, margin: 0 }}>
+              All imported stock lands here first and must be formally released to a warehouse before distribution.
+            </p>
           </div>
-        </CardBody>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title="Distinct Products" value={productRows.length} color="blue" icon={<Globe size={24} />} />
-        <StatCard title="Total Units" value={totalQty.toLocaleString()} color="green" icon={<Package size={24} />} />
-        <StatCard title="CIF Value" value={formatCurrency(totalCIFVal)} color="purple" icon={<DollarSign size={24} />} />
-        <StatCard title="DPC Value" value={formatCurrency(totalDPCVal)} color="blue" icon={<TrendingUp size={24} />} />
-        <StatCard title="Low Stock Items" value={lowStockProducts.length} color={lowStockProducts.length > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => { setReleaseItems([]); setReleaseWarehouse('windhoek_warehouse'); setReleaseNotes(''); setReleaseAlert(null); setReleaseOpen(true); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
+              <ArrowLeftRight size={15} /> Release to Warehouse
+            </button>
+            <button onClick={loadData}
+              style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+              <RefreshCw size={13} style={{ display: 'inline', marginRight: 4 }} />Refresh
+            </button>
+          </div>
+        </div>
       </div>
 
-      {expiringBatches.length > 0 && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-          ⚠️ <strong>{expiringBatches.length}</strong> batch{expiringBatches.length !== 1 ? 'es' : ''} expiring within 90 days. Consider distributing these first.
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard title="Distinct Products" value={distinctProducts} color="blue" icon={<Globe size={24} />} />
+        <StatCard title="Total Units at Country" value={totalUnits.toLocaleString()} color="green" icon={<Package size={24} />} />
+        <StatCard title="DPC Value" value={formatCurrency(stockValueDP)} color="purple" icon={<DollarSign size={24} />} />
+        <StatCard title="Low Stock Items" value={lowStockItems} color={lowStockItems > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
+      </div>
+
+      <div className="flex gap-2">
+        {[
+          { id: 'holdings', label: '📦 Country Holdings' },
+          { id: 'breakdown', label: '🗺️ Live Location Breakdown' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setActiveSubTab(t.id)}
+            style={{ padding: '7px 18px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.83rem',
+              background: activeSubTab === t.id ? '#1e3a8a' : '#f1f5f9', color: activeSubTab === t.id ? '#fff' : '#475569' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeSubTab === 'holdings' && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-gray-800">Country Stock — On-Hand Inventory</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Quantities sourced from inventory_balances (live view). Use "Release to Warehouse" to move stock.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap items-center">
+                <div className="relative">
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                  <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search product or batch..."
+                    className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-52" />
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Product', render: r => <span className="font-medium text-gray-800">{r.productName}</span> },
+              { header: 'Batch #', render: r => <span className="font-mono text-xs">{r.batchNo || '—'}</span> },
+              { header: 'Expiry', render: r => {
+                if (!r.expiryDate) return '—';
+                const days = Math.floor((new Date(r.expiryDate) - new Date()) / 86400000);
+                return <span className={days <= 30 ? 'text-red-600 font-bold text-xs' : days <= 90 ? 'text-amber-600 font-semibold text-xs' : 'text-xs'}>{formatDate(r.expiryDate)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+              }},
+              { header: 'Available at Country', render: r => (
+                <span className={r.closingQty < 10 ? 'text-red-600 font-bold' : r.closingQty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                  {r.closingQty.toLocaleString()}
+                </span>
+              )},
+              { header: 'DPC Value', render: r => <span className="text-xs">{formatCurrency(r.stockValueDP)}</span> },
+              { header: '', render: r => r.closingQty > 0 ? (
+                <button onClick={() => openReleaseModal(r)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                  <ArrowLeftRight size={12} /> Release
+                </button>
+              ) : null },
+            ]}
+            data={filtered}
+            emptyMessage="No country stock on hand — receive a supplier import to populate this."
+          />
+        </Card>
+      )}
+
+      {activeSubTab === 'breakdown' && (
+        <div className="space-y-4">
+          <div style={{ padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, fontSize: '0.82rem', color: '#0369a1' }}>
+            Live view of all stock units across every location. Updates automatically as stock moves through the system.
+          </div>
+          {data.locationBreakdown.length === 0 ? (
+            <Card><CardBody><p className="text-gray-500 text-sm text-center py-6">No inventory data available yet.</p></CardBody></Card>
+          ) : (
+            data.locationBreakdown.map(loc => (
+              <Card key={`${loc.locationType}||${loc.locationId}`}>
+                <CardHeader>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <span style={{ padding: '3px 10px', background: locationTypeBg(loc.locationType), border: `1px solid ${locationTypeBorder(loc.locationType)}`, borderRadius: 99, fontSize: '0.75rem', fontWeight: 700 }}>
+                        {locationTypeLabel(loc.locationType)}
+                      </span>
+                      <span className="font-bold text-gray-800">{fmtLocation(loc.locationId)}</span>
+                    </div>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>
+                      {loc.totalUnits.toLocaleString()} units
+                    </span>
+                  </div>
+                </CardHeader>
+                <Table
+                  columns={[
+                    { header: 'Product', render: r => <span className="text-sm font-medium text-gray-800">{r.productName}</span> },
+                    { header: 'Batch', render: r => <span className="font-mono text-xs text-gray-500">{r.batchNo || '—'}</span> },
+                    { header: 'Units On-Hand', render: r => (
+                      <span className={r.closingQty < 10 ? 'text-red-600 font-bold' : r.closingQty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                        {r.closingQty.toLocaleString()}
+                      </span>
+                    )},
+                    { header: 'DPC Value', render: r => <span className="text-xs text-gray-600">{formatCurrency(r.stockValueDP)}</span> },
+                  ]}
+                  data={loc.products}
+                  emptyMessage="No stock at this location."
+                />
+              </Card>
+            ))
+          )}
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <div>
-              <h3 className="font-bold text-gray-800">Country Stock — {showDetail ? 'Batch Detail' : 'Product Summary'}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {search ? `Filtered results for "${search}"` : 'Inventory received via Supplier Import. Use the Distribution tab to allocate to warehouses.'}
-              </p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <div className="relative">
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search product, batch, barcode..."
-                  className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-52" />
-              </div>
-              <Button size="sm" variant="secondary" onClick={loadBatches}>↺ Refresh</Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowDetail(v => !v)}>
-                {showDetail ? 'Summary View' : 'Batch Detail'}
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => {
-                const rows = productRows.map(r => `<tr><td>${r.product_name||''}</td><td>${r.batch_count||0}</td><td>${r.total_qty||0}</td><td>${r.earliest_expiry?formatDate(r.earliest_expiry):'—'}</td><td>${formatCurrency(r.total_value||0)}</td></tr>`).join('');
-                printDocument('Country Stock — Product Summary', `<table><thead><tr><th>Product</th><th>Batches</th><th>Total Qty</th><th>Earliest Expiry</th><th>CIF Value</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }}><Printer size={14} /> Print</Button>
-            </div>
+      <Modal open={releaseOpen} onClose={() => setReleaseOpen(false)} title="Release Stock to Warehouse" size="lg">
+        <form onSubmit={handleRelease} className="p-6 space-y-5">
+          <Alert type="info">
+            This moves stock from Country Stock to the selected warehouse in the inventory system. The warehouse will receive a warehouse_receipt movement and country stock will be decremented.
+          </Alert>
+          {releaseAlert && <Alert type={releaseAlert.type}>{releaseAlert.msg}</Alert>}
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Destination Warehouse <span className="text-red-500">*</span></label>
+            <select value={releaseWarehouse} onChange={e => setReleaseWarehouse(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+              <option value="windhoek_warehouse">🏢 Windhoek Warehouse</option>
+              <option value="ondangwa_warehouse">🏬 Ondangwa Warehouse</option>
+            </select>
           </div>
-        </CardHeader>
-        {!showDetail ? (
-          <Table
-            columns={[
-              { header: 'Product', render: r => <span className="font-medium text-gray-800">{r.product_name}</span> },
-              { header: 'Batches', render: r => <span className="text-sm text-gray-500">{r.batch_count}</span> },
-              { header: 'Available', render: r => (
-                <span className={r.total_qty < 10 ? 'text-red-600 font-bold' : r.total_qty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
-                  {r.total_qty.toLocaleString()}
-                </span>
-              )},
-              { header: 'Dispatched', render: r => <span className="text-gray-500">{r.dispatched.toLocaleString()}</span> },
-              { header: 'Earliest Expiry', render: r => {
-                if (!r.earliest_expiry) return '—';
-                const days = Math.floor((new Date(r.earliest_expiry) - new Date()) / 86400000);
-                return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600 font-semibold' : ''}>{formatDate(r.earliest_expiry)}{days <= 90 ? ` (${days}d)` : ''}</span>;
-              }},
-              { header: 'CIF Value', render: r => formatCurrency(r.cif_value) },
-              { header: 'DPC Value', render: r => formatCurrency(r.dpc_value) },
-            ]}
-            data={productRows}
-            emptyMessage="No country stock yet — record a supplier import to populate this."
-          />
-        ) : (
-          <Table
-            columns={[
-              { header: 'Product', render: r => <span className="text-xs">{r.description || r.product_name || ''}</span> },
-              { header: 'Batch #', render: r => r.batch_no || r.batch_number || '—' },
-              { header: 'Remaining', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
-              { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
-              { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '—' },
-              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
-              { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
-              { header: 'Supplier', render: r => <span className="text-xs text-gray-500">{r.supplier_name || '—'}</span> },
-              { header: '', render: r => (
-                <button onClick={() => setAdjRecord(r)} title="Request correction"
-                  style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Edit2 size={12} /> Edit
-                </button>
-              )},
-            ]}
-            data={filteredBatches}
-            emptyMessage="No country stock batches found."
-          />
-        )}
-      </Card>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">Items to Release <span className="text-red-500">*</span></label>
+              <button type="button" onClick={() => setReleaseItems(prev => [...prev, { productName: '', batchNo: '', expiryDate: '', quantity: '', availableQty: 0, batchKey: '' }])}
+                style={{ padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+                + Add Row
+              </button>
+            </div>
+            {releaseItems.length === 0 && (
+              <p className="text-sm text-gray-400 italic">No items selected. Use "Add Row" or click Release on a batch row in the table.</p>
+            )}
+            {releaseItems.map((item, idx) => (
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <div>
+                  {item.productName && item.batchNo ? (
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{item.productName}</div>
+                      <div className="text-xs text-gray-500">Batch: <span className="font-mono">{item.batchNo}</span>{item.expiryDate ? ` · Exp: ${formatDate(item.expiryDate)}` : ''}</div>
+                    </div>
+                  ) : (
+                    <select value={item.batchKey || ''} onChange={e => {
+                      const key = e.target.value;
+                      const match = data.items.find(i => `${i.productName}||${i.batchNo}` === key);
+                      setReleaseItems(prev => prev.map((r, i) => i === idx ? {
+                        ...r, batchKey: key,
+                        productName: match?.productName || '',
+                        batchNo: match?.batchNo || '',
+                        expiryDate: match?.expiryDate || '',
+                        availableQty: match?.closingQty || 0,
+                      } : r));
+                    }} className="w-full px-2 py-1.5 rounded border border-gray-300 text-xs">
+                      <option value="">Select product + batch...</option>
+                      {data.items.filter(i => i.closingQty > 0).map(i => (
+                        <option key={`${i.productName}||${i.batchNo}`} value={`${i.productName}||${i.batchNo}`}>
+                          {i.productName} — Batch: {i.batchNo || 'N/A'} (Avail: {i.closingQty}){i.expiryDate ? ` · Exp: ${formatDate(i.expiryDate)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="1" max={item.availableQty || undefined} value={item.quantity}
+                    onChange={e => setReleaseItems(prev => prev.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
+                    placeholder="Qty" className="w-20 px-2 py-1.5 rounded border border-gray-300 text-sm text-center" />
+                  {item.availableQty > 0 && <span className="text-xs text-gray-500 whitespace-nowrap">/ {item.availableQty} avail</span>}
+                </div>
+                <button type="button" onClick={() => setReleaseItems(prev => prev.filter((_, i) => i !== idx))}
+                  style={{ padding: '4px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
+            <textarea value={releaseNotes} onChange={e => setReleaseNotes(e.target.value)} rows={2}
+              placeholder="Add any notes about this release..."
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-none" />
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button type="submit" disabled={releasing || releaseItems.filter(i => Number(i.quantity) > 0).length === 0}>
+              <ArrowLeftRight size={15} /> {releasing ? 'Releasing…' : `Release to ${fmtLocation(releaseWarehouse)}`}
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => setReleaseOpen(false)}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
 
       <RequestAdjustmentModal
         open={!!adjRecord} onClose={() => setAdjRecord(null)}
