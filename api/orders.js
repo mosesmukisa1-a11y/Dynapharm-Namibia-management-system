@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, query } from './db.js';
 import { publishRealtimeEvent } from './db.js';
 
@@ -9,6 +9,12 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (req.method !== 'POST' && !req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  const branchScope = getBranchScope(req.user);
+
   try {
     if (req.method === 'GET') {
       const { id, order_number, status, customer_email, customer_phone, distributor_code } = req.query;
@@ -18,6 +24,9 @@ export default async function handler(req, res) {
         if (!order) {
           return res.status(404).json({ error: 'Order not found' });
         }
+        if (branchScope.enforced && !branchScope.branches.includes(order.branch_id || null)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         return res.json(order);
       }
 
@@ -26,13 +35,21 @@ export default async function handler(req, res) {
         if (!order) {
           return res.status(404).json({ error: 'Order not found' });
         }
+        if (branchScope.enforced && !branchScope.branches.includes(order.branch_id || null)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         return res.json(order);
       }
 
-      // Get orders with filters
       let queryText = 'SELECT o.*, b.name as branch_name, t.name as town_name FROM online_orders o LEFT JOIN branches b ON o.branch_id = b.id LEFT JOIN towns t ON o.town_id = t.id WHERE 1=1';
       const params = [];
       let paramIndex = 1;
+
+      if (branchScope.enforced) {
+        queryText += ` AND o.branch_id = ANY($${paramIndex})`;
+        params.push(branchScope.branches);
+        paramIndex++;
+      }
 
       if (status) {
         queryText += ` AND o.status = $${paramIndex}`;
@@ -184,6 +201,13 @@ export default async function handler(req, res) {
       const id = req.query.id || req.body?.id;
       if (!id) {
         return res.status(400).json({ error: 'Order ID is required' });
+      }
+
+      if (branchScope.enforced) {
+        const existing = await getOne('SELECT branch_id FROM online_orders WHERE id = $1', [id]);
+        if (existing && !branchScope.branches.includes(existing.branch_id || null)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
       }
 
       const {

@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 
 function parseNumber(value, fallback = 0) {
@@ -615,26 +615,42 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const searchParams = url.searchParams;
   const currentUser = req.user || null;
+  const branchScope = getBranchScope(currentUser);
 
   try {
     if (req.method === 'GET') {
-      const branchId = searchParams.get('branch') || searchParams.get('branch_id');
-      if (!branchId) {
+      const requestedBranch = searchParams.get('branch') || searchParams.get('branch_id');
+      if (branchScope.enforced && !requestedBranch) {
+        const inventory = [];
+        for (const b of branchScope.branches) {
+          const inv = await getInventoryByBranch(b, true);
+          inventory.push(...inv);
+        }
+        return res.status(200).json({ success: true, inventory });
+      }
+      if (!requestedBranch) {
         const allRows = await getMany('SELECT * FROM branch_inventory_batches ORDER BY product_name ASC, expiry_date ASC NULLS LAST LIMIT 500');
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
+      if (branchScope.enforced && !branchScope.branches.includes(requestedBranch)) {
+        return res.status(403).json({ success: false, error: 'Access denied: cannot view inventory for this branch' });
+      }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
-      const inventory = await getInventoryByBranch(branchId, true);
+      const inventory = await getInventoryByBranch(requestedBranch, true);
       const response = {
         success: true,
         inventory,
       };
       if (includeMovements) {
         const limit = parseInt(searchParams.get('limit') || '100', 10);
-        response.movements = await getMovementsByBranch(branchId, Number.isNaN(limit) ? 100 : limit);
+        response.movements = await getMovementsByBranch(requestedBranch, Number.isNaN(limit) ? 100 : limit);
       }
       return res.status(200).json(response);
     }
@@ -642,6 +658,20 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const action = (body.action || 'receive').toLowerCase();
+      const targetBranchId = body.branchId || body.fromBranchId;
+      const destBranchId = body.toBranchId || null;
+
+      if (branchScope.enforced) {
+        if (!targetBranchId) {
+          return res.status(400).json({ success: false, error: 'branchId is required' });
+        }
+        if (!branchScope.branches.includes(targetBranchId)) {
+          return res.status(403).json({ success: false, error: 'Access denied: cannot modify inventory for this branch' });
+        }
+        if (destBranchId && !branchScope.branches.includes(destBranchId)) {
+          return res.status(403).json({ success: false, error: 'Access denied: cannot transfer inventory to this branch' });
+        }
+      }
 
       let result;
       switch (action) {

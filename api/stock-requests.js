@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 function safeParseJson(value) {
@@ -218,11 +218,16 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const method = req.method;
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
-  const branch = searchParams.get('branch');
+  const requestedBranch = searchParams.get('branch');
   const status = searchParams.get('status');
+  const branchScope = getBranchScope(req.user);
 
   try {
     if (method === 'GET') {
@@ -234,8 +239,12 @@ export default async function handler(req, res) {
         conditions.push('id = $' + (params.length + 1));
         params.push(id);
       }
-      if (branch) {
-        const normalizedBranch = branch.replace(/_/g, ' ');
+      if (branchScope.enforced) {
+        const normalizedBranches = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+        params.push(normalizedBranches);
+        conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = ANY($${params.length}::text[])`);
+      } else if (requestedBranch) {
+        const normalizedBranch = requestedBranch.replace(/_/g, ' ');
         conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = REPLACE(LOWER($${params.length + 1}), '_', ' ')`);
         params.push(normalizedBranch);
       }
@@ -264,10 +273,15 @@ export default async function handler(req, res) {
       const body = await parseBody(req);
       
       if (Array.isArray(body)) {
-        // Bulk insert
+        // Bulk insert — skip entries for branches outside user's scope
         const results = [];
         for (const req of body) {
           try {
+            if (branchScope.enforced) {
+              const reqBranch = (req.requesting_branch || req.requestingBranch || '').replace(/_/g, ' ').toLowerCase();
+              const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+              if (!allowed.includes(reqBranch)) continue;
+            }
             const items = parseItemsInput(req.items || req.itemsArray);
             const history = [
               {
@@ -327,6 +341,14 @@ export default async function handler(req, res) {
       } else {
         // Single insert
         const items = parseItemsInput(body.items || body.itemsArray);
+        const singleBranch = body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager';
+        if (branchScope.enforced) {
+          const normalizedRequest = singleBranch.replace(/_/g, ' ').toLowerCase();
+          const normalizedAllowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+          if (!normalizedAllowed.includes(normalizedRequest)) {
+            return res.status(403).json({ success: false, error: 'Access denied: cannot create stock requests for this branch' });
+          }
+        }
         const historyEntry = {
           action: 'created',
           actor: body.created_by || body.createdBy || null,
@@ -338,7 +360,7 @@ export default async function handler(req, res) {
         const requestData = {
           id: body.id || `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           request_number: body.request_number || body.requestNumber,
-          requesting_branch: body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager',
+          requesting_branch: singleBranch,
           request_type: body.request_type || body.requestType || null,
           status: body.status || 'pending',
           priority: body.priority || 'normal',
@@ -376,6 +398,17 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'id is required' });
       }
 
+      if (branchScope.enforced) {
+        const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [body.id]);
+        if (existing) {
+          const existingBranch = (existing.requesting_branch || '').replace(/_/g, ' ').toLowerCase();
+          const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+          if (!allowed.includes(existingBranch)) {
+            return res.status(403).json({ error: 'Access denied' });
+          }
+        }
+      }
+
       const updatePayload = { ...body };
       delete updatePayload.items;
       delete updatePayload.itemsArray;
@@ -403,6 +436,16 @@ export default async function handler(req, res) {
     }
 
     if (method === 'DELETE') {
+      if (branchScope.enforced && id) {
+        const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [id]);
+        if (existing) {
+          const existingBranch = (existing.requesting_branch || '').replace(/_/g, ' ').toLowerCase();
+          const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+          if (!allowed.includes(existingBranch)) {
+            return res.status(403).json({ error: 'Access denied' });
+          }
+        }
+      }
       await remove('stock_requests', id, 'id');
       await publishRealtimeEvent('stock_requests', 'delete', { id });
       return res.json({ success: true });

@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 
 export default async function handler(req, res) {
@@ -6,10 +6,25 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  const branchScope = getBranchScope(req.user);
+
   try {
-    const requests = await getMany(
-      `SELECT * FROM stock_requests WHERE status IN ('approved','pending') ORDER BY created_at ASC`
-    );
+    let requests;
+    if (branchScope.enforced) {
+      const normalizedBranches = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+      requests = await getMany(
+        `SELECT * FROM stock_requests WHERE status IN ('approved','pending') AND REPLACE(LOWER(requesting_branch), '_', ' ') = ANY($1::text[]) ORDER BY created_at ASC`,
+        [normalizedBranches]
+      );
+    } else {
+      requests = await getMany(
+        `SELECT * FROM stock_requests WHERE status IN ('approved','pending') ORDER BY created_at ASC`
+      );
+    }
 
     const pending = requests.map(r => {
       let items = [];

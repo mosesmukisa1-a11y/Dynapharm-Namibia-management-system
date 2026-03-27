@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 async function parseRequestBody(req) {
@@ -103,13 +103,18 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const method = req.method;
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const reference = searchParams.get('reference');
   const phone = searchParams.get('phone');
-  const branch = searchParams.get('branch');
+  const requestedBranch = searchParams.get('branch');
   const search = searchParams.get('search');
+  const branchScope = getBranchScope(req.user);
 
   try {
     if (method === 'GET') {
@@ -118,27 +123,41 @@ export default async function handler(req, res) {
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
+        if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         return res.json(normalizeClient(client));
       } else if (reference) {
         const client = await getOne('SELECT * FROM clients WHERE reference_number = $1', [reference]);
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
+        if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         return res.json(normalizeClient(client));
       } else if (phone) {
-        const clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
+        let clients;
+        if (branchScope.enforced) {
+          clients = await getMany('SELECT * FROM clients WHERE phone = $1 AND branch = ANY($2) ORDER BY created_at DESC', [phone, branchScope.branches]);
+        } else {
+          clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
+        }
         return res.json(clients.map(normalizeClient).filter(Boolean));
       } else {
         let queryText = 'SELECT * FROM clients';
         const params = [];
         
-        if (branch) {
+        if (branchScope.enforced) {
+          queryText += ' WHERE branch = ANY($1)';
+          params.push(branchScope.branches);
+        } else if (requestedBranch) {
           queryText += ' WHERE branch = $1';
-          params.push(branch);
+          params.push(requestedBranch);
         }
         
         if (search) {
-          queryText += branch ? ' AND' : ' WHERE';
+          queryText += (params.length > 0) ? ' AND' : ' WHERE';
           queryText += ' (full_name ILIKE $' + (params.length + 1) + ' OR phone ILIKE $' + (params.length + 1) + ' OR reference_number ILIKE $' + (params.length + 1) + ')';
           params.push(`%${search}%`);
         }
@@ -158,6 +177,11 @@ export default async function handler(req, res) {
         const results = [];
         for (const client of body) {
           try {
+            const clientBranch = client.branch || null;
+            if (branchScope.enforced && !branchScope.branches.includes(clientBranch)) {
+              continue;
+            }
+            const effectiveBranch = branchScope.enforced ? (branchScope.branches[0] || clientBranch) : clientBranch;
             const clientData = {
               id: client.id || client.reference_number || `CLT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               reference_number: client.reference_number || client.referenceNumber,
@@ -168,7 +192,7 @@ export default async function handler(req, res) {
               date_of_birth: client.date_of_birth || client.dateOfBirth || null,
               address: client.address || null,
               city: client.city || null,
-              branch: client.branch || null,
+              branch: branchScope.enforced ? effectiveBranch : clientBranch,
               data: client.data ? (typeof client.data === 'string' ? client.data : JSON.stringify(client.data)) : null
             };
             
@@ -192,6 +216,11 @@ export default async function handler(req, res) {
         return res.json({ success: true, count: results.length, clients: results });
       } else {
         // Single insert
+        const requestedBranch = body.branch || null;
+        if (branchScope.enforced && !branchScope.branches.includes(requestedBranch)) {
+          return res.status(403).json({ success: false, error: 'Access denied: cannot create client for this branch' });
+        }
+        const effectiveBranch = branchScope.enforced ? (requestedBranch || branchScope.branches[0] || null) : requestedBranch;
         const clientData = {
           id: body.id || body.reference_number || `CLT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           reference_number: body.reference_number || body.referenceNumber,
@@ -202,7 +231,7 @@ export default async function handler(req, res) {
           date_of_birth: body.date_of_birth || body.dateOfBirth || null,
           address: body.address || null,
           city: body.city || null,
-          branch: body.branch || null,
+          branch: effectiveBranch,
           data: body.data ? (typeof body.data === 'string' ? body.data : JSON.stringify(body.data)) : null
         };
         
@@ -225,6 +254,10 @@ export default async function handler(req, res) {
 
       // Fetch existing record to merge data JSON
       const existing = await getOne('SELECT * FROM clients WHERE id = $1', [body.id]);
+
+      if (branchScope.enforced && existing && !branchScope.branches.includes(existing.branch)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
       const existingData = existing
         ? (typeof existing.data === 'string' ? (() => { try { return JSON.parse(existing.data); } catch { return {}; } })() : existing.data || {})
         : {};
@@ -253,7 +286,7 @@ export default async function handler(req, res) {
         ...(body.date_of_birth !== undefined && { date_of_birth: body.date_of_birth }),
         ...(body.address !== undefined && { address: body.address }),
         ...(body.city !== undefined && { city: body.city }),
-        ...(body.branch !== undefined && { branch: body.branch }),
+        ...(body.branch !== undefined && !branchScope.enforced && { branch: body.branch }),
         data: JSON.stringify(mergedData),
         updated_at: new Date().toISOString(),
       };
@@ -264,6 +297,12 @@ export default async function handler(req, res) {
     }
 
     if (method === 'DELETE') {
+      if (branchScope.enforced && id) {
+        const existing = await getOne('SELECT branch FROM clients WHERE id = $1', [id]);
+        if (existing && !branchScope.branches.includes(existing.branch)) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+      }
       await remove('clients', id, 'id');
       await publishRealtimeEvent('clients', 'delete', { id });
       return res.json({ success: true });

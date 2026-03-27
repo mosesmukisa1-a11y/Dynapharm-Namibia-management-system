@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
@@ -174,14 +174,19 @@ function buildSaleRecord(payload, existing = {}) {
   };
 }
 
-function buildSelectQuery(searchParams) {
+function buildSelectQuery(searchParams, scopedBranches, enforced) {
   const conditions = [];
   const params = [];
 
-  const branch = searchParams.get('branch');
-  if (branch) {
-    params.push(branch);
-    conditions.push(`branch_id = $${params.length}`);
+  if (enforced) {
+    params.push(scopedBranches);
+    conditions.push(`branch_id = ANY($${params.length})`);
+  } else {
+    const branch = searchParams.get('branch');
+    if (branch) {
+      params.push(branch);
+      conditions.push(`branch_id = $${params.length}`);
+    }
   }
 
   const from = searchParams.get('from');
@@ -224,21 +229,29 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const searchParams = url.searchParams;
   const id = searchParams.get('id');
+  const branchScope = getBranchScope(req.user);
 
   try {
     if (req.method === 'GET') {
       if (id) {
-        const row = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [id]);
+        let row = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Sale not found' });
+        }
+        if (branchScope.enforced && !branchScope.branches.includes(row.branch_id)) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
         }
         return res.status(200).json({ success: true, sale: normalizeSaleRow(row) });
       }
 
-      const { queryText, params } = buildSelectQuery(searchParams);
+      const { queryText, params } = buildSelectQuery(searchParams, branchScope.branches, branchScope.enforced);
       const rows = await getMany(queryText, params);
       return res.status(200).json({
         success: true,
@@ -250,6 +263,10 @@ export default async function handler(req, res) {
       const body = await parseJsonBody(req);
       const salePayload = body.sale || body;
       const record = buildSaleRecord(salePayload);
+
+      if (branchScope.enforced && !branchScope.branches.includes(record.branch_id)) {
+        return res.status(403).json({ success: false, error: 'Access denied: cannot create sales for this branch' });
+      }
 
       const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
       const branchId = record.branch_id;
@@ -422,7 +439,14 @@ export default async function handler(req, res) {
         return res.status(404).json({ success: false, error: 'Sale not found' });
       }
 
+      if (branchScope.enforced && !branchScope.branches.includes(existing.branch_id)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+
       const record = buildSaleRecord(salePayload, existing);
+      if (branchScope.enforced) {
+        record.branch_id = existing.branch_id;
+      }
       const columns = Object.keys(record);
       const values = Object.values(record);
       const setClause = columns.map((col, idx) => `"${col}" = $${idx + 1}`).join(', ');
@@ -442,6 +466,13 @@ export default async function handler(req, res) {
       const targetId = id;
       if (!targetId) {
         return res.status(400).json({ success: false, error: 'Sale id is required' });
+      }
+
+      if (branchScope.enforced) {
+        const toDelete = await getOne('SELECT branch_id FROM branch_walkin_sales WHERE id = $1', [targetId]);
+        if (toDelete && !branchScope.branches.includes(toDelete.branch_id)) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
       }
 
       const result = await query('DELETE FROM branch_walkin_sales WHERE id = $1 RETURNING *', [targetId]);

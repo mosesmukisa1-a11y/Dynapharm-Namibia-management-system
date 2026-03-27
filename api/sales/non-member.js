@@ -4,6 +4,7 @@
  */
 import { postStockMovement, recomputeLocationBalances } from '../services/stockEngine.js';
 import { query, getOne } from '../db.js';
+import { getBranchScope } from '../_lib/auth.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -18,10 +19,19 @@ async function parseBody(req) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const body = await parseBody(req);
   const { branchId, customerName, referralDistributorId, items, soldBy, paymentMethod, notes } = body;
 
   if (!branchId) return res.status(400).json({ success: false, error: 'branchId is required' });
+
+  const branchScope = getBranchScope(req.user);
+  if (branchScope.enforced && !branchScope.branches.includes(branchId)) {
+    return res.status(403).json({ success: false, error: 'Access denied: cannot create sales for this branch' });
+  }
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, error: 'items array is required' });
 
   const validationErrors = [];

@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from './db.js';
 import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType } from './services/stockEngine.js';
 
@@ -37,20 +37,43 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  const branchScope = getBranchScope(req.user);
+
   try {
     if (req.method === 'GET') {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const warehouseId = url.searchParams.get('warehouse');
       const productId = url.searchParams.get('product');
-      const branch = url.searchParams.get('branch');
+      const requestedBranch = url.searchParams.get('branch');
+      // For scoped roles: if requestedBranch is supplied, validate it's in their allowed list
+      let branch;
+      if (branchScope.enforced) {
+        if (requestedBranch && branchScope.branches.includes(requestedBranch)) {
+          branch = requestedBranch;
+        } else if (!requestedBranch) {
+          branch = null; // will query all allowed branches via ANY
+        } else {
+          // requestedBranch is outside user's scope
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+      } else {
+        branch = requestedBranch;
+      }
       const movementType = url.searchParams.get('type');
       const dateFrom = url.searchParams.get('date_from');
       const dateTo = url.searchParams.get('date_to');
       const limit = parseInt(url.searchParams.get('limit') || '100', 10);
       const safeLimit = Number.isNaN(limit) ? 100 : Math.min(limit, 2000);
 
+      // Scoped roles never access warehouse-level movements
       let rows;
-      if (warehouseId) {
+      if (branchScope.enforced) {
+        rows = [];
+      } else if (warehouseId) {
         rows = await getMany(
           'SELECT * FROM warehouse_inventory_movements WHERE warehouse_id = $1 ORDER BY created_at DESC LIMIT $2',
           [warehouseId, safeLimit]
@@ -72,16 +95,34 @@ export default async function handler(req, res) {
       let branchMovements = [];
       const fmtDt = (d) => d instanceof Date ? d.toISOString() : d;
       try {
-        if (branch) {
-          // Primary: query branch_inventory_movements by exact branch_id with normalization fallback.
-          // This avoids the previous LIKE search on location strings which caused incomplete results.
+        // Build the list of branch candidates to query
+        let branchCandidates;
+        if (branchScope.enforced) {
+          // Scoped user: query all their allowed branches (or the specific one they requested)
+          const targetBranches = branch ? [branch] : branchScope.branches;
+          if (targetBranches.length === 0) {
+            branchMovements = [];
+          } else {
+            // Expand branch ids to normalized candidates for fuzzy match
+            branchCandidates = targetBranches.flatMap(b => {
+              const norm = b.toLowerCase().replace(/\s+/g, '_');
+              const stripped = norm.replace(/_branch$/, '');
+              const res = [norm];
+              if (!norm.endsWith('_branch')) res.push(norm + '_branch');
+              if (stripped !== norm) res.push(stripped);
+              return res;
+            });
+          }
+        } else if (branch) {
           const normBranch = branch.toLowerCase().replace(/\s+/g, '_');
           const stripped = normBranch.replace(/_branch$/, '');
-          const candidates = [normBranch];
-          if (!normBranch.endsWith('_branch')) candidates.push(normBranch + '_branch');
-          if (stripped !== normBranch) candidates.push(stripped);
+          branchCandidates = [normBranch];
+          if (!normBranch.endsWith('_branch')) branchCandidates.push(normBranch + '_branch');
+          if (stripped !== normBranch) branchCandidates.push(stripped);
+        }
 
-          const bimParams = [candidates];
+        if (branchCandidates && branchCandidates.length > 0) {
+          const bimParams = [branchCandidates];
           const bimWhere = ['LOWER(REPLACE(branch_id, \' \', \'_\')) = ANY($1)'];
           if (movementType) { bimParams.push(movementType); bimWhere.push(`type = $${bimParams.length}`); }
           if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
@@ -108,8 +149,8 @@ export default async function handler(req, res) {
             unit_price: r.unit_price != null ? Number(r.unit_price) : null,
             unitPrice: r.unit_price != null ? Number(r.unit_price) : null,
             unit_dp: r.unit_price != null ? Number(r.unit_price) : null,
-            location: branch,
-            sourceLocation: r.source_branch_id || branch, source_location: r.source_branch_id || branch,
+            location: r.branch_id,
+            sourceLocation: r.source_branch_id || r.branch_id, source_location: r.source_branch_id || r.branch_id,
             destinationLocation: r.destination_branch_id || '', destination_location: r.destination_branch_id || '',
             referenceId: r.reference_id, reference_id: r.reference_id,
             notes: r.notes,
@@ -118,8 +159,8 @@ export default async function handler(req, res) {
             createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
             status: 'posted',
           }));
-        } else {
-          // No branch filter — fall back to stock_movements for backwards compat
+        } else if (!branchScope.enforced && !branch) {
+          // No branch filter, non-scoped user — fall back to stock_movements
           const bmParams = [];
           const bmWhere = [];
           if (movementType) { bmParams.push(movementType); bmWhere.push(`movement_type = $${bmParams.length}`); }
@@ -185,6 +226,15 @@ export default async function handler(req, res) {
         const srcLocType = inferLocationType(srcLoc);
         const dstLocType = inferLocationType(destLoc);
         const branchId = srcLoc || destLoc;
+
+        if (branchScope.enforced) {
+          // For outbound movements (write_off, sale, field_use, return): check source branch
+          // For inbound movements (received): check destination branch
+          const primaryBranchLoc = movType === 'received' ? (destLoc || srcLoc) : (srcLoc || destLoc);
+          if (!primaryBranchLoc || !branchScope.branches.includes(primaryBranchLoc)) {
+            return res.status(403).json({ success: false, error: 'Access denied: cannot post movement for this branch' });
+          }
+        }
         const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType);
         await withTransaction(async (client) => {
           await client.query(
@@ -231,6 +281,10 @@ export default async function handler(req, res) {
           id, product_name: productName, productName, quantity: qty, movement_type: movType, movementType: movType,
           batch_no: batchNo, batchNo, notes, created_by: createdBy,
         });
+      }
+
+      if (branchScope.enforced) {
+        return res.status(403).json({ success: false, error: 'Access denied: cannot post warehouse movements' });
       }
 
       const id = `WMOVE-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;

@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
@@ -69,9 +69,14 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const searchParams = url.searchParams;
   const currentUser = req.user || null;
+  const branchScope = getBranchScope(currentUser);
 
   try {
     if (req.method === 'GET') {
@@ -81,26 +86,41 @@ export default async function handler(req, res) {
         if (!row) {
           return res.status(404).json({ success: false, error: 'Expense not found' });
         }
+        if (branchScope.enforced && !branchScope.branches.includes(row.branch_id)) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
         return res.status(200).json({ success: true, expense: normalizeExpense(row) });
       }
 
-      const branchId = searchParams.get('branch');
+      const requestedBranch = searchParams.get('branch');
       const status = searchParams.get('status');
       const limit = parseInt(searchParams.get('limit') || '100', 10);
 
       let rows;
       const queryLimit = Number.isNaN(limit) ? 100 : limit;
 
-      if (branchId) {
+      if (branchScope.enforced) {
+        if (status) {
+          rows = await getMany(
+            'SELECT * FROM branch_expenses WHERE branch_id = ANY($1) AND status = $2 ORDER BY date DESC, created_at DESC LIMIT $3',
+            [branchScope.branches, status, queryLimit]
+          );
+        } else {
+          rows = await getMany(
+            'SELECT * FROM branch_expenses WHERE branch_id = ANY($1) ORDER BY date DESC, created_at DESC LIMIT $2',
+            [branchScope.branches, queryLimit]
+          );
+        }
+      } else if (requestedBranch) {
         if (status) {
           rows = await getMany(
             'SELECT * FROM branch_expenses WHERE branch_id = $1 AND status = $2 ORDER BY date DESC, created_at DESC LIMIT $3',
-            [branchId, status, queryLimit]
+            [requestedBranch, status, queryLimit]
           );
         } else {
           rows = await getMany(
             'SELECT * FROM branch_expenses WHERE branch_id = $1 ORDER BY date DESC, created_at DESC LIMIT $2',
-            [branchId, queryLimit]
+            [requestedBranch, queryLimit]
           );
         }
       } else {
@@ -128,6 +148,9 @@ export default async function handler(req, res) {
       const branchId = body.branchId || body.branch;
       if (!branchId) {
         return res.status(400).json({ success: false, error: 'branchId is required' });
+      }
+      if (branchScope.enforced && !branchScope.branches.includes(branchId)) {
+        return res.status(403).json({ success: false, error: 'Access denied: cannot record expenses for this branch' });
       }
 
       const date = body.date || new Date().toISOString().slice(0, 10);
@@ -178,6 +201,10 @@ export default async function handler(req, res) {
       const row = await getOne('SELECT * FROM branch_expenses WHERE id = $1', [id]);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Expense not found' });
+      }
+
+      if (branchScope.enforced && !branchScope.branches.includes(row.branch_id)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
       }
 
       const status = body.status ? body.status.toLowerCase() : null;

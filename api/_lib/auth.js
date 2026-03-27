@@ -112,6 +112,28 @@ function sanitizeUser(user) {
   };
 }
 
+const BRANCH_SCOPED_ROLES = new Set(['dispenser', 'branch_manager']);
+const FULL_ACCESS_ROLES = new Set(['admin', 'gm', 'director']);
+
+function getBranchScope(user) {
+  if (!user) return { enforced: false, branches: null };
+  const role = user.role || user.sub?.role;
+  if (FULL_ACCESS_ROLES.has(role)) return { enforced: false, branches: null };
+  if (!BRANCH_SCOPED_ROLES.has(role)) return { enforced: false, branches: null };
+
+  const parseJsonField = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') { try { return JSON.parse(val || '[]'); } catch { return []; } }
+    return val || [];
+  };
+
+  const primaryBranch = user.branch || null;
+  const extraBranches = parseJsonField(user.branches);
+  const allBranches = [...new Set([...(primaryBranch ? [primaryBranch] : []), ...extraBranches])].filter(Boolean);
+
+  return { enforced: true, branches: allBranches, primaryBranch };
+}
+
 export {
   AUTH_COOKIE_NAME,
   AUTH_TOKEN_TTL,
@@ -123,4 +145,5 @@ export {
   clearAuthCookie,
   getTokenFromRequest,
   sanitizeUser,
+  getBranchScope,
 };

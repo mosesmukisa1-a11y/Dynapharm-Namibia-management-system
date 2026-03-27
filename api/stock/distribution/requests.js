@@ -1,10 +1,16 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  const branchScope = getBranchScope(req.user);
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -13,6 +19,11 @@ export default async function handler(req, res) {
     const conditions = ['1=1'];
     const params = [];
     if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
+    if (branchScope.enforced) {
+      const normalizedBranches = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+      params.push(normalizedBranches);
+      conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = ANY($${params.length}::text[])`);
+    }
 
     const requests = await getMany(
       `SELECT * FROM stock_requests WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 200`,
