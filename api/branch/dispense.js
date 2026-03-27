@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reportId, branchId, items, createdBy, customerType } = body;
+      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName } = body;
 
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
         id: generateBatId(),
         branch_id: branchId,
         branch_name: branchId,
-        client_name: 'Prescription Patient',
+        client_name: patientName || 'Patient',
         client_type: customerType || 'patient',
         service_date: new Date().toISOString().slice(0, 10),
         service_time: new Date().toTimeString().slice(0, 8),
@@ -150,7 +150,7 @@ export default async function handler(req, res) {
         total_qty: totalDispensedQty,
         grand_total: totalDispensedValue,
         payment_status: 'paid',
-        payment_method: 'cash',
+        payment_method: (paymentMethod || 'cash').toLowerCase(),
         stock_impact: true,
         stock_status: 'deducted',
         prescription_status: 'dispensed',

@@ -844,6 +844,7 @@ function PrescriptionsTab() {
   const [checkupFeeType, setCheckupFeeType] = useState({});
   const [dispensePreview, setDispensePreview] = useState(null);
   const [dispensing, setDispensing] = useState(false);
+  const [rxDispensePayment, setRxDispensePayment] = useState('cash');
   const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
@@ -1030,6 +1031,8 @@ function PrescriptionsTab() {
         items: dispenseItems,
         createdBy: user?.full_name || user?.username || '',
         customerType: isMember ? 'member' : 'non_member',
+        paymentMethod: rxDispensePayment,
+        patientName: report.client_name || report.full_name || report.patient_name || 'Patient',
       });
 
       const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));
@@ -1760,6 +1763,16 @@ function PrescriptionsTab() {
                   </tr>
                 </tbody>
               </table>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>Payment Method:</label>
+                <select value={rxDispensePayment} onChange={e => setRxDispensePayment(e.target.value)}
+                  style={{ flex: 1, padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.83rem' }}>
+                  <option value="cash">💵 Cash</option>
+                  <option value="card">💳 Card</option>
+                  <option value="eft">🏦 EFT</option>
+                  <option value="medical_aid">🏥 Medical Aid</option>
+                </select>
+              </div>
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: '0.78rem', color: '#991b1b' }}>
                 ⚠️ Clicking "Confirm & Dispense" will deduct stock using FEFO batch logic. This action cannot be undone.
               </div>
