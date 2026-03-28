@@ -137,6 +137,19 @@ export default async function handler(req, res) {
 
     const pendingCapture = txRows.filter(r => r.reporting_status === 'pending').length;
 
+    const nmCpTotal = parseFloat(sum(paidRows(nonMemberRows), 'grand_total').toFixed(2));
+    const nmDpTotal = parseFloat(sum(paidRows(nonMemberRows), 'product_total_dp').toFixed(2));
+    const distributorProfit = parseFloat(Math.max(0, nmCpTotal - nmDpTotal).toFixed(2));
+    const walkInRxSales = parseFloat((
+      sum(paidRows(walkinRows), 'grand_total') +
+      sum(paidRows(memberRows), 'grand_total') +
+      nmCpTotal +
+      sum(paidRows(rxRows), 'grand_total')
+    ).toFixed(2));
+    const consultFeeTotal = consultObj.fee_value || 0;
+    const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal).toFixed(2));
+    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales };
+
     // Try to attach pre-computed stock snapshot for this month/branch
     let stockSnapshot = null;
     try {
@@ -173,6 +186,7 @@ export default async function handler(req, res) {
       total_pending_value: totalPendingValue,
       total_transactions: txRows.length,
       total_qty_sold: sum(txRows, 'total_qty'),
+      branch_summary: branchSummary,
     });
   } catch (err) {
     console.error('monthly branch sales report error:', err);

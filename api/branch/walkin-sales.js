@@ -392,6 +392,7 @@ export default async function handler(req, res) {
         : record.customer_type === 'non_member' ? 'non_member_sale'
         : 'walkin_sale';
       const totalQty = saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
+      const dpSubtotal = saleItems.reduce((s, i) => s + (Number(i.dpPrice || i.dp || 0) * Number(i.quantity || i.qty || 0)), 0);
       postActivityRecord({
         id: generateBatId(),
         branch_id: record.branch_id,
@@ -405,7 +406,7 @@ export default async function handler(req, res) {
         activity_type: actType,
         workflow_source: 'branch_portal',
         form_reference_id: insertedRow.id,
-        product_total_dp: record.total,
+        product_total_dp: dpSubtotal || record.total,
         product_total_cp: record.total,
         total_qty: totalQty,
         grand_total: record.total,

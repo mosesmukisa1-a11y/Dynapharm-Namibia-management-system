@@ -3576,6 +3576,7 @@ function BranchStockTab() {
           const on = data.online_order_sales || {};
           const rx = data.prescription_dispensing || {};
           const grandTotal = data.grand_total || 0;
+          const bs = data.branch_summary || {};
           const totalQty = data.total_qty_sold || 0;
           const totalTx = data.total_transactions || 0;
           const sections = [
@@ -3610,12 +3611,30 @@ function BranchStockTab() {
               <tr><td style="padding:8px 12px;font-weight:700">Total Qty Sold</td><td style="padding:8px 12px;text-align:right;font-weight:700">${fmt(totalQty)}</td></tr>
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Grand Total (DP)</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">${fmtC(grandTotal)}</td></tr>
             </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">BRANCH SUMMARY</h3>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">BRANCH NET SUMMARY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
-              <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
+              <tr style="background:#f8fafc"><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Period</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${period}</td></tr>
-              <tr><td style="padding:6px 12px">Total DP Sales</td><td style="padding:6px 12px;text-align:right;font-weight:700;color:#166534">${fmtC(grandTotal)}</td></tr>
-            </table>`, branchName);
+            </table>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px">
+              <tr style="background:#f0fdf4">
+                <td style="padding:10px 14px;font-weight:700;color:#166534">Sales (Walk-in + Prescription)</td>
+                <td style="padding:10px 14px;text-align:right;font-weight:800;color:#166534;font-size:13px">${fmtC(bs.walkin_rx_sales || 0)}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 14px;color:#374151">Less: Distributor Profit</td>
+                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#c41e3a">(${fmtC(bs.distributor_profit || 0)})</td>
+              </tr>
+              <tr style="background:#fef9f0">
+                <td style="padding:8px 14px;color:#374151">Less: Consultation Fees</td>
+                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#92400e">(${fmtC(bs.consultation_fees || 0)})</td>
+              </tr>
+              <tr style="background:linear-gradient(135deg,#c41e3a,#8b0000);border-top:2px solid #8b0000">
+                <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em">BRANCH SALES FOR THE DAY</td>
+                <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px">${fmtC(bs.branch_sales || 0)}</td>
+              </tr>
+            </table>
+            <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">Branch Sales = Walk-in + Prescription Sales &minus; Distributor Profit &minus; Consultation Fees</div>`, branchName);
         };
 
         const printStockFormulaFromData = (data) => {
