@@ -1033,6 +1033,8 @@ function PrescriptionsTab() {
         customerType: isMember ? 'member' : 'non_member',
         paymentMethod: rxDispensePayment,
         patientName: report.client_name || report.full_name || report.patient_name || 'Patient',
+        consultationFee: dispensePreview.consultFee?.total || 0,
+        consultMode: getConsultMode(report.id, isMember),
       });
 
       const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));

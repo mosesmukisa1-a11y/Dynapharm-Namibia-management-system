@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName } = body;
+      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode } = body;
 
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
@@ -58,10 +58,16 @@ export default async function handler(req, res) {
             });
           }
         } else {
+          const livePrice = livePriceMap[productName.toLowerCase()];
+          const isMem = customerType === 'member';
+          const passedPrice = Number(item.unit_price || item.dp_price || item.dp || 0);
+          const fallbackPrice = livePrice
+            ? (isMem ? Number(livePrice.dp) || 0 : Number(livePrice.cp) || 0)
+            : 0;
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
-            unit_price: Number(item.unit_price || item.dp_price || item.dp || 0) || null,
+            unit_price: passedPrice || fallbackPrice || null,
             from_package: item.from_package || null,
           });
         }
@@ -135,14 +141,19 @@ export default async function handler(req, res) {
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       const totalDispensedValue = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0);
+      const now = new Date();
+      const serviceDate = now.toISOString().slice(0, 10);
+      const serviceTime = now.toTimeString().slice(0, 8);
+      const pmNorm = (paymentMethod || 'cash').toLowerCase();
+
       postActivityRecord({
         id: generateBatId(),
         branch_id: branchId,
         branch_name: branchId,
         client_name: patientName || 'Patient',
         client_type: customerType || 'patient',
-        service_date: new Date().toISOString().slice(0, 10),
-        service_time: new Date().toTimeString().slice(0, 8),
+        service_date: serviceDate,
+        service_time: serviceTime,
         activity_type: 'prescription_dispensing',
         workflow_source: 'branch_portal',
         form_reference_id: reportId,
@@ -150,7 +161,7 @@ export default async function handler(req, res) {
         total_qty: totalDispensedQty,
         grand_total: totalDispensedValue,
         payment_status: 'paid',
-        payment_method: (paymentMethod || 'cash').toLowerCase(),
+        payment_method: pmNorm,
         stock_impact: true,
         stock_status: 'deducted',
         prescription_status: 'dispensed',
@@ -158,6 +169,34 @@ export default async function handler(req, res) {
         reporting_status: 'posted',
         captured_by: createdBy || null,
       }).catch(e => console.error('[activityCapture] dispense post error:', e.message));
+
+      const feeAmount = Number(consultationFee || 0);
+      if (feeAmount > 0) {
+        postActivityRecord({
+          id: generateBatId(),
+          branch_id: branchId,
+          branch_name: branchId,
+          client_name: patientName || 'Patient',
+          client_type: customerType || 'patient',
+          service_date: serviceDate,
+          service_time: serviceTime,
+          activity_type: 'consultation',
+          workflow_source: 'branch_portal',
+          form_reference_id: reportId,
+          consultation_fee: feeAmount,
+          product_total_dp: 0,
+          total_qty: 0,
+          grand_total: feeAmount,
+          payment_status: 'paid',
+          payment_method: pmNorm,
+          stock_impact: false,
+          stock_status: 'none',
+          prescription_status: 'dispensed',
+          consultation_status: 'paid',
+          reporting_status: 'posted',
+          captured_by: createdBy || null,
+        }).catch(e => console.error('[activityCapture] consult fee post error:', e.message));
+      }
 
       return res.status(200).json({ success: true, deductions, message: `Dispensed ${deductions.length} batch(es) successfully` });
     }
