@@ -294,7 +294,7 @@ export default async function handler(req, res) {
             const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
             deductItems.push({
               name: comp.name,
-              qty: Number(comp.quantity || 1) * qty,
+              qty: Math.round(Number(comp.quantity || 1) * qty),
               unitPrice: isMemberSale ? dp : cp,
             });
           }
@@ -305,7 +305,7 @@ export default async function handler(req, res) {
               : Number(comp.cp || comp.unit_price || comp.dp || 0);
             deductItems.push({
               name: comp.name || comp.product_name || '',
-              qty: Number(comp.quantity || comp.qty || 1) * qty,
+              qty: Math.round(Number(comp.quantity || comp.qty || 1) * qty),
               unitPrice: compPrice,
             });
           }
@@ -341,7 +341,7 @@ export default async function handler(req, res) {
             )).rows;
             for (const batch of batches) {
               if (remaining <= 0) break;
-              const take = Math.min(remaining, Number(batch.quantity));
+              const take = Math.round(Math.min(remaining, Number(batch.quantity)));
               await client.query(
                 `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
                 [take, batch.id]

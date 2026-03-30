@@ -239,7 +239,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
     const siblings = productBatches[key] || [inv];
     const totalQty = siblings.reduce((s, b) => s + Number(b.quantity || 0), 0);
     const weight = totalQty > 0 ? Number(inv.quantity || 0) / totalQty : 1 / siblings.length;
-    const scale = (v) => Math.round(v * weight * 100) / 100;
+    const scale = (v) => Math.round(v * weight);
     return {
       ...inv,
       qty_received: scale(agg.received), qtyReceived: scale(agg.received),
@@ -272,12 +272,12 @@ async function getInventoryByBranch(branchId, enriched = false) {
       unit_price: null,
       status: 'out_of_stock',
       is_synthetic: true,
-      qty_received: agg.received,  qtyReceived: agg.received,
-      qty_sold: agg.sold,           qtySold: agg.sold,
-      qty_dispensed: agg.dispensed, qtyDispensed: agg.dispensed,
-      qty_transferred: agg.transferred, qtyTransferred: agg.transferred,
-      qty_written_off: agg.written_off,  qtyWrittenOff: agg.written_off,
-      qty_adjusted: agg.adjusted,   qtyAdjusted: agg.adjusted,
+      qty_received: Math.round(agg.received),  qtyReceived: Math.round(agg.received),
+      qty_sold: Math.round(agg.sold),           qtySold: Math.round(agg.sold),
+      qty_dispensed: Math.round(agg.dispensed), qtyDispensed: Math.round(agg.dispensed),
+      qty_transferred: Math.round(agg.transferred), qtyTransferred: Math.round(agg.transferred),
+      qty_written_off: Math.round(agg.written_off),  qtyWrittenOff: Math.round(agg.written_off),
+      qty_adjusted: Math.round(agg.adjusted),   qtyAdjusted: Math.round(agg.adjusted),
       source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
       last_movement_date: agg.last_movement,  lastMovementDate: agg.last_movement,
     });
@@ -334,7 +334,7 @@ async function upsertInventoryBatch(client, payload) {
       productCode,
       batchNo || null,
       expirySqlDate,
-      parseNumber(quantity),
+      Math.round(parseNumber(quantity)),
       unit,
       unitPrice !== null ? parseNumber(unitPrice) : null,
       computedStatus,
@@ -368,7 +368,7 @@ async function recordMovement(client, payload) {
     product_name: payload.productName,
     product_code: payload.productCode || null,
     batch_no: payload.batchNo || null,
-    quantity: parseNumber(payload.quantity),
+    quantity: Math.round(parseNumber(payload.quantity)),
     unit: payload.unit || 'units',
     source_branch_id: payload.sourceBranchId || null,
     destination_branch_id: payload.destinationBranchId || null,

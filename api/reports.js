@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
 
 async function parseRequestBody(req) {
   if (req.body) {
@@ -127,6 +128,58 @@ export default async function handler(req, res) {
       const result = await insert('reports', insertData);
       const report = normalizeReportRow(result);
       await publishRealtimeEvent('reports', 'create', report);
+
+      const consultFee = Number(body.consultation_fee || 0);
+      const pendingMedicines = Array.isArray(body.medicines)
+        ? body.medicines.filter(m => !m.dispensed)
+        : [];
+      const isStandaloneConsultation = consultFee > 0 && pendingMedicines.length === 0;
+      if (isStandaloneConsultation) {
+        let branchId = body.branch_id || body.branch || null;
+        if (!branchId && body.appointment_id) {
+          try {
+            const apt = await getOne('SELECT branch FROM appointments WHERE id = $1', [body.appointment_id]);
+            if (apt && apt.branch) branchId = apt.branch;
+          } catch (e) {
+            console.error('[reports POST] failed to look up appointment branch:', e.message);
+          }
+        }
+        if (branchId) {
+          const now = new Date();
+          try {
+            await postActivityRecord({
+              id: generateBatId(),
+              branch_id: branchId,
+              branch_name: branchId,
+              client_name: body.client_name || 'Patient',
+              client_type: body.membership_status === 'member' ? 'member' : 'patient',
+              nb_number: body.nb_number || null,
+              service_date: now.toISOString().slice(0, 10),
+              service_time: now.toTimeString().slice(0, 8),
+              activity_type: 'consultation',
+              workflow_source: 'consultant_portal',
+              form_reference_id: report.id,
+              consultation_fee: consultFee,
+              product_total_dp: 0,
+              total_qty: 0,
+              grand_total: consultFee,
+              payment_status: 'paid',
+              payment_method: body.payment_method || 'cash',
+              stock_impact: false,
+              stock_status: 'none',
+              prescription_status: 'none',
+              consultation_status: 'paid',
+              reporting_status: 'posted',
+              captured_by: body.consultant || null,
+            });
+          } catch (e) {
+            console.error('[reports POST] consultation fee activity capture failed:', e.message);
+          }
+        } else {
+          console.warn('[reports POST] consultation fee not captured — no branch_id found for report', report.id);
+        }
+      }
+
       return res.status(201).json({ success: true, report });
     }
 

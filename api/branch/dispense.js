@@ -52,7 +52,7 @@ export default async function handler(req, res) {
             const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
             resolvedItems.push({
               product_name: comp.name,
-              quantity: Number(comp.quantity || 1) * qty,
+              quantity: Math.round(Number(comp.quantity || 1) * qty),
               unit_price: isMember ? dp : cp,
               from_package: productName,
             });
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
 
           for (const batch of batches) {
             if (remaining <= 0) break;
-            const take = Math.min(remaining, Number(batch.quantity));
+            const take = Math.round(Math.min(remaining, Number(batch.quantity)));
 
             await client.query(
               `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
@@ -146,33 +146,8 @@ export default async function handler(req, res) {
       const serviceTime = now.toTimeString().slice(0, 8);
       const pmNorm = (paymentMethod || 'cash').toLowerCase();
 
-      postActivityRecord({
-        id: generateBatId(),
-        branch_id: branchId,
-        branch_name: branchId,
-        client_name: patientName || 'Patient',
-        client_type: customerType || 'patient',
-        service_date: serviceDate,
-        service_time: serviceTime,
-        activity_type: 'prescription_dispensing',
-        workflow_source: 'branch_portal',
-        form_reference_id: reportId,
-        product_total_dp: totalDispensedValue,
-        total_qty: totalDispensedQty,
-        grand_total: totalDispensedValue,
-        payment_status: 'paid',
-        payment_method: pmNorm,
-        stock_impact: true,
-        stock_status: 'deducted',
-        prescription_status: 'dispensed',
-        consultation_status: 'none',
-        reporting_status: 'posted',
-        captured_by: createdBy || null,
-      }).catch(e => console.error('[activityCapture] dispense post error:', e.message));
-
-      const feeAmount = Number(consultationFee || 0);
-      if (feeAmount > 0) {
-        postActivityRecord({
+      try {
+        await postActivityRecord({
           id: generateBatId(),
           branch_id: branchId,
           branch_name: branchId,
@@ -180,22 +155,55 @@ export default async function handler(req, res) {
           client_type: customerType || 'patient',
           service_date: serviceDate,
           service_time: serviceTime,
-          activity_type: 'consultation',
+          activity_type: 'prescription_dispensing',
           workflow_source: 'branch_portal',
           form_reference_id: reportId,
-          consultation_fee: feeAmount,
-          product_total_dp: 0,
-          total_qty: 0,
-          grand_total: feeAmount,
+          product_total_dp: totalDispensedValue,
+          total_qty: totalDispensedQty,
+          grand_total: totalDispensedValue,
           payment_status: 'paid',
           payment_method: pmNorm,
-          stock_impact: false,
-          stock_status: 'none',
+          stock_impact: true,
+          stock_status: 'deducted',
           prescription_status: 'dispensed',
-          consultation_status: 'paid',
+          consultation_status: 'none',
           reporting_status: 'posted',
           captured_by: createdBy || null,
-        }).catch(e => console.error('[activityCapture] consult fee post error:', e.message));
+        });
+      } catch (e) {
+        console.error('[activityCapture] dispense post error:', e.message);
+      }
+
+      const feeAmount = Number(consultationFee || 0);
+      if (feeAmount > 0) {
+        try {
+          await postActivityRecord({
+            id: generateBatId(),
+            branch_id: branchId,
+            branch_name: branchId,
+            client_name: patientName || 'Patient',
+            client_type: customerType || 'patient',
+            service_date: serviceDate,
+            service_time: serviceTime,
+            activity_type: 'consultation',
+            workflow_source: 'branch_portal',
+            form_reference_id: reportId,
+            consultation_fee: feeAmount,
+            product_total_dp: 0,
+            total_qty: 0,
+            grand_total: feeAmount,
+            payment_status: 'paid',
+            payment_method: pmNorm,
+            stock_impact: false,
+            stock_status: 'none',
+            prescription_status: 'dispensed',
+            consultation_status: 'paid',
+            reporting_status: 'posted',
+            captured_by: createdBy || null,
+          });
+        } catch (e) {
+          console.error('[activityCapture] consult fee post error:', e.message);
+        }
       }
 
       return res.status(200).json({ success: true, deductions, message: `Dispensed ${deductions.length} batch(es) successfully` });
