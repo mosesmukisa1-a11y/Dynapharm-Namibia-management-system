@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Modal, Input, Button, Alert } from './ui';
-import { BRANCHES } from '../lib/constants';
+import { BRANCHES, BRANCH_DETAILS } from '../lib/constants';
 import { RefreshCw } from 'lucide-react';
 
 const DEPARTMENTS = ['Operations', 'Sales', 'Finance', 'Human Resources', 'IT', 'Warehouse', 'Health Services', 'Marketing', 'Administration'];
@@ -272,7 +272,7 @@ export function LoginModal({ open, onClose }) {
                       required
                     >
                       <option value="">Select Branch</option>
-                      {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                      {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                 )}

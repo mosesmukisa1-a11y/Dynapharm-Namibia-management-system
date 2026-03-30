@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatDate, formatDateTime, BRANCHES } from '../../lib/constants';
+import { formatDate, formatDateTime, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus } from 'lucide-react';
 
@@ -128,7 +128,7 @@ function EmployeesTab() {
               label="Branch"
               value={form.branch}
               onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
-              options={[{ value: '', label: 'Select Branch' }, ...BRANCHES.map(b => ({ value: b, label: b }))]}
+              options={[{ value: '', label: 'Select Branch' }, ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name }))]}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">

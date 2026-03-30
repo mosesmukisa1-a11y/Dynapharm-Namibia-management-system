@@ -296,9 +296,9 @@ function UsersTab() {
               <select value={editForm.branch} onChange={e => setEditForm({ ...editForm, branch: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                 <option value="">No Branch</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                <option value="Windhoek Warehouse">Windhoek Warehouse</option>
-                <option value="Ondangwa Warehouse">Ondangwa Warehouse</option>
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
               </select>
             </div>
           </div>
@@ -687,7 +687,7 @@ function DistributorsTab() {
                   <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                     <option value="">Select Branch</option>
-                    {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                    {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
                 <Input label="Phone" value={form.mobile_no} onChange={e => setForm({ ...form, mobile_no: e.target.value })} placeholder="+264 81..." />
