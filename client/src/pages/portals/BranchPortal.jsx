@@ -168,9 +168,38 @@ function WalkInSalesTab() {
   };
 
   const isMember = customerType === 'registered';
-  const filteredProducts = products.filter(p => !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase()));
+  const [productCategory, setProductCategory] = useState('All');
+  const [addedProductId, setAddedProductId] = useState(null);
+
+  const productCategories = useMemo(() => {
+    const cats = new Set();
+    products.forEach(p => {
+      const name = (p.name || p.description || '').toLowerCase();
+      if (p.isCheckup) cats.add('Checkups');
+      else if (p.isPackage) cats.add('Packages');
+      else if (name.includes('grow') || name.includes('liquid') || name.includes('shake')) cats.add('Beverages');
+      else if (name.includes('powder') || name.includes('protein')) cats.add('Supplements');
+      else cats.add('Other');
+    });
+    return ['All', ...Array.from(cats).sort()];
+  }, [products]);
+
+  const filteredProducts = products.filter(p => {
+    const matchSearch = !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase());
+    if (!matchSearch) return false;
+    if (productCategory === 'All') return true;
+    const name = (p.name || p.description || '').toLowerCase();
+    if (productCategory === 'Checkups') return p.isCheckup;
+    if (productCategory === 'Packages') return p.isPackage && !p.isCheckup;
+    if (productCategory === 'Beverages') return !p.isCheckup && !p.isPackage && (name.includes('grow') || name.includes('liquid') || name.includes('shake'));
+    if (productCategory === 'Supplements') return !p.isCheckup && !p.isPackage && (name.includes('powder') || name.includes('protein'));
+    if (productCategory === 'Other') return !p.isCheckup && !p.isPackage && !name.includes('grow') && !name.includes('liquid') && !name.includes('shake') && !name.includes('powder') && !name.includes('protein');
+    return true;
+  });
 
   const addToCart = (product) => {
+    setAddedProductId(product.id);
+    setTimeout(() => setAddedProductId(null), 350);
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
@@ -192,7 +221,7 @@ function WalkInSalesTab() {
     setCustomerType('registered'); setRegSearch(''); setRegResults([]); setSelectedReg(null);
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
-    setPaymentMethod('cash'); setError(''); setShowModal(true);
+    setProductCategory('All'); setPaymentMethod('cash'); setError(''); setShowModal(true);
   };
   const closeModal = () => setShowModal(false);
 
@@ -465,34 +494,34 @@ function WalkInSalesTab() {
 
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.72)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-          <div style={{ width: '100%', maxWidth: '1160px', background: '#fff', borderRadius: '22px', overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(196,30,58,0.25)' }}>
+          <div style={{ width: '100%', maxWidth: '1340px', background: '#fff', borderRadius: '22px', overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(196,30,58,0.25)' }}>
 
-            {/* POS Header — Dynapharm Red */}
-            <div style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            {/* POS Header */}
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '14px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 46, height: 46, borderRadius: 13, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', backdropFilter: 'blur(4px)' }}>🏪</div>
+                <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', backdropFilter: 'blur(4px)' }}>🏪</div>
                 <div>
-                  <div style={{ color: '#fff', fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Branch Point of Sale</div>
-                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 1 }}>
+                  <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Branch Point of Sale</div>
+                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.76rem', marginTop: 1 }}>
                     {user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : 'Dynapharm'} &nbsp;·&nbsp;
                     <span style={{ color: '#ffd0d8', fontWeight: 600 }}>{isMember ? '🏅 Member — DP Prices' : '👤 Walk-in — CP Prices'}</span>
-                    &nbsp;·&nbsp; {cart.length} item{cart.length !== 1 ? 's' : ''} in cart
                   </div>
                 </div>
               </div>
               <button onClick={closeModal} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>×</button>
             </div>
 
+            {/* 3-Column Body */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-              {/* LEFT SIDEBAR */}
-              <div style={{ width: 310, flexShrink: 0, borderRight: '1px solid #f0e8ea', overflowY: 'auto', background: '#fff', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* ── COL 1: LEFT CONTROL PANEL ── */}
+              <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid #f0e8ea', overflowY: 'auto', background: '#fff', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
                 {error && <div style={{ background: '#fff0f3', border: '1px solid #fecaca', color: '#c41e3a', padding: '8px 12px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 500 }}>{error}</div>}
 
                 {/* Customer Type */}
                 <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Type</div>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Type</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {[
                       { type: 'registered', icon: '🏅', label: 'Member', sub: 'DP price · BV', activeColor: '#c41e3a', activeBg: '#fff0f3', activeBorder: '#c41e3a' },
@@ -501,10 +530,10 @@ function WalkInSalesTab() {
                       const isAct = customerType === opt.type;
                       return (
                         <button key={opt.type} type="button" onClick={() => wiSetCustomerType(opt.type)}
-                          style={{ padding: '11px 8px', border: isAct ? `2.5px solid ${opt.activeBorder}` : '1.5px solid #ede8e8', borderRadius: 12, background: isAct ? opt.activeBg : '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'all .15s', boxShadow: isAct ? `0 3px 10px ${opt.activeBorder}33` : 'none' }}>
-                          <div style={{ fontSize: '1.3rem', marginBottom: 3 }}>{opt.icon}</div>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 800, color: isAct ? opt.activeColor : '#374151' }}>{opt.label}</div>
-                          <div style={{ fontSize: '0.67rem', color: isAct ? opt.activeColor : '#94a3b8', marginTop: 1, opacity: 0.8 }}>{opt.sub}</div>
+                          style={{ padding: '10px 8px', border: isAct ? `2.5px solid ${opt.activeBorder}` : '1.5px solid #ede8e8', borderRadius: 12, background: isAct ? opt.activeBg : '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'all .15s', boxShadow: isAct ? `0 3px 10px ${opt.activeBorder}33` : 'none' }}>
+                          <div style={{ fontSize: '1.25rem', marginBottom: 3 }}>{opt.icon}</div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 800, color: isAct ? opt.activeColor : '#374151' }}>{opt.label}</div>
+                          <div style={{ fontSize: '0.64rem', color: isAct ? opt.activeColor : '#94a3b8', marginTop: 1, opacity: 0.8 }}>{opt.sub}</div>
                         </button>
                       );
                     })}
@@ -514,11 +543,11 @@ function WalkInSalesTab() {
                 {/* Member or New Customer details */}
                 {customerType === 'registered' ? (
                   <div>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
                     <div style={{ position: 'relative' }}>
                       <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
                       <input type="text" value={regSearch} placeholder="Search by name or NB#…" onChange={e => searchRegistered(e.target.value)}
-                        style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', background: '#fff', outline: 'none' }} />
+                        style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', background: '#fff', outline: 'none' }} />
                       {regResults.length > 0 && (
                         <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 28px rgba(196,30,58,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
                           {regResults.map(d => (
@@ -532,10 +561,10 @@ function WalkInSalesTab() {
                       )}
                     </div>
                     {selectedReg && (
-                      <div style={{ marginTop: 8, padding: '10px 13px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #f9a8b4', borderRadius: 10, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ marginTop: 8, padding: '10px 12px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #f9a8b4', borderRadius: 10, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <div style={{ fontWeight: 800, color: '#9b1c2e' }}>{selectedReg.name}</div>
-                          <div style={{ color: '#c41e3a', fontSize: '0.75rem', marginTop: 2 }}>NB#{selectedReg.nb_number} &nbsp;·&nbsp; {selectedReg.phone || '—'}</div>
+                          <div style={{ color: '#c41e3a', fontSize: '0.74rem', marginTop: 2 }}>NB#{selectedReg.nb_number} · {selectedReg.phone || '—'}</div>
                         </div>
                         <button type="button" onClick={clearRegistered} style={{ border: 'none', background: '#fecaca', color: '#c41e3a', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
                       </div>
@@ -543,20 +572,19 @@ function WalkInSalesTab() {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Details</div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Customer Details</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
-                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none' }} />
+                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }} />
                       <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone number (optional)"
-                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none' }} />
+                        style={{ padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }} />
                     </div>
-
-                    <div style={{ marginTop: 14, padding: '13px', background: '#fffbeb', borderRadius: 11, border: '1.5px solid #fcd34d' }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 8 }}>Referral Distributor</div>
+                    <div style={{ marginTop: 12, padding: '12px', background: '#fffbeb', borderRadius: 11, border: '1.5px solid #fcd34d' }}>
+                      <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 8 }}>Referral Distributor</div>
                       <div style={{ position: 'relative' }}>
                         <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#f59e0b', fontSize: '0.9rem', pointerEvents: 'none', opacity: noReferral ? 0.4 : 1 }}>🔍</div>
                         <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB#…" disabled={noReferral}
-                          style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.87rem', boxSizing: 'border-box', outline: 'none', opacity: noReferral ? 0.5 : 1, background: noReferral ? '#fef9ee' : '#fff' }} />
+                          style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none', opacity: noReferral ? 0.5 : 1, background: noReferral ? '#fef9ee' : '#fff' }} />
                         {referralResults.length > 0 && !noReferral && (
                           <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 170, overflowY: 'auto', boxShadow: '0 8px 28px rgba(245,158,11,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
                             {referralResults.map(d => (
@@ -578,7 +606,7 @@ function WalkInSalesTab() {
                           <button type="button" onClick={clearReferral} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
                         </div>
                       )}
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.82rem', cursor: 'pointer', color: '#92400e', userSelect: 'none' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.8rem', cursor: 'pointer', color: '#92400e', userSelect: 'none' }}>
                         <input type="checkbox" checked={noReferral} onChange={e => toggleNoReferral(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#c41e3a' }} />
                         No referral — direct walk-in
                       </label>
@@ -586,17 +614,17 @@ function WalkInSalesTab() {
                   </div>
                 )}
 
-                {/* Payment Method */}
+                {/* Payment Method — large 2×2 icon tiles */}
                 <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Payment Method</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Payment Method</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {paymentMethods.map(m => {
                       const isAct = paymentMethod === m.id;
                       return (
                         <button key={m.id} type="button" onClick={() => setPaymentMethod(m.id)}
-                          style={{ padding: '11px 6px', border: isAct ? '2.5px solid #c41e3a' : '1.5px solid #ede8e8', borderRadius: 11, background: isAct ? '#fff0f3' : '#fafafa', cursor: 'pointer', fontSize: '0.82rem', fontWeight: isAct ? 800 : 400, color: isAct ? '#c41e3a' : '#374151', transition: 'all .15s', textAlign: 'center', boxShadow: isAct ? '0 2px 8px rgba(196,30,58,0.15)' : 'none' }}>
-                          <div style={{ fontSize: '1.2rem', marginBottom: 3 }}>{m.icon}</div>
-                          {m.label}
+                          style={{ padding: '14px 8px', border: isAct ? '3px solid #c41e3a' : '1.5px solid #e5e7eb', borderRadius: 14, background: isAct ? '#fff0f3' : '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'all .15s', boxShadow: isAct ? '0 4px 14px rgba(196,30,58,0.22)' : '0 1px 3px rgba(0,0,0,0.05)' }}>
+                          <div style={{ fontSize: '1.6rem', marginBottom: 5 }}>{m.icon}</div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: isAct ? 800 : 600, color: isAct ? '#c41e3a' : '#374151' }}>{m.label}</div>
                         </button>
                       );
                     })}
@@ -604,26 +632,39 @@ function WalkInSalesTab() {
                 </div>
               </div>
 
-              {/* RIGHT PANEL — Products + Cart */}
+              {/* ── COL 2: CENTER — PRODUCT CATALOG ── */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, background: '#f9f5f5' }}>
 
-                {/* Products header */}
-                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0e8ea', background: '#fff', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {/* Search + price badge */}
+                <div style={{ padding: '12px 16px 0', background: '#fff', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                       <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
                       <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…"
                         style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
-                    <span style={{ fontSize: '0.78rem', padding: '6px 14px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1.5px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
+                    <span style={{ fontSize: '0.76rem', padding: '6px 12px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1.5px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
                       {isMember ? '🏅 DP Price' : '👤 CP Price'}
                     </span>
+                  </div>
+
+                  {/* Category filter tabs */}
+                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
+                    {productCategories.map(cat => {
+                      const isActive = productCategory === cat;
+                      return (
+                        <button key={cat} type="button" onClick={() => setProductCategory(cat)}
+                          style={{ padding: '5px 14px', borderRadius: 20, border: isActive ? '2px solid #c41e3a' : '1.5px solid #e5e7eb', background: isActive ? '#c41e3a' : '#fff', color: isActive ? '#fff' : '#374151', fontSize: '0.78rem', fontWeight: isActive ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s', flexShrink: 0 }}>
+                          {cat}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Product grid */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 10 }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 }}>
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
                     ) : filteredProducts.slice(0, 80).map(p => {
@@ -632,80 +673,117 @@ function WalkInSalesTab() {
                         : (isMember ? (p.dp || p.price) : (p.cp || p.price));
                       const inCart = cart.find(c => c.id === p.id);
                       const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
-                      const borderColor = inCart ? '#c41e3a' : p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#f0e8ea';
-                      const bgColor = inCart ? '#fff0f3' : p.isCheckup ? '#f0fdfa' : p.isPackage ? '#eff6ff' : '#fff';
+                      const accentColor = p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#c41e3a';
+                      const isAdding = addedProductId === p.id;
                       return (
-                        <button key={p.id} onClick={() => addToCart(p)} type="button"
-                          style={{ padding: '12px 11px', border: inCart ? `2.5px solid ${borderColor}` : `1.5px solid ${borderColor}`, borderRadius: 13, background: bgColor, cursor: 'pointer', textAlign: 'left', transition: 'all .15s', boxShadow: inCart ? '0 4px 14px rgba(196,30,58,0.18)' : '0 1px 4px rgba(196,30,58,0.04)', position: 'relative' }}>
-                          {inCart && (
-                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#c41e3a', color: '#fff', borderRadius: '50%', width: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{inCart.qty}</div>
+                        <div key={p.id} style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', boxShadow: inCart ? `0 4px 16px ${accentColor}30` : '0 1px 4px rgba(0,0,0,0.06)', border: inCart ? `2px solid ${accentColor}` : '1.5px solid #eee', background: '#fff', transform: isAdding ? 'scale(0.97)' : 'scale(1)', transition: 'transform 0.2s ease, box-shadow .15s, border .15s' }}>
+                          {/* Accent strip on left */}
+                          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accentColor, borderRadius: '14px 0 0 14px' }} />
+                          {/* BV badge top-right */}
+                          {p.bv > 0 && (
+                            <div style={{ position: 'absolute', top: 7, right: 7, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.62rem', fontWeight: 800 }}>{p.bv} BV</div>
                           )}
-                          {p.isCheckup && !inCart && (
-                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#0d9488', color: '#fff', borderRadius: 6, padding: '1px 5px', fontSize: '0.6rem', fontWeight: 800 }}>CHECK</div>
-                          )}
-                          {p.isPackage && !inCart && !p.isCheckup && (
-                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#3b82f6', color: '#fff', borderRadius: 6, padding: '1px 5px', fontSize: '0.6rem', fontWeight: 800 }}>PKG</div>
-                          )}
-                          <div style={{ fontWeight: 600, color: p.isCheckup ? '#0d9488' : '#1e293b', marginBottom: 7, lineHeight: 1.35, fontSize: '0.82rem', paddingRight: 28 }}>{p.name || p.description}</div>
-                          {p.isCheckup && <div style={{ fontSize: '0.65rem', color: '#0d9488', marginBottom: 4 }}>🩺 Health Check Service</div>}
-                          {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.65rem', color: '#1d4ed8', marginBottom: 4 }}>📦 {p.components?.length || 0}-product bundle</div>}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                            <span style={{ fontWeight: 900, color: p.isCheckup ? '#0d9488' : '#c41e3a', fontSize: '0.95rem' }}>{formatCurrency(price)}</span>
-                            {p.bv > 0 && <span style={{ fontSize: '0.67rem', color: '#d97706', fontWeight: 700, background: '#fffbeb', padding: '1px 5px', borderRadius: 8 }}>{p.bv} BV</span>}
-                          </div>
-                          {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.68rem', color: '#166534', marginTop: 4, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback to distributor</div>}
-                          {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', marginTop: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Cart */}
-                <div style={{ flexShrink: 0, borderTop: '2px solid #f0e8ea', background: '#fff' }}>
-                  <div style={{ padding: '10px 18px', fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', borderBottom: '1px solid #f9f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Shopping Cart</span>
-                    {cart.length > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{cart.length} item{cart.length !== 1 ? 's' : ''}</span>}
-                  </div>
-                  <div style={{ maxHeight: 190, overflowY: 'auto', padding: '6px 18px' }}>
-                    {cart.length === 0 ? (
-                      <p style={{ color: '#c4a0a7', textAlign: 'center', padding: '18px 0', fontSize: '0.85rem' }}>No items yet — select products above</p>
-                    ) : cartData.items.map(item => {
-                      const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
-                      return (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #fdf5f5', gap: 8 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name || item.description}</div>
-                            {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.7rem', color: '#0891b2', fontWeight: 600 }}>+{formatCurrency(lineProfit)} profit</div>}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{item.qty}</span>
-                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                            <span style={{ fontWeight: 800, color: '#1e293b', minWidth: 68, textAlign: 'right', fontSize: '0.9rem' }}>{formatCurrency(item.lineTotal)}</span>
-                            <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem' }}>×</button>
+                          <div style={{ padding: '12px 12px 10px 16px' }}>
+                            <div style={{ fontWeight: 700, color: p.isCheckup ? '#0d9488' : '#1e293b', lineHeight: 1.35, fontSize: '0.82rem', marginBottom: 4, paddingRight: p.bv > 0 ? 36 : 4 }}>{p.name || p.description}</div>
+                            {p.isCheckup && <div style={{ fontSize: '0.62rem', color: '#0d9488', marginBottom: 3 }}>🩺 Health Check</div>}
+                            {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.62rem', color: '#1d4ed8', marginBottom: 3 }}>📦 {p.components?.length || 0}-product bundle</div>}
+                            <div style={{ fontWeight: 900, color: accentColor, fontSize: '1.05rem', marginBottom: 6 }}>{formatCurrency(price)}</div>
+                            {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.65rem', color: '#166534', marginBottom: 4, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback</div>}
+                            {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.65rem', color: '#0891b2', marginBottom: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
+                            <button type="button" onClick={() => addToCart(p)}
+                              style={{ width: '100%', padding: '7px 0', borderRadius: 9, border: 'none', background: inCart ? accentColor : `${accentColor}18`, color: inCart ? '#fff' : accentColor, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                              {inCart ? (
+                                <><span style={{ fontWeight: 900 }}>{inCart.qty}</span> in cart — add more</>
+                              ) : '＋ Add'}
+                            </button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
+                </div>
+              </div>
 
-                  {/* Cart footer / totals bar */}
-                  <div style={{ padding: '13px 18px', background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {isMember && cartData.totalBV > 0 && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>BV: <strong style={{ color: '#fbbf24' }}>{cartData.totalBV.toFixed(1)}</strong></div>}
-                      {!isMember && branchProfit > 0 && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>Profit: <strong style={{ color: '#86efac' }}>{formatCurrency(branchProfit)}</strong></div>}
-                      <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Total: <span style={{ color: '#ffd0d8' }}>{formatCurrency(cartData.totalAmount)}</span></div>
+              {/* ── COL 3: RIGHT — STICKY CART PANEL ── */}
+              <div style={{ width: 300, flexShrink: 0, borderLeft: '1px solid #f0e8ea', background: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+                {/* Cart header with badge */}
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid #f5eded', background: '#fafafa', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '1.1rem' }}>🛒</span>
+                  <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>Cart</span>
+                  {cart.length > 0 && (
+                    <span style={{ background: '#c41e3a', color: '#fff', borderRadius: '50%', minWidth: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{cart.length}</span>
+                  )}
+                </div>
+
+                {/* Cart items — scrollable */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '6px 14px' }}>
+                  {cart.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '36px 16px', color: '#c4a0a7' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: 8 }}>🛍️</div>
+                      <div style={{ fontSize: '0.85rem' }}>No items yet</div>
+                      <div style={{ fontSize: '0.75rem', marginTop: 4, opacity: 0.7 }}>Select products from the catalog</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={closeModal} style={{ padding: '9px 16px', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: '0.84rem' }}>Cancel</button>
-                      <button type="button" onClick={wiReviewSale} style={{ padding: '9px 22px', border: 'none', borderRadius: 10, background: '#fff', color: '#c41e3a', fontWeight: 800, cursor: 'pointer', fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(0,0,0,0.2)', letterSpacing: '0.01em' }}>
-                        Review Sale →
-                      </button>
+                  ) : cartData.items.map(item => {
+                    const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
+                    return (
+                      <div key={item.id} style={{ padding: '10px 0', borderBottom: '1px solid #fdf5f5' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                          <div style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem', lineHeight: 1.3 }}>{item.name || item.description}</div>
+                            {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', fontWeight: 600, marginTop: 1 }}>+{formatCurrency(lineProfit)} profit</div>}
+                          </div>
+                          <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', flexShrink: 0 }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                            <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{item.qty}</span>
+                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                          </div>
+                          <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.88rem' }}>{formatCurrency(item.lineTotal)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Cart sticky footer */}
+                <div style={{ flexShrink: 0, borderTop: '2px solid #f0e8ea' }}>
+                  {cart.length > 0 && (
+                    <div style={{ padding: '10px 16px', background: '#fdf7f8', borderBottom: '1px solid #f5eded' }}>
+                      {isMember && cartData.totalBV > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 4 }}>
+                          <span style={{ color: '#6b7280' }}>Total BV</span>
+                          <span style={{ fontWeight: 800, color: '#d97706' }}>{cartData.totalBV.toFixed(1)} BV</span>
+                        </div>
+                      )}
+                      {!isMember && branchProfit > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 4 }}>
+                          <span style={{ color: '#6b7280' }}>Branch Profit</span>
+                          <span style={{ fontWeight: 800, color: '#059669' }}>{formatCurrency(branchProfit)}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#374151' }}>Total</span>
+                        <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#c41e3a' }}>{formatCurrency(cartData.totalAmount)}</span>
+                      </div>
                     </div>
+                  )}
+                  <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <button type="button" onClick={wiReviewSale}
+                      style={{ width: '100%', padding: '12px 0', border: 'none', borderRadius: 12, background: cart.length === 0 ? '#e5e7eb' : 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', color: cart.length === 0 ? '#9ca3af' : '#fff', fontWeight: 800, cursor: cart.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.92rem', boxShadow: cart.length > 0 ? '0 4px 14px rgba(196,30,58,0.3)' : 'none', letterSpacing: '0.01em', transition: 'all .15s' }}
+                      disabled={cart.length === 0}>
+                      Review Sale →
+                    </button>
+                    <button type="button" onClick={closeModal}
+                      style={{ width: '100%', padding: '9px 0', border: '1.5px solid #e5e7eb', borderRadius: 12, background: '#fff', color: '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                      Cancel
+                    </button>
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
