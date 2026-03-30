@@ -461,7 +461,7 @@ async function handleReceive(body, currentUser) {
       createdBy,
     });
 
-    const inventory = await getInventoryByBranch(branchId);
+    const inventory = await getInventoryByBranch(branchId, true);
     return { inventory, movement };
   });
 
@@ -550,7 +550,7 @@ async function handleTransfer(body, currentUser) {
       createdBy,
     });
 
-    const inventory = await getInventoryByBranch(fromBranchId);
+    const inventory = await getInventoryByBranch(fromBranchId, true);
     return { inventory, movements: [movementOut, movementIn] };
   });
 
@@ -601,7 +601,7 @@ async function handleAdjustment(body, currentUser) {
       createdBy,
     });
 
-    const inventory = await getInventoryByBranch(branchId);
+    const inventory = await getInventoryByBranch(branchId, true);
     return { inventory, movement };
   });
 
