@@ -20,28 +20,95 @@ const ROLE_PORTAL_ACCESS = {
   training: ['training', 'distributor'],
 };
 
+const SESSION_ALIVE_KEY = 'dyna_session_alive';
+const VERSION_KEY = 'dyna_app_version';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [systemUpdated, setSystemUpdated] = useState(false);
+  const [postLoginNotifications, setPostLoginNotifications] = useState([]);
+  const [showLoginAfterRefresh, setShowLoginAfterRefresh] = useState(false);
 
   useEffect(() => {
-    api.auth.me()
-      .then(data => {
-        if (data.user) setUser(data.user);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const isRefresh = sessionStorage.getItem(SESSION_ALIVE_KEY) === 'true';
+
+    if (isRefresh) {
+      api.auth.logout().catch(() => {});
+      sessionStorage.removeItem(SESSION_ALIVE_KEY);
+
+      api.version.check()
+        .then(data => {
+          if (data?.version) {
+            const cachedVersion = sessionStorage.getItem(VERSION_KEY);
+            if (cachedVersion && cachedVersion !== data.version) {
+              setSystemUpdated(true);
+            }
+            sessionStorage.setItem(VERSION_KEY, data.version);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setShowLoginAfterRefresh(true);
+          setLoading(false);
+        });
+    } else {
+      sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
+
+      api.version.check()
+        .then(data => {
+          if (data?.version) {
+            sessionStorage.setItem(VERSION_KEY, data.version);
+          }
+        })
+        .catch(() => {});
+
+      api.auth.me()
+        .then(data => {
+          if (data.user) setUser(data.user);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
   }, []);
 
   const login = useCallback(async (username, password) => {
     const data = await api.auth.login(username, password);
-    setUser(data.user);
-    return data.user;
+    const loggedInUser = data.user;
+    const previousLastLogin = data.user?.previousLastLogin || null;
+
+    sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
+    setSystemUpdated(false);
+    setShowLoginAfterRefresh(false);
+    setUser(loggedInUser);
+
+    if (previousLastLogin && loggedInUser) {
+      const recipientId = loggedInUser.username || loggedInUser.id;
+      api.notifications.listSince(recipientId, previousLastLogin)
+        .then(notifications => {
+          if (Array.isArray(notifications) && notifications.length > 0) {
+            setPostLoginNotifications(notifications);
+          }
+        })
+        .catch(() => {});
+    }
+
+    return loggedInUser;
   }, []);
 
   const logout = useCallback(async () => {
     await api.auth.logout();
+    sessionStorage.removeItem(SESSION_ALIVE_KEY);
     setUser(null);
+    setPostLoginNotifications([]);
+  }, []);
+
+  const dismissPostLoginNotifications = useCallback(() => {
+    setPostLoginNotifications([]);
+  }, []);
+
+  const dismissSystemUpdated = useCallback(() => {
+    setSystemUpdated(false);
   }, []);
 
   const hasPortalAccess = useCallback((portalId) => {
@@ -61,7 +128,19 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasPortalAccess, getAccessiblePortals }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      login,
+      logout,
+      hasPortalAccess,
+      getAccessiblePortals,
+      systemUpdated,
+      dismissSystemUpdated,
+      postLoginNotifications,
+      dismissPostLoginNotifications,
+      showLoginAfterRefresh,
+    }}>
       {children}
     </AuthContext.Provider>
   );

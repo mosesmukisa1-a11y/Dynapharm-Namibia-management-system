@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Modal, Input, Button, Alert } from './ui';
 import { BRANCHES } from '../lib/constants';
+import { RefreshCw } from 'lucide-react';
 
 const DEPARTMENTS = ['Operations', 'Sales', 'Finance', 'Human Resources', 'IT', 'Warehouse', 'Health Services', 'Marketing', 'Administration'];
 const WAREHOUSES = ['Windhoek Warehouse', 'Ondangwa Warehouse'];
@@ -24,6 +25,7 @@ export function LoginModal({ open, onClose }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [regStep, setRegStep] = useState(1);
+  const { systemUpdated, dismissSystemUpdated } = useAuth();
   const [regForm, setRegForm] = useState({
     username: '', fullName: '', dob: '', role: 'frontdesk', password: '', confirmPassword: '',
     position: '', department: '', branch: '', warehouseRole: 'stock', warehouseLocation: '',
@@ -148,6 +150,15 @@ export function LoginModal({ open, onClose }) {
 
       {tab === 'login' ? (
         <form onSubmit={handleLogin} className="px-6 pb-6 space-y-4">
+          {systemUpdated && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
+              <RefreshCw size={15} className="mt-0.5 shrink-0 text-blue-500" />
+              <div className="flex-1">
+                <span className="font-semibold">System updated.</span> A new version of the system has been deployed. Please log in to continue.
+              </div>
+              <button type="button" onClick={dismissSystemUpdated} className="text-blue-400 hover:text-blue-600 ml-1 shrink-0">&#x2715;</button>
+            </div>
+          )}
           {error && <Alert type="error">{error}</Alert>}
           <Input label="Username" value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter your username" required autoFocus />
           <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" required />

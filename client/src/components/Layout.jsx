@@ -3,10 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { PORTALS } from '../lib/constants';
 import { LogOut, Menu, X } from 'lucide-react';
 import * as Icons from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { LoginModal } from './LoginModal';
 import { DistributorLoginModal } from './DistributorLoginModal';
+import { PostLoginUpdates } from './PostLoginUpdates';
 
 function PortalIcon({ name, size = 18 }) {
   const Icon = Icons[name];
@@ -14,12 +15,18 @@ function PortalIcon({ name, size = 18 }) {
 }
 
 export function Layout() {
-  const { user, logout, getAccessiblePortals } = useAuth();
+  const { user, logout, getAccessiblePortals, showLoginAfterRefresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [distributorLoginOpen, setDistributorLoginOpen] = useState(false);
+
+  useEffect(() => {
+    if (showLoginAfterRefresh) {
+      setLoginOpen(true);
+    }
+  }, [showLoginAfterRefresh]);
 
   const accessiblePortals = getAccessiblePortals();
   const visiblePortals = PORTALS.filter(p => accessiblePortals.includes(p.id));
@@ -127,6 +134,7 @@ export function Layout() {
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
       <DistributorLoginModal open={distributorLoginOpen} onClose={() => setDistributorLoginOpen(false)} />
+      <PostLoginUpdates />
     </div>
   );
 }

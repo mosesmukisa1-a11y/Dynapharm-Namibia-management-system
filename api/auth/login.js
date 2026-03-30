@@ -104,9 +104,13 @@ export default async function handler(req, res) {
     const token = createAuthToken(payload);
     setAuthCookie(res, token);
 
+    const previousLastLogin = user.last_login || null;
     await query('UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1', [user.id]);
 
-    return res.status(200).json({ success: true, user: sanitizeUser(user) });
+    const sanitized = sanitizeUser(user);
+    sanitized.previousLastLogin = previousLastLogin;
+
+    return res.status(200).json({ success: true, user: sanitized });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Internal server error' });

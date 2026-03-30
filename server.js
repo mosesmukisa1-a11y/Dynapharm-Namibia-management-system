@@ -8,6 +8,14 @@ const HOST = process.env.HOST || '0.0.0.0';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEPLOY_VERSION = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const VERSION_FILE = path.join(__dirname, 'version.json');
+try {
+  fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: DEPLOY_VERSION, deployedAt: new Date().toISOString() }), 'utf8');
+} catch (e) {
+  console.warn('Could not write version.json:', e.message);
+}
+
 const app = express();
 
 app.disable('x-powered-by');
@@ -77,6 +85,7 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/reports/branch-sales',
   '/api/jobs/',
   '/api/hr/',
+  '/api/version',
 ];
 
 function isPublicRoute(routePath) {

@@ -98,9 +98,15 @@ export const api = {
   },
 
   notifications: {
-    list: () => api.get('/notifications'),
+    list: (params = '') => api.get(`/notifications${params ? '?' + params : ''}`),
+    listSince: (recipientId, since) => api.get(`/notifications?recipient_id=${encodeURIComponent(recipientId)}&since=${encodeURIComponent(since)}`),
     create: (data) => api.post('/notifications', data),
-    markRead: (id) => api.put(`/notifications/${id}`, { read: true }),
+    markRead: (id, recipientId) => request('/notifications', { method: 'PUT', body: { id, recipient_id: recipientId, read: true } }),
+    markAllRead: (recipientId) => request('/notifications', { method: 'PUT', body: { markAllRead: true, recipient_id: recipientId } }),
+  },
+
+  version: {
+    check: () => api.get('/version'),
   },
 
   stock: {

@@ -39,6 +39,7 @@ export default async function handler(req, res) {
     const id = searchParams.get('id');
     const recipientId = searchParams.get('recipient_id');
     const unreadOnly = searchParams.get('unread') === 'true';
+    const since = searchParams.get('since');
 
     if (method === 'GET') {
       if (!req.user && !recipientId) {
@@ -58,6 +59,10 @@ export default async function handler(req, res) {
       if (id) {
         params.push(id);
         conditions.push(`id = $${params.length}`);
+      }
+      if (since) {
+        params.push(new Date(since).toISOString());
+        conditions.push(`created_at > $${params.length}`);
       }
 
       if (conditions.length > 0) {
