@@ -13,6 +13,17 @@ export const PORTALS = [
   { id: 'training', label: 'Training', icon: 'GraduationCap', color: '#e91e63' },
 ];
 
+const WINDHOEK_CBD_ALIASES = ['windhoek_cbd', 'windhoek', 'cbd', 'cdb'];
+export const CANONICAL_WINDHOEK_CBD = 'townshop';
+
+export function normalizeBranchSlug(slug) {
+  if (!slug || typeof slug !== 'string') return null;
+  const lower = slug.trim().toLowerCase();
+  if (!lower) return null;
+  if (WINDHOEK_CBD_ALIASES.includes(lower) || lower === 'townshop') return CANONICAL_WINDHOEK_CBD;
+  return lower;
+}
+
 export const BRANCH_DETAILS = [
   { id: 'townshop',      name: 'Windhoek CBD',  address: '269 Independence Avenue, Shop No 1, Continental Building', phone: '+264 817499757', region: 'Khomas' },
   { id: 'tsumeb',        name: 'Tsumeb',         address: 'Shop No 35B, Erf 35, Maria Nehoya Street', phone: '+264 814757074', region: 'Oshikoto' },
@@ -44,6 +55,7 @@ export function getBranchDisplayName(idOrName) {
   const direct = BRANCH_ID_TO_NAME[idOrName];
   if (direct) return direct;
   const lower = idOrName.toLowerCase();
+  if (WINDHOEK_CBD_ALIASES.includes(lower)) return 'Windhoek CBD';
   const byLower = BRANCH_ID_TO_NAME[lower];
   if (byLower) return byLower;
   const byName = BRANCH_NAME_TO_ID[lower];

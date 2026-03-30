@@ -6,6 +6,7 @@ import {
   setAuthCookie,
   sanitizeUser
 } from '../_lib/auth.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 async function parseRequestBody(req) {
   if (req.body) {
@@ -78,11 +79,25 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    const BRANCH_REQUIRED_ROLES = new Set(['consultant', 'frontdesk', 'dispenser', 'branch_manager']);
+    const normalizedBranch = normalizeBranchSlug(user.branch);
+
+    if (!normalizedBranch && BRANCH_REQUIRED_ROLES.has(user.role)) {
+      return res.status(403).json({
+        error: 'Your account does not have a branch assigned. Please contact your administrator to assign a branch before logging in.'
+      });
+    }
+
+    if (normalizedBranch && normalizedBranch !== user.branch) {
+      await query('UPDATE users SET branch = $1, updated_at = NOW() WHERE id = $2', [normalizedBranch, user.id]);
+      user.branch = normalizedBranch;
+    }
+
     const payload = {
       sub: user.id,
       username: user.username,
       role: user.role,
-      branch: user.branch || null,
+      branch: normalizedBranch || null,
       branches: user.branches || [],
     };
 

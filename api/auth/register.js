@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getOne, insert } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 const VALID_ROLES = [
   'frontdesk',
@@ -139,7 +140,8 @@ export default async function handler(req, res) {
 
     const warehouseLocation = body?.warehouse_location?.trim() || null;
     const warehouseRole = body?.warehouse_role?.trim() || null;
-    const effectiveBranch = (['stock', 'warehouse'].includes(role) && warehouseLocation) ? warehouseLocation : (branch || null);
+    const rawEffectiveBranch = (['stock', 'warehouse'].includes(role) && warehouseLocation) ? warehouseLocation : (branch || null);
+    const effectiveBranch = normalizeBranchSlug(rawEffectiveBranch) || rawEffectiveBranch || null;
 
     const metadata = JSON.stringify({ dob, position, department, branch: effectiveBranch, phone, id_number: idNumber, gender, address, warehouse_location: warehouseLocation, warehouse_role: warehouseRole });
 

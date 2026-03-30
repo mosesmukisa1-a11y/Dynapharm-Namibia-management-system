@@ -1,10 +1,11 @@
-import { getOne } from '../db.js';
+import { getOne, query } from '../db.js';
 import {
   applyAuthCors,
   getTokenFromRequest,
   verifyAuthToken,
   sanitizeUser,
 } from '../_lib/auth.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -33,6 +34,12 @@ export default async function handler(req, res) {
 
     if (!user || user.is_active === false) {
       return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const normalizedBranch = normalizeBranchSlug(user.branch);
+    if (normalizedBranch && normalizedBranch !== user.branch) {
+      await query('UPDATE users SET branch = $1, updated_at = NOW() WHERE id = $2', [normalizedBranch, user.id]);
+      user.branch = normalizedBranch;
     }
 
     return res.status(200).json({ success: true, user: sanitizeUser(user) });

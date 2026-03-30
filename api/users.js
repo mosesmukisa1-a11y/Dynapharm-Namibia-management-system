@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { query, getMany, getOne } from './db.js';
 import { applyAuthCors, sanitizeUser } from './_lib/auth.js';
+import { normalizeBranchSlug, normalizeBranchArray } from './_lib/branchUtils.js';
 
 function parseBranches(value) {
   if (!value) return [];
@@ -103,9 +104,10 @@ async function handlePost(req, res) {
     return res.status(409).json({ error: 'Username already exists' });
   }
 
-  const branches = parseBranches(body.branches);
+  const branches = normalizeBranchArray(parseBranches(body.branches));
   const passwordHash = await bcrypt.hash(password, 10);
   const id = body.id || generateUserId();
+  const normalizedBranch = normalizeBranchSlug(body.branch);
 
   const result = await query(
     `INSERT INTO users (
@@ -126,7 +128,7 @@ async function handlePost(req, res) {
       body.fullName || body.full_name || null,
       body.email || null,
       body.phone || null,
-      body.branch || null,
+      normalizedBranch,
       JSON.stringify(branches),
       body.isActive,
       body.mustChangePassword,
@@ -185,13 +187,22 @@ async function handlePut(req, res) {
   }
 
   if (body.branch !== undefined) {
-    updates.push(`branch = $${updates.length + 1}`);
-    params.push(body.branch);
+    const normalizedBranch = normalizeBranchSlug(body.branch);
+    if (normalizedBranch) {
+      updates.push(`branch = $${updates.length + 1}`);
+      params.push(normalizedBranch);
+    }
   }
 
   if (body.branches !== undefined) {
-    updates.push(`branches = $${updates.length + 1}::jsonb`);
-    params.push(JSON.stringify(parseBranches(body.branches)));
+    const normalizedBranches = normalizeBranchArray(parseBranches(body.branches));
+    if (normalizedBranches.length > 0) {
+      updates.push(`branches = $${updates.length + 1}::jsonb`);
+      params.push(JSON.stringify(normalizedBranches));
+    } else if (body.branches !== undefined && Array.isArray(body.branches) && body.branches.length === 0) {
+      updates.push(`branches = $${updates.length + 1}::jsonb`);
+      params.push(JSON.stringify([]));
+    }
   }
 
   if (body.isActive !== undefined) {
