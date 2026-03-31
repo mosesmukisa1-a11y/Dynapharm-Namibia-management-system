@@ -853,8 +853,8 @@ function ApprovalsTab() {
                               <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
                                 <td className="py-1.5 px-2 border-b font-medium">{it.productName || it.productId}</td>
                                 <td className="py-1.5 px-2 border-b text-gray-600">{it.batchNo || '—'}</td>
-                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#666' }}>
-                                  {it.expiryDate ? fmtDate(it.expiryDate) : '—'}
+                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : it.expiryDate ? '#666' : '#9ca3af' }}>
+                                  {it.expiryDate ? fmtDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}
                                 </td>
                                 <td className="py-1.5 px-2 border-b text-right font-bold">{it.quantity}</td>
                                 <td className="py-1.5 px-2 border-b text-gray-600">{it.unit || 'units'}</td>
@@ -944,7 +944,7 @@ function ApprovalsTab() {
                     <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500 }}>{it.productName || it.productId}</td>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13 }}>{it.batchNo || '—'}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13 }}>{it.expiryDate ? fmtDate(it.expiryDate) : '—'}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, color: it.expiryDate ? 'inherit' : '#9ca3af' }}>{it.expiryDate ? fmtDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}</td>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, textAlign: 'center', color: '#9ca3af' }}>{it.quantity}</td>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
                         <input type="number" min="0" max={it.quantity} value={it.quantityApproved}

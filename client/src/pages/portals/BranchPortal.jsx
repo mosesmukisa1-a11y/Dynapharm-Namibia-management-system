@@ -3371,8 +3371,8 @@ function BranchStockTab() {
                               <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
                                 <td className="py-1.5 px-2 border-b font-medium">{it.productName || it.productId}</td>
                                 <td className="py-1.5 px-2 border-b text-gray-600">{it.batchNo || '—'}</td>
-                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : '#666' }}>
-                                  {it.expiryDate ? formatDate(it.expiryDate) : '—'}
+                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : it.expiryDate ? '#666' : '#9ca3af' }}>
+                                  {it.expiryDate ? formatDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}
                                 </td>
                                 <td className="py-1.5 px-2 border-b text-right font-bold">
                                   {isAmended && it.quantityApproved != null ? it.quantityApproved : it.quantity}

@@ -123,13 +123,49 @@ function parseItems(items, keepZeroQty = false) {
   return items.map(normalizeTransferItem).filter(Boolean).filter((item) => keepZeroQty ? item.quantity >= 0 : item.quantity > 0);
 }
 
+async function enrichItemsWithBatchExpiry(items) {
+  const batchNosNeedingLookup = [...new Set(
+    items
+      .filter(item => item.batchNo && !item.expiryDate)
+      .map(item => item.batchNo)
+  )];
+
+  if (batchNosNeedingLookup.length === 0) return items;
+
+  let batchExpiryMap = {};
+  try {
+    const batchRows = await getMany(
+      `SELECT batch_no, expiry_date FROM stock_batches WHERE batch_no = ANY($1::text[]) AND expiry_date IS NOT NULL`,
+      [batchNosNeedingLookup]
+    );
+    batchRows.forEach(row => {
+      if (row.batch_no && row.expiry_date && !batchExpiryMap[row.batch_no]) {
+        batchExpiryMap[row.batch_no] = row.expiry_date instanceof Date
+          ? row.expiry_date.toISOString().split('T')[0]
+          : row.expiry_date;
+      }
+    });
+  } catch (e) {
+    console.warn('[transfers] Could not look up batch expiry dates:', e.message);
+  }
+
+  return items.map(item => {
+    if (item.batchNo && !item.expiryDate && batchExpiryMap[item.batchNo]) {
+      return { ...item, expiryDate: batchExpiryMap[item.batchNo] };
+    }
+    return item;
+  });
+}
+
 async function replaceTransferItems(transferId, items) {
   await query('DELETE FROM stock_transfer_items WHERE transfer_id = $1', [transferId]);
   if (!Array.isArray(items) || items.length === 0) return;
 
+  const enrichedItems = await enrichItemsWithBatchExpiry(items);
+
   const values = [];
   const params = [];
-  items.forEach((item, index) => {
+  enrichedItems.forEach((item, index) => {
     const position = index * 11;
     values.push(`($${position + 1}, $${position + 2}, $${position + 3}, $${position + 4}, $${position + 5}, $${position + 6}, $${position + 7}, $${position + 8}, $${position + 9}, $${position + 10}, $${position + 11})`);
     params.push(
@@ -168,15 +204,44 @@ async function loadTransferItems(transferIds) {
     `,
     [transferIds]
   );
+
+  // Load-time fallback: collect unique batch_nos where expiry_date is null for secondary lookup
+  const batchNosNeedingLookup = [...new Set(
+    rows
+      .filter(row => row.batch_no && !row.expiry_date)
+      .map(row => row.batch_no)
+  )];
+
+  let batchExpiryFallbackMap = {};
+  if (batchNosNeedingLookup.length > 0) {
+    try {
+      const batchRows = await getMany(
+        `SELECT batch_no, expiry_date FROM stock_batches WHERE batch_no = ANY($1::text[]) AND expiry_date IS NOT NULL`,
+        [batchNosNeedingLookup]
+      );
+      batchRows.forEach(row => {
+        if (row.batch_no && row.expiry_date && !batchExpiryFallbackMap[row.batch_no]) {
+          batchExpiryFallbackMap[row.batch_no] = row.expiry_date instanceof Date
+            ? row.expiry_date.toISOString().split('T')[0]
+            : row.expiry_date;
+        }
+      });
+    } catch (e) {
+      console.warn('[transfers] Could not look up batch expiry dates for load-time fallback:', e.message);
+    }
+  }
+
   const map = new Map();
   rows.forEach((row) => {
+    const storedExpiry = row.expiry_date instanceof Date ? row.expiry_date.toISOString().split('T')[0] : (row.expiry_date || null);
+    const resolvedExpiry = storedExpiry || (row.batch_no ? (batchExpiryFallbackMap[row.batch_no] || null) : null);
     const item = {
       id: row.id,
       transferId: row.transfer_id,
       productId: row.product_id,
       productName: row.product_name,
       batchNo: row.batch_no,
-      expiryDate: row.expiry_date instanceof Date ? row.expiry_date.toISOString().split('T')[0] : (row.expiry_date || null),
+      expiryDate: resolvedExpiry,
       quantity: Number(row.quantity || 0),
       quantityApproved: row.quantity_approved != null ? Number(row.quantity_approved) : null,
       quantityReceived: row.quantity_received != null ? Number(row.quantity_received) : null,

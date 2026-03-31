@@ -352,8 +352,8 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                   <TD style={{ fontWeight: 600 }}>{item.productName || item.product_name || item.productId || '—'}</TD>
                   <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{item.productCode || item.product_code || item.sku || '—'}</TD>
                   <TD style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.batchNo || item.batch_no || '—'}</TD>
-                  <TD style={{ color: isExpiringSoon ? '#dc2626' : '#333', fontWeight: isExpiringSoon ? 700 : 400 }}>
-                    {expiryDate ? fmtDate(expiryDate) : '—'}
+                  <TD style={{ color: isExpiringSoon ? '#dc2626' : expiryDate ? '#333' : '#9ca3af', fontWeight: isExpiringSoon ? 700 : 400 }}>
+                    {expiryDate ? fmtDate(expiryDate) : (item.batchNo || item.batch_no ? 'N/A' : '—')}
                   </TD>
                   <TD>{item.unit || 'units'}</TD>
                   <TD align="right" style={{ fontWeight: 700 }}>{qtyPrep}</TD>

@@ -2433,6 +2433,7 @@ function WarehouseTab({ name }) {
                           ⚠️ No available batches found for this product in the warehouse
                         </div>
                       ) : (
+                        <>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                           <thead>
                             <tr style={{ background: '#f1f5f9' }}>
@@ -2480,6 +2481,12 @@ function WarehouseTab({ name }) {
                             })}
                           </tbody>
                         </table>
+                        {effectiveBatch && !(effectiveBatch.expiry_date || effectiveBatch.expiryDate) && (
+                          <div style={{ padding: '7px 12px', background: '#fffbeb', borderTop: '1px solid #fcd34d', fontSize: '0.78rem', color: '#92400e' }}>
+                            ⚠️ The selected batch has no expiry date on record. The expiry will be looked up automatically from the batch registry at save time — please verify this batch has an expiry date recorded in the system.
+                          </div>
+                        )}
+                        </>
                       )}
                     </div>
                   );
@@ -2564,7 +2571,7 @@ function WarehouseTab({ name }) {
                       <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '6px 12px', fontWeight: 600 }}>{it.productName || it.product_name}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontSize: '0.78rem' }}>{it.batchNo || it.batch_no || '—'}</td>
-                        <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '0.78rem' }}>{it.expiryDate || it.expiry_date ? formatDate(it.expiryDate || it.expiry_date) : '—'}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '0.78rem', color: (it.expiryDate || it.expiry_date) ? 'inherit' : '#9ca3af' }}>{it.expiryDate || it.expiry_date ? formatDate(it.expiryDate || it.expiry_date) : (it.batchNo || it.batch_no ? 'N/A' : '—')}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{it.quantity}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityApproved || it.quantity_approved ? '#d97706' : '#64748b' }}>{it.quantityApproved || it.quantity_approved || '—'}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityReceived || it.quantity_received ? '#16a34a' : '#64748b' }}>{it.quantityReceived || it.quantity_received || '—'}</td>
