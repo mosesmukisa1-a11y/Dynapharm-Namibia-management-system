@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       movParams.push(branchId);
     }
 
-    const [txRows, visitRows, rxProductMovements] = await Promise.all([
+    const [txRows, visitRows, rxProductMovements, walkinSalesRows] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -34,7 +34,6 @@ export default async function handler(req, res) {
         `SELECT * FROM branch_client_visits WHERE checkin_time::date = $1${branchId && branchId !== 'all' ? ' AND branch_id = $2' : ''} ORDER BY checkin_time ASC`,
         branchId && branchId !== 'all' ? [date, branchId] : [date]
       ),
-      // Per-product dispense movements for the day, keyed by reference (form_reference_id)
       getMany(
         `SELECT reference as form_reference_id, product_name, batch_no,
                 SUM(ABS(quantity)) as qty,
@@ -44,7 +43,58 @@ export default async function handler(req, res) {
          GROUP BY reference, product_name, batch_no`,
         movParams
       ),
+      // Also read POS walk-in sales from branch_walkin_sales
+      getMany(
+        `SELECT * FROM branch_walkin_sales
+         WHERE sale_date::date = $1${branchId && branchId !== 'all' ? ' AND branch_id = $2' : ''}
+           AND (status IS NULL OR status NOT IN ('cancelled','voided'))
+         ORDER BY created_at ASC`,
+        branchId && branchId !== 'all' ? [date, branchId] : [date]
+      ),
     ]);
+
+    // IDs already captured via the old manual-capture flow in branch_activity_transactions
+    const alreadyCapturedIds = new Set(
+      txRows
+        .filter(r => ['walkin_sale', 'member_sale', 'non_member_sale'].includes(r.activity_type))
+        .flatMap(r => [r.form_reference_id, r.id].filter(Boolean))
+    );
+
+    // Map branch_walkin_sales rows to the same shape as branch_activity_transactions
+    const walkinSynthetic = walkinSalesRows
+      .filter(s => !alreadyCapturedIds.has(s.id) && !alreadyCapturedIds.has(s.sale_number))
+      .map(s => {
+        let items = [];
+        try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []); } catch {}
+        const ct = (s.customer_type || 'walk_in').toLowerCase();
+        const actType = ct === 'member' ? 'member_sale'
+          : ct === 'non_member' ? 'non_member_sale'
+          : 'walkin_sale';
+        const totalQty = items.reduce((acc, i) => acc + Number(i.quantity || i.qty || 1), 0);
+        const dpTotal = items.reduce((acc, i) =>
+          acc + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+        const saleDateStr = s.sale_date instanceof Date
+          ? s.sale_date.toISOString().slice(0, 10)
+          : String(s.sale_date || '').slice(0, 10);
+        return {
+          id: s.id,
+          branch_id: s.branch_id,
+          activity_type: actType,
+          service_date: saleDateStr,
+          grand_total: Number(s.total || 0),
+          product_total_dp: parseFloat(dpTotal.toFixed(2)),
+          payment_method: s.payment_method || 'cash',
+          payment_status: 'paid',
+          total_qty: totalQty,
+          consultation_fee: 0,
+          client_name: s.customer_name || '',
+          form_reference_id: s.id,
+          _source: 'walkin_sales',
+        };
+      });
+
+    // Merge: activity_transactions + synthetic walkin rows
+    const allTxRows = [...txRows, ...walkinSynthetic];
 
     // Group per-product movements by form_reference_id for Rx detail lookup
     const rxProductMap = {};
@@ -63,12 +113,12 @@ export default async function handler(req, res) {
     const paidRows = (rows) => rows.filter(r => r.payment_status === 'paid');
     const pendingRows = (rows) => rows.filter(r => r.payment_status !== 'paid');
 
-    const consultRows = txRows.filter(r => ['consultation', 'full_body_checkup'].includes(r.activity_type));
-    const walkinRows = txRows.filter(r => r.activity_type === 'walkin_sale');
-    const memberRows = txRows.filter(r => r.activity_type === 'member_sale');
-    const nonMemberRows = txRows.filter(r => r.activity_type === 'non_member_sale');
-    const onlineRows = txRows.filter(r => r.activity_type === 'online_order');
-    const rxRows = txRows.filter(r => r.activity_type === 'prescription_dispensing');
+    const consultRows = allTxRows.filter(r => ['consultation', 'full_body_checkup'].includes(r.activity_type));
+    const walkinRows = allTxRows.filter(r => r.activity_type === 'walkin_sale');
+    const memberRows = allTxRows.filter(r => r.activity_type === 'member_sale');
+    const nonMemberRows = allTxRows.filter(r => r.activity_type === 'non_member_sale');
+    const onlineRows = allTxRows.filter(r => r.activity_type === 'online_order');
+    const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
 
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};
@@ -97,7 +147,6 @@ export default async function handler(req, res) {
 
     const buildRxWithDetail = (rows) => {
       const base = build(rows);
-      // Per-transaction line items with nested per-product detail
       const line_items = rows.map(r => {
         const products = rxProductMap[r.form_reference_id] || [];
         return {
@@ -154,7 +203,6 @@ export default async function handler(req, res) {
     const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal).toFixed(2));
     const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales };
 
-    // Try to attach pre-computed stock snapshot for this date/branch
     let stockSnapshot = null;
     try {
       const snapshotId = branchId && branchId !== 'all'
@@ -189,8 +237,8 @@ export default async function handler(req, res) {
       pending_unposted_records: pendingCapture,
       grand_total: grandTotal,
       total_pending_value: totalPendingValue,
-      total_transactions: txRows.length,
-      total_qty_sold: sum(txRows, 'total_qty'),
+      total_transactions: allTxRows.length,
+      total_qty_sold: sum(allTxRows, 'total_qty'),
       branch_summary: branchSummary,
     });
   } catch (err) {
