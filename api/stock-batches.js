@@ -216,9 +216,9 @@ export default async function handler(req, res) {
           SELECT expiry_date FROM stock_batches cs
           WHERE cs.location = 'country_stock'
             AND LOWER(TRIM(cs.description)) = LOWER(TRIM(sb.description))
-            AND COALESCE(cs.batch_no, '') = COALESCE(sb.batch_no, '')
             AND cs.expiry_date IS NOT NULL
-          ORDER BY cs.import_date ASC LIMIT 1
+          ORDER BY ABS(EXTRACT(EPOCH FROM (cs.import_date - sb.import_date))) ASC
+          LIMIT 1
         ) cs ON sb.expiry_date IS NULL
     `;
 
