@@ -7,7 +7,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRA
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
@@ -191,6 +191,7 @@ export default function BranchPortal() {
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
     { id: 'distributorPerf', label: 'Distributor Performance', icon: '👥' },
     { id: 'salesReview', label: 'Sales Review', icon: '📈' },
+    { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
   ];
 
   return (
@@ -248,6 +249,7 @@ export default function BranchPortal() {
           {activeTab === 'fieldProgram' && <FieldProgramTab />}
           {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
           {activeTab === 'salesReview' && <SalesReviewTab />}
+          {activeTab === 'checkup' && <CheckUpBookingTab />}
         </div>
       </div>
     </PortalBranchContext.Provider>
@@ -6145,6 +6147,640 @@ function FieldProgramTab() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── BODY SYSTEMS for Health Checkup ─── */
+const CHECKUP_BODY_SYSTEMS = [
+  { id: 'cardiovascular', label: 'Cardiovascular System', questions: ['Blood pressure issues', 'Heart palpitations', 'Chest pain', 'Shortness of breath', 'Swollen ankles', 'Numbness in extremities', 'Cold hands/feet'] },
+  { id: 'respiratory', label: 'Respiratory System', questions: ['Chronic cough', 'Difficulty breathing', 'Asthma/allergies', 'Frequent colds', 'Wheezing', 'Sinus problems'] },
+  { id: 'digestive', label: 'Digestive System', questions: ['Stomach pain', 'Bloating/gas', 'Constipation/diarrhea', 'Poor appetite', 'Acid reflux/heartburn', 'Nausea', 'Liver problems'] },
+  { id: 'musculoskeletal', label: 'Musculoskeletal System', questions: ['Joint pain', 'Back pain', 'Muscle weakness', 'Limited mobility', 'Arthritis', 'Bone density concerns'] },
+  { id: 'nervous', label: 'Nervous System', questions: ['Headaches/migraines', 'Dizziness', 'Numbness/tingling', 'Sleep problems', 'Memory issues', 'Stress/anxiety', 'Depression'] },
+  { id: 'endocrine', label: 'Endocrine System', questions: ['Diabetes', 'Thyroid issues', 'Weight changes', 'Fatigue', 'Hormonal imbalance', 'Excessive thirst'] },
+  { id: 'immune', label: 'Immune System', questions: ['Frequent infections', 'Slow healing', 'Allergic reactions', 'Autoimmune conditions', 'HIV/AIDS related', 'Low energy'] },
+  { id: 'urinary', label: 'Urinary System', questions: ['Frequent urination', 'Pain during urination', 'Kidney problems', 'Incontinence', 'Prostate issues'] },
+  { id: 'reproductive', label: 'Reproductive System', questions: ['Menstrual irregularities', 'Fertility concerns', 'Menopause symptoms', 'Sexual health issues'] },
+  { id: 'skin', label: 'Skin & Hair', questions: ['Skin rashes', 'Acne', 'Eczema/psoriasis', 'Hair loss', 'Dry/oily skin', 'Wound healing issues'] },
+];
+
+const CHECKUP_EMPTY_FORM = {
+  fullName: '', phone: '', email: '', dob: '', gender: '',
+  weight: '', height: '',
+  primaryReason: '', waterIntake: '', exerciseFreq: '', sleepHours: '', stressLevel: '',
+  currentMedications: '', allergies: '', medicalHistory: '',
+  symptoms: {}, notes: '', declaration: false,
+};
+
+function CheckUpBookingTab() {
+  const { user } = useAuth();
+  const selectedPortalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = selectedPortalBranch || user?.branch || '';
+  const branchDisplayName = getBranchDisplayName(effectiveBranch) || effectiveBranch;
+
+  const [subTab, setSubTab] = useState('book');
+  const [customerType, setCustomerType] = useState('non-member');
+  const [distributors, setDistributors] = useState([]);
+  const [distributorSearch, setDistributorSearch] = useState('');
+  const [selectedDistributor, setSelectedDistributor] = useState(null);
+  const [referralName, setReferralName] = useState('');
+  const [referralNB, setReferralNB] = useState('');
+  const [form, setForm] = useState({ ...CHECKUP_EMPTY_FORM });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [appointments, setAppointments] = useState([]);
+  const [aptsLoading, setAptsLoading] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState({});
+  const [selectedApt, setSelectedApt] = useState(null);
+  const [aptFilter, setAptFilter] = useState('upcoming');
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const isMember = customerType === 'member';
+  const DEFAULT_REF_NAME = COMPANY_INFO.defaultReferralName || 'Dynapharm Namibia';
+  const DEFAULT_REF_NB = COMPANY_INFO.defaultReferralNB || 'NB005676';
+  const effectiveReferralName = isMember ? (selectedDistributor?.distributor_name || '') : (referralName.trim() || DEFAULT_REF_NAME);
+  const effectiveReferralNB = isMember ? (selectedDistributor?.distributor_code || '') : (referralNB.trim() || DEFAULT_REF_NB);
+
+  const filteredDistributors = distributors.filter(d =>
+    !distributorSearch ||
+    (d.distributor_name || '').toLowerCase().includes(distributorSearch.toLowerCase()) ||
+    (d.distributor_code || '').toLowerCase().includes(distributorSearch.toLowerCase())
+  );
+
+  useEffect(() => {
+    api.distributors.list()
+      .then(data => setDistributors(Array.isArray(data) ? data : data.distributors || []))
+      .catch(() => {});
+  }, []);
+
+  const loadAppointments = () => {
+    setAptsLoading(true);
+    const params = 'type=checkup' + (branchDisplayName ? `&branch=${encodeURIComponent(branchDisplayName)}` : '');
+    api.appointments.list(params)
+      .then(data => setAppointments(Array.isArray(data) ? data : []))
+      .catch(() => setAppointments([]))
+      .finally(() => setAptsLoading(false));
+  };
+
+  useEffect(() => {
+    if (subTab === 'appointments') loadAppointments();
+  }, [subTab, effectiveBranch]);
+
+  const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const toggleSymptom = (system, symptom) => {
+    setForm(prev => {
+      const current = prev.symptoms[system] || [];
+      const updated = current.includes(symptom) ? current.filter(s => s !== symptom) : [...current, symptom];
+      return { ...prev, symptoms: { ...prev.symptoms, [system]: updated } };
+    });
+  };
+
+  const calcBMI = () => {
+    const h = parseFloat(form.height);
+    const w = parseFloat(form.weight);
+    if (!h || !w || h <= 0) return null;
+    return (w / ((h / 100) ** 2)).toFixed(1);
+  };
+  const bmiValue = calcBMI();
+  const bmiCategory = (bmi) => {
+    if (!bmi) return '';
+    const b = parseFloat(bmi);
+    if (b < 18.5) return 'Underweight';
+    if (b < 25) return 'Normal';
+    if (b < 30) return 'Overweight';
+    return 'Obese';
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isMember && !selectedDistributor) { setError('Please select the client\'s NB number'); return; }
+    if (!form.fullName.trim()) { setError('Please enter the client\'s full name'); return; }
+    if (!form.phone.trim()) { setError('Please enter the client\'s phone number'); return; }
+    if (!form.declaration) { setError('Please confirm the client\'s declaration'); return; }
+    setError('');
+    setSubmitting(true);
+    try {
+      const now = new Date();
+      await api.appointments.create({
+        type: 'checkup',
+        full_name: form.fullName,
+        phone: form.phone,
+        email: form.email,
+        date: now.toISOString().split('T')[0],
+        time: now.toTimeString().slice(0, 5),
+        branch: branchDisplayName,
+        notes: form.notes,
+        client_reference: effectiveReferralNB,
+        status: 'pending',
+        data: {
+          customer_type: customerType,
+          membershipStatus: isMember ? 'member' : 'referred',
+          membership_status: isMember ? 'member' : 'referred',
+          gender: form.gender,
+          dob: form.dob,
+          height: form.height,
+          weight: form.weight,
+          bmi: bmiValue,
+          bmi_category: bmiCategory(bmiValue),
+          primary_reason: form.primaryReason,
+          water_intake: form.waterIntake,
+          exercise_freq: form.exerciseFreq,
+          sleep_hours: form.sleepHours,
+          stress_level: form.stressLevel,
+          current_medications: form.currentMedications,
+          allergies: form.allergies,
+          medical_history: form.medicalHistory,
+          symptoms: form.symptoms,
+          referral_name: effectiveReferralName,
+          referral_nb: effectiveReferralNB,
+          booked_by: user?.username || user?.name || 'Branch Staff',
+          branch: branchDisplayName,
+        },
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.message || 'Failed to submit appointment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetForm = () => {
+    setSubmitted(false);
+    setCustomerType('non-member');
+    setSelectedDistributor(null);
+    setDistributorSearch('');
+    setReferralName('');
+    setReferralNB('');
+    setForm({ ...CHECKUP_EMPTY_FORM });
+    setError('');
+  };
+
+  const updateStatus = async (aptId, newStatus) => {
+    setStatusUpdating(prev => ({ ...prev, [aptId]: true }));
+    try {
+      await api.appointments.update(aptId, { status: newStatus });
+      setAppointments(prev => prev.map(a => a.id === aptId ? { ...a, status: newStatus } : a));
+    } catch (err) {
+      alert('Failed to update status: ' + (err.message || 'Unknown error'));
+    } finally {
+      setStatusUpdating(prev => ({ ...prev, [aptId]: false }));
+    }
+  };
+
+  const aptStatusColor = (s) => {
+    switch ((s || '').toLowerCase()) {
+      case 'completed': return { bg: '#dcfce7', color: '#166534' };
+      case 'cancelled': return { bg: '#fee2e2', color: '#991b1b' };
+      case 'in_progress': return { bg: '#dbeafe', color: '#1e40af' };
+      case 'checked_in': return { bg: '#ede9fe', color: '#6d28d9' };
+      case 'scheduled': return { bg: '#fef9c3', color: '#854d0e' };
+      default: return { bg: '#f1f5f9', color: '#475569' };
+    }
+  };
+
+  const upcomingApts = appointments.filter(a => !['completed', 'cancelled'].includes((a.status || '').toLowerCase()));
+  const completedApts = appointments.filter(a => (a.status || '').toLowerCase() === 'completed');
+  const cancelledApts = appointments.filter(a => (a.status || '').toLowerCase() === 'cancelled');
+  const displayApts = aptFilter === 'upcoming' ? upcomingApts : aptFilter === 'completed' ? completedApts : cancelledApts;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '18px 22px', marginBottom: 22, color: '#fff', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 10 }}>
+          <Heart size={28} color="#fff" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>Full Body Check Up Booking</div>
+          <div style={{ opacity: 0.82, fontSize: '0.88rem', marginTop: 2 }}>{branchDisplayName} Branch · Book client appointments for health consultations</div>
+        </div>
+      </div>
+
+      {/* Sub-tab switcher */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 22, borderBottom: '2px solid #f0e8ea', paddingBottom: 0 }}>
+        {[
+          { id: 'book', icon: '📋', label: 'Book Appointment' },
+          { id: 'appointments', icon: '📅', label: 'Appointments' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            style={{ padding: '10px 18px', border: 'none', borderBottom: subTab === t.id ? '3px solid #c41e3a' : '3px solid transparent', background: 'none', fontWeight: subTab === t.id ? 700 : 500, color: subTab === t.id ? '#c41e3a' : '#64748b', cursor: 'pointer', fontSize: '0.92rem', transition: 'all .15s', marginBottom: -2 }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── BOOK APPOINTMENT ── */}
+      {subTab === 'book' && (
+        submitted ? (
+          <div style={{ maxWidth: 500, margin: '0 auto', padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ width: 80, height: 80, background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <CheckCircle size={40} color="#16a34a" />
+            </div>
+            <h2 style={{ fontWeight: 800, fontSize: '1.4rem', color: '#111827', marginBottom: 8 }}>Appointment Booked!</h2>
+            <p style={{ color: '#6b7280', marginBottom: 24 }}>The client's full body checkup form has been submitted. A consultant at the <strong>{branchDisplayName}</strong> branch will attend to them shortly.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={resetForm} style={{ padding: '10px 24px', background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Book Another</button>
+              <button onClick={() => { resetForm(); setSubTab('appointments'); }} style={{ padding: '10px 24px', background: '#f1f5f9', color: '#374151', border: '1.5px solid #e2e8f0', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>View Appointments</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ maxWidth: 800, margin: '0 auto', paddingBottom: 90 }}>
+            {error && <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 16px', marginBottom: 16, color: '#991b1b', fontWeight: 600, fontSize: '0.9rem' }}>{error}</div>}
+
+            {/* Customer type toggle */}
+            <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Client Type</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[{ id: 'member', label: '🏅 Registered Member', sub: 'Has NB number' }, { id: 'non-member', label: '👤 Non-Member', sub: 'Walk-in or referred' }].map(ct => (
+                  <button key={ct.id} type="button" onClick={() => { setCustomerType(ct.id); setSelectedDistributor(null); setDistributorSearch(''); }}
+                    style={{ flex: 1, padding: '10px 14px', border: `2px solid ${customerType === ct.id ? '#c41e3a' : '#e2e8f0'}`, borderRadius: 10, background: customerType === ct.id ? '#fff0f3' : '#fafafa', cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
+                    <div style={{ fontWeight: 700, color: customerType === ct.id ? '#c41e3a' : '#374151', fontSize: '0.88rem' }}>{ct.label}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 2 }}>{ct.sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Member NB lookup */}
+            {isMember && (
+              <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151', marginBottom: 10 }}>Member NB Number</div>
+                {selectedDistributor ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff0f3', border: '1.5px solid #fca5a5', borderRadius: 8, padding: '10px 14px' }}>
+                    <div>
+                      <span style={{ fontWeight: 800, color: '#c41e3a' }}>{selectedDistributor.distributor_code}</span>
+                      <span style={{ color: '#374151', marginLeft: 8 }}>{selectedDistributor.distributor_name}</span>
+                    </div>
+                    <button type="button" onClick={() => setSelectedDistributor(null)} style={{ background: 'none', border: 'none', color: '#c41e3a', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>Change</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ position: 'relative', marginBottom: 8 }}>
+                      <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input value={distributorSearch} onChange={e => setDistributorSearch(e.target.value)}
+                        placeholder="Search by NB number or member name..."
+                        style={{ width: '100%', paddingLeft: 32, paddingRight: 12, paddingTop: 9, paddingBottom: 9, border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid #f0e8ea', borderRadius: 8, background: '#fff' }}>
+                      {filteredDistributors.length === 0 ? (
+                        <div style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>No distributors found</div>
+                      ) : filteredDistributors.slice(0, 20).map(d => (
+                        <button type="button" key={d.id} onClick={() => {
+                          setSelectedDistributor(d);
+                          setDistributorSearch('');
+                          if (d.distributor_name) updateField('fullName', d.distributor_name);
+                          if (d.mobile_no || d.phone) updateField('phone', d.mobile_no || d.phone || '');
+                          if (d.email) updateField('email', d.email);
+                        }}
+                          style={{ width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f9f0f2', background: 'none', cursor: 'pointer', fontSize: '0.86rem', transition: 'background .1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#fff0f3'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                          <span style={{ fontWeight: 700, color: '#c41e3a' }}>{d.distributor_code}</span>
+                          <span style={{ color: '#374151', marginLeft: 8 }}>{d.distributor_name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Non-member referral */}
+            {!isMember && (
+              <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151', marginBottom: 10 }}>Referral (Optional)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Referral Name</label>
+                    <input value={referralName} onChange={e => setReferralName(e.target.value)} placeholder={`Default: ${DEFAULT_REF_NAME}`}
+                      style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Referral NB Number</label>
+                    <input value={referralNB} onChange={e => setReferralNB(e.target.value)} placeholder={`Default: ${DEFAULT_REF_NB}`}
+                      style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 6 }}>If blank, <strong>{DEFAULT_REF_NAME} ({DEFAULT_REF_NB})</strong> will be used as default referral.</p>
+              </div>
+            )}
+
+            {/* Personal Information */}
+            <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#374151', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={16} color="#c41e3a" /> Personal Information
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { label: 'Full Name *', key: 'fullName', type: 'text', placeholder: 'Client full name' },
+                  { label: 'Phone Number *', key: 'phone', type: 'tel', placeholder: '+264 8x xxx xxxx' },
+                  { label: 'Email', key: 'email', type: 'email', placeholder: 'client@email.com' },
+                  { label: 'Date of Birth', key: 'dob', type: 'date', placeholder: '' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
+                    <input type={f.type} value={form[f.key]} onChange={e => updateField(f.key, e.target.value)} placeholder={f.placeholder}
+                      style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Gender</label>
+                  <select value={form.gender} onChange={e => updateField('gender', e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', background: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">Select</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Branch</label>
+                  <input type="text" readOnly value={branchDisplayName}
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', background: '#f8fafc', color: '#64748b', boxSizing: 'border-box', fontStyle: 'italic' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Height (cm)</label>
+                  <input type="number" min="50" max="250" value={form.height} onChange={e => updateField('height', e.target.value)} placeholder="e.g. 165"
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Weight (kg)</label>
+                  <input type="number" min="1" max="400" value={form.weight} onChange={e => updateField('weight', e.target.value)} placeholder="e.g. 70"
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                {bmiValue && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10, border: `2px solid ${parseFloat(bmiValue) < 18.5 ? '#93c5fd' : parseFloat(bmiValue) < 25 ? '#86efac' : parseFloat(bmiValue) < 30 ? '#fcd34d' : '#fca5a5'}`, background: parseFloat(bmiValue) < 18.5 ? '#eff6ff' : parseFloat(bmiValue) < 25 ? '#f0fdf4' : parseFloat(bmiValue) < 30 ? '#fefce8' : '#fef2f2' }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: parseFloat(bmiValue) < 18.5 ? '#2563eb' : parseFloat(bmiValue) < 25 ? '#16a34a' : parseFloat(bmiValue) < 30 ? '#d97706' : '#dc2626' }}>{bmiValue}</div>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>BMI</div>
+                        <div style={{ fontWeight: 700, color: parseFloat(bmiValue) < 18.5 ? '#2563eb' : parseFloat(bmiValue) < 25 ? '#16a34a' : parseFloat(bmiValue) < 30 ? '#d97706' : '#dc2626' }}>{bmiCategory(bmiValue)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Lifestyle & Health History */}
+            <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#374151', marginBottom: 12 }}>🩺 Lifestyle &amp; Health History</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Primary Reason for Visit</label>
+                  <input type="text" value={form.primaryReason} onChange={e => updateField('primaryReason', e.target.value)} placeholder="e.g. Weight management, Joint pain, Fatigue..."
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                {[
+                  { label: 'Water Intake per Day', key: 'waterIntake', options: ['Less than 1L/day', '1–2L/day', '2–3L/day', 'More than 3L/day'] },
+                  { label: 'Exercise Frequency', key: 'exerciseFreq', options: ['None', '1–2x per week', '3–4x per week', 'Daily'] },
+                  { label: 'Sleep (hours/night)', key: 'sleepHours', options: ['Less than 5', '5–6', '6–7', '7–8', 'More than 8'] },
+                  { label: 'Stress Level (1–10)', key: 'stressLevel', options: [1,2,3,4,5,6,7,8,9,10].map(n => `${n}`) },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
+                    <select value={form[f.key]} onChange={e => updateField(f.key, e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', background: '#fff', boxSizing: 'border-box' }}>
+                      <option value="">— Select —</option>
+                      {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                ))}
+                {[
+                  { label: 'Current Medications', key: 'currentMedications', placeholder: 'e.g. Metformin 500mg, Aspirin...' },
+                  { label: 'Known Allergies', key: 'allergies', placeholder: 'e.g. Penicillin, Peanuts...' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
+                    <input type="text" value={form[f.key]} onChange={e => updateField(f.key, e.target.value)} placeholder={f.placeholder}
+                      style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Medical History</label>
+                  <input type="text" value={form.medicalHistory} onChange={e => updateField('medicalHistory', e.target.value)} placeholder="e.g. Diabetes, Hypertension, previous surgeries..."
+                    style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Symptom Checklist */}
+            <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#374151', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Heart size={16} color="#c41e3a" /> Symptom Checklist
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+                {CHECKUP_BODY_SYSTEMS.map(system => (
+                  <div key={system.id} style={{ gridColumn: window.innerWidth < 640 ? '1 / -1' : 'auto' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid #f9d5da' }}>{system.label}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
+                      {system.questions.map(q => (
+                        <label key={q} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 6, cursor: 'pointer', fontSize: '0.83rem', color: '#374151', transition: 'background .1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#fff0f3'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                          <input type="checkbox" checked={(form.symptoms[system.id] || []).includes(q)} onChange={() => toggleSymptom(system.id, q)}
+                            style={{ accentColor: '#c41e3a', width: 14, height: 14, flexShrink: 0 }} />
+                          {q}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes & Declaration */}
+            <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Additional Notes</label>
+                <textarea value={form.notes} onChange={e => updateField('notes', e.target.value)} rows={3}
+                  placeholder="Any additional health concerns or information the consultant should know..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.declaration} onChange={e => updateField('declaration', e.target.checked)}
+                  style={{ accentColor: '#c41e3a', marginTop: 2, width: 16, height: 16, flexShrink: 0 }} />
+                <span style={{ fontSize: '0.83rem', color: '#374151' }}>
+                  I confirm that all information provided is accurate and the client has consented to having their health data recorded for consultation purposes.
+                </span>
+              </label>
+            </div>
+
+            {/* Sticky Submit Footer */}
+            <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '2px solid #f0e8ea', padding: '14px 0', zIndex: 20 }}>
+              <div style={{ display: 'flex', gap: 10, maxWidth: 800, margin: '0 auto' }}>
+                <button type="button" onClick={() => setPreviewOpen(true)}
+                  style={{ padding: '11px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', color: '#374151', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                  Preview
+                </button>
+                <button type="submit" disabled={submitting}
+                  style={{ flex: 1, padding: '12px 24px', border: 'none', borderRadius: 10, background: submitting ? '#94a3b8' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, fontSize: '0.95rem', cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(196,30,58,0.3)', transition: 'all .15s' }}>
+                  {submitting ? '⏳ Submitting...' : '🩺 Book Checkup Appointment'}
+                </button>
+              </div>
+            </div>
+
+            {/* Preview Modal */}
+            {previewOpen && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+                onClick={() => setPreviewOpen(false)}>
+                <div style={{ background: '#fff', borderRadius: 14, maxWidth: 580, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 24 }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ fontWeight: 800, color: '#c41e3a', margin: 0 }}>Form Preview</h3>
+                    <button type="button" onClick={() => setPreviewOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+                  </div>
+                  <div style={{ background: '#fff0f3', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.85rem' }}>
+                    <strong>Type:</strong> {isMember ? 'Registered Member' : 'Non-Member'} &nbsp;|&nbsp; <strong>Referral:</strong> {effectiveReferralName} ({effectiveReferralNB})
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: '0.85rem', marginBottom: 12 }}>
+                    <div><strong>Name:</strong> {form.fullName || '—'}</div>
+                    <div><strong>Phone:</strong> {form.phone || '—'}</div>
+                    <div><strong>Email:</strong> {form.email || '—'}</div>
+                    <div><strong>DOB:</strong> {form.dob || '—'}</div>
+                    <div><strong>Gender:</strong> {form.gender || '—'}</div>
+                    <div><strong>Branch:</strong> {branchDisplayName}</div>
+                    <div><strong>Height:</strong> {form.height ? `${form.height} cm` : '—'}</div>
+                    <div><strong>Weight:</strong> {form.weight ? `${form.weight} kg` : '—'}</div>
+                    {bmiValue && <div style={{ gridColumn: '1/-1' }}><strong>BMI:</strong> {bmiValue} — {bmiCategory(bmiValue)}</div>}
+                  </div>
+                  {Object.entries(form.symptoms).filter(([, v]) => v.length > 0).length > 0 && (
+                    <div style={{ borderTop: '1px solid #f0e8ea', paddingTop: 10, marginTop: 10 }}>
+                      <strong style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase' }}>Reported Symptoms</strong>
+                      {Object.entries(form.symptoms).filter(([, v]) => v.length > 0).map(([sys, sxs]) => (
+                        <div key={sys} style={{ fontSize: '0.83rem', marginTop: 4 }}>
+                          <strong style={{ textTransform: 'capitalize' }}>{sys}:</strong> {sxs.join(', ')}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {form.notes && <div style={{ marginTop: 10, fontSize: '0.85rem' }}><strong>Notes:</strong> {form.notes}</div>}
+                </div>
+              </div>
+            )}
+          </form>
+        )
+      )}
+
+      {/* ── APPOINTMENTS LIST ── */}
+      {subTab === 'appointments' && (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { id: 'upcoming', label: `Upcoming (${upcomingApts.length})`, color: '#1e40af' },
+                { id: 'completed', label: `Completed (${completedApts.length})`, color: '#166534' },
+                { id: 'cancelled', label: `Cancelled (${cancelledApts.length})`, color: '#991b1b' },
+              ].map(f => (
+                <button key={f.id} onClick={() => setAptFilter(f.id)}
+                  style={{ padding: '7px 14px', border: `1.5px solid ${aptFilter === f.id ? f.color : '#e2e8f0'}`, borderRadius: 8, background: aptFilter === f.id ? f.color : '#fff', color: aptFilter === f.id ? '#fff' : '#64748b', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', transition: 'all .15s' }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={loadAppointments}
+              style={{ padding: '7px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', color: '#64748b', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              🔄 Refresh
+            </button>
+          </div>
+
+          {aptsLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>Loading appointments...</div>
+          ) : displayApts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+              <Calendar size={36} style={{ margin: '0 auto 10px', display: 'block', opacity: 0.4 }} />
+              <div style={{ fontWeight: 600 }}>No {aptFilter} appointments for {branchDisplayName}</div>
+              {aptFilter === 'upcoming' && <button onClick={() => setSubTab('book')} style={{ marginTop: 12, padding: '8px 18px', background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem' }}>Book First Appointment</button>}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {displayApts.map(apt => {
+                let aptData = {};
+                try { aptData = typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch(e) {}
+                const sc = aptStatusColor(apt.status);
+                return (
+                  <div key={apt.id} style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(196,30,58,0.1)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                    onClick={() => setSelectedApt(selectedApt?.id === apt.id ? null : apt)}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>{apt.full_name}</div>
+                        <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 2 }}>
+                          {apt.phone} {apt.email ? `· ${apt.email}` : ''} · {apt.date} {apt.time}
+                        </div>
+                        {aptData.primary_reason && <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 2 }}>Reason: {aptData.primary_reason}</div>}
+                        {apt.client_reference && <div style={{ fontSize: '0.78rem', color: '#c41e3a', marginTop: 2 }}>Ref: {apt.client_reference}</div>}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                        <span style={{ padding: '3px 10px', borderRadius: 20, background: sc.bg, color: sc.color, fontSize: '0.78rem', fontWeight: 700, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                          {(apt.status || 'pending').replace(/_/g, ' ')}
+                        </span>
+                        {aptData.membershipStatus && (
+                          <span style={{ fontSize: '0.75rem', color: aptData.membershipStatus === 'member' ? '#c41e3a' : '#64748b', fontWeight: 600 }}>
+                            {aptData.membershipStatus === 'member' ? '🏅 Member' : '👤 Non-Member'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded detail + status actions */}
+                    {selectedApt?.id === apt.id && (
+                      <div style={{ marginTop: 14, borderTop: '1px solid #f0e8ea', paddingTop: 12 }} onClick={e => e.stopPropagation()}>
+                        {(aptData.bmi || aptData.gender || aptData.dob) && (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 10 }}>
+                            {aptData.gender && <div style={{ background: '#f8fafc', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem' }}><div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Gender</div><strong>{aptData.gender}</strong></div>}
+                            {aptData.dob && <div style={{ background: '#f8fafc', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem' }}><div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>DOB</div><strong>{aptData.dob}</strong></div>}
+                            {aptData.bmi && <div style={{ background: '#f8fafc', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem' }}><div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>BMI</div><strong>{aptData.bmi} ({aptData.bmi_category || ''})</strong></div>}
+                          </div>
+                        )}
+                        {Object.entries(aptData.symptoms || {}).filter(([, v]) => Array.isArray(v) && v.length > 0).length > 0 && (
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Reported Symptoms</div>
+                            {Object.entries(aptData.symptoms).filter(([, v]) => Array.isArray(v) && v.length > 0).map(([sys, sxs]) => (
+                              <div key={sys} style={{ fontSize: '0.8rem', color: '#374151', marginBottom: 2 }}>
+                                <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>{sys}:</span> {sxs.join(', ')}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {apt.notes && <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 10 }}><strong>Notes:</strong> {apt.notes}</div>}
+                        {['completed', 'cancelled'].includes((apt.status || '').toLowerCase()) ? null : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {apt.status !== 'checked_in' && (
+                              <button onClick={() => updateStatus(apt.id, 'checked_in')} disabled={statusUpdating[apt.id]}
+                                style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: '#ede9fe', color: '#6d28d9', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                                {statusUpdating[apt.id] ? '...' : '✅ Check In'}
+                              </button>
+                            )}
+                            {apt.status !== 'in_progress' && (
+                              <button onClick={() => updateStatus(apt.id, 'in_progress')} disabled={statusUpdating[apt.id]}
+                                style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: '#dbeafe', color: '#1e40af', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                                {statusUpdating[apt.id] ? '...' : '🔄 In Progress'}
+                              </button>
+                            )}
+                            <button onClick={() => updateStatus(apt.id, 'completed')} disabled={statusUpdating[apt.id]}
+                              style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                              {statusUpdating[apt.id] ? '...' : '🎉 Mark Completed'}
+                            </button>
+                            <button onClick={() => updateStatus(apt.id, 'cancelled')} disabled={statusUpdating[apt.id]}
+                              style={{ padding: '7px 14px', border: 'none', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                              {statusUpdating[apt.id] ? '...' : '✕ Cancel'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
