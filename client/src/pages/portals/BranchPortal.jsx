@@ -721,7 +721,9 @@ function WalkInSalesTab() {
                       const isAdding = addedProductId === p.id;
                       const primaryImage = p.images?.find(img => img.is_primary) || p.images?.[0];
                       const imageSrc = primaryImage?.image_data
-                        ? `data:${primaryImage.image_type || 'image/jpeg'};base64,${primaryImage.image_data}`
+                        ? (primaryImage.image_data.startsWith('data:')
+                            ? primaryImage.image_data
+                            : `data:${primaryImage.image_type || 'image/jpeg'};base64,${primaryImage.image_data}`)
                         : primaryImage?.image_url || null;
                       return (
                         <div key={p.id} style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', boxShadow: inCart ? `0 4px 16px ${accentColor}30` : '0 1px 4px rgba(0,0,0,0.08)', border: inCart ? `2px solid ${accentColor}` : '1.5px solid #eee', background: '#fff', display: 'flex', flexDirection: 'column', transform: isAdding ? 'scale(0.97)' : 'scale(1)', transition: 'transform 0.2s ease, box-shadow .15s, border .15s' }}>
