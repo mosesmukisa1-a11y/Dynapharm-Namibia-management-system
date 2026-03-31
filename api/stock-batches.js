@@ -204,9 +204,27 @@ export default async function handler(req, res) {
   const location = searchParams.get('location');
 
   try {
+    const expiryFallbackSelect = `
+        SELECT sb.id, sb.barcode, sb.carton_no, sb.description, sb.batch_no,
+               COALESCE(sb.expiry_date, cs.expiry_date) AS expiry_date,
+               sb.quantity, sb.total_ctns, sb.import_date, sb.location, sb.status,
+               sb.dispatched_quantity, sb.remaining_quantity, sb.product_id,
+               sb.warehouse_id, sb.unit_price, sb.cif_unit_cost, sb.dpc_unit_value,
+               sb.notes, sb.created_at, sb.updated_at
+        FROM stock_batches sb
+        LEFT JOIN LATERAL (
+          SELECT expiry_date FROM stock_batches cs
+          WHERE cs.location = 'country_stock'
+            AND LOWER(TRIM(cs.description)) = LOWER(TRIM(sb.description))
+            AND COALESCE(cs.batch_no, '') = COALESCE(sb.batch_no, '')
+            AND cs.expiry_date IS NOT NULL
+          ORDER BY cs.import_date ASC LIMIT 1
+        ) cs ON sb.expiry_date IS NULL
+    `;
+
     if (req.method === 'GET') {
       if (id) {
-        const batch = await getOne('SELECT * FROM stock_batches WHERE id = $1', [id]);
+        const batch = await getOne(`${expiryFallbackSelect} WHERE sb.id = $1`, [id]);
         if (!batch) {
           return res.status(404).json({ success: false, error: 'Not found' });
         }
@@ -214,22 +232,22 @@ export default async function handler(req, res) {
       }
 
       if (barcode) {
-        const batch = await getOne('SELECT * FROM stock_batches WHERE barcode = $1', [barcode]);
+        const batch = await getOne(`${expiryFallbackSelect} WHERE sb.barcode = $1`, [barcode]);
         if (!batch) {
           return res.status(404).json({ success: false, error: 'Not found' });
         }
         return res.status(200).json(normalizeBatch(batch));
       }
 
-      let queryText = 'SELECT * FROM stock_batches';
+      let queryText = expiryFallbackSelect;
       const params = [];
 
       if (location) {
-        queryText += ' WHERE location = $1';
+        queryText += ' WHERE sb.location = $1';
         params.push(location);
       }
 
-      queryText += ' ORDER BY import_date DESC';
+      queryText += ' ORDER BY sb.import_date DESC';
       const rows = await getMany(queryText, params);
       return res.status(200).json(rows.map(normalizeBatch).filter(Boolean));
     }
