@@ -3970,7 +3970,7 @@ function BranchStockTab() {
                 <td style="padding:8px 14px;color:#374151">Less: Consultation Fees</td>
                 <td style="padding:8px 14px;text-align:right;font-weight:700;color:#92400e">(${fmtC(bs.consultation_fees || 0)})</td>
               </tr>
-              <tr style="background:linear-gradient(135deg,#c41e3a,#8b0000);border-top:2px solid #8b0000">
+              <tr style="background:linear-gradient(135deg,#1d4ed8,#1e3a8a);border-top:2px solid #1e3a8a">
                 <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em">BRANCH SALES FOR THE DAY</td>
                 <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px">${fmtC(bs.branch_sales || 0)}</td>
               </tr>
