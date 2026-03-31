@@ -199,7 +199,7 @@ export const api = {
   },
 
   reports: {
-    list: () => api.get('/reports'),
+    list: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports${qs ? '?' + qs : ''}`); },
     create: (data) => api.post('/reports', data),
     update: (id, data) => api.put('/reports', { ...data, id }),
     branchSalesDaily: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily${qs ? '?' + qs : ''}`); },

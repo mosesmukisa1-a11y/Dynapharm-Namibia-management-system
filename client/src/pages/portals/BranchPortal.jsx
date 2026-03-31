@@ -183,7 +183,7 @@ export default function BranchPortal() {
   ];
 
   return (
-    <PortalBranchContext.Provider value={effectiveBranch}>
+    <PortalBranchContext.Provider value={selectedPortalBranch || null}>
       <div>
         <h2 className="text-center text-2xl font-bold mb-6" style={{ color: '#2c3e50' }}>🏬 Branch Portal</h2>
 
@@ -276,14 +276,14 @@ function WalkInSalesTab() {
   const [salesDateFrom, setSalesDateFrom] = useState('');
   const [salesDateTo, setSalesDateTo] = useState('');
 
-  const loadSales = () =>
-    api.branch.walkinSales().then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
+  const loadSales = (branch) =>
+    api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
+      .then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
 
   useEffect(() => {
     Promise.all([
       api.prices.list().catch(() => []),
       api.products.list().catch(() => []),
-      loadSales(),
     ]).then(([priceData, productsData]) => {
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
 
@@ -336,6 +336,10 @@ function WalkInSalesTab() {
       setProducts([...priceListProducts, ...dbOnlyProducts, ...packages]);
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadSales(portalBranch);
+  }, [portalBranch]);
 
   const normalizeDistributor = (d) => ({
     ...d,
@@ -539,7 +543,7 @@ function WalkInSalesTab() {
 
       setShowConfirmModal(false);
       setShowModal(false);
-      const salesRes = await api.branch.walkinSales().catch(() => ({ sales: [] }));
+      const salesRes = await api.branch.walkinSales(portalBranch ? `branch_id=${portalBranch}` : '').catch(() => ({ sales: [] }));
       setSales(Array.isArray(salesRes) ? salesRes : salesRes.sales || []);
     } catch (err) {
       setError(err.message || 'Failed to complete sale');
@@ -604,7 +608,7 @@ function WalkInSalesTab() {
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
         <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
           <h4 className="m-0 font-semibold text-gray-700">Previous Walk-in Sales</h4>
-          <button onClick={loadSales} className="text-xs px-3 py-1.5 rounded-lg border cursor-pointer" style={{ color: '#64748b', borderColor: '#e2e8f0', background: '#fff' }}>↻ Refresh</button>
+          <button onClick={() => loadSales(portalBranch)} className="text-xs px-3 py-1.5 rounded-lg border cursor-pointer" style={{ color: '#64748b', borderColor: '#e2e8f0', background: '#fff' }}>↻ Refresh</button>
         </div>
         <div className="px-4 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
           <input
@@ -1160,11 +1164,12 @@ function PrescriptionsTab() {
   const setCheckupType = (reportId, type) => setCheckupFeeType(prev => ({ ...prev, [reportId]: type }));
 
   useEffect(() => {
-    api.reports.list()
+    setLoading(true);
+    api.reports.list(portalBranch ? { branch: portalBranch } : {})
       .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [portalBranch]);
 
   if (loading) return <LoadingSpinner />;
 
