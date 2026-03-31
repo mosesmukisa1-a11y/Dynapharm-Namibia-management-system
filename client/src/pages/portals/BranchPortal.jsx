@@ -30,6 +30,7 @@ const fmtLocation = (loc) => {
 };
 
 function SalesReviewTab() {
+  const portalBranch = useContext(PortalBranchContext);
   const todayISO = new Date().toISOString().slice(0, 10);
   const [salesPreviewFrom, setSalesPreviewFrom] = useState(todayISO);
   const [salesPreviewTo, setSalesPreviewTo] = useState(todayISO);
@@ -40,12 +41,18 @@ function SalesReviewTab() {
   const fmtN = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
   const branchLabel = (id) => getBranchDisplayName(id) || id || '—';
 
+  useEffect(() => {
+    setSalesPreviewData(null);
+  }, [portalBranch]);
+
   const loadPreview = async () => {
     if (!salesPreviewFrom || !salesPreviewTo) return;
     setSalesPreviewLoading(true);
     setSalesPreviewError(null);
     try {
-      const data = await api.reports.branchSalesSummary({ from: salesPreviewFrom, to: salesPreviewTo });
+      const params = { from: salesPreviewFrom, to: salesPreviewTo };
+      if (portalBranch) params.branch = portalBranch;
+      const data = await api.reports.branchSalesSummary(params);
       setSalesPreviewData(data);
     } catch (err) {
       setSalesPreviewError(err.message || 'Failed to load sales data');
@@ -70,7 +77,11 @@ function SalesReviewTab() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h3 className="font-bold text-gray-800 m-0">📈 Sales Review</h3>
-            <p className="text-xs text-gray-500 m-0 mt-1">Select a date range to view sales totals across all branches</p>
+            <p className="text-xs text-gray-500 m-0 mt-1">
+              {portalBranch
+                ? <>Showing sales for <strong style={{ color: '#c41e3a' }}>{getBranchDisplayName(portalBranch)}</strong> only</>
+                : 'Select a date range to view sales totals across all branches'}
+            </p>
           </div>
         </div>
       </CardHeader>

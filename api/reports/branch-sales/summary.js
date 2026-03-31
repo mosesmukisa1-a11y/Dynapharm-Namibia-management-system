@@ -10,13 +10,16 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const from = url.searchParams.get('from');
-  const to   = url.searchParams.get('to');
+  const from   = url.searchParams.get('from');
+  const to     = url.searchParams.get('to');
+  const branch = url.searchParams.get('branch') || null;
 
   if (!from || !to) return res.status(400).json({ error: 'from and to dates are required' });
 
   try {
     // ── 1. Main BAT aggregation ──────────────────────────────────────────────
+    const batParams = [from, to];
+    const batBranchClause = branch ? `AND branch_id = $${batParams.push(branch)}` : '';
     const batRows = await getMany(
       `SELECT
          branch_id,
@@ -29,15 +32,19 @@ export default async function handler(req, res) {
          COALESCE(SUM(CASE WHEN activity_type = 'consultation'           THEN grand_total ELSE 0 END), 0)::numeric AS consult_total,
          COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'            THEN grand_total ELSE 0 END), 0)::numeric AS walkin_total
        FROM branch_activity_transactions
-       WHERE service_date >= $1 AND service_date <= $2
+       WHERE service_date >= $1 AND service_date <= $2 ${batBranchClause}
        GROUP BY branch_id
        ORDER BY total_revenue DESC`,
-      [from, to]
+      batParams
     );
 
     // ── 2. Prescription revenue from reports table ───────────────────────────
     // Picks up paid medicines on reports NOT already captured in BAT.
     // Uses the report's branch column if set; falls back to 'townshop' (HQ default).
+    const rxParams = [from, to];
+    const rxBranchClause = branch
+      ? `AND COALESCE(NULLIF(TRIM(r.branch), ''), 'townshop') = $${rxParams.push(branch)}`
+      : '';
     const rxSupplementRows = await getMany(
       `WITH paid_meds AS (
          SELECT
@@ -55,6 +62,7 @@ export default async function handler(req, res) {
            AND (m->>'paid') = 'true'
            AND DATE(r.created_at) >= $1
            AND DATE(r.created_at) <= $2
+           ${rxBranchClause}
            AND NOT EXISTS (
              SELECT 1 FROM branch_activity_transactions bat
              WHERE bat.form_reference_id = r.id
@@ -91,7 +99,7 @@ export default async function handler(req, res) {
          ), 0)::numeric                               AS supplement_consult_total
        FROM report_totals
        GROUP BY branch_id`,
-      [from, to]
+      rxParams
     );
 
     // ── 3. Merge supplement into BAT rows ────────────────────────────────────
