@@ -3972,9 +3972,9 @@ function BranchStockTab() {
                 <td style="padding:8px 14px;color:#374151">Less: Consultation Fees</td>
                 <td style="padding:8px 14px;text-align:right;font-weight:700;color:#92400e">(${fmtC(bs.consultation_fees || 0)})</td>
               </tr>
-              <tr style="background:linear-gradient(135deg,#1d4ed8,#1e3a8a);border-top:2px solid #1e3a8a">
-                <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em">BRANCH SALES FOR THE DAY</td>
-                <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px">${fmtC(bs.branch_sales || 0)}</td>
+              <tr style="border-top:2px solid #1e3a8a">
+                <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#1d4ed8,#1e3a8a)">BRANCH SALES FOR THE DAY</td>
+                <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#1d4ed8,#1e3a8a)">${fmtC(bs.branch_sales || 0)}</td>
               </tr>
             </table>
             <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">Branch Sales = Walk-in + Prescription Sales &minus; Distributor Profit &minus; Consultation Fees</div>`, branchName);
