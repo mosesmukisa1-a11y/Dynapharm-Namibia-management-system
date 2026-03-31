@@ -226,21 +226,25 @@ export default async function handler(req, res) {
       let distributors = await getMany(queryText, params);
       distributors = distributors.map(normalizeDistributorRow);
 
-      if (search) {
-        try {
-          const userDistributors = await getMany(
-            `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
-             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1) LIMIT 20`,
-            [`%${search}%`]
-          );
-          const existingCodes = new Set(distributors.map(d => (d.distributor_code || '').toUpperCase()));
-          userDistributors.forEach(u => {
-            if (!existingCodes.has((u.distributor_code || '').toUpperCase())) {
-              distributors.push(normalizeDistributorRow(u));
-            }
-          });
-        } catch (e) {}
-      }
+      // Always merge active distributor users from users table (not just on search)
+      try {
+        const userQuery = search
+          ? `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
+             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1) LIMIT 20`
+          : `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
+             FROM users WHERE role = 'distributor' AND is_active = true ORDER BY full_name LIMIT 500`;
+        const userParams = search ? [`%${search}%`] : [];
+        const userDistributors = await getMany(userQuery, userParams);
+        const existingCodes = new Set(distributors.map(d => (d.distributor_code || '').toUpperCase()));
+        userDistributors.forEach(u => {
+          if (!existingCodes.has((u.distributor_code || '').toUpperCase())) {
+            distributors.push(normalizeDistributorRow(u));
+          }
+        });
+        if (!search) {
+          distributors.sort((a, b) => (a.distributor_name || '').localeCompare(b.distributor_name || ''));
+        }
+      } catch (e) {}
 
       if (limit) {
         let totalCount = distributors.length;

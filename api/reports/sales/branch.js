@@ -39,6 +39,7 @@ export default async function handler(req, res) {
 
   let walkinSales = 0, memberSales = 0, nonMemberSales = 0, totalUnits = 0;
   let consultationFees = 0, prescriptionSales = 0, onlineSales = 0;
+  let transactions = walkinRows.length;
 
   for (const r of walkinRows) {
     const amt = Number(r.total || 0);
@@ -68,6 +69,7 @@ export default async function handler(req, res) {
     success: true,
     period: { start, end },
     branchId,
+    transactions,
     consultationFees,
     walkinSales,
     memberSales,

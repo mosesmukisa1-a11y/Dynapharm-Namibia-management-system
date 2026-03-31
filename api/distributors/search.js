@@ -3,6 +3,7 @@
  * Dedicated distributor search endpoint for referral lookup in consultations.
  * When q is empty, returns all active distributors from both the distributors table
  * and users with role = 'distributor'.
+ * Merges results from distributors table AND users table (role=distributor).
  */
 import { getMany } from '../db.js';
 

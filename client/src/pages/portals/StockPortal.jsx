@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -3329,6 +3329,54 @@ function OrdersTab({ branch }) {
   const [actionLoading, setActionLoading] = useState({});
   const [alert, setAlert] = useState(null);
 
+  // Sales Preview state
+  const [showSalesPreview, setShowSalesPreview] = useState(false);
+  const [spDateFrom, setSpDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [spDateTo, setSpDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spLoading, setSpLoading] = useState(false);
+  const [spResults, setSpResults] = useState([]);
+  const [spError, setSpError] = useState('');
+
+  const loadSalesPreview = async () => {
+    if (!spDateFrom || !spDateTo) { setSpError('Please select both dates'); return; }
+    setSpLoading(true);
+    setSpError('');
+    setSpResults([]);
+    try {
+      const branchesToQuery = branch && branch !== 'all'
+        ? BRANCH_DETAILS.filter(b => b.id === branch || b.name.toLowerCase() === branch.toLowerCase())
+        : BRANCH_DETAILS;
+
+      const results = await Promise.all(
+        branchesToQuery.map(async (b) => {
+          try {
+            const data = await api.get(`/reports/sales/branch?branchId=${encodeURIComponent(b.id)}&startDate=${spDateFrom}&endDate=${spDateTo}`);
+            return {
+              branchId: b.id,
+              branchName: b.name,
+              transactions: data.transactions || 0,
+              totalUnits: data.totalUnits || 0,
+              walkinSales: data.walkinSales || 0,
+              memberSales: data.memberSales || 0,
+              nonMemberSales: data.nonMemberSales || 0,
+              prescriptionSales: data.prescriptionSales || 0,
+              totalRevenue: data.totalSales || 0,
+            };
+          } catch {
+            return { branchId: b.id, branchName: b.name, transactions: 0, totalUnits: 0, walkinSales: 0, memberSales: 0, nonMemberSales: 0, prescriptionSales: 0, totalRevenue: 0 };
+          }
+        })
+      );
+      setSpResults(results.filter(r => r.totalRevenue > 0 || r.totalUnits > 0));
+    } catch (err) {
+      setSpError(err.message || 'Failed to load sales data');
+    } finally {
+      setSpLoading(false);
+    }
+  };
+
   const loadRequests = useCallback(() => {
     setLoading(true);
     api.stock.requests()
@@ -3499,6 +3547,7 @@ function OrdersTab({ branch }) {
               {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
             </h3>
             <div className="flex gap-2 flex-wrap">
+              <Button size="sm" variant="secondary" onClick={() => { setShowSalesPreview(true); setSpResults([]); setSpError(''); }}><BarChart3 size={14} /> Sales Preview</Button>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = filteredRequests.map(r => {
                   const items = Array.isArray(r.items) ? r.items.map(i => `${i.productName||i.productId} ×${i.quantity}`).join('; ') : '';
@@ -3595,6 +3644,107 @@ function OrdersTab({ branch }) {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Sales Preview Modal */}
+      <Modal open={showSalesPreview} onClose={() => setShowSalesPreview(false)} title="Branch Sales Preview" size="xl">
+        <div className="p-6 space-y-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-600">From Date</label>
+              <input type="date" value={spDateFrom} onChange={e => setSpDateFrom(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-600">To Date</label>
+              <input type="date" value={spDateTo} onChange={e => setSpDateTo(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+            <Button onClick={loadSalesPreview} disabled={spLoading}>
+              {spLoading ? 'Loading…' : '📊 Apply'}
+            </Button>
+            {spResults.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => {
+                const rows = spResults.map(r =>
+                  `<tr><td>${r.branchName}</td><td style="text-align:right">${r.transactions}</td><td style="text-align:right">${formatCurrency(r.walkinSales)}</td><td style="text-align:right">${formatCurrency(r.memberSales)}</td><td style="text-align:right">${formatCurrency(r.prescriptionSales)}</td><td style="text-align:right"><strong>${formatCurrency(r.totalRevenue)}</strong></td></tr>`
+                ).join('');
+                const totals = spResults.reduce((acc, r) => ({ txns: acc.txns + r.transactions, walkin: acc.walkin + r.walkinSales, member: acc.member + r.memberSales, rx: acc.rx + r.prescriptionSales, total: acc.total + r.totalRevenue }), { txns: 0, walkin: 0, member: 0, rx: 0, total: 0 });
+                printDocument('Branch Sales Preview', `<p style="font-size:11px;color:#555;margin-bottom:8px">Period: ${spDateFrom} to ${spDateTo}</p><table><thead><tr><th>Branch</th><th>Transactions</th><th>Walk-in Sales</th><th>Member Sales</th><th>Rx Sales</th><th>Total Revenue</th></tr></thead><tbody>${rows}<tr style="font-weight:bold;background:#f0f0f0"><td>TOTAL</td><td style="text-align:right">${totals.txns}</td><td style="text-align:right">${formatCurrency(totals.walkin)}</td><td style="text-align:right">${formatCurrency(totals.member)}</td><td style="text-align:right">${formatCurrency(totals.rx)}</td><td style="text-align:right">${formatCurrency(totals.total)}</td></tr></tbody></table>`);
+              }}><Printer size={13} /> Print</Button>
+            )}
+          </div>
+          {spError && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{spError}</div>}
+          {spLoading && <div className="text-center py-8 text-gray-400"><LoadingSpinner /></div>}
+          {!spLoading && spResults.length === 0 && !spError && (
+            <div className="text-center py-8 text-gray-400 text-sm">Select a date range and click Apply to load sales data.</div>
+          )}
+          {!spLoading && spResults.length > 0 && (() => {
+            const totalTransactions = spResults.reduce((s, r) => s + r.transactions, 0);
+            const totalWalkin = spResults.reduce((s, r) => s + r.walkinSales, 0);
+            const totalMember = spResults.reduce((s, r) => s + r.memberSales, 0);
+            const totalRx = spResults.reduce((s, r) => s + r.prescriptionSales, 0);
+            const grandTotal = spResults.reduce((s, r) => s + r.totalRevenue, 0);
+            return (
+              <div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '10px 14px' }}>
+                    <div className="text-xs text-blue-600 font-semibold">Walk-in Sales</div>
+                    <div className="text-lg font-bold text-blue-800">{formatCurrency(totalWalkin)}</div>
+                  </div>
+                  <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '10px 14px' }}>
+                    <div className="text-xs text-green-600 font-semibold">Member Sales</div>
+                    <div className="text-lg font-bold text-green-800">{formatCurrency(totalMember)}</div>
+                  </div>
+                  <div style={{ background: '#fdf4ff', border: '1.5px solid #e9d5ff', borderRadius: 10, padding: '10px 14px' }}>
+                    <div className="text-xs text-purple-600 font-semibold">Rx / Prescription</div>
+                    <div className="text-lg font-bold text-purple-800">{formatCurrency(totalRx)}</div>
+                  </div>
+                  <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 10, padding: '10px 14px' }}>
+                    <div className="text-xs text-orange-600 font-semibold">Grand Total</div>
+                    <div className="text-lg font-bold text-orange-800">{formatCurrency(grandTotal)}</div>
+                  </div>
+                </div>
+                <div className="overflow-auto" style={{ maxHeight: 360 }}>
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr style={{ background: '#8b0000', color: '#fff' }}>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Branch</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Transactions</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Walk-in</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Members</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Rx</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Total Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {spResults.sort((a, b) => b.totalRevenue - a.totalRevenue).map((r, i) => (
+                        <tr key={r.branchId} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                          <td className="px-3 py-2 font-medium text-gray-800">{r.branchName}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{r.transactions}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(r.walkinSales)}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(r.memberSales)}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(r.prescriptionSales)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-900">{formatCurrency(r.totalRevenue)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#fef3c7', borderTop: '2px solid #fcd34d' }}>
+                        <td className="px-3 py-2 font-bold text-gray-800">TOTAL ({spResults.length} branches)</td>
+                        <td className="px-3 py-2 text-right font-bold">{totalTransactions}</td>
+                        <td className="px-3 py-2 text-right font-bold">{formatCurrency(totalWalkin)}</td>
+                        <td className="px-3 py-2 text-right font-bold">{formatCurrency(totalMember)}</td>
+                        <td className="px-3 py-2 text-right font-bold">{formatCurrency(totalRx)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-orange-800">{formatCurrency(grandTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" onClick={() => setShowSalesPreview(false)}>Close</Button>
+          </div>
+        </div>
       </Modal>
 
       {/* New Request Modal */}

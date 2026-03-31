@@ -121,10 +121,54 @@ function WalkInSalesTab() {
       loadSales(),
     ]).then(([priceData, productsData]) => {
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
-      const raw = Array.isArray(productsData) ? productsData : productsData.products || [];
-      const enriched = enrichProductsWithPricing(raw);
+
+      // Build product list: start from price list (source of truth), then append
+      // any DB products that have no price-list entry (backward compat).
+      const effectivePriceList = (Array.isArray(priceData) && priceData.length > 0)
+        ? priceData.filter(p => !p.is_package)
+        : PRICE_LIST;
+
+      const dbProducts = Array.isArray(productsData) ? productsData : productsData.products || [];
+
+      // Map price-list entries to POS product shape
+      const priceListSet = new Set();
+      const priceListProducts = effectivePriceList.map((p, idx) => {
+        const key = (p.description || '').toUpperCase().trim();
+        priceListSet.add(key);
+        // Find matching DB product to inherit id, image, etc.
+        const dbMatch = dbProducts.find(db =>
+          (db.name || db.description || '').toUpperCase().trim() === key
+        );
+        return {
+          ...(dbMatch || {}),
+          id: dbMatch?.id || `pl-${idx}-${key.replace(/\W+/g, '-').toLowerCase()}`,
+          name: p.description,
+          description: p.description,
+          dp: Number(p.dp) || 0,
+          cp: Number(p.cp) || 0,
+          bv: Number(p.bv) || 0,
+          cif: Number(p.cif) || 0,
+          hasPricing: true,
+        };
+      });
+
+      // Append DB products not already on the price list
+      const dbOnlyProducts = dbProducts
+        .filter(db => {
+          const key = (db.name || db.description || '').toUpperCase().trim();
+          return !priceListSet.has(key);
+        })
+        .map(p => ({
+          ...p,
+          dp: Number(p.dp || p.price) || 0,
+          cp: Number(p.cp || p.price) || 0,
+          bv: Number(p.bv || p.bv_points) || 0,
+          cif: 0,
+          hasPricing: false,
+        }));
+
       const packages = getPackagesForPOS();
-      setProducts([...enriched, ...packages]);
+      setProducts([...priceListProducts, ...dbOnlyProducts, ...packages]);
     }).finally(() => setLoading(false));
   }, []);
 
