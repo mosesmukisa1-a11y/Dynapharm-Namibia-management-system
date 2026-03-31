@@ -662,9 +662,9 @@ function WalkInSalesTab() {
                   </div>
                 </div>
 
-                {/* Product grid */}
+                {/* Product grid — image-first */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
                     ) : filteredProducts.slice(0, 80).map(p => {
@@ -675,25 +675,39 @@ function WalkInSalesTab() {
                       const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
                       const accentColor = p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#c41e3a';
                       const isAdding = addedProductId === p.id;
+                      const primaryImage = p.images?.find(img => img.is_primary) || p.images?.[0];
+                      const imageSrc = primaryImage?.image_data
+                        ? `data:${primaryImage.image_type || 'image/jpeg'};base64,${primaryImage.image_data}`
+                        : primaryImage?.image_url || null;
                       return (
-                        <div key={p.id} style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', boxShadow: inCart ? `0 4px 16px ${accentColor}30` : '0 1px 4px rgba(0,0,0,0.06)', border: inCart ? `2px solid ${accentColor}` : '1.5px solid #eee', background: '#fff', transform: isAdding ? 'scale(0.97)' : 'scale(1)', transition: 'transform 0.2s ease, box-shadow .15s, border .15s' }}>
-                          {/* Accent strip on left */}
-                          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accentColor, borderRadius: '14px 0 0 14px' }} />
-                          {/* BV badge top-right */}
-                          {p.bv > 0 && (
-                            <div style={{ position: 'absolute', top: 7, right: 7, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.62rem', fontWeight: 800 }}>{p.bv} BV</div>
-                          )}
-                          <div style={{ padding: '12px 12px 10px 16px' }}>
-                            <div style={{ fontWeight: 700, color: p.isCheckup ? '#0d9488' : '#1e293b', lineHeight: 1.35, fontSize: '0.82rem', marginBottom: 4, paddingRight: p.bv > 0 ? 36 : 4 }}>{p.name || p.description}</div>
-                            {p.isCheckup && <div style={{ fontSize: '0.62rem', color: '#0d9488', marginBottom: 3 }}>🩺 Health Check</div>}
-                            {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.62rem', color: '#1d4ed8', marginBottom: 3 }}>📦 {p.components?.length || 0}-product bundle</div>}
-                            <div style={{ fontWeight: 900, color: accentColor, fontSize: '1.05rem', marginBottom: 6 }}>{formatCurrency(price)}</div>
-                            {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.65rem', color: '#166534', marginBottom: 4, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback</div>}
-                            {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.65rem', color: '#0891b2', marginBottom: 4, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
+                        <div key={p.id} style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', boxShadow: inCart ? `0 4px 16px ${accentColor}30` : '0 1px 4px rgba(0,0,0,0.08)', border: inCart ? `2px solid ${accentColor}` : '1.5px solid #eee', background: '#fff', display: 'flex', flexDirection: 'column', transform: isAdding ? 'scale(0.97)' : 'scale(1)', transition: 'transform 0.2s ease, box-shadow .15s, border .15s' }}>
+                          {/* Square image area */}
+                          <div style={{ position: 'relative', aspectRatio: '1/1', background: imageSrc ? '#f5f5f5' : `${accentColor}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                            {imageSrc ? (
+                              <img src={imageSrc} alt={p.name || p.description} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ textAlign: 'center', color: accentColor, opacity: 0.55 }}>
+                                <div style={{ fontSize: '2rem' }}>{p.isCheckup ? '🩺' : p.isPackage ? '📦' : '🛍️'}</div>
+                                <div style={{ fontSize: '0.58rem', fontWeight: 700, marginTop: 2 }}>No image</div>
+                              </div>
+                            )}
+                            {/* BV badge floats over image */}
+                            {p.bv > 0 && (
+                              <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 800 }}>{p.bv} BV</div>
+                            )}
+                          </div>
+                          {/* Card content */}
+                          <div style={{ padding: '8px 10px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontWeight: 700, color: p.isCheckup ? '#0d9488' : '#1e293b', lineHeight: 1.3, fontSize: '0.78rem', marginBottom: 4, flex: 1 }}>{p.name || p.description}</div>
+                            {p.isCheckup && <div style={{ fontSize: '0.6rem', color: '#0d9488', marginBottom: 2 }}>🩺 Health Check</div>}
+                            {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.6rem', color: '#1d4ed8', marginBottom: 2 }}>📦 {p.components?.length || 0}-product bundle</div>}
+                            <div style={{ fontWeight: 900, color: accentColor, fontSize: '1rem', marginBottom: 4 }}>{formatCurrency(price)}</div>
+                            {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.6rem', color: '#166534', marginBottom: 3, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback</div>}
+                            {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.6rem', color: '#0891b2', marginBottom: 3, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
                             <button type="button" onClick={() => addToCart(p)}
-                              style={{ width: '100%', padding: '7px 0', borderRadius: 9, border: 'none', background: inCart ? accentColor : `${accentColor}18`, color: inCart ? '#fff' : accentColor, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                              style={{ width: '100%', padding: '6px 0', borderRadius: 9, border: 'none', background: inCart ? accentColor : `${accentColor}18`, color: inCart ? '#fff' : accentColor, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                               {inCart ? (
-                                <><span style={{ fontWeight: 900 }}>{inCart.qty}</span> in cart — add more</>
+                                <><span style={{ fontWeight: 900 }}>{inCart.qty}</span> in cart</>
                               ) : '＋ Add'}
                             </button>
                           </div>
@@ -707,12 +721,12 @@ function WalkInSalesTab() {
               {/* ── COL 3: RIGHT — STICKY CART PANEL ── */}
               <div style={{ width: 300, flexShrink: 0, borderLeft: '1px solid #f0e8ea', background: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-                {/* Cart header with badge */}
+                {/* Order header with badge */}
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid #f5eded', background: '#fafafa', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '1.1rem' }}>🛒</span>
-                  <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>Cart</span>
+                  <span style={{ fontSize: '1.1rem' }}>🧾</span>
+                  <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>Order</span>
                   {cart.length > 0 && (
-                    <span style={{ background: '#c41e3a', color: '#fff', borderRadius: '50%', minWidth: 22, height: 22, fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{cart.length}</span>
+                    <span style={{ background: '#c41e3a', color: '#fff', borderRadius: 12, padding: '2px 9px', fontSize: '0.7rem', fontWeight: 800 }}>{cart.length} {cart.length === 1 ? 'item' : 'items'}</span>
                   )}
                 </div>
 
@@ -733,13 +747,13 @@ function WalkInSalesTab() {
                             <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem', lineHeight: 1.3 }}>{item.name || item.description}</div>
                             {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', fontWeight: 600, marginTop: 1 }}>+{formatCurrency(lineProfit)} profit</div>}
                           </div>
-                          <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', flexShrink: 0 }}>×</button>
+                          <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: 'transparent', color: '#d1d5db', cursor: 'pointer', width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', flexShrink: 0, transition: 'color .15s' }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#d1d5db'}>✕</button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{item.qty}</span>
-                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1.5px solid #fecaca', background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                          <div style={{ display: 'flex', alignItems: 'center', background: '#fef2f2', borderRadius: 20, border: '1.5px solid #fecaca', overflow: 'hidden' }}>
+                            <button type="button" onClick={() => updateQty(item.id, -1)} style={{ width: 28, height: 26, border: 'none', borderRight: '1px solid #fecaca', background: 'transparent', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                            <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 800, fontSize: '0.88rem', color: '#1e293b', padding: '0 2px' }}>{item.qty}</span>
+                            <button type="button" onClick={() => updateQty(item.id, 1)} style={{ width: 28, height: 26, border: 'none', borderLeft: '1px solid #fecaca', background: 'transparent', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                           </div>
                           <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.88rem' }}>{formatCurrency(item.lineTotal)}</span>
                         </div>
