@@ -204,6 +204,7 @@ export const api = {
     branchSalesDaily: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily${qs ? '?' + qs : ''}`); },
     branchSalesMonthly: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/monthly${qs ? '?' + qs : ''}`); },
     branchStockFormula: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/stock-formula${qs ? '?' + qs : ''}`); },
+    branchSalesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/summary${qs ? '?' + qs : ''}`); },
   },
 
   admin: {

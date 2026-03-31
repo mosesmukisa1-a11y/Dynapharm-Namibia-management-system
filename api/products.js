@@ -56,11 +56,14 @@ export default async function handler(req, res) {
         );
         return res.json(images);
       } else {
-        // Get all products
-        const products = await getMany('SELECT * FROM products ORDER BY name');
-        
-        // Get images for all products
-        for (const product of products) {
+        // Get all products from the products table and price list together
+        const [dbProducts, priceRows] = await Promise.all([
+          getMany('SELECT * FROM products ORDER BY name'),
+          getMany('SELECT * FROM product_prices ORDER BY description'),
+        ]);
+
+        // Attach images to each db product
+        for (const product of dbProducts) {
           const images = await getMany(
             'SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at',
             [product.id]
@@ -74,8 +77,30 @@ export default async function handler(req, res) {
             display_order: img.display_order
           }));
         }
-        
-        return res.json(products);
+
+        // Find price-list entries that have NO matching row in the products table
+        const dbNames = new Set(dbProducts.map(p => (p.name || '').toUpperCase().trim()));
+        const priceOnlyProducts = priceRows
+          .filter(p => !dbNames.has((p.description || '').toUpperCase().trim()))
+          .map(p => ({
+            id: `pl-${p.id}`,
+            sku: null,
+            name: p.description,
+            description: p.description,
+            category: null,
+            unit: null,
+            dp: p.dp,
+            cp: p.cp,
+            bv: p.bv,
+            cif: p.cif,
+            tax_rate: 0,
+            is_active: true,
+            branch: null,
+            images: [],
+            from_price_list: true,
+          }));
+
+        return res.json([...dbProducts, ...priceOnlyProducts]);
       }
     }
 

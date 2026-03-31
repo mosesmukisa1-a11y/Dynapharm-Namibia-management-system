@@ -2298,6 +2298,12 @@ function BranchStockTab() {
   const [stockCardLoading, setStockCardLoading] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(user?.branch || '');
   const [availableBranches, setAvailableBranches] = useState([]);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [salesPreviewFrom, setSalesPreviewFrom] = useState(todayISO);
+  const [salesPreviewTo, setSalesPreviewTo] = useState(todayISO);
+  const [salesPreviewData, setSalesPreviewData] = useState(null);
+  const [salesPreviewLoading, setSalesPreviewLoading] = useState(false);
+  const [salesPreviewError, setSalesPreviewError] = useState(null);
 
   useEffect(() => {
     const isAdmin = user?.role === 'admin';
@@ -2641,6 +2647,7 @@ function BranchStockTab() {
     { id: 'transfers', label: '↔ Transfers' },
     { id: 'movements', label: '📊 Movements' },
     { id: 'reports', label: '🖨️ Reports' },
+    { id: 'sales_preview', label: '📈 Sales Preview' },
   ];
 
   const sectionLabel = (txt) => <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>{txt}</div>;
@@ -3833,6 +3840,124 @@ function BranchStockTab() {
             ))}
           </div>
         </div>
+        );
+      })()}
+
+      {subTab === 'sales_preview' && (() => {
+        const fmtN = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
+        const branchLabel = (id) => getBranchDisplayName(id) || id || '—';
+        const loadPreview = async () => {
+          if (!salesPreviewFrom || !salesPreviewTo) return;
+          setSalesPreviewLoading(true);
+          setSalesPreviewError(null);
+          try {
+            const data = await api.reports.branchSalesSummary({ from: salesPreviewFrom, to: salesPreviewTo });
+            setSalesPreviewData(data);
+          } catch (err) {
+            setSalesPreviewError(err.message || 'Failed to load sales data');
+          } finally {
+            setSalesPreviewLoading(false);
+          }
+        };
+        const rows = salesPreviewData?.rows || [];
+        const grandTotal = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+        const grandTx    = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
+        const thS = { padding: '9px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: '#c41e3a', whiteSpace: 'nowrap' };
+        const thR = { ...thS, textAlign: 'right' };
+        const tdS = { padding: '9px 12px', fontSize: '0.85rem', borderBottom: '1px solid #f0e8ea', color: '#1e293b', whiteSpace: 'nowrap' };
+        const tdR = { ...tdS, textAlign: 'right', fontWeight: 700 };
+        return (
+          <Card>
+            <CardHeader>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <h3 className="font-bold text-gray-800 m-0">📈 Branch Sales Preview</h3>
+                  <p className="text-xs text-gray-500 m-0 mt-1">Select a date range to view sales totals across all branches</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20, padding: '14px 16px', background: '#fdf7f8', borderRadius: 10, border: '1px solid #f0e8ea' }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 5 }}>From</div>
+                  <input type="date" value={salesPreviewFrom} onChange={e => setSalesPreviewFrom(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.87rem', outline: 'none', cursor: 'pointer' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 5 }}>To</div>
+                  <input type="date" value={salesPreviewTo} onChange={e => setSalesPreviewTo(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.87rem', outline: 'none', cursor: 'pointer' }} />
+                </div>
+                <button onClick={loadPreview} disabled={salesPreviewLoading || !salesPreviewFrom || !salesPreviewTo}
+                  style={{ padding: '9px 22px', background: salesPreviewLoading ? '#fecaca' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.87rem', cursor: 'pointer', opacity: salesPreviewLoading ? 0.7 : 1 }}>
+                  {salesPreviewLoading ? '⏳ Loading…' : 'Apply'}
+                </button>
+              </div>
+
+              {salesPreviewError && (
+                <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#c41e3a', fontSize: '0.87rem', marginBottom: 16 }}>
+                  ⚠️ {salesPreviewError}
+                </div>
+              )}
+
+              {!salesPreviewData && !salesPreviewLoading && (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📅</div>
+                  <div style={{ fontWeight: 600 }}>Select a date range and click Apply to load branch sales</div>
+                </div>
+              )}
+
+              {salesPreviewData && rows.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
+                  <div style={{ fontWeight: 600 }}>No sales recorded for {salesPreviewData.from} – {salesPreviewData.to}</div>
+                </div>
+              )}
+
+              {rows.length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: 10 }}>
+                    Period: <strong>{salesPreviewData.from}</strong> to <strong>{salesPreviewData.to}</strong>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', borderRadius: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.08)' }}>
+                    <thead>
+                      <tr>
+                        <th style={thS}>Branch</th>
+                        <th style={thR}>Transactions</th>
+                        <th style={thR}>Member Sales</th>
+                        <th style={thR}>Non-Member Sales</th>
+                        <th style={thR}>Prescription Rx</th>
+                        <th style={thR}>Consultation</th>
+                        <th style={{ ...thR, background: '#8b0000' }}>Total Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.branch_id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf7f8' }}>
+                          <td style={tdS}><strong>{branchLabel(r.branch_id)}</strong></td>
+                          <td style={tdR}>{Number(r.transactions || 0).toLocaleString()}</td>
+                          <td style={tdR}>{fmtN(r.member_total)}</td>
+                          <td style={tdR}>{fmtN(r.non_member_total)}</td>
+                          <td style={tdR}>{fmtN(r.rx_total)}</td>
+                          <td style={tdR}>{fmtN(r.consult_total)}</td>
+                          <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#1e293b' }}>
+                        <td style={{ ...tdS, color: '#fff', fontWeight: 800, background: 'transparent' }}>TOTAL</td>
+                        <td style={{ ...tdR, color: '#fff', background: 'transparent' }}>{grandTx.toLocaleString()}</td>
+                        <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                        <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                        <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                        <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                        <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardBody>
+          </Card>
         );
       })()}
 
