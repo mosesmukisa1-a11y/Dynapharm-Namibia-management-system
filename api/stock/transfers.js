@@ -705,16 +705,16 @@ export default async function handler(req, res) {
         delete updatePayload.decisionNotes;
       }
 
-      if (updatePayload.gmAction || updatePayload.gm_action) {
-        updatePayload.gm_action = updatePayload.gmAction || updatePayload.gm_action;
+      if ('gmAction' in updatePayload || 'gm_action' in updatePayload) {
+        updatePayload.gm_action = updatePayload.gmAction !== undefined ? updatePayload.gmAction : updatePayload.gm_action;
         delete updatePayload.gmAction;
       }
-      if (updatePayload.gmComment || updatePayload.gm_comment) {
-        updatePayload.gm_comment = updatePayload.gmComment || updatePayload.gm_comment;
+      if ('gmComment' in updatePayload || 'gm_comment' in updatePayload) {
+        updatePayload.gm_comment = updatePayload.gmComment !== undefined ? updatePayload.gmComment : updatePayload.gm_comment;
         delete updatePayload.gmComment;
       }
-      if (updatePayload.amendedByGm || updatePayload.amended_by_gm) {
-        updatePayload.amended_by_gm = updatePayload.amendedByGm || updatePayload.amended_by_gm;
+      if ('amendedByGm' in updatePayload || 'amended_by_gm' in updatePayload) {
+        updatePayload.amended_by_gm = updatePayload.amendedByGm !== undefined ? updatePayload.amendedByGm : updatePayload.amended_by_gm;
         delete updatePayload.amendedByGm;
       }
       if (updatePayload.signatureName !== undefined) {
