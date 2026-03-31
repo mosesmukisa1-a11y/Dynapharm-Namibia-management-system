@@ -111,7 +111,25 @@ export default async function handler(req, res) {
 
   await withTransaction(async (client) => {
     for (const [, agg] of aggregated) {
-      const { productName, batchNo, expiryDate, quantity, unitDP } = agg;
+      const { productName, batchNo, quantity, unitDP } = agg;
+      let { expiryDate } = agg;
+
+      if (!expiryDate) {
+        const expiryLookup = await client.query(
+          `SELECT expiry_date
+           FROM stock_batches
+           WHERE location = 'country_stock'
+             AND LOWER(TRIM(description)) = LOWER(TRIM($1))
+             AND COALESCE(batch_no, '') = $2
+             AND expiry_date IS NOT NULL
+           ORDER BY import_date ASC, created_at ASC
+           LIMIT 1`,
+          [productName, batchNo]
+        );
+        if (expiryLookup.rows.length > 0) {
+          expiryDate = expiryLookup.rows[0].expiry_date;
+        }
+      }
 
       const commonFields = {
         productName, batchNo, expiryDate, quantity,

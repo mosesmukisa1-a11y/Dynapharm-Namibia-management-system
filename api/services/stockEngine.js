@@ -69,13 +69,13 @@ function generateId(prefix) {
 export async function recomputeInventoryBalance(key) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
   const batchNoVal = batchNo || '';
-  const expiryVal = expiryDate || null;
+  let expiryVal = expiryDate || null;
 
   // Fetch ALL posted movements for this product+batch (filter location in JS for legacy compatibility)
   const result = await query(
     `SELECT movement_type, quantity, source_location, destination_location,
             source_location_type, destination_location_type,
-            unit_dp, unit_cif, created_at
+            unit_dp, unit_cif, expiry_date, created_at
      FROM stock_movements
      WHERE status = 'posted'
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
@@ -91,6 +91,9 @@ export async function recomputeInventoryBalance(key) {
   let lastMovementDate = null;
 
   for (const m of result.rows) {
+    if (!expiryVal && m.expiry_date) {
+      expiryVal = m.expiry_date;
+    }
     const srcType = m.source_location_type || inferLocationType(m.source_location);
     const dstType = m.destination_location_type || inferLocationType(m.destination_location);
 
@@ -459,14 +462,15 @@ export async function recomputeLocationBalances(locationType, locationId) {
  */
 export async function seedInventoryBalances() {
   const result = await query(
-    `SELECT DISTINCT product_name, COALESCE(batch_no,'') as batch_no,
+    `SELECT product_name, COALESCE(batch_no,'') as batch_no,
        source_location, source_location_type,
-       destination_location, destination_location_type
+       destination_location, destination_location_type,
+       expiry_date
      FROM stock_movements
      WHERE status = 'posted' AND product_name IS NOT NULL`
   );
 
-  const seen = new Set();
+  const seen = new Map();
   const targets = [];
 
   for (const r of result.rows) {
@@ -475,14 +479,21 @@ export async function seedInventoryBalances() {
     if (srcType && r.source_location) {
       const k = `${srcType}|${r.source_location}|${r.product_name}|${r.batch_no}`;
       if (!seen.has(k)) {
-        seen.add(k);
+        seen.set(k, r.expiry_date || null);
         targets.push({
           locationType: srcType,
           locationId: r.source_location,
           productName: r.product_name,
           batchNo: r.batch_no,
-          expiryDate: null,
+          expiryDate: r.expiry_date || null,
         });
+      } else if (!seen.get(k) && r.expiry_date) {
+        seen.set(k, r.expiry_date);
+        const target = targets.find(
+          t => t.locationType === srcType && t.locationId === r.source_location &&
+               t.productName === r.product_name && t.batchNo === r.batch_no
+        );
+        if (target) target.expiryDate = r.expiry_date;
       }
     }
     // Destination location
@@ -490,14 +501,21 @@ export async function seedInventoryBalances() {
     if (dstType && r.destination_location) {
       const k = `${dstType}|${r.destination_location}|${r.product_name}|${r.batch_no}`;
       if (!seen.has(k)) {
-        seen.add(k);
+        seen.set(k, r.expiry_date || null);
         targets.push({
           locationType: dstType,
           locationId: r.destination_location,
           productName: r.product_name,
           batchNo: r.batch_no,
-          expiryDate: null,
+          expiryDate: r.expiry_date || null,
         });
+      } else if (!seen.get(k) && r.expiry_date) {
+        seen.set(k, r.expiry_date);
+        const target = targets.find(
+          t => t.locationType === dstType && t.locationId === r.destination_location &&
+               t.productName === r.product_name && t.batchNo === r.batch_no
+        );
+        if (target) target.expiryDate = r.expiry_date;
       }
     }
   }
