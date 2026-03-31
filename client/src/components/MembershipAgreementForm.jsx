@@ -425,7 +425,7 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+    <form onSubmit={handleSubmit} className="max-w-4xl mx-auto pb-24">
       {error && <Alert type="error" className="mb-4">{error}</Alert>}
 
       <div className="bg-white border-2 border-[#c41e3a]/30 rounded-xl overflow-hidden shadow-sm">
@@ -615,12 +615,15 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
             </div>
           </div>
 
-          <div className="pt-2">
-            <Button type="submit" className="w-full py-3 text-base" disabled={submitting}>
-              {submitting ? 'Processing Registration...' : 'Submit Distributor Agreement (N$ 1,200.00)'}
-            </Button>
-            <p className="text-center text-xs text-gray-400 mt-2">A unique NB number will be automatically assigned upon submission.</p>
-          </div>
+        </div>
+      </div>
+
+      <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '2px solid #f0e8ea', padding: '14px 0', zIndex: 20 }}>
+        <div className="max-w-4xl mx-auto px-1">
+          <Button type="submit" className="w-full py-3 text-base" disabled={submitting}>
+            {submitting ? 'Processing Registration...' : 'Submit Distributor Agreement (N$ 1,200.00)'}
+          </Button>
+          <p className="text-center text-xs text-gray-400 mt-2">A unique NB number will be automatically assigned upon submission.</p>
         </div>
       </div>
     </form>
