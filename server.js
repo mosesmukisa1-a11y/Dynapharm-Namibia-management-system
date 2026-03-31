@@ -1415,6 +1415,30 @@ server.on('error', (error) => {
       console.log(`Status normalization: updated ${statusFix.rowCount} stock_movements rows`);
     }
 
+    // ── Schema sync: ensure columns added by later migrations exist ─────────
+    // These ALTER TABLE … ADD COLUMN IF NOT EXISTS statements are idempotent.
+    // They repair any production databases that were created before these
+    // migrations were authored, without touching existing data.
+    const schemaSyncs = [
+      // Migration 019: GM dispatch approval columns on stock_transfers
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_id VARCHAR(255)`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_role VARCHAR(100)`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS destination_branch_staff JSONB`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_at TIMESTAMPTZ`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_by VARCHAR(255)`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_by_id VARCHAR(255)`,
+      // Migration 020: CIF unit cost on stock_movements
+      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS unit_cif NUMERIC(14,4)`,
+    ];
+    let schemaSynced = 0;
+    for (const sql of schemaSyncs) {
+      try { await query(sql); schemaSynced++; } catch {}
+    }
+    if (schemaSynced > 0) {
+      console.log(`Schema sync: applied ${schemaSynced} column additions`);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // ── Auto-seed inventory_balances if empty ───────────────────────────────
     const ibCount = await getOne(`SELECT COUNT(*) as cnt FROM inventory_balances`);
     if (Number(ibCount?.cnt || 0) === 0) {
