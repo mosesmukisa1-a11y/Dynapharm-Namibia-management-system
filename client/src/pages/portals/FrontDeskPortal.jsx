@@ -48,11 +48,13 @@ export default function FrontDeskPortal() {
 }
 
 function AppointmentsTab() {
+  const { user } = useAuth();
+  const userBranch = user?.branch || '';
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState('today');
-  const [form, setForm] = useState({ full_name: '', date: '', time: '', branch: '', type: 'General' });
+  const [form, setForm] = useState({ full_name: '', phone: '', date: '', time: '', branch: userBranch, type: 'General' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,8 +70,8 @@ function AppointmentsTab() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!form.full_name || !form.date || !form.time) {
-      setError('Name, date and time are required');
+    if (!form.full_name || !form.phone || !form.date || !form.time) {
+      setError('Name, phone, date and time are required');
       return;
     }
     setSubmitting(true);
@@ -77,6 +79,7 @@ function AppointmentsTab() {
     try {
       await api.appointments.create({
         full_name: form.full_name,
+        phone: form.phone,
         date: form.date,
         time: form.time,
         branch: form.branch,
@@ -84,7 +87,7 @@ function AppointmentsTab() {
         status: 'pending',
       });
       setShowModal(false);
-      setForm({ full_name: '', date: '', time: '', branch: '', type: 'General' });
+      setForm({ full_name: '', phone: '', date: '', time: '', branch: userBranch, type: 'General' });
       loadAppointments();
     } catch (err) {
       setError(err.message || 'Failed to create appointment');
@@ -136,7 +139,7 @@ function AppointmentsTab() {
         </div>
         <div className="flex gap-2 items-center">
           <Badge variant="primary">{filtered.length} total</Badge>
-          <Button size="sm" onClick={() => setShowModal(true)}><Plus size={14} /> New Appointment</Button>
+          <Button size="sm" onClick={() => { setForm(f => ({ ...f, branch: userBranch || f.branch })); setShowModal(true); }}><Plus size={14} /> New Appointment</Button>
         </div>
       </div>
       <Card>
@@ -147,6 +150,7 @@ function AppointmentsTab() {
         <form onSubmit={handleCreate} className="p-6 space-y-4">
           {error && <Alert type="error">{error}</Alert>}
           <Input label="Full Name" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required />
+          <Input label="Phone Number" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} required placeholder="e.g. 0812345678" />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
             <Input label="Time" type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} required />

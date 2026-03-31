@@ -340,6 +340,7 @@ function CheckupsSection() {
   const [selectedSystems, setSelectedSystems] = useState({});
   const [selectedSymptomChecks, setSelectedSymptomChecks] = useState({});
   const [currentRecommendations, setCurrentRecommendations] = useState(null);
+  const [reportRequired, setReportRequired] = useState(true);
 
   const loadCheckups = useCallback(() => {
     setLoading(true);
@@ -358,6 +359,7 @@ function CheckupsSection() {
     setSelectedMedicines(new Set());
     setSelectedSystems({});
     setSelectedSymptomChecks({});
+    setReportRequired(true);
     setError('');
     const fd = new Date();
     fd.setDate(fd.getDate() + 14);
@@ -473,6 +475,7 @@ function CheckupsSection() {
         referral_name: referralName,
         referral_nb: referralNb,
         nb_number: isMember ? (data.referral_nb || data.nb_number || null) : null,
+        report_required: reportRequired,
       });
       setShowReport(false);
       setSelectedCheckup(null);
@@ -483,6 +486,7 @@ function CheckupsSection() {
       setFollowUpDate('');
       setFollowUpNotes('');
       setCurrentRecommendations(null);
+      setReportRequired(true);
       setError('');
       loadCheckups();
     } catch (err) {
@@ -579,7 +583,10 @@ function CheckupsSection() {
   <div style="margin-left:auto;text-align:right;">
     <div style="font-size:0.85rem;color:#555;">Ref: <strong>${esc(String(apt.id || ''))}</strong></div>
     <div style="font-size:0.85rem;color:#555;">Date: <strong>${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</strong></div>
-    <span class="confidential">CONFIDENTIAL</span>
+    <div style="margin-top:6px;display:inline-block;padding:4px 14px;border-radius:20px;font-size:0.8rem;font-weight:700;${reportRequired ? 'background:#fef2f2;color:#c41e3a;border:2px solid #fecaca;' : 'background:#f0fdf4;color:#166534;border:2px solid #bbf7d0;'}">
+      ${reportRequired ? '⚠️ Report Required: YES' : '✓ Report Required: NO'}
+    </div>
+    <div style="margin-top:4px;"><span class="confidential">CONFIDENTIAL</span></div>
   </div>
 </div>
 
@@ -1034,6 +1041,28 @@ ${consultantNotes ? `
                         <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#666' }}>Next appointment recommended</p>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div style={{ background: 'white', border: '2px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#2c3e50' }}>Report Required Flag</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <span style={{ fontSize: '0.9rem', color: '#374151', fontWeight: 500 }}>Report Required:</span>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setReportRequired(true)}
+                        style={{ padding: '7px 20px', borderRadius: '6px', border: '2px solid', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', background: reportRequired ? '#c41e3a' : '#fff', color: reportRequired ? '#fff' : '#c41e3a', borderColor: '#c41e3a', transition: 'all 0.2s' }}
+                      >Yes</button>
+                      <button
+                        type="button"
+                        onClick={() => setReportRequired(false)}
+                        style={{ padding: '7px 20px', borderRadius: '6px', border: '2px solid', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', background: !reportRequired ? '#6b7280' : '#fff', color: !reportRequired ? '#fff' : '#6b7280', borderColor: '#6b7280', transition: 'all 0.2s' }}
+                      >No</button>
+                    </div>
+                    <span style={{ fontSize: '0.82rem', color: reportRequired ? '#c41e3a' : '#6b7280', fontWeight: 600 }}>
+                      {reportRequired ? '⚠️ Report required for dispensing' : '✓ No report required'}
+                    </span>
                   </div>
                 </div>
 

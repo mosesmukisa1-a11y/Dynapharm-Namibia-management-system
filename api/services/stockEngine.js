@@ -75,7 +75,7 @@ export async function recomputeInventoryBalance(key) {
   const result = await query(
     `SELECT movement_type, quantity, source_location, destination_location,
             source_location_type, destination_location_type,
-            unit_dp, created_at
+            unit_dp, unit_cif, created_at
      FROM stock_movements
      WHERE status = 'posted'
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
@@ -87,7 +87,7 @@ export async function recomputeInventoryBalance(key) {
   let inwardQty = 0;
   let outwardQty = 0;
   let unitDP = 0;
-  const unitCIF = 0;
+  let unitCIF = 0;
   let lastMovementDate = null;
 
   for (const m of result.rows) {
@@ -96,6 +96,7 @@ export async function recomputeInventoryBalance(key) {
 
     const qty = Number(m.quantity || 0);
     if (m.unit_dp) unitDP = Number(m.unit_dp);
+    if (m.unit_cif) unitCIF = Number(m.unit_cif);
 
     const isInbound = dstType === locationType &&
       m.destination_location === locationId &&
@@ -222,6 +223,7 @@ async function _postStockMovementInternal(queryFn, input) {
   const batchNo = input.batchNo || input.batch_no || null;
   const expiryDate = input.expiryDate || input.expiry_date || null;
   const unitDP = input.unitDP || input.unit_dp || null;
+  const unitCIF = input.unitCIF || input.unit_cif || null;
   const productId = input.productId || input.product_id || null;
   const referenceId = input.referenceId || input.reference_id || null;
   const referenceType = input.referenceType || input.reference_type || null;
@@ -234,12 +236,12 @@ async function _postStockMovementInternal(queryFn, input) {
        (id, product_name, product_id, batch_no, expiry_date, quantity,
         movement_type, source_location, destination_location,
         source_location_type, destination_location_type,
-        unit_dp, reference_type, reference_id, notes, created_by,
+        unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
         movement_date, status, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'posted',NOW(),NOW())`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW())`,
     [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
      input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
-     unitDP, referenceType, referenceId, notes, createdBy, movementDate]
+     unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
   );
 
   const recomputeTargets = [];
@@ -293,6 +295,7 @@ export async function postStockMovementTx(client, input) {
   const batchNo = input.batchNo || input.batch_no || null;
   const expiryDate = input.expiryDate || input.expiry_date || null;
   const unitDP = input.unitDP || input.unit_dp || null;
+  const unitCIF = input.unitCIF || input.unit_cif || null;
   const productId = input.productId || input.product_id || null;
   const referenceId = input.referenceId || input.reference_id || null;
   const referenceType = input.referenceType || input.reference_type || null;
@@ -305,12 +308,12 @@ export async function postStockMovementTx(client, input) {
        (id, product_name, product_id, batch_no, expiry_date, quantity,
         movement_type, source_location, destination_location,
         source_location_type, destination_location_type,
-        unit_dp, reference_type, reference_id, notes, created_by,
+        unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
         movement_date, status, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'posted',NOW(),NOW())`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW())`,
     [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
      input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
-     unitDP, referenceType, referenceId, notes, createdBy, movementDate]
+     unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
   );
 
   const recomputeTargets = [];

@@ -3,7 +3,7 @@
  * Executive summary for Director portal.
  */
 import {
-  getDateRange, getCompanyStockSummary, getAllBranchesSalesRevenue, getStockAlerts,
+  getDateRange, getCompanyStockSummary, getAllBranchesSalesRevenue, getStockAlerts, getWriteOffs,
 } from '../services/gmFinanceMisEngine.js';
 import { getMany, getOne } from '../db.js';
 
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   const { start, end } = getDateRange(req.query);
 
   const [stock, salesRevenue, alerts, branchCount, distributorCount, productCount,
-    clientRegs, distRegs] = await Promise.all([
+    clientRegs, distRegs, writeOffRows, salesUnitsRow] = await Promise.all([
     getCompanyStockSummary(),
     getAllBranchesSalesRevenue(start, end),
     getStockAlerts(90),
@@ -22,7 +22,25 @@ export default async function handler(req, res) {
     getOne(`SELECT COUNT(DISTINCT description) as cnt FROM product_prices`),
     getOne(`SELECT COUNT(*) as cnt FROM clients WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp`, [start, end]),
     getOne(`SELECT COUNT(*) as cnt FROM distributors WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp`, [start, end]),
+    getWriteOffs(start, end),
+    getOne(
+      `SELECT COALESCE(SUM(sm.quantity), 0) as units
+       FROM stock_movements sm
+       WHERE sm.status = 'posted'
+         AND sm.movement_type IN (
+           'walk_in_member_sale','walk_in_non_member_sale','sale',
+           'walkin_sale','walkin_member_sale','walkin_non_member_sale',
+           'prescription_dispense','online_order_sale','online_order_fulfilment'
+         )
+         AND sm.created_at >= $1::date
+         AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
+      [start, end]
+    ),
   ]);
+
+  const totalSalesUnits = Number(salesUnitsRow?.units || 0);
+  const totalWriteOffQty = writeOffRows.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const totalWriteOffValueDP = writeOffRows.reduce((s, r) => s + Number(r.valueDP || 0), 0);
 
   const totalSalesRevenue = salesRevenue.totalSales;
   const totalOrders = await getOne(
@@ -32,21 +50,22 @@ export default async function handler(req, res) {
   const walkinCount = Number(totalOrders?.cnt || 0);
   const avgOrderValue = walkinCount > 0 ? totalSalesRevenue / walkinCount : 0;
 
-  // CIF cost of sales: sold/dispensed movements × unit_cif from product_prices
-  const cifRows = await getMany(
-    `SELECT sm.product_name, SUM(sm.quantity) as total_qty, pp.cif
+  // CIF cost of sales: use actual batch unit_cif from stock_movements, fallback to product_prices.cif
+  const cifRow = await getOne(
+    `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) as cif_cost
      FROM stock_movements sm
-     LEFT JOIN product_prices pp ON sm.product_name = pp.description
+     LEFT JOIN product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
      WHERE sm.status = 'posted'
-       AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',
-         'walk_in_member_sale','walk_in_non_member_sale','sale','online_order_fulfilment','prescription_dispense')
+       AND sm.movement_type IN (
+         'walkin_sale','walkin_member_sale','walkin_non_member_sale',
+         'walk_in_member_sale','walk_in_non_member_sale','sale',
+         'online_order_fulfilment','online_order_sale','prescription_dispense'
+       )
        AND sm.created_at >= $1::date
-       AND sm.created_at <= ($2 || 'T23:59:59')::timestamp
-     GROUP BY sm.product_name, pp.cif`,
+       AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
     [start, end]
   );
-  let cifCostOfSales = 0;
-  for (const r of cifRows) cifCostOfSales += Number(r.total_qty || 0) * Number(r.cif || 0);
+  const cifCostOfSales = Number(cifRow?.cif_cost || 0);
 
   const grossProfit = totalSalesRevenue - cifCostOfSales;
 
@@ -73,7 +92,7 @@ export default async function handler(req, res) {
     sales: {
       totalSalesRevenue,
       monthlyRevenue: totalSalesRevenue,
-      totalSalesUnits: 0,
+      totalSalesUnits,
       totalOrders: walkinCount,
       walkinSalesCount: walkinCount,
       avgOrderValue,
@@ -84,8 +103,8 @@ export default async function handler(req, res) {
       totalWarehouseStockQty: stock.warehouseQty,
       totalBranchStockQty: stock.branchQty,
       totalInTransitQty: stock.inTransitQty,
-      totalWriteOffQty: 0,
-      totalWriteOffValueDP: 0,
+      totalWriteOffQty,
+      totalWriteOffValueDP,
       lowStockCount: alerts.lowStock.length,
       expiringCount: alerts.expiring.length,
     },
@@ -95,6 +114,7 @@ export default async function handler(req, res) {
       totalDeposits,
       remittanceDue,
       bonusPayout,
+      consultationFees: salesRevenue.consultationFees || 0,
     },
     network: {
       activeBranches: Number(branchCount?.cnt || 0),

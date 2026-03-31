@@ -62,6 +62,7 @@ export default async function handler(req, res) {
       referenceId: refId,
       notes: notes || 'Supplier import receipt — held at country stock',
       unitDP: Number(item.unitDP || item.unit_dp || 0),
+      unitCIF: item.unitCIF || item.unit_cif ? Number(item.unitCIF || item.unit_cif) : null,
       createdBy: receivedBy || 'system',
       status: 'posted',
     });

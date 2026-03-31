@@ -219,7 +219,20 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     else if (pm === 'eft') eftTotal += amt;
   }
 
-  return { totalSales, memberSales, nonMemberSales, onlineSales, cashTotal, swipeTotal, eftTotal };
+  // Consultation fees per branch from activity transactions
+  const consultRow = await getOne(
+    `SELECT COALESCE(SUM(consultation_fee), 0) as total
+     FROM branch_activity_transactions
+     WHERE branch_id = $1
+       AND payment_status = 'paid'
+       AND consultation_fee > 0
+       AND service_date >= $2::date
+       AND service_date <= $3::date`,
+    [branchId, start, end]
+  );
+  const consultationFees = Number(consultRow?.total || 0);
+
+  return { totalSales, memberSales, nonMemberSales, onlineSales, cashTotal, swipeTotal, eftTotal, consultationFees };
 }
 
 /**
@@ -308,8 +321,20 @@ export async function getAllBranchesSalesRevenue(start, end) {
     prescriptionSales += Number(d.quantity || 0) * Number(d.unit_dp || 0);
   }
 
+  // Consultation fees from activity transactions (recorded during dispensing)
+  const consultRow = await getOne(
+    `SELECT COALESCE(SUM(consultation_fee), 0) as total
+     FROM branch_activity_transactions
+     WHERE payment_status = 'paid'
+       AND consultation_fee > 0
+       AND service_date >= $1::date
+       AND service_date <= $2::date`,
+    [start, end]
+  );
+  const consultationFees = Number(consultRow?.total || 0);
+
   const totalSales = walkinSales + prescriptionSales;
-  return { walkinSales, memberSales, nonMemberSales, onlineSales, prescriptionSales, totalSales, consultationFees: 0 };
+  return { walkinSales, memberSales, nonMemberSales, onlineSales, prescriptionSales, totalSales, consultationFees };
 }
 
 /**
