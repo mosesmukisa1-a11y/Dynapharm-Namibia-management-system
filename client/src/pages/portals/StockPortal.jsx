@@ -2396,7 +2396,8 @@ function WarehouseTab({ name }) {
       )}
 
       <Modal open={showDispatch} onClose={() => setShowDispatch(false)} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
-        <form onSubmit={handleDispatchToBranch} className="p-6 space-y-4">
+        <form onSubmit={handleDispatchToBranch} style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '24px 24px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.83rem', color: '#92400e' }}>
             ⚠️ <strong>GM Approval Required:</strong> This dispatch will be sent to the General Manager for approval. Once approved, the branch can confirm receipt.
           </div>
@@ -2499,7 +2500,8 @@ function WarehouseTab({ name }) {
             <textarea className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 resize-y" rows={2}
               value={dispatchNote} onChange={e => setDispatchNote(e.target.value)} placeholder="Delivery instructions, urgency, etc..." />
           </div>
-          <div className="flex gap-3 pt-2">
+          </div>
+          <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #e2e8f0', padding: '14px 24px', display: 'flex', gap: 12, zIndex: 10 }}>
             <Button type="submit" disabled={submitting || dispatchCart.length === 0 || dispatchCart.some(c => getAvailableBatchesForProduct(c.description).length === 0)}>
               {submitting ? 'Submitting...' : `📤 Submit for GM Approval (${dispatchCart.reduce((s, c) => s + c.qty, 0)} units)`}
             </Button>
