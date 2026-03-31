@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
@@ -12,6 +12,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
+
+const PortalBranchContext = createContext(null);
 
 const fmtLocation = (loc) => {
   if (!loc) return '—';
@@ -158,7 +160,12 @@ function SalesReviewTab() {
 }
 
 export default function BranchPortal() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('walkIn');
+  const isAdmin = user?.role === 'admin';
+  const [selectedPortalBranch, setSelectedPortalBranch] = useState('');
+  const effectiveBranch = selectedPortalBranch || user?.branch || '';
+
   const tabs = [
     { id: 'walkIn', label: 'Walk-in Sales', icon: '🛒' },
     { id: 'prescriptions', label: 'Prescriptions', icon: '💊' },
@@ -176,39 +183,63 @@ export default function BranchPortal() {
   ];
 
   return (
-    <div>
-      <h2 className="text-center text-2xl font-bold mb-6" style={{ color: '#2c3e50' }}>🏬 Branch Portal</h2>
-      <div className="flex gap-2 mb-8 overflow-x-auto pb-1 flex-wrap" style={{ borderBottom: '3px solid #c41e3a' }}>
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className="px-4 py-3 text-sm font-medium rounded-t-lg whitespace-nowrap cursor-pointer transition-all"
-            style={activeTab === tab.id
-              ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600, boxShadow: '0 2px 8px rgba(52,152,219,0.2)' }
-              : { background: 'transparent', color: '#64748b', border: 'none' }
-            }
-          >
-            <span className="mr-1.5">{tab.icon}</span>{tab.label}
-          </button>
-        ))}
-      </div>
+    <PortalBranchContext.Provider value={effectiveBranch}>
       <div>
-        {activeTab === 'walkIn' && <WalkInSalesTab />}
-        {activeTab === 'prescriptions' && <PrescriptionsTab />}
-        {activeTab === 'stock' && <BranchStockTab />}
-        {activeTab === 'banking' && <BankingTab />}
-        {activeTab === 'payments' && <BranchPaymentsTab />}
-        {activeTab === 'onlineOrders' && <OnlineOrdersTab />}
-        {activeTab === 'bonus' && <BonusTab />}
-        {activeTab === 'communication' && <CommunicationTab />}
-        {activeTab === 'staff' && <StaffTab />}
-        {activeTab === 'registration' && <DistributorRegTab />}
-        {activeTab === 'fieldProgram' && <FieldProgramTab />}
-        {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
-        {activeTab === 'salesReview' && <SalesReviewTab />}
+        <h2 className="text-center text-2xl font-bold mb-6" style={{ color: '#2c3e50' }}>🏬 Branch Portal</h2>
+
+        {isAdmin && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'linear-gradient(135deg,#fff5f7,#fff)', border: '1.5px solid #fecaca', borderRadius: 10 }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>Acting Branch</span>
+            <select
+              value={selectedPortalBranch}
+              onChange={e => setSelectedPortalBranch(e.target.value)}
+              style={{ flex: 1, maxWidth: 280, padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.88rem', outline: 'none', background: '#fff', color: '#1e293b', cursor: 'pointer' }}
+            >
+              <option value="">— Select branch to act on behalf of —</option>
+              {BRANCH_DETAILS.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            {effectiveBranch && (
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                Viewing as <strong style={{ color: '#c41e3a' }}>{getBranchDisplayName(effectiveBranch)}</strong>
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-1 flex-wrap" style={{ borderBottom: '3px solid #c41e3a' }}>
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="px-4 py-3 text-sm font-medium rounded-t-lg whitespace-nowrap cursor-pointer transition-all"
+              style={activeTab === tab.id
+                ? { background: 'linear-gradient(135deg, #3498db, #2980b9)', color: 'white', fontWeight: 600, boxShadow: '0 2px 8px rgba(52,152,219,0.2)' }
+                : { background: 'transparent', color: '#64748b', border: 'none' }
+              }
+            >
+              <span className="mr-1.5">{tab.icon}</span>{tab.label}
+            </button>
+          ))}
+        </div>
+        <div>
+          {activeTab === 'walkIn' && <WalkInSalesTab />}
+          {activeTab === 'prescriptions' && <PrescriptionsTab />}
+          {activeTab === 'stock' && <BranchStockTab />}
+          {activeTab === 'banking' && <BankingTab />}
+          {activeTab === 'payments' && <BranchPaymentsTab />}
+          {activeTab === 'onlineOrders' && <OnlineOrdersTab />}
+          {activeTab === 'bonus' && <BonusTab />}
+          {activeTab === 'communication' && <CommunicationTab />}
+          {activeTab === 'staff' && <StaffTab />}
+          {activeTab === 'registration' && <DistributorRegTab />}
+          {activeTab === 'fieldProgram' && <FieldProgramTab />}
+          {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
+          {activeTab === 'salesReview' && <SalesReviewTab />}
+        </div>
       </div>
-    </div>
+    </PortalBranchContext.Provider>
   );
 }
 
@@ -219,6 +250,8 @@ function DistributorPerformanceTabWrapper() {
 
 function WalkInSalesTab() {
   const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -446,8 +479,8 @@ function WalkInSalesTab() {
 
       const saleData = {
         receipt_number: receiptNumber,
-        branch: user?.branch || '',
-        branchId: user?.branch || '',
+        branch: effectiveBranch,
+        branchId: effectiveBranch,
         customer_type: isMember ? 'member' : 'non_member',
         customerType: isMember ? 'member' : 'non_member',
         customer_name: custName,
@@ -483,7 +516,7 @@ function WalkInSalesTab() {
 
       const commonReceiptParams = {
         receiptNumber,
-        branch: user?.branch || '',
+        branch: effectiveBranch,
         items: itemsWithProfit,
         totalAmount: saleData.total_amount,
         totalBV: saleData.total_bv || 0,
@@ -1100,6 +1133,8 @@ function WalkInSalesTab() {
 
 function PrescriptionsTab() {
   const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState(null);
@@ -1180,13 +1215,34 @@ function PrescriptionsTab() {
 
   const saveDraft = async (report) => {
     const meds = getMedicines(report);
+    const allDispensed = meds.length > 0 && meds.every(m => m.dispensed);
+    const allPaid = allDispensed && meds.every(m => m.paid);
+    const membershipStatus = report.membership_status || 'referred';
+    const isMember = membershipStatus === 'member';
     try {
       await api.reports.update(report.id, {
         ...report,
         medicines: meds,
-        dispensing_status: 'draft',
+        branch: effectiveBranch || report.branch || '',
+        dispensing_status: allDispensed ? 'dispensed' : 'draft',
       });
-      setAlert({ type: 'success', message: `Draft saved for prescription ${report.id}` });
+      if (allPaid && effectiveBranch) {
+        const consultFee = getConsultationFee(membershipStatus);
+        const rxItems = meds.map(m => {
+          const p = getEffectivePrice(m.name);
+          return { product_name: m.name, quantity: m.quantity || 1, unit_price: isMember ? (p.dp || 0) : (p.cp || 0) };
+        });
+        api.branch.captureRx({
+          reportId: report.id,
+          branchId: effectiveBranch,
+          customerType: isMember ? 'member' : membershipStatus,
+          items: rxItems,
+          consultationFee: consultFee,
+          capturedBy: user?.full_name || user?.username || '',
+          serviceDate: (report.date || report.created_at || '').slice(0, 10),
+        }).catch(e => console.warn('[captureRx] skipped:', e.message));
+      }
+      setAlert({ type: 'success', message: allPaid ? `Prescription completed & revenue recorded for ${report.id}` : `Draft saved for ${report.id}` });
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to save draft' });
     }
@@ -1297,7 +1353,7 @@ function PrescriptionsTab() {
       }
       await api.branch.dispense({
         reportId: report.id,
-        branchId: user?.branch || '',
+        branchId: effectiveBranch,
         items: dispenseItems,
         createdBy: user?.full_name || user?.username || '',
         customerType: isMember ? 'member' : 'non_member',
@@ -1416,7 +1472,7 @@ function PrescriptionsTab() {
     });
     printReceipt(generatePrescriptionQuoteHTML({
       rxId: report.id,
-      branch: user?.branch || '',
+      branch: effectiveBranch,
       patientName: report.client_name || report.full_name || 'Patient',
       membershipStatus,
       consultantName: report.consultant || null,
@@ -1441,7 +1497,7 @@ function PrescriptionsTab() {
     if (!w) return;
     w.document.write(generatePrescriptionQuotePDFHTML({
       rxId: report.id,
-      branch: user?.branch || '',
+      branch: effectiveBranch,
       patientName: report.client_name || report.full_name || 'Patient',
       membershipStatus,
       consultantName: report.consultant || null,
@@ -1528,7 +1584,7 @@ function PrescriptionsTab() {
 
     printReceipt(generateReceiptHTML({
       receiptNumber: 'RX-' + (report.id || Date.now()),
-      branch: user?.branch || '',
+      branch: effectiveBranch,
       items,
       totalAmount,
       totalBV,

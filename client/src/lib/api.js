@@ -185,6 +185,7 @@ export const api = {
     inventory: (params = '') => api.get(`/branch/inventory${params ? '?' + params : ''}`),
     receiveInventory: (data) => api.post('/branch/inventory', data),
     dispense: (data) => api.post('/branch/dispense', data),
+    captureRx: (data) => api.post('/branch/capture-rx', data),
     stockSummary: (params = '') => api.get(`/branch/stock-summary${params ? '?' + params : ''}`),
   },
 
