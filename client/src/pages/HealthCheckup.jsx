@@ -27,6 +27,10 @@ export default function HealthCheckup() {
   const [distributorSearch, setDistributorSearch] = useState('');
   const [referralName, setReferralName] = useState('');
   const [referralNB, setReferralNB] = useState('');
+  const [refDistSearch, setRefDistSearch] = useState('');
+  const [refDistResults, setRefDistResults] = useState([]);
+  const [refDistLoading, setRefDistLoading] = useState(false);
+  const [selectedRefDist, setSelectedRefDist] = useState(null);
 
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '', dob: '', gender: '', branch: 'Windhoek CBD',
@@ -56,10 +60,40 @@ export default function HealthCheckup() {
 
   const effectiveReferralName = isMember
     ? (selectedDistributor?.distributor_name || '')
-    : (referralName.trim() || DEFAULT_REFERRAL_NAME);
+    : (selectedRefDist ? selectedRefDist.fullName : (referralName.trim() || DEFAULT_REFERRAL_NAME));
   const effectiveReferralNB = isMember
     ? (selectedDistributor?.distributor_code || '')
-    : (referralNB.trim() || DEFAULT_REFERRAL_NB);
+    : (selectedRefDist ? selectedRefDist.nbNumber : (referralNB.trim() || DEFAULT_REFERRAL_NB));
+
+  const searchRefDistributors = (q) => {
+    setRefDistSearch(q);
+    if (q.length < 2) { setRefDistResults([]); return; }
+    setRefDistLoading(true);
+    clearTimeout(window._hcRefDistTimer);
+    window._hcRefDistTimer = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(q);
+        setRefDistResults(Array.isArray(res) ? res : res.distributors || []);
+      } catch { setRefDistResults([]); }
+      finally { setRefDistLoading(false); }
+    }, 300);
+  };
+
+  const selectRefDist = (d) => {
+    setSelectedRefDist(d);
+    setRefDistSearch('');
+    setRefDistResults([]);
+    setReferralName(d.fullName || '');
+    setReferralNB(d.nbNumber || '');
+  };
+
+  const clearRefDist = () => {
+    setSelectedRefDist(null);
+    setReferralName('');
+    setReferralNB('');
+    setRefDistSearch('');
+    setRefDistResults([]);
+  };
 
   const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -257,15 +291,60 @@ export default function HealthCheckup() {
 
         {!isMember && (
           <Card className="mb-6">
-            <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><User size={18} /> Referral (Optional)</h3></CardHeader>
+            <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><User size={18} /> Referring Distributor (Optional)</h3></CardHeader>
             <CardBody>
-              <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Referral Name" value={referralName} onChange={e => setReferralName(e.target.value)}
-                  placeholder={`Default: ${DEFAULT_REFERRAL_NAME}`} />
-                <Input label="Referral NB Number" value={referralNB} onChange={e => setReferralNB(e.target.value)}
-                  placeholder={`Default: ${DEFAULT_REFERRAL_NB}`} />
-              </div>
-              <p className="text-xs text-gray-400 mt-2">If no referral is entered, the default referral <strong>{DEFAULT_REFERRAL_NAME} ({DEFAULT_REFERRAL_NB})</strong> will be used.</p>
+              {selectedRefDist ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff0f3', border: '1.5px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontWeight: 800, color: '#c41e3a' }}>{selectedRefDist.nbNumber}</span>
+                    <span style={{ color: '#374151', marginLeft: 8 }}>{selectedRefDist.fullName}</span>
+                  </div>
+                  <button type="button" onClick={clearRefDist} style={{ background: 'none', border: 'none', color: '#c41e3a', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>Change</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative', marginBottom: 8 }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input
+                      value={refDistSearch}
+                      onChange={e => searchRefDistributors(e.target.value)}
+                      placeholder="Search distributor by name or NB number..."
+                      style={{ width: '100%', paddingLeft: 32, paddingRight: 12, paddingTop: 9, paddingBottom: 9, border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    {refDistLoading && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#94a3b8' }}>Searching…</span>}
+                  </div>
+                  {refDistResults.length > 0 && (
+                    <div style={{ position: 'absolute', zIndex: 50, left: 0, right: 0, background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', maxHeight: 180, overflowY: 'auto', marginTop: 2 }}>
+                      {refDistResults.map((d, idx) => (
+                        <button type="button" key={d.distributorId || idx}
+                          onClick={() => selectRefDist(d)}
+                          style={{ width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f9f0f2', background: 'none', cursor: 'pointer', fontSize: '0.86rem' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#fff0f3'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                          <span style={{ fontWeight: 700, color: '#c41e3a' }}>{d.nbNumber}</span>
+                          <span style={{ color: '#374151', marginLeft: 8 }}>{d.fullName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {refDistSearch.length >= 2 && !refDistLoading && refDistResults.length === 0 && (
+                    <div style={{ padding: '8px 12px', color: '#94a3b8', fontSize: '0.84rem', background: '#fafafa', border: '1px solid #f0e8ea', borderRadius: 8, marginTop: 2 }}>No distributors found — you can enter manually below</div>
+                  )}
+                </div>
+              )}
+              {!selectedRefDist && (
+                <div className="grid md:grid-cols-2 gap-3 mt-2">
+                  <Input label="Referral Name (manual)" value={referralName} onChange={e => setReferralName(e.target.value)}
+                    placeholder={`Default: ${DEFAULT_REFERRAL_NAME}`} />
+                  <Input label="Referral NB Number (manual)" value={referralNB} onChange={e => setReferralNB(e.target.value)}
+                    placeholder={`Default: ${DEFAULT_REFERRAL_NB}`} />
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-2">
+                {selectedRefDist
+                  ? <><strong>{selectedRefDist.fullName} ({selectedRefDist.nbNumber})</strong> set as referral.</>
+                  : <>If blank, <strong>{DEFAULT_REFERRAL_NAME} ({DEFAULT_REFERRAL_NB})</strong> will be used as default referral.</>}
+              </p>
             </CardBody>
           </Card>
         )}
