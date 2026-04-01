@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
@@ -106,6 +107,7 @@ function printDistributorProfile(profile) {
 }
 
 function DashboardTab() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -326,11 +328,11 @@ function DashboardTab() {
         </CardHeader>
         <CardBody>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <button onClick={() => window.location.href = '/shop'} className="p-4 bg-primary/5 rounded-xl text-center hover:bg-primary/10 transition-colors cursor-pointer">
+            <button onClick={() => navigate('/shop')} className="p-4 bg-primary/5 rounded-xl text-center hover:bg-primary/10 transition-colors cursor-pointer">
               <ShoppingCart size={24} className="text-primary mx-auto mb-2" />
               <span className="text-sm font-medium text-gray-700">Shop Products</span>
             </button>
-            <button onClick={() => window.location.href = '/checkup'} className="p-4 bg-green-50 rounded-xl text-center hover:bg-green-100 transition-colors cursor-pointer">
+            <button onClick={() => navigate('/checkup')} className="p-4 bg-green-50 rounded-xl text-center hover:bg-green-100 transition-colors cursor-pointer">
               <Heart size={24} className="text-green-600 mx-auto mb-2" />
               <span className="text-sm font-medium text-gray-700">Health Check Up</span>
             </button>
@@ -774,6 +776,7 @@ function CommunicationsTab() {
 }
 
 function CheckupTab() {
+  const navigate = useNavigate();
   return (
     <Card>
       <CardBody>
@@ -781,7 +784,7 @@ function CheckupTab() {
           <Heart size={48} className="text-primary mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-800 mb-2">Full Body Check Up</h3>
           <p className="text-gray-500 mb-6">Get a comprehensive health assessment at any Dynapharm branch.</p>
-          <Button onClick={() => window.location.href = '/checkup'}>Book a Check Up</Button>
+          <Button onClick={() => navigate('/checkup')}>Book a Check Up</Button>
         </div>
       </CardBody>
     </Card>

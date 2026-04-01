@@ -3,7 +3,7 @@ import cookie from 'cookie';
 import crypto from 'crypto';
 
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'dyna_session';
-const AUTH_TOKEN_TTL = parseInt(process.env.AUTH_TOKEN_TTL || '3600', 10);
+const AUTH_TOKEN_TTL = parseInt(process.env.AUTH_TOKEN_TTL || '28800', 10);
 const AUTH_REFRESH_TTL = parseInt(process.env.AUTH_REFRESH_TTL || '604800', 10);
 
 function getAuthSecret() {

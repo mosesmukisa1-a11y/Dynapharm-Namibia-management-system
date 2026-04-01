@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, WINDHOEK_BRANCHES, DELIVERY_FEE_RULES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Table, Alert, Select, Textarea } from '../../components/ui';
@@ -183,6 +184,7 @@ function AppointmentsTab() {
 }
 
 function CheckupTab() {
+  const navigate = useNavigate();
   const [recentCheckups, setRecentCheckups] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -204,7 +206,7 @@ function CheckupTab() {
             <Heart size={48} className="text-primary mx-auto mb-4" />
             <h3 className="text-xl font-bold text-gray-800 mb-2">Full Body Check Up</h3>
             <p className="text-gray-500 mb-4">Process walk-in health checkup forms</p>
-            <Button onClick={() => window.location.href = '/checkup'}>Open Checkup Form</Button>
+            <Button onClick={() => navigate('/checkup')}>Open Checkup Form</Button>
           </div>
         </CardBody>
       </Card>
