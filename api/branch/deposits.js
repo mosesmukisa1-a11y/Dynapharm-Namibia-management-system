@@ -134,9 +134,9 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const branchId = body.branchId || body.branch;
+      const branchId = body.branchId || body.branch || currentUser?.branch || currentUser?.branchId;
       if (!branchId) {
-        return res.status(400).json({ success: false, error: 'branchId is required' });
+        return res.status(400).json({ success: false, error: 'branchId is required — please ensure you are logged in with a branch account' });
       }
 
       const date = body.date || new Date().toISOString().slice(0, 10);

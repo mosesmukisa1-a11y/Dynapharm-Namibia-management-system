@@ -3,6 +3,20 @@
 ## Overview
 This project is a cloud-based health management system for Dynapharm International Namibia, designed to centralize and optimize operations across sales, inventory, HR, finance, and CRM. Its primary purpose is to enhance efficiency, data accuracy, and provide real-time business insights. The system features a multi-portal architecture, an e-commerce shop, advanced pricing and profit analysis, and comprehensive reporting. The ambition is to digitize Dynapharm's business, improve engagement with customers and distributors, and support data-driven decision-making for market expansion and increased profitability in Namibia.
 
+## Recent Fixes (Finance Portal & Deposits)
+- **Deposit recording fixed**: `api/branch/deposits.js` POST now auto-assigns `branchId` from the logged-in user's session (`currentUser?.branch`) — branch users no longer need to select their branch when recording a deposit.
+- **verifyDeposit fixed**: Client `api.branch.verifyDeposit(id)` now sends the ID in the request body (PATCH to `/branch/deposits`) instead of the URL path, matching the backend PATCH handler.
+- **New**: `api/finance/notices.js` — Finance notices API using `notifications` table (`recipient_type = 'finance_notice'`).
+- **Finance Portal comprehensive rewrite**: All 8 tabs now have real API routes and improved UX:
+  - Dashboard: branch-by-branch financial overview using `/finance/branches/summary`
+  - Deposit Inbox: Finance views/verifies ALL branch deposits with filters (branch, status, date), approve/reject with notes, batch approve, CSV export
+  - Expenses: Finance reviews ALL branch expenses with approve/reject workflow; Finance adds HQ-level expenses (no branch selector confusion); separate "Add HQ Expense" form
+  - Bonus Workflow: CSV upload + review + export workflow (local state)
+  - Reports: real data from `/finance/branches/summary`, `/finance/reports/stock-value`, `/finance/reports/writeoffs`; date period filter
+  - Notices (was Communication): fully wired to `/finance/notices` API — posts and loads from DB
+  - Staff Services: leave request form + leave history tab using HR API
+- **New API client methods**: `api.branch.rejectDeposit()`, `api.finance.notices()`, `api.finance.createNotice()`, `api.finance.approveExpense()`, `api.finance.rejectExpense()`, `api.finance.deposits()`
+
 ## User Preferences
 I prefer clear and concise communication.
 I value an iterative development approach, with regular updates and opportunities for feedback.
