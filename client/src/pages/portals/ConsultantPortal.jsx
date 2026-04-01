@@ -543,33 +543,31 @@ function CheckupsSection() {
     w.document.write(`<!DOCTYPE html><html><head><title>Health Report — ${esc(apt.full_name || '')}</title>
 <style>
   *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;padding:28px;color:#222;font-size:13px;line-height:1.5;}
-  .header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c41e3a;padding-bottom:14px;margin-bottom:18px;}
-  .logo{height:62px;background:#fff;border-radius:8px;padding:4px;}
-  .company{font-size:1.3rem;font-weight:900;color:#c41e3a;}
-  .subtitle{font-size:0.88rem;color:#555;margin-top:2px;}
-  .report-title{font-size:1.05rem;font-weight:800;color:#7b0000;letter-spacing:1px;margin-top:4px;}
-  h3{color:#c41e3a;border-bottom:2px solid #fecaca;padding-bottom:5px;margin:18px 0 10px;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.5px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;}
-  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 16px;}
-  .field{font-size:0.88rem;padding:3px 0;border-bottom:1px dotted #eee;}
-  .section{margin:14px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;}
-  .tag{padding:3px 10px;background:#e3f2fd;color:#1565c0;border-radius:20px;display:inline-block;margin:2px;font-size:0.8rem;font-weight:600;}
-  .med{padding:4px 12px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px;font-size:0.85rem;color:#166534;font-weight:600;border:1px solid #bbf7d0;}
-  .rec-item{margin-bottom:10px;padding:10px 12px;background:#e8f5e9;border-left:4px solid #27ae60;border-radius:6px;}
-  .rec-item .rec-name{font-weight:700;color:#15803d;font-size:0.92rem;}
-  .rec-item .rec-reason{font-size:0.78rem;color:#555;margin-top:3px;}
-  .lifestyle-item{margin-bottom:8px;padding:8px 12px;background:#e3f2fd;border-left:4px solid #2196f3;border-radius:6px;}
-  .lifestyle-sym{font-weight:700;color:#1565c0;font-size:0.88rem;}
-  .lifestyle-advice{font-size:0.85rem;color:#333;margin-top:3px;line-height:1.5;}
-  .bmi-pill{display:inline-block;background:#f0fdf4;border:2px solid #86efac;border-radius:8px;padding:5px 18px;font-weight:800;font-size:1rem;color:#15803d;}
-  .sig-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:8px;}
-  .sig-box{border-top:2px solid #333;padding-top:6px;min-width:180px;}
-  .sig-label{font-size:0.8rem;color:#666;}
-  .sig-name{font-weight:700;font-size:0.95rem;color:#1e293b;margin-top:4px;}
-  .footer{margin-top:28px;border-top:2px solid #c41e3a;padding-top:10px;font-size:0.76rem;color:#888;display:flex;justify-content:space-between;}
-  .confidential{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:4px 12px;border-radius:20px;font-size:0.76rem;font-weight:700;}
-  @media print{body{padding:14px;} @page{size:A4;margin:12mm;}}
+  body{font-family:Arial,sans-serif;padding:20px;color:#222;font-size:12px;line-height:1.4;}
+  .header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:14px;}
+  .logo{height:54px;background:#fff;border-radius:8px;padding:3px;}
+  .company{font-size:1.2rem;font-weight:900;color:#c41e3a;}
+  .subtitle{font-size:0.82rem;color:#555;margin-top:2px;}
+  .report-title{font-size:0.95rem;font-weight:800;color:#7b0000;letter-spacing:1px;margin-top:3px;}
+  h3{color:#c41e3a;border-bottom:2px solid #fecaca;padding-bottom:4px;margin:12px 0 8px;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 14px;}
+  .field{font-size:0.82rem;padding:2px 0;border-bottom:1px dotted #eee;}
+  .section{margin:8px 0;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;background:#fafafa;}
+  .tag{padding:2px 8px;background:#e3f2fd;color:#1565c0;border-radius:20px;display:inline-block;margin:2px;font-size:0.76rem;font-weight:600;}
+  .med{padding:4px 10px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px 3px 3px 0;font-size:0.85rem;color:#166534;font-weight:700;border:1px solid #bbf7d0;}
+  .lifestyle-item{margin-bottom:6px;padding:6px 10px;background:#e3f2fd;border-left:4px solid #2196f3;border-radius:5px;}
+  .lifestyle-sym{font-weight:700;color:#1565c0;font-size:0.84rem;}
+  .lifestyle-advice{font-size:0.8rem;color:#333;margin-top:2px;line-height:1.4;}
+  .bmi-pill{display:inline-block;background:#f0fdf4;border:2px solid #86efac;border-radius:8px;padding:4px 14px;font-weight:800;font-size:0.95rem;color:#15803d;}
+  .sig-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:6px;}
+  .sig-box{border-top:2px solid #333;padding-top:5px;min-width:160px;}
+  .sig-label{font-size:0.76rem;color:#666;}
+  .sig-name{font-weight:700;font-size:0.9rem;color:#1e293b;margin-top:3px;}
+  .footer{margin-top:18px;border-top:2px solid #c41e3a;padding-top:8px;font-size:0.72rem;color:#888;display:flex;justify-content:space-between;}
+  .confidential{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;}
+  .section{page-break-inside:avoid;}
+  @media print{body{padding:10px;} @page{size:A4;margin:10mm;}}
 </style>
 </head><body>
 
@@ -640,19 +638,6 @@ ${lifestyleRecs.length > 0 ? `
       <div class="lifestyle-sym">✓ ${esc(item.symptom)} <span style="font-weight:400;font-size:0.8rem;color:#555;">(${esc(item.system)})</span></div>
       <div class="lifestyle-advice">${esc(item.recommendation)}</div>
     </div>`).join('')}
-</div>` : ''}
-
-${aiRecs.length > 0 ? `
-<h3>🎯 AI-Recommended Dynapharm Products</h3>
-<div class="section">
-  <p style="font-size:0.82rem;color:#666;margin:0 0 10px;">Recommended based on symptoms, health history, gender and lifestyle factors:</p>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-    ${aiRecs.map(({med, reasons}) => `
-      <div class="rec-item">
-        <div class="rec-name">✓ ${esc(med)}</div>
-        <div class="rec-reason">${reasons.slice(0,2).map(r => `🎯 ${esc(r)}`).join(' &nbsp;')}</div>
-      </div>`).join('')}
-  </div>
 </div>` : ''}
 
 ${meds.length > 0 ? `
