@@ -1439,6 +1439,23 @@ server.on('error', (error) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    // ── Normalize appointment branch display names → branch IDs (idempotent) ──
+    try {
+      const aptNorm = await query(
+        `UPDATE appointments a
+         SET branch = b.id
+         FROM branches b
+         WHERE LOWER(a.branch) = LOWER(b.name)
+           AND a.branch IS DISTINCT FROM b.id`
+      );
+      if (aptNorm && aptNorm.rowCount > 0) {
+        console.log(`Appointment branch normalization: updated ${aptNorm.rowCount} records`);
+      }
+    } catch (e) {
+      console.warn('[appointment branch norm]', e.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Backfill reports.branch from linked appointments (one-time, idempotent) ─
     try {
       const branchNameToId = {
