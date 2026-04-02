@@ -485,6 +485,7 @@ function ApprovalsTab() {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [stockRequests, setStockRequests] = useState([]);
   const [pendingTransfers, setPendingTransfers] = useState([]);
+  const [fieldRequests, setFieldRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -510,11 +511,13 @@ function ApprovalsTab() {
       api.get('/hr/leaves?status=pending').then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
       api.stock.requests().then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
       api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers]) => {
+      api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
       setPendingTransfers(transfers);
+      setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
     }).finally(() => setLoading(false));
   };
 
@@ -532,6 +535,15 @@ function ApprovalsTab() {
       } else if (type === 'stock') {
         await api.put(`/stock-requests/${id}`, { status: action, notes: note });
         setStockRequests(prev => prev.filter(r => r.id !== id));
+      } else if (type === 'fieldstock') {
+        const gmName = user?.full_name || user?.username || 'GM';
+        await api.put('/field_program_requests', {
+          id, status: action,
+          approved_by: action === 'approved' ? gmName : null,
+          approved_at: action === 'approved' ? new Date().toISOString() : null,
+          notes: note,
+        });
+        setFieldRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'transfer') {
         const newStatus = action === 'approved' ? 'approved' : 'rejected';
         const gmName = user?.full_name || user?.username || 'GM';
@@ -653,10 +665,11 @@ function ApprovalsTab() {
   const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length;
 
   const subTabs = [
-    { id: 'transfers', label: `🚚 Transfer Approvals${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
+    { id: 'transfers', label: `🚚 Transfers${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
+    { id: 'fieldstock', label: `🌿 Field Stock${fieldRequests.length > 0 ? ` (${fieldRequests.length})` : ''}` },
     { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
-    { id: 'cash', label: 'Cash Requests' },
-    { id: 'leave', label: 'Leave Requests' },
+    { id: 'cash', label: 'Cash' },
+    { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
     { id: 'other', label: 'Other' },
   ];
@@ -911,8 +924,81 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {/* Field Stock Requests sub-tab */}
+      {approvalTab === 'fieldstock' && (
+        <div className="space-y-4">
+          {fieldRequests.length === 0 ? (
+            <EmptyState icon={<CheckCircle size={48} />} title="No Pending Field Stock Requests" description="Branch field program requests awaiting your approval will appear here." />
+          ) : (
+            <>
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                <strong>{fieldRequests.length}</strong> field stock request{fieldRequests.length !== 1 ? 's' : ''} from branches awaiting your approval.
+              </div>
+              <div className="space-y-4">
+                {fieldRequests.map(r => {
+                  const products = Array.isArray(r.products) ? r.products : [];
+                  return (
+                    <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100" style={{ background: '#f0fdf4' }}>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-sm font-bold text-green-800">🌿 {r.id}</span>
+                          <Badge variant="warning">Pending Approval</Badge>
+                          {r.branch && <Badge variant="info">{r.branch}</Badge>}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setNoteModal({ type: 'fieldstock', id: r.id, action: 'approved' })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer">
+                            ✓ Approve
+                          </button>
+                          <button onClick={() => setNoteModal({ type: 'fieldstock', id: r.id, action: 'rejected' })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 cursor-pointer">
+                            ✕ Reject
+                          </button>
+                        </div>
+                      </div>
+                      <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm mb-2">
+                        <div><span className="text-gray-500">Distributor:</span> <span className="font-semibold">{r.distributor_name || '—'}</span> {r.distributor_code && <span className="text-xs text-gray-400">({r.distributor_code})</span>}</div>
+                        <div><span className="text-gray-500">Date:</span> <span className="font-semibold">{fmtDate(r.date)}</span></div>
+                        <div><span className="text-gray-500">Branch:</span> <span className="font-semibold">{r.branch || '—'}</span></div>
+                        <div><span className="text-gray-500">Submitted by:</span> <span className="font-semibold">{r.created_by || '—'}</span></div>
+                        {r.notes && <div className="col-span-2"><span className="text-gray-500">Notes:</span> <span className="text-gray-700">{r.notes}</span></div>}
+                      </div>
+                      {products.length > 0 && (
+                        <div className="px-4 pb-4">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Requested Products ({products.length} item{products.length !== 1 ? 's' : ''})</p>
+                          <table className="w-full text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="text-left py-1.5 px-2 border-b text-gray-500">#</th>
+                                <th className="text-left py-1.5 px-2 border-b text-gray-500">Product</th>
+                                <th className="text-center py-1.5 px-2 border-b text-gray-500">Qty</th>
+                                <th className="text-left py-1.5 px-2 border-b text-gray-500">Unit</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {products.map((p, i) => (
+                                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                  <td className="py-1 px-2 border-b text-gray-400">{i + 1}</td>
+                                  <td className="py-1 px-2 border-b font-medium">{p.product_name || p.name || p.product || '—'}</td>
+                                  <td className="py-1 px-2 border-b text-center font-bold text-green-700">{p.quantity}</td>
+                                  <td className="py-1 px-2 border-b text-gray-500">{p.unit || 'pcs'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 
