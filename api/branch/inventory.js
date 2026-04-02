@@ -134,6 +134,52 @@ async function getInventoryByBranch(branchId, enriched = false) {
     [resolvedId]
   );
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
+
+  // Also pull from inventory_balances for stock that arrived through the centralized
+  // stock engine (e.g. admin-seeded stock, direct postStockMovement paths) which only
+  // writes to inventory_balances and NOT branch_inventory_batches.
+  // Merge by product_name+batch_no — prefer branch_inventory_batches when a record exists.
+  try {
+    const ibRows = await getMany(
+      `SELECT product_name, batch_no, expiry_date, GREATEST(closing_qty, 0) AS quantity, unit_dp
+       FROM inventory_balances
+       WHERE location_type = 'branch' AND location_id = $1 AND GREATEST(closing_qty, 0) > 0`,
+      [resolvedId]
+    );
+    const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
+    const existingKeys = new Set(normalized.map(n => normKey(n.product_name, n.batch_no)));
+    for (const ib of ibRows) {
+      const key = normKey(ib.product_name, ib.batch_no);
+      if (!existingKeys.has(key)) {
+        const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
+        const qty = parseNumber(ib.quantity);
+        normalized.push({
+          id: null,
+          branchId: resolvedId, branch_id: resolvedId,
+          productName: ib.product_name, product_name: ib.product_name,
+          productCode: null, product_code: null,
+          batchNo: ib.batch_no, batch_no: ib.batch_no, batch_number: ib.batch_no,
+          expiryDate, expiry_date: expiryDate,
+          quantity: qty,
+          unit: 'units',
+          unitPrice: ib.unit_dp ? Number(ib.unit_dp) : null,
+          unit_price: ib.unit_dp ? Number(ib.unit_dp) : null,
+          description: ib.product_name,
+          status: qty > 0 ? 'in_stock' : 'out_of_stock',
+          metadata: null,
+          createdAt: null, created_at: null,
+          updatedAt: null, updated_at: null,
+          _source: 'inventory_balances',
+        });
+        existingKeys.add(key);
+      }
+    }
+  } catch (err) {
+    console.error('[inventory] inventory_balances merge error:', err.message);
+  }
+
+  normalized.sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+
   if (!enriched) return normalized;
 
   // Pull movement aggregates from branch_inventory_movements (for received, dispensed, transferred, etc.)

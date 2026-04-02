@@ -170,6 +170,40 @@ export async function recomputeInventoryBalance(key) {
        lastMovementDate]
     );
   }
+
+  // ── Sync branch_inventory_batches whenever a branch balance is recomputed ──
+  // This keeps both inventory tables in agreement so the branch portal
+  // always sees current quantities regardless of which stock path was used.
+  if (locationType === 'branch' && locationId) {
+    try {
+      await query(
+        `INSERT INTO branch_inventory_batches
+           (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, status, created_at, updated_at)
+         VALUES (
+           'BIB-SE-' || $1, $2, $3, $4, $5::date,
+           GREATEST($6, 0),
+           $7,
+           CASE WHEN GREATEST($6, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END,
+           NOW(), NOW()
+         )
+         ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
+         DO UPDATE SET
+           quantity   = GREATEST(EXCLUDED.quantity, 0),
+           unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
+           status     = CASE WHEN GREATEST(EXCLUDED.quantity, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END,
+           updated_at = NOW()`,
+        [
+          `${locationId}-${productName}-${batchNoVal}`.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40),
+          locationId, productName, batchNoVal || null, expiryVal || null,
+          closingQty, unitDP || null
+        ]
+      );
+    } catch (bsErr) {
+      // Non-fatal: branch portal will still fall back to inventory_balances display-layer merge
+      console.warn(`[stockEngine] branch_inventory_batches sync warn for ${locationId}/${productName}:`, bsErr.message);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 }
 
 /**

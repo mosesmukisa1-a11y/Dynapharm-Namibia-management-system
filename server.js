@@ -1509,6 +1509,39 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // ── Backfill branch_inventory_batches from inventory_balances ───────────
+    // Any branch stock that arrived via the centralized stockEngine path
+    // (which only writes to inventory_balances) is imported here so the
+    // branch portal can see it immediately without any display-layer merging
+    // in older code. ON CONFLICT DO NOTHING makes this fully idempotent.
+    try {
+      const bfBatch = await query(
+        `INSERT INTO branch_inventory_batches
+           (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, status, created_at, updated_at)
+         SELECT
+           'BIB-IB-' || ib.id AS id,
+           ib.location_id AS branch_id,
+           ib.product_name,
+           ib.batch_no,
+           ib.expiry_date,
+           GREATEST(ib.closing_qty, 0) AS quantity,
+           ib.unit_dp AS unit_price,
+           CASE WHEN GREATEST(ib.closing_qty, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END AS status,
+           COALESCE(ib.updated_at, NOW()) AS created_at,
+           COALESCE(ib.updated_at, NOW()) AS updated_at
+         FROM inventory_balances ib
+         WHERE ib.location_type = 'branch'
+           AND GREATEST(ib.closing_qty, 0) > 0
+         ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO NOTHING`
+      );
+      if (bfBatch && bfBatch.rowCount > 0) {
+        console.log(`branch_inventory_batches backfill: inserted ${bfBatch.rowCount} rows from inventory_balances`);
+      }
+    } catch (bfErr) {
+      console.warn('[branch_inventory_batches backfill]', bfErr.message);
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {
       const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');
