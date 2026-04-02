@@ -1335,7 +1335,8 @@ server.on('error', (error) => {
     await query(`INSERT INTO warehouse_locations (id, name, code, type, status, created_at, updated_at)
       VALUES ('country_stock', 'Country Stock', 'CS', 'country', 'active', NOW(), NOW()),
              ('windhoek_warehouse', 'Windhoek Warehouse', 'WHK', 'warehouse', 'active', NOW(), NOW()),
-             ('ondangwa_warehouse', 'Ondangwa Warehouse', 'OND', 'warehouse', 'active', NOW(), NOW())
+             ('ondangwa_warehouse', 'Ondangwa Warehouse', 'OND', 'warehouse', 'active', NOW(), NOW()),
+             ('ondangwa', 'Ondangwa', 'ONDG', 'warehouse', 'active', NOW(), NOW())
       ON CONFLICT (id) DO NOTHING`);
 
     const existingAdmin = await getOne("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE LIMIT 1");
@@ -1493,6 +1494,46 @@ server.on('error', (error) => {
       if (backfilled > 0) console.log(`Reports branch backfill: updated ${backfilled} records`);
     } catch (e) {
       console.warn('[reports backfill]', e.message);
+    }
+
+    // ── Normalize reports.branch display names → branch IDs ─────────────────
+    // Catches reports stored as "Oshakati", "Windhoek CBD", etc. instead of
+    // the canonical ID ("oshakati_branch", "townshop", …).
+    try {
+      const branchNameToId = {
+        'Windhoek CBD': 'townshop', 'townshop': 'townshop', 'windhoek cbd': 'townshop',
+        'Oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch', 'oshakati': 'oshakati_branch',
+        'Hochlandpark': 'hochland-park', 'hochland-park': 'hochland-park', 'hochland park': 'hochland-park',
+        'Walvis Bay': 'walvisbay', 'walvisbay': 'walvisbay', 'walvis bay': 'walvisbay',
+        'Katima Mulilo': 'katima', 'katima': 'katima', 'katima mulilo': 'katima',
+        'Gobabis': 'gobabis', 'gobabis': 'gobabis',
+        'Eenhana': 'eenhana', 'eenhana': 'eenhana',
+        'Ondangwa': 'ondangwa', 'ondangwa': 'ondangwa',
+        'Otjiwarongo': 'otjiwarongo', 'otjiwarongo': 'otjiwarongo',
+        'Swakopmund': 'swakopmund', 'swakopmund': 'swakopmund',
+        'Khomasdal': 'khomasdal', 'khomasdal': 'khomasdal',
+        'Rundu': 'rundu', 'rundu': 'rundu',
+        'Tsumeb': 'tsumeb', 'tsumeb': 'tsumeb',
+        'Okahao': 'okahao', 'okahao': 'okahao',
+        'Outapi': 'outapi', 'outapi': 'outapi',
+      };
+      const canonicalIds = new Set(Object.values(branchNameToId));
+      // Fetch all reports whose branch is NOT already a canonical ID
+      const { rows: nonCanonical } = await query(
+        `SELECT id, branch FROM reports WHERE branch IS NOT NULL AND branch != ''`
+      );
+      let normalised = 0;
+      for (const row of nonCanonical) {
+        if (canonicalIds.has(row.branch)) continue; // already correct
+        const mapped = branchNameToId[row.branch] || branchNameToId[(row.branch || '').toLowerCase()];
+        if (mapped && mapped !== row.branch) {
+          await query(`UPDATE reports SET branch = $1 WHERE id = $2`, [mapped, row.id]);
+          normalised++;
+        }
+      }
+      if (normalised > 0) console.log(`Reports branch normalisation: fixed ${normalised} display-name records`);
+    } catch (e) {
+      console.warn('[reports branch normalise]', e.message);
     }
     // ─────────────────────────────────────────────────────────────────────────
 

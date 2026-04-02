@@ -135,24 +135,39 @@ async function getInventoryByBranch(branchId, enriched = false) {
   );
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
 
-  // Also pull from inventory_balances for stock that arrived through the centralized
-  // stock engine (e.g. admin-seeded stock, direct postStockMovement paths) which only
-  // writes to inventory_balances and NOT branch_inventory_batches.
-  // Merge by product_name+batch_no — prefer branch_inventory_batches when a record exists.
+  // Merge with inventory_balances:
+  //  1. Add any items that exist ONLY in inventory_balances (stock that came via
+  //     the centralised stock engine path but never wrote to branch_inventory_batches).
+  //  2. Correct quantities for items that ARE in branch_inventory_batches but whose
+  //     quantity was overwritten to a lower value by a previous (now-removed) sync
+  //     job — use GREATEST(bib_qty, ib_qty) so we never display a quantity lower than
+  //     what inventory_balances says the closing balance is.
   try {
     const ibRows = await getMany(
       `SELECT product_name, batch_no, expiry_date, GREATEST(closing_qty, 0) AS quantity, unit_dp
        FROM inventory_balances
-       WHERE location_type = 'branch' AND location_id = $1 AND GREATEST(closing_qty, 0) > 0`,
+       WHERE location_type = 'branch' AND location_id = $1`,
       [resolvedId]
     );
     const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
-    const existingKeys = new Set(normalized.map(n => normKey(n.product_name, n.batch_no)));
+    // Build lookup map: key → index in normalized array
+    const existingMap = new Map();
+    normalized.forEach((n, idx) => existingMap.set(normKey(n.product_name, n.batch_no), idx));
+
     for (const ib of ibRows) {
       const key = normKey(ib.product_name, ib.batch_no);
-      if (!existingKeys.has(key)) {
+      const ibQty = parseNumber(ib.quantity);
+      if (existingMap.has(key)) {
+        // Item already in branch_inventory_batches — update quantity to GREATEST of the two
+        const idx = existingMap.get(key);
+        const existingQty = parseNumber(normalized[idx].quantity);
+        if (ibQty > existingQty) {
+          normalized[idx].quantity = ibQty;
+          normalized[idx].status = ibQty > 0 ? 'in_stock' : 'out_of_stock';
+        }
+      } else if (ibQty > 0) {
+        // Item only exists in inventory_balances — add it
         const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
-        const qty = parseNumber(ib.quantity);
         normalized.push({
           id: null,
           branchId: resolvedId, branch_id: resolvedId,
@@ -160,18 +175,18 @@ async function getInventoryByBranch(branchId, enriched = false) {
           productCode: null, product_code: null,
           batchNo: ib.batch_no, batch_no: ib.batch_no, batch_number: ib.batch_no,
           expiryDate, expiry_date: expiryDate,
-          quantity: qty,
+          quantity: ibQty,
           unit: 'units',
           unitPrice: ib.unit_dp ? Number(ib.unit_dp) : null,
           unit_price: ib.unit_dp ? Number(ib.unit_dp) : null,
           description: ib.product_name,
-          status: qty > 0 ? 'in_stock' : 'out_of_stock',
+          status: 'in_stock',
           metadata: null,
           createdAt: null, created_at: null,
           updatedAt: null, updated_at: null,
           _source: 'inventory_balances',
         });
-        existingKeys.add(key);
+        existingMap.set(key, normalized.length - 1);
       }
     }
   } catch (err) {
