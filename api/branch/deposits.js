@@ -100,33 +100,37 @@ export default async function handler(req, res) {
       const requestedBranch = searchParams.get('branch');
       const effectiveBranchId = branchScope.enforced ? (branchScope.primaryBranch || branchScope.branches?.[0] || null) : requestedBranch;
       const status = searchParams.get('status');
-      const limit = parseInt(searchParams.get('limit') || '50', 10);
+      const from = searchParams.get('from');
+      const to = searchParams.get('to');
+      const limitParam = parseInt(searchParams.get('limit') || '500', 10);
+      const effectiveLimit = Number.isNaN(limitParam) ? 500 : limitParam;
 
-      let rows;
+      const conditions = [];
+      const params = [];
+
       if (effectiveBranchId) {
-        if (status) {
-          rows = await getMany(
-            'SELECT * FROM branch_bank_deposits WHERE branch_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3',
-            [effectiveBranchId, status, Number.isNaN(limit) ? 50 : limit]
-          );
-        } else {
-          rows = await getMany(
-            'SELECT * FROM branch_bank_deposits WHERE branch_id = $1 ORDER BY created_at DESC LIMIT $2',
-            [effectiveBranchId, Number.isNaN(limit) ? 50 : limit]
-          );
-        }
-      } else {
-        if (status) {
-          rows = await getMany(
-            'SELECT * FROM branch_bank_deposits WHERE status = $1 ORDER BY created_at DESC LIMIT $2',
-            [status, Number.isNaN(limit) ? 50 : limit]
-          );
-        } else {
-          rows = await getMany('SELECT * FROM branch_bank_deposits ORDER BY created_at DESC LIMIT $1', [
-            Number.isNaN(limit) ? 50 : limit,
-          ]);
-        }
+        params.push(effectiveBranchId);
+        conditions.push(`branch_id = $${params.length}`);
       }
+      if (status) {
+        params.push(status);
+        conditions.push(`status = $${params.length}`);
+      }
+      if (from) {
+        params.push(from);
+        conditions.push(`date >= $${params.length}`);
+      }
+      if (to) {
+        params.push(to);
+        conditions.push(`date <= $${params.length}`);
+      }
+
+      params.push(effectiveLimit);
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const rows = await getMany(
+        `SELECT * FROM branch_bank_deposits ${whereClause} ORDER BY date DESC, created_at DESC LIMIT $${params.length}`,
+        params
+      );
 
       return res.status(200).json({
         success: true,

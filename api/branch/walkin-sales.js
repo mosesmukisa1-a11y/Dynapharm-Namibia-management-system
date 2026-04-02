@@ -213,11 +213,16 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
     conditions.push(`LOWER(customer_name) LIKE $${params.length}`);
   }
 
+  const hasDateFilter = searchParams.get('from') || searchParams.get('to');
+  const limitParam = parseInt(searchParams.get('limit') || '0', 10);
+  const effectiveLimit = limitParam > 0 ? limitParam : hasDateFilter ? 5000 : 250;
+
   let queryText = 'SELECT * FROM branch_walkin_sales';
   if (conditions.length > 0) {
     queryText += ` WHERE ${conditions.join(' AND ')}`;
   }
-  queryText += ' ORDER BY sale_date DESC, created_at DESC LIMIT 250';
+  params.push(effectiveLimit);
+  queryText += ` ORDER BY sale_date DESC, created_at DESC LIMIT $${params.length}`;
 
   return { queryText, params };
 }

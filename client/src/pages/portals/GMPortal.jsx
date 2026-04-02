@@ -252,28 +252,70 @@ function StockAdjustmentsTab({ onCountChange }) {
 // ── End StockAdjustmentsTab ───────────────────────────────────────────────────
 
 function DashboardTab() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const firstOfMonth = localDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const today = localDate(now);
+
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(today);
+  const [appliedStart, setAppliedStart] = useState(firstOfMonth);
+  const [appliedEnd, setAppliedEnd] = useState(today);
   const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });
   const [loading, setLoading] = useState(true);
   const [gmSummary, setGmSummary] = useState(null);
 
-  const refreshGmSummary = useCallback(() => {
-    api.gm.summary().then(d => { if (d && d.success) setGmSummary(d); }).catch(() => {});
+  const appliedRangeRef = useRef({ start: firstOfMonth, end: today });
+
+  const refreshGmSummary = useCallback((start, end) => {
+    api.gm.summary({ startDate: start, endDate: end })
+      .then(d => { if (d && d.success) setGmSummary(d); })
+      .catch(() => {});
   }, []);
 
-  const { connected: wsConnected } = useStockRealtime({ onUpdate: refreshGmSummary });
+  const { connected: wsConnected } = useStockRealtime({
+    onUpdate: () => {
+      const { start, end } = appliedRangeRef.current;
+      refreshGmSummary(start, end);
+    },
+  });
 
-  useEffect(() => {
+  const loadData = useCallback((start, end) => {
+    setLoading(true);
     Promise.all([
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.branches.list().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
       api.products.list().then(d => Array.isArray(d) ? d : d.products || []).catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-      api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
+      api.branch.walkinSales(`from=${start}&to=${end}`).then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
+      api.branch.deposits(`from=${start}&to=${end}`).then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
     ]).then(([orders, branches, products, sales, deposits]) => {
-      setData({ orders, branches, products, sales, deposits });
+      const filteredOrders = orders.filter(o => {
+        const d = o.created_at || o.date || o.timestamp;
+        if (!d) return true;
+        const ds = d.slice(0, 10);
+        return ds >= start && ds <= end;
+      });
+      setData({ orders: filteredOrders, branches, products, sales, deposits });
     }).finally(() => setLoading(false));
-    refreshGmSummary();
+    refreshGmSummary(start, end);
+  }, [refreshGmSummary]);
+
+  useEffect(() => {
+    loadData(appliedStart, appliedEnd);
   }, []);
+
+  const handleApply = () => {
+    if (!startDate || !endDate) return;
+    const effectiveStart = startDate > endDate ? endDate : startDate;
+    const effectiveEnd = startDate > endDate ? startDate : endDate;
+    appliedRangeRef.current = { start: effectiveStart, end: effectiveEnd };
+    setAppliedStart(effectiveStart);
+    setAppliedEnd(effectiveEnd);
+    setStartDate(effectiveStart);
+    setEndDate(effectiveEnd);
+    loadData(effectiveStart, effectiveEnd);
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -334,6 +376,35 @@ function DashboardTab() {
 
   return (
     <div>
+      <Card className="mb-6">
+        <CardBody>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">From</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">To</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+              />
+            </div>
+            <Button onClick={handleApply} disabled={!startDate || !endDate}>Apply</Button>
+            <span className="text-xs text-gray-400 self-center">
+              Showing: <strong>{appliedStart}</strong> → <strong>{appliedEnd}</strong>
+            </span>
+          </div>
+        </CardBody>
+      </Card>
+
       {gmSummary && (
         <Card className="mb-6 border-primary/30 bg-gradient-to-r from-red-50 to-rose-50">
           <CardBody>
@@ -1103,6 +1174,15 @@ function CampaignsTab() {
   const [form, setForm] = useState({ name: '', description: '', start_date: '', end_date: '', target_branches: '', discount_percentage: '' });
   const [message, setMessage] = useState('');
 
+  useEffect(() => {
+    api.get('/campaigns')
+      .then(d => {
+        const list = Array.isArray(d) ? d : d.campaigns || [];
+        setCampaigns(list);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.start_date || !form.end_date) {
@@ -1116,9 +1196,11 @@ function CampaignsTab() {
         target_branches: form.target_branches ? form.target_branches.split(',').map(b => b.trim()) : [],
       });
       setMessage('Campaign created successfully!');
-      setCampaigns(prev => [...prev, { ...form, id: Date.now(), status: 'active', created_at: new Date().toISOString() }]);
       setForm({ name: '', description: '', start_date: '', end_date: '', target_branches: '', discount_percentage: '' });
       setShowForm(false);
+      api.get('/campaigns')
+        .then(d => setCampaigns(Array.isArray(d) ? d : d.campaigns || []))
+        .catch(() => {});
     } catch (err) {
       setMessage('Error: ' + err.message);
     }
