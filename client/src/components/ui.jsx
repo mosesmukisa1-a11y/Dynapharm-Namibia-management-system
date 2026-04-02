@@ -134,18 +134,19 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
         ref={ref}
-        className={clsx('relative bg-white rounded-xl shadow-2xl w-full overflow-hidden', sizes[size], className)}
+        className={clsx('relative bg-white rounded-xl shadow-2xl w-full overflow-hidden flex flex-col', sizes[size], className)}
+        style={{ maxHeight: '92vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
             <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
               <X size={20} className="text-gray-500" />
             </button>
           </div>
         )}
-        <div className="max-h-[80vh] overflow-y-auto">{children}</div>
+        <div className="overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
