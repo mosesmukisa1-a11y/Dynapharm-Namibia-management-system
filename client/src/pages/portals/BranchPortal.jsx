@@ -1214,9 +1214,7 @@ function PrescriptionsTab() {
 
   useEffect(() => {
     setLoading(true);
-    const params = {};
-    if (effectiveBranch) params.branch = effectiveBranch;
-    api.reports.list(params)
+    api.reports.list()
       .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));

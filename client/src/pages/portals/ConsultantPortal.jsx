@@ -476,6 +476,7 @@ function CheckupsSection() {
         referral_nb: referralNb,
         nb_number: isMember ? (data.referral_nb || data.nb_number || null) : null,
         report_required: reportRequired,
+        branch: apt.branch || data.branch || user?.branch || null,
       });
       setShowReport(false);
       setSelectedCheckup(null);
