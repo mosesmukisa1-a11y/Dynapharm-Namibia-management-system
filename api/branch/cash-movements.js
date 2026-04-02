@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 
 function parseNumber(value, fallback = 0) {
@@ -95,7 +95,9 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const sessionId = searchParams.get('sessionId') || searchParams.get('session');
-      const branchId = searchParams.get('branch');
+      const branchScope = getBranchScope(currentUser);
+      const requestedBranch = searchParams.get('branch');
+      const effectiveBranchId = branchScope.enforced ? (branchScope.primaryBranch || branchScope.branches?.[0] || null) : requestedBranch;
       const limit = parseInt(searchParams.get('limit') || '100', 10);
 
       let rows;
@@ -104,10 +106,10 @@ export default async function handler(req, res) {
           'SELECT * FROM branch_cash_movements WHERE session_id = $1 ORDER BY recorded_at DESC LIMIT $2',
           [sessionId, Number.isNaN(limit) ? 100 : limit]
         );
-      } else if (branchId) {
+      } else if (effectiveBranchId) {
         rows = await getMany(
           'SELECT * FROM branch_cash_movements WHERE branch_id = $1 ORDER BY recorded_at DESC LIMIT $2',
-          [branchId, Number.isNaN(limit) ? 100 : limit]
+          [effectiveBranchId, Number.isNaN(limit) ? 100 : limit]
         );
       } else {
         rows = await getMany('SELECT * FROM branch_cash_movements ORDER BY recorded_at DESC LIMIT $1', [

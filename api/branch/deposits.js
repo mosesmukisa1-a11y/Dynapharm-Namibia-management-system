@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
@@ -96,21 +96,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, deposit: normalizeDeposit(row) });
       }
 
-      const branchId = searchParams.get('branch');
+      const branchScope = getBranchScope(currentUser);
+      const requestedBranch = searchParams.get('branch');
+      const effectiveBranchId = branchScope.enforced ? (branchScope.primaryBranch || branchScope.branches?.[0] || null) : requestedBranch;
       const status = searchParams.get('status');
       const limit = parseInt(searchParams.get('limit') || '50', 10);
 
       let rows;
-      if (branchId) {
+      if (effectiveBranchId) {
         if (status) {
           rows = await getMany(
             'SELECT * FROM branch_bank_deposits WHERE branch_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3',
-            [branchId, status, Number.isNaN(limit) ? 50 : limit]
+            [effectiveBranchId, status, Number.isNaN(limit) ? 50 : limit]
           );
         } else {
           rows = await getMany(
             'SELECT * FROM branch_bank_deposits WHERE branch_id = $1 ORDER BY created_at DESC LIMIT $2',
-            [branchId, Number.isNaN(limit) ? 50 : limit]
+            [effectiveBranchId, Number.isNaN(limit) ? 50 : limit]
           );
         }
       } else {

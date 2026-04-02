@@ -31,6 +31,8 @@ const fmtLocation = (loc) => {
 
 function SalesReviewTab() {
   const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const effectiveBranchForReview = portalBranch || user?.branch || null;
   const todayISO = new Date().toISOString().slice(0, 10);
   const [salesPreviewFrom, setSalesPreviewFrom] = useState(todayISO);
   const [salesPreviewTo, setSalesPreviewTo] = useState(todayISO);
@@ -51,7 +53,7 @@ function SalesReviewTab() {
     setSalesPreviewError(null);
     try {
       const params = { from: salesPreviewFrom, to: salesPreviewTo };
-      if (portalBranch) params.branch = portalBranch;
+      if (effectiveBranchForReview) params.branch = effectiveBranchForReview;
       const data = await api.reports.branchSalesSummary(params);
       setSalesPreviewData(data);
     } catch (err) {
@@ -78,8 +80,8 @@ function SalesReviewTab() {
           <div>
             <h3 className="font-bold text-gray-800 m-0">📈 Sales Review</h3>
             <p className="text-xs text-gray-500 m-0 mt-1">
-              {portalBranch
-                ? <>Showing sales for <strong style={{ color: '#c41e3a' }}>{getBranchDisplayName(portalBranch)}</strong> only</>
+              {effectiveBranchForReview
+                ? <>Showing sales for <strong style={{ color: '#c41e3a' }}>{getBranchDisplayName(effectiveBranchForReview)}</strong> only</>
                 : 'Select a date range to view sales totals across all branches'}
             </p>
           </div>
@@ -174,8 +176,12 @@ export default function BranchPortal() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('walkIn');
   const isAdmin = user?.role === 'admin';
+  const isBranchManager = user?.role === 'branch_manager';
   const [selectedPortalBranch, setSelectedPortalBranch] = useState('');
   const effectiveBranch = selectedPortalBranch || user?.branch || '';
+  const displayBranchName = getBranchDisplayName(effectiveBranch) || effectiveBranch || 'Branch Portal';
+  const displayUserName = user?.fullName || user?.full_name || user?.name || user?.username || 'Staff';
+  const displayRole = user?.role === 'dispenser' ? 'Dispenser' : user?.role === 'branch_manager' ? 'Branch Manager' : user?.role === 'admin' ? 'Administrator' : (user?.role || 'Staff');
 
   const tabs = [
     { id: 'walkIn', label: 'Walk-in Sales', icon: '🛒' },
@@ -197,28 +203,53 @@ export default function BranchPortal() {
   return (
     <PortalBranchContext.Provider value={selectedPortalBranch || null}>
       <div>
-        <h2 className="text-center text-2xl font-bold mb-6" style={{ color: '#2c3e50' }}>🏬 Branch Portal</h2>
-
-        {isAdmin && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'linear-gradient(135deg,#fff5f7,#fff)', border: '1.5px solid #fecaca', borderRadius: 10 }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>Acting Branch</span>
-            <select
-              value={selectedPortalBranch}
-              onChange={e => setSelectedPortalBranch(e.target.value)}
-              style={{ flex: 1, maxWidth: 280, padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.88rem', outline: 'none', background: '#fff', color: '#1e293b', cursor: 'pointer' }}
-            >
-              <option value="">— Select branch to act on behalf of —</option>
-              {BRANCH_DETAILS.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-            {effectiveBranch && (
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                Viewing as <strong style={{ color: '#c41e3a' }}>{getBranchDisplayName(effectiveBranch)}</strong>
-              </span>
-            )}
+        {/* ── Branded Portal Header ── */}
+        <div style={{ background: 'linear-gradient(135deg,#8b0000 0%,#c41e3a 55%,#a01530 100%)', borderRadius: 16, padding: '0', marginBottom: 20, overflow: 'hidden', boxShadow: '0 6px 28px rgba(139,0,0,0.22)' }}>
+          <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.18)' }}>
+                <span style={{ fontSize: '1.6rem' }}>🏬</span>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 2 }}>DYNAPHARM INTERNATIONAL NAMIBIA</div>
+                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#fff', lineHeight: 1.1 }}>{displayBranchName}</div>
+                <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Branch Operations Portal</div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 2 }}>Logged in as</div>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff' }}>{displayUserName}</div>
+              <div style={{ display: 'inline-block', marginTop: 4, padding: '2px 10px', background: 'rgba(255,255,255,0.15)', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.2)' }}>{displayRole}</div>
+            </div>
           </div>
-        )}
+
+          {/* Admin branch selector strip */}
+          {isAdmin && (
+            <div style={{ margin: '14px 24px 18px', padding: '10px 14px', background: 'rgba(0,0,0,0.18)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '.07em', whiteSpace: 'nowrap' }}>Act as Branch</span>
+              <select
+                value={selectedPortalBranch}
+                onChange={e => setSelectedPortalBranch(e.target.value)}
+                style={{ flex: 1, maxWidth: 260, padding: '6px 10px', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: '0.86rem', outline: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
+              >
+                <option value="" style={{ background: '#8b0000' }}>— Select branch —</option>
+                {BRANCH_DETAILS.map(b => (
+                  <option key={b.id} value={b.id} style={{ background: '#8b0000' }}>{b.name}</option>
+                ))}
+              </select>
+              {effectiveBranch && (
+                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.75)', whiteSpace: 'nowrap' }}>
+                  Acting as <strong style={{ color: '#fff' }}>{getBranchDisplayName(effectiveBranch)}</strong>
+                </span>
+              )}
+            </div>
+          )}
+          {!isAdmin && (
+            <div style={{ padding: '8px 24px 14px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+              📍 Data is restricted to <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{displayBranchName}</strong> only
+            </div>
+          )}
+        </div>
 
         <div className="flex gap-2 mb-8 overflow-x-auto pb-1 flex-wrap" style={{ borderBottom: '3px solid #c41e3a' }}>
           {tabs.map(tab => (
@@ -1178,11 +1209,13 @@ function PrescriptionsTab() {
 
   useEffect(() => {
     setLoading(true);
-    api.reports.list(portalBranch ? { branch: portalBranch } : {})
+    const params = {};
+    if (effectiveBranch) params.branch = effectiveBranch;
+    api.reports.list(params)
       .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [portalBranch]);
+  }, [effectiveBranch]);
 
   if (loading) return <LoadingSpinner />;
 
@@ -1697,10 +1730,12 @@ function PrescriptionsTab() {
           <button onClick={clearRxFilters} className="px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer border-none" style={{ background: '#f1f5f9', color: '#64748b' }}>♻️ Clear</button>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
-            <option value="">All Branches</option>
-            {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          {(user?.role === 'admin' || user?.role === 'gm' || user?.role === 'director') && (
+            <select value={rxBranchFilter} onChange={e => setRxBranchFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
+              <option value="">All Branches</option>
+              {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          )}
           <select value={rxStatusFilter} onChange={e => setRxStatusFilter(e.target.value)} className="text-sm rounded-lg px-3 py-2" style={{ border: '1.5px solid #e2e8f0' }}>
             <option value="all">All Status</option>
             <option value="pending">⏳ Pending</option>

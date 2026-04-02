@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 function parseNumber(value, fallback = 0) {
@@ -83,18 +83,22 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, session: normalizeSessionRow(row) });
       }
 
-      const branchId = searchParams.get('branch');
+      const branchScope = getBranchScope(currentUser);
+      const requestedBranch = searchParams.get('branch');
+      const effectiveBranchId = branchScope.enforced
+        ? (branchScope.primaryBranch || branchScope.branches?.[0] || null)
+        : requestedBranch;
       const activeOnly = searchParams.get('active') === '1';
-      if (activeOnly && branchId) {
-        const session = await getActiveSession(branchId);
+      if (activeOnly && effectiveBranchId) {
+        const session = await getActiveSession(effectiveBranchId);
         return res.status(200).json({ success: true, session });
       }
 
-      if (branchId) {
+      if (effectiveBranchId) {
         const limit = parseInt(searchParams.get('limit') || '25', 10);
         const rows = await getMany(
           'SELECT * FROM branch_cash_sessions WHERE branch_id = $1 ORDER BY opened_at DESC LIMIT $2',
-          [branchId, Number.isNaN(limit) ? 25 : limit]
+          [effectiveBranchId, Number.isNaN(limit) ? 25 : limit]
         );
         return res.status(200).json({
           success: true,
@@ -102,7 +106,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // fallback to most recent sessions overall
+      // fallback to most recent sessions overall (admin/finance only — branch scope already enforced above)
       const rows = await getMany('SELECT * FROM branch_cash_sessions ORDER BY opened_at DESC LIMIT 50', []);
       return res.status(200).json({
         success: true,
