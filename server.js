@@ -1552,11 +1552,65 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // ── Mark all NULL-status stock_movements as 'posted' ────────────────────
+    // Historical records created before the status field was enforced have
+    // status = NULL.  The stockEngine only counts 'posted' movements, so
+    // these must be promoted before any balance recompute.
+    try {
+      const nullMovFix = await query(
+        `UPDATE stock_movements SET status = 'posted'
+         WHERE (status IS NULL OR status = '') AND movement_type IS NOT NULL`
+      );
+      if (nullMovFix && nullMovFix.rowCount > 0) {
+        console.log(`[startup] Promoted ${nullMovFix.rowCount} NULL-status stock_movements to 'posted'`);
+      }
+    } catch (nmErr) {
+      console.warn('[startup NULL-status fix]', nmErr.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    // ── Restore branch_inventory_batches.quantity from movement logs ─────────
+    // The previous (now-removed) sync job overwrote correct physical quantities
+    // with stale inventory_balances values (which missed unposted transfers).
+    // Rebuild quantities from branch_inventory_movements for any row showing 0.
+    try {
+      const restoreResult = await query(
+        `UPDATE branch_inventory_batches bib
+         SET quantity = GREATEST(net.net_qty, 0),
+             status   = CASE WHEN GREATEST(net.net_qty, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END,
+             updated_at = NOW()
+         FROM (
+           SELECT
+             bim.branch_id,
+             LOWER(TRIM(bim.product_name)) AS norm_product,
+             bim.batch_no,
+             SUM(CASE
+               WHEN bim.type IN ('receive','transfer_in','purchase','return') THEN bim.quantity
+               WHEN bim.type IN ('dispense','transfer_out','sold','sale','write_off') THEN -bim.quantity
+               ELSE 0
+             END) AS net_qty
+           FROM branch_inventory_movements bim
+           GROUP BY bim.branch_id, LOWER(TRIM(bim.product_name)), bim.batch_no
+         ) net
+         WHERE bib.branch_id = net.branch_id
+           AND LOWER(TRIM(bib.product_name)) = net.norm_product
+           AND bib.batch_no IS NOT DISTINCT FROM net.batch_no
+           AND bib.quantity = 0
+           AND net.net_qty > 0`
+      );
+      if (restoreResult && restoreResult.rowCount > 0) {
+        console.log(`[startup] Restored quantities for ${restoreResult.rowCount} branch_inventory_batches rows from movement log`);
+      }
+    } catch (restErr) {
+      console.warn('[startup quantity restore]', restErr.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // ── Backfill branch_inventory_batches from inventory_balances ───────────
     // Any branch stock that arrived via the centralized stockEngine path
-    // (which only writes to inventory_balances) is imported here so the
-    // branch portal can see it immediately without any display-layer merging
-    // in older code. ON CONFLICT DO NOTHING makes this fully idempotent.
+    // is imported here so the branch portal can see it.
+    // Uses bare ON CONFLICT DO NOTHING (no target) to suppress ALL conflicts
+    // (both PK and unique-index) — fully idempotent across restarts.
     try {
       const bfBatch = await query(
         `INSERT INTO branch_inventory_batches
@@ -1575,7 +1629,7 @@ server.on('error', (error) => {
          FROM inventory_balances ib
          WHERE ib.location_type = 'branch'
            AND GREATEST(ib.closing_qty, 0) > 0
-         ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO NOTHING`
+         ON CONFLICT DO NOTHING`
       );
       if (bfBatch && bfBatch.rowCount > 0) {
         console.log(`branch_inventory_batches backfill: inserted ${bfBatch.rowCount} rows from inventory_balances`);
