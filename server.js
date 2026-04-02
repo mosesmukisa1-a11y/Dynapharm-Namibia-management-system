@@ -143,15 +143,10 @@ function normalizeApiPath(pathname = '') {
   return normalized;
 }
 
-async function getHandler(pathname) {
-  const normalized = normalizeApiPath(pathname);
-  if (!normalized) {
-    return null;
-  }
+async function tryLoadModule(normalized) {
   if (handlerCache.has(normalized)) {
     return handlerCache.get(normalized);
   }
-
   const modulePath = `./api${normalized}.js`;
   try {
     const module = await import(modulePath);
@@ -164,11 +159,31 @@ async function getHandler(pathname) {
       handlerCache.set(normalized, null);
       return null;
     }
-    console.error(`Failed to load API handler for ${pathname}:`, error);
+    console.error(`Failed to load API handler for ${normalized}:`, error);
     throw error;
   }
-
   handlerCache.set(normalized, null);
+  return null;
+}
+
+async function getHandler(pathname) {
+  const normalized = normalizeApiPath(pathname);
+  if (!normalized) return null;
+
+  // Try exact path first
+  const exact = await tryLoadModule(normalized);
+  if (exact) return exact;
+
+  // Walk up parent segments to find a handler that can handle sub-paths
+  // e.g. /campaigns/CAMP-123/participants → try /campaigns
+  const segments = normalized.split('/').filter(Boolean);
+  for (let len = segments.length - 1; len >= 1; len--) {
+    const parentPath = '/' + segments.slice(0, len).join('/');
+    if (!/^[\/0-9A-Za-z_\-]+$/.test(parentPath)) continue;
+    const parent = await tryLoadModule(parentPath);
+    if (parent) return parent;
+  }
+
   return null;
 }
 
@@ -1432,6 +1447,13 @@ server.on('error', (error) => {
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_by_id VARCHAR(255)`,
       // Migration 020: CIF unit cost on stock_movements
       `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS unit_cif NUMERIC(14,4)`,
+      // Campaigns extended schema
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS campaign_type VARCHAR(50) DEFAULT 'custom'`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scope VARCHAR(50) DEFAULT 'countrywide'`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS conditions JSONB DEFAULT '{}'`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS prize JSONB DEFAULT '{}'`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5,2) DEFAULT 0`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS target_branches JSONB DEFAULT '[]'`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
@@ -1442,6 +1464,46 @@ server.on('error', (error) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    // ── Campaign participation and winners tables ─────────────────────────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS campaign_participants (
+          id VARCHAR(100) PRIMARY KEY,
+          campaign_id VARCHAR(100) NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          distributor_code VARCHAR(50) NOT NULL,
+          distributor_name VARCHAR(255),
+          branch VARCHAR(100),
+          enrolled_at TIMESTAMPTZ DEFAULT NOW(),
+          status VARCHAR(30) DEFAULT 'active',
+          current_bv NUMERIC(12,2) DEFAULT 0,
+          current_recruits INTEGER DEFAULT 0,
+          notes TEXT,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_participants_campaign ON campaign_participants(campaign_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_participants_code ON campaign_participants(distributor_code)`);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS campaign_winners (
+          id VARCHAR(100) PRIMARY KEY,
+          campaign_id VARCHAR(100) NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          distributor_code VARCHAR(50) NOT NULL,
+          distributor_name VARCHAR(255),
+          branch VARCHAR(100),
+          prize_tier VARCHAR(255),
+          prize_description TEXT,
+          prize_rank INTEGER DEFAULT 1,
+          won_at TIMESTAMPTZ DEFAULT NOW(),
+          status VARCHAR(30) DEFAULT 'pending',
+          verified_by VARCHAR(100),
+          notes TEXT
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_winners_campaign ON campaign_winners(campaign_id)`);
+    } catch (e) {
+      console.warn('[campaign tables init]', e.message);
+    }
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {
       const aptNorm = await query(

@@ -3,6 +3,15 @@
 ## Overview
 This project is a cloud-based health management system for Dynapharm International Namibia, designed to centralize and optimize operations across sales, inventory, HR, finance, and CRM. Its primary purpose is to enhance efficiency, data accuracy, and provide real-time business insights. The system features a multi-portal architecture, an e-commerce shop, advanced pricing and profit analysis, and comprehensive reporting. The ambition is to digitize Dynapharm's business, improve engagement with customers and distributors, and support data-driven decision-making for market expansion and increased profitability in Namibia.
 
+## Recent Changes (Campaigns System - Full Build)
+- **Campaigns API** (`api/campaigns.js`): Full CRUD + sub-path routing for 4 campaign types. Endpoints: GET/POST `/campaigns`, GET/PUT/DELETE `/campaigns/:id`, GET/POST `/campaigns/:id/participants`, PATCH `/campaigns/:id/participants/:pid`, DELETE `/campaigns/:id/participants/:pid`, POST `/campaigns/:id/generate-winners`, PATCH `/campaigns/:id/winners/:wid`
+- **Sub-path routing fix** (`server.js`): `getHandler()` now walks up parent path segments, so `/api/campaigns/CAMP-xxx/participants` correctly routes to `api/campaigns.js` — enabling sub-path APIs in a single module file
+- **DB Migrations** (`server.js`): Extended `campaigns` table with `campaign_type`, `scope`, `conditions`, `prize`, `discount_percentage`, `target_branches` columns; created `campaign_participants` and `campaign_winners` tables with indexes
+- **Campaign Types Supported**: `discount` (percentage off), `buy_x_get_y` (product promotions), `bv_achievement` (tiered BV prizes), `elite_bingo` (BV + recruits = cash), `custom`
+- **Auto-winner generation**: POST `/campaigns/:id/generate-winners` evaluates all active participants against campaign conditions and writes to `campaign_winners` with prize tier, rank, and status
+- **Full CampaignsTab UI** (`GMPortal.jsx`): Gradient header with live stats; type-specific form with 5 tile selector; conditions/prize sub-forms that change based on campaign type; participant table (add, edit BV/recruits, remove); winners table with medal icons (🥇🥈🥉) and Verify/Award workflow; accordion campaign list with expand/collapse
+- **Frontend rebuild**: `npx vite build` must be run from project root (not client/ subdirectory) to use the root `vite.config.js` with React plugin
+
 ## Recent Fixes (Finance Portal & Deposits)
 - **Deposit recording fixed**: `api/branch/deposits.js` POST now auto-assigns `branchId` from the logged-in user's session (`currentUser?.branch`) — branch users no longer need to select their branch when recording a deposit.
 - **verifyDeposit fixed**: Client `api.branch.verifyDeposit(id)` now sends the ID in the request body (PATCH to `/branch/deposits`) instead of the URL path, matching the backend PATCH handler.

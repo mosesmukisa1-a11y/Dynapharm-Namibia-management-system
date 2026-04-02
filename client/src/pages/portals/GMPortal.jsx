@@ -1168,98 +1168,571 @@ function ApprovalsTab() {
   );
 }
 
+const CAMPAIGN_TYPES = [
+  { value: 'discount', label: '🏷️ Discount Campaign', desc: 'Percentage off on selected products for a set period' },
+  { value: 'buy_x_get_y', label: '🎁 Buy X Get Y', desc: 'Purchase N products and get M products free' },
+  { value: 'bv_achievement', label: '🏆 BV Achievement', desc: 'Earn prizes by accumulating Business Volume (BV) points' },
+  { value: 'elite_bingo', label: '🎯 Elite Bingo', desc: 'Recruit new distributors AND maintain BV target to earn cash' },
+  { value: 'custom', label: '⚙️ Custom', desc: 'Define your own rules and prizes' },
+];
+
+const TYPE_COLORS = {
+  discount: { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8', badge: 'info' },
+  buy_x_get_y: { bg: '#f0fdf4', border: '#86efac', text: '#166534', badge: 'success' },
+  bv_achievement: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', badge: 'warning' },
+  elite_bingo: { bg: '#fdf4ff', border: '#d8b4fe', text: '#6b21a8', badge: 'default' },
+  custom: { bg: '#f8fafc', border: '#cbd5e1', text: '#475569', badge: 'default' },
+};
+
+function campaignStatus(c) {
+  if (c.status === 'completed') return 'completed';
+  const now = new Date();
+  const end = new Date(c.end_date);
+  const start = new Date(c.start_date);
+  if (now > end) return 'ended';
+  if (now < start) return 'upcoming';
+  return 'active';
+}
+
+function CampaignTypeConditionsForm({ type, conditions, onChange }) {
+  const set = (key, val) => onChange({ ...conditions, [key]: val });
+  if (type === 'discount') return (
+    <div className="space-y-3">
+      <Input label="Discount %" type="number" min="1" max="100" value={conditions.discount_pct || ''} onChange={e => set('discount_pct', e.target.value)} placeholder="e.g. 15" />
+      <Input label="Applicable Products (comma-separated, leave blank for all)" value={conditions.products || ''} onChange={e => set('products', e.target.value)} placeholder="e.g. YEEGINKGO 30's, PRO-LSB TABLET..." />
+      <Input label="Minimum Purchase Amount (N$)" type="number" value={conditions.min_purchase || ''} onChange={e => set('min_purchase', e.target.value)} placeholder="0 = no minimum" />
+    </div>
+  );
+  if (type === 'buy_x_get_y') return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Buy quantity (X)" type="number" min="1" value={conditions.buy_qty || ''} onChange={e => set('buy_qty', e.target.value)} placeholder="e.g. 1 or 2" />
+        <Input label="Get quantity free (Y)" type="number" min="1" value={conditions.get_qty || ''} onChange={e => set('get_qty', e.target.value)} placeholder="e.g. 1" />
+      </div>
+      <Input label="Qualifying Products (comma-separated)" value={conditions.products || ''} onChange={e => set('products', e.target.value)} placeholder="e.g. TEA TREE TOOTHPASTE, DYNA RH..." />
+      <Input label="Distributor Code Conditions (e.g. code ending in O)" value={conditions.code_condition || ''} onChange={e => set('code_condition', e.target.value)} placeholder="Optional: e.g. ends_with_O" />
+      <Input label="Specific Distributor Codes (comma-separated)" value={conditions.distributor_codes || ''} onChange={e => set('distributor_codes', e.target.value)} placeholder="e.g. NB78370, NB68030" />
+    </div>
+  );
+  if (type === 'bv_achievement') return (
+    <div className="space-y-3">
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">BV must be accumulated within 1 month (start to end). No carryover to next month.</div>
+      <Input label="Maximum Winners (0 = unlimited)" type="number" min="0" value={conditions.max_winners || ''} onChange={e => set('max_winners', e.target.value)} placeholder="0" />
+      <Input label="Accumulation Period" value={conditions.accumulation_period || 'monthly'} onChange={e => set('accumulation_period', e.target.value)} placeholder="monthly" />
+    </div>
+  );
+  if (type === 'elite_bingo') return (
+    <div className="space-y-3">
+      <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">Participants must recruit new distributors AND maintain PSBV target within 1 month.</div>
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Min BV Required (PSBV)" type="number" value={conditions.min_bv || '3000'} onChange={e => set('min_bv', e.target.value)} placeholder="3000" />
+        <Input label="Min New Recruits" type="number" value={conditions.min_recruits || '2'} onChange={e => set('min_recruits', e.target.value)} placeholder="2" />
+      </div>
+      <div className="p-2 bg-gray-50 rounded text-xs text-gray-600">Participants may enrol in another active promotion simultaneously.</div>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      <Input label="Minimum BV" type="number" value={conditions.min_bv || ''} onChange={e => set('min_bv', e.target.value)} placeholder="Optional" />
+      <Input label="Max Winners" type="number" value={conditions.max_winners || ''} onChange={e => set('max_winners', e.target.value)} placeholder="0 = unlimited" />
+      <Input label="Other Rules" value={conditions.rules || ''} onChange={e => set('rules', e.target.value)} placeholder="Describe additional conditions..." />
+    </div>
+  );
+}
+
+function CampaignPrizeForm({ type, prize, onChange }) {
+  const set = (key, val) => onChange({ ...prize, [key]: val });
+  if (type === 'discount') return (
+    <Input label="Discount Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Up to 15% off on selected items" />
+  );
+  if (type === 'buy_x_get_y') return (
+    <div className="space-y-3">
+      <Input label="Free Product Name" value={prize.free_product || ''} onChange={e => set('free_product', e.target.value)} placeholder="e.g. TEA TREE TOOTHPASTE" />
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Buy 2 get 1 free" />
+    </div>
+  );
+  if (type === 'bv_achievement') return (
+    <div className="space-y-3">
+      <div className="text-sm font-medium text-gray-700 mb-1">Prize Tiers (ranked by BV required)</div>
+      {(prize.tiers || [{ bv_required: '', label: '', prize: '' }]).map((tier, i) => (
+        <div key={i} className="p-3 border border-gray-200 rounded-lg space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-semibold text-gray-500">TIER {i + 1}</span>
+            {i > 0 && <button type="button" onClick={() => { const t = [...(prize.tiers || [])]; t.splice(i, 1); set('tiers', t); }} className="text-xs text-red-500 hover:underline">Remove</button>}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Input label="Min BV" type="number" value={tier.bv_required || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], bv_required: e.target.value }; set('tiers', t); }} placeholder="e.g. 3000" />
+            <Input label="Tier Label" value={tier.label || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], label: e.target.value }; set('tiers', t); }} placeholder="e.g. Gold" />
+            <Input label="Prize" value={tier.prize || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], prize: e.target.value }; set('tiers', t); }} placeholder="e.g. Extra Large Hamper" />
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={() => set('tiers', [...(prize.tiers || []), { bv_required: '', label: '', prize: '' }])}
+        className="text-sm text-blue-600 hover:underline">+ Add Tier</button>
+    </div>
+  );
+  if (type === 'elite_bingo') return (
+    <div className="space-y-3">
+      <Input label="Cash Reward (N$)" type="number" value={prize.cash_reward || ''} onChange={e => set('cash_reward', e.target.value)} placeholder="e.g. 1400" />
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. N$1400 cash earnings" />
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Trophy, cash, voucher..." />
+      <Input label="Prize Value (N$)" type="number" value={prize.value || ''} onChange={e => set('value', e.target.value)} placeholder="Optional monetary value" />
+    </div>
+  );
+}
+
 function CampaignsTab() {
   const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', start_date: '', end_date: '', target_branches: '', discount_percentage: '' });
-  const [message, setMessage] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [campaignDetail, setCampaignDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [generatingWinners, setGeneratingWinners] = useState(false);
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+  const [participantForm, setParticipantForm] = useState({ distributor_code: '', distributor_name: '', branch: '' });
+  const [editingParticipant, setEditingParticipant] = useState(null);
+  const [editBv, setEditBv] = useState('');
+  const [editRecruits, setEditRecruits] = useState('');
 
-  useEffect(() => {
-    api.get('/campaigns')
-      .then(d => {
-        const list = Array.isArray(d) ? d : d.campaigns || [];
-        setCampaigns(list);
-      })
-      .catch(() => {});
-  }, []);
+  const defaultForm = {
+    name: '', description: '', campaign_type: 'bv_achievement',
+    start_date: '', end_date: '', scope: 'countrywide',
+    conditions: {}, prize: {},
+  };
+  const [form, setForm] = useState(defaultForm);
 
-  const handleSubmit = async (e) => {
+  const loadCampaigns = () => {
+    setLoading(true);
+    api.get('/campaigns').then(d => {
+      setCampaigns(Array.isArray(d) ? d : d.campaigns || []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadCampaigns(); }, []);
+
+  const loadDetail = (id) => {
+    setDetailLoading(true);
+    api.get(`/campaigns/${id}`).then(d => {
+      setCampaignDetail(d);
+    }).catch(() => {}).finally(() => setDetailLoading(false));
+  };
+
+  const handleSelectCampaign = (c) => {
+    setSelectedCampaign(c);
+    loadDetail(c.id);
+    setShowForm(false);
+  };
+
+  const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.name || !form.start_date || !form.end_date) {
-      setMessage('Error: Please fill in required fields.');
+      setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
       return;
     }
     try {
       await api.post('/campaigns', {
         ...form,
-        discount_percentage: Number(form.discount_percentage) || 0,
-        target_branches: form.target_branches ? form.target_branches.split(',').map(b => b.trim()) : [],
+        discount_percentage: form.campaign_type === 'discount' ? Number(form.conditions?.discount_pct || 0) : 0,
       });
-      setMessage('Campaign created successfully!');
-      setForm({ name: '', description: '', start_date: '', end_date: '', target_branches: '', discount_percentage: '' });
+      setAlert({ type: 'success', msg: 'Campaign created!' });
+      setForm(defaultForm);
       setShowForm(false);
-      api.get('/campaigns')
-        .then(d => setCampaigns(Array.isArray(d) ? d : d.campaigns || []))
-        .catch(() => {});
+      loadCampaigns();
     } catch (err) {
-      setMessage('Error: ' + err.message);
+      setAlert({ type: 'error', msg: err.message });
     }
   };
 
-  return (
-    <div className="space-y-4">
-      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'}>{message}</Alert>}
+  const handleDeleteCampaign = async (id) => {
+    if (!window.confirm('Delete this campaign and all its participant records?')) return;
+    try {
+      await api.delete(`/campaigns/${id}`);
+      setSelectedCampaign(null);
+      setCampaignDetail(null);
+      loadCampaigns();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
 
-      <div className="flex justify-between items-center">
-        <h3 className="font-bold text-gray-800">Sales Campaigns</h3>
-        <Button size="sm" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ New Campaign'}
-        </Button>
+  const handleAddParticipant = async () => {
+    if (!participantForm.distributor_code.trim()) return;
+    try {
+      await api.post(`/campaigns/${selectedCampaign.id}/participants`, participantForm);
+      setParticipantForm({ distributor_code: '', distributor_name: '', branch: '' });
+      setShowAddParticipant(false);
+      loadDetail(selectedCampaign.id);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  const handleUpdateParticipant = async (pid) => {
+    try {
+      await api.patch(`/campaigns/${selectedCampaign.id}/participants/${pid}`, {
+        current_bv: Number(editBv) || 0,
+        current_recruits: Number(editRecruits) || 0,
+      });
+      setEditingParticipant(null);
+      loadDetail(selectedCampaign.id);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  const handleRemoveParticipant = async (pid) => {
+    if (!window.confirm('Remove this participant?')) return;
+    try {
+      await api.delete(`/campaigns/${selectedCampaign.id}/participants/${pid}`);
+      loadDetail(selectedCampaign.id);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  const handleGenerateWinners = async () => {
+    if (!window.confirm('Auto-generate winners based on current participant data? Existing winners will be replaced.')) return;
+    setGeneratingWinners(true);
+    try {
+      const result = await api.post(`/campaigns/${selectedCampaign.id}/generate-winners`, {});
+      setAlert({ type: 'success', msg: `${result.winners_generated} winner(s) generated!` });
+      loadDetail(selectedCampaign.id);
+      loadCampaigns();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally { setGeneratingWinners(false); }
+  };
+
+  const handleWinnerStatus = async (wid, status) => {
+    try {
+      await api.patch(`/campaigns/${selectedCampaign.id}/winners/${wid}`, { status, verified_by: 'GM' });
+      loadDetail(selectedCampaign.id);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  const typeConfig = TYPE_COLORS[form.campaign_type] || TYPE_COLORS.custom;
+  const cs = selectedCampaign ? (TYPE_COLORS[selectedCampaign.campaign_type] || TYPE_COLORS.custom) : null;
+
+  return (
+    <div className="space-y-5">
+      {alert && <Alert type={alert.type} className="mb-2">{alert.msg}</Alert>}
+
+      {/* Header */}
+      <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg,#1e3a5f,#2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">📢 Campaign Management</h3>
+        <p className="text-white/70 text-sm mt-1 m-0">Create, track, and auto-generate winners for promotions</p>
+        <div className="flex gap-3 mt-3">
+          {[
+            { label: 'Total', val: campaigns.length, color: '#93c5fd' },
+            { label: 'Active', val: campaigns.filter(c => campaignStatus(c) === 'active').length, color: '#86efac' },
+            { label: 'Upcoming', val: campaigns.filter(c => campaignStatus(c) === 'upcoming').length, color: '#fcd34d' },
+            { label: 'Completed', val: campaigns.filter(c => campaignStatus(c) === 'completed').length, color: '#d8b4fe' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <div className="text-xl font-black" style={{ color: s.color }}>{s.val}</div>
+              <div className="text-xs text-white/60">{s.label}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
+      <div className="flex justify-between items-center">
+        <div className="text-sm text-gray-500">{campaigns.length} campaign(s) on record</div>
+        <Button onClick={() => { setShowForm(true); setSelectedCampaign(null); setCampaignDetail(null); }}>+ New Campaign</Button>
+      </div>
+
+      {/* Create Form */}
       {showForm && (
         <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Create Campaign</h3></CardHeader>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Create Campaign</h3>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
+            </div>
+          </CardHeader>
           <CardBody>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input label="Campaign Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. March Promotion" />
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Description</label>
-                <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[80px] resize-y"
-                  placeholder="Campaign details..." />
+            <form onSubmit={handleCreate} className="space-y-5">
+              {/* Type Selector */}
+              <div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">Campaign Type</div>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                  {CAMPAIGN_TYPES.map(t => (
+                    <button key={t.value} type="button" onClick={() => setForm(f => ({ ...f, campaign_type: t.value, conditions: {}, prize: {} }))}
+                      className="p-3 rounded-lg border-2 text-left transition-all"
+                      style={form.campaign_type === t.value ? { background: TYPE_COLORS[t.value].bg, borderColor: TYPE_COLORS[t.value].border } : { background: '#f8fafc', borderColor: '#e2e8f0' }}>
+                      <div className="font-semibold text-sm" style={{ color: form.campaign_type === t.value ? TYPE_COLORS[t.value].text : '#374151' }}>{t.label}</div>
+                      <div className="text-xs text-gray-500 mt-1">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Start Date *" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-                <Input label="End Date *" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
+
+              <Input label="Campaign Title *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Independence Celebration, Elite Bingo Q2..." />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[60px]"
+                  placeholder="Brief summary visible to staff..." />
               </div>
-              <Input label="Target Branches (comma-separated)" value={form.target_branches} onChange={e => setForm({ ...form, target_branches: e.target.value })} placeholder="e.g. Windhoek CBD, Oshakati" />
-              <Input label="Discount %" type="number" min="0" max="100" value={form.discount_percentage} onChange={e => setForm({ ...form, discount_percentage: e.target.value })} />
-              <Alert type="info">Campaign pricing affects profit calculations. Discount reduces the selling price, which reduces the margin between DP and CIF.</Alert>
-              <Button type="submit">Create Campaign</Button>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Start Date *" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+                <Input label="End Date *" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
+                <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none">
+                  <option value="countrywide">Countrywide (All Branches)</option>
+                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+
+              {/* Type-specific Conditions */}
+              <div className="p-4 rounded-xl border-2" style={{ background: typeConfig.bg, borderColor: typeConfig.border }}>
+                <div className="font-semibold text-sm mb-3" style={{ color: typeConfig.text }}>📋 Conditions (How to Qualify)</div>
+                <CampaignTypeConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} />
+              </div>
+
+              {/* Prize */}
+              <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
+                <div className="font-semibold text-sm text-amber-800 mb-3">🏆 Prize / Reward</div>
+                <CampaignPrizeForm type={form.campaign_type} prize={form.prize} onChange={p => setForm(f => ({ ...f, prize: p }))} />
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t border-gray-100 pt-4 flex gap-3">
+                <Button type="submit" className="flex-1">Create Campaign</Button>
+                <Button variant="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+              </div>
             </form>
           </CardBody>
         </Card>
       )}
 
-      <Card>
-        <Table
-          columns={[
-            { header: 'Name', key: 'name' },
-            { header: 'Period', render: r => `${formatDate(r.start_date)} - ${formatDate(r.end_date)}` },
-            { header: 'Discount', render: r => r.discount_percentage ? `${r.discount_percentage}%` : '-' },
-            { header: 'Status', render: r => {
-              const now = new Date();
-              const end = new Date(r.end_date);
-              const start = new Date(r.start_date);
-              const status = now > end ? 'ended' : now < start ? 'upcoming' : 'active';
-              return <Badge variant={status === 'active' ? 'success' : status === 'upcoming' ? 'info' : 'default'}>{status}</Badge>;
-            }},
-          ]}
-          data={campaigns}
-          emptyMessage="No campaigns created yet"
-        />
-      </Card>
+      {/* Campaign List */}
+      {!showForm && (
+        <div className="grid gap-3">
+          {loading ? <LoadingSpinner /> : campaigns.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">No campaigns yet. Click "+ New Campaign" to start.</div>
+          ) : campaigns.map(c => {
+            const st = campaignStatus(c);
+            const tc = TYPE_COLORS[c.campaign_type] || TYPE_COLORS.custom;
+            const isSelected = selectedCampaign?.id === c.id;
+            return (
+              <div key={c.id} className="rounded-xl border-2 overflow-hidden cursor-pointer transition-all"
+                style={{ borderColor: isSelected ? tc.border : '#e2e8f0', background: isSelected ? tc.bg : '#fff' }}
+                onClick={() => isSelected ? (setSelectedCampaign(null), setCampaignDetail(null)) : handleSelectCampaign(c)}>
+                <div className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-gray-800">{c.name}</span>
+                        <Badge variant={st === 'active' ? 'success' : st === 'upcoming' ? 'info' : st === 'completed' ? 'default' : 'default'}>{st}</Badge>
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
+                          {CAMPAIGN_TYPES.find(t => t.value === c.campaign_type)?.label || c.campaign_type}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">{formatDate(c.start_date)} → {formatDate(c.end_date)} · {c.scope || 'Countrywide'}</div>
+                      {c.description && <div className="text-sm text-gray-600 mt-1">{c.description}</div>}
+                    </div>
+                    <div className="text-xl ml-3">{isSelected ? '▲' : '▼'}</div>
+                  </div>
+                </div>
+
+                {/* Expanded detail */}
+                {isSelected && (
+                  <div className="border-t border-gray-200 p-4 space-y-4 bg-white" onClick={e => e.stopPropagation()}>
+                    {detailLoading ? <LoadingSpinner /> : campaignDetail && (
+                      <>
+                        {/* Stats row */}
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { label: 'Participants', val: campaignDetail.participants?.length || 0 },
+                            { label: 'Winners Generated', val: campaignDetail.winners?.length || 0 },
+                            { label: 'Status', val: st.toUpperCase() },
+                          ].map(s => (
+                            <div key={s.label} className="text-center rounded-lg p-3" style={{ background: tc.bg }}>
+                              <div className="text-xl font-black" style={{ color: tc.text }}>{s.val}</div>
+                              <div className="text-xs text-gray-500">{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Conditions & Prize summary */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                            <div className="text-xs font-bold text-gray-500 uppercase mb-2">Conditions</div>
+                            {(() => {
+                              const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
+                              return Object.entries(cond).length === 0 ? <span className="text-xs text-gray-400">None set</span> :
+                                Object.entries(cond).map(([k, v]) => (
+                                  <div key={k} className="text-xs"><span className="font-semibold">{k.replace(/_/g, ' ')}:</span> {String(v)}</div>
+                                ));
+                            })()}
+                          </div>
+                          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                            <div className="text-xs font-bold text-amber-800 uppercase mb-2">Prize</div>
+                            {(() => {
+                              const pr = typeof c.prize === 'string' ? JSON.parse(c.prize || '{}') : (c.prize || {});
+                              if (pr.tiers) return pr.tiers.map((t, i) => (
+                                <div key={i} className="text-xs"><span className="font-semibold">{t.bv_required} BV</span> → {t.prize} ({t.label})</div>
+                              ));
+                              return Object.entries(pr).length === 0 ? <span className="text-xs text-gray-400">None set</span> :
+                                Object.entries(pr).map(([k, v]) => (
+                                  <div key={k} className="text-xs"><span className="font-semibold">{k.replace(/_/g, ' ')}:</span> {String(v)}</div>
+                                ));
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Participants */}
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="font-semibold text-sm text-gray-700">👥 Participants ({campaignDetail.participants?.length || 0})</div>
+                            <Button size="sm" onClick={() => setShowAddParticipant(true)}>+ Add Participant</Button>
+                          </div>
+                          {showAddParticipant && (
+                            <div className="p-3 border border-blue-200 rounded-lg bg-blue-50 space-y-2 mb-3">
+                              <div className="grid grid-cols-3 gap-2">
+                                <Input label="NB Code *" value={participantForm.distributor_code} onChange={e => setParticipantForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB78370" />
+                                <Input label="Name" value={participantForm.distributor_name} onChange={e => setParticipantForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="Full name" />
+                                <Input label="Branch" value={participantForm.branch} onChange={e => setParticipantForm(f => ({ ...f, branch: e.target.value }))} placeholder="e.g. Oshakati" />
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={handleAddParticipant}>Add</Button>
+                                <Button size="sm" variant="ghost" onClick={() => setShowAddParticipant(false)}>Cancel</Button>
+                              </div>
+                            </div>
+                          )}
+                          {campaignDetail.participants?.length === 0 ? (
+                            <div className="text-sm text-gray-400 text-center py-3">No participants yet. Add them manually or they will appear when enrolled.</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm border-collapse">
+                                <thead>
+                                  <tr className="bg-gray-50">
+                                    <th className="text-left p-2 text-xs text-gray-500 font-semibold">NB Code</th>
+                                    <th className="text-left p-2 text-xs text-gray-500 font-semibold">Name</th>
+                                    <th className="text-left p-2 text-xs text-gray-500 font-semibold">Branch</th>
+                                    <th className="text-center p-2 text-xs text-gray-500 font-semibold">BV</th>
+                                    <th className="text-center p-2 text-xs text-gray-500 font-semibold">Recruits</th>
+                                    <th className="text-center p-2 text-xs text-gray-500 font-semibold">Status</th>
+                                    <th className="p-2"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {campaignDetail.participants.map(p => (
+                                    <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
+                                      <td className="p-2 font-mono text-xs font-bold text-blue-700">{p.distributor_code}</td>
+                                      <td className="p-2 text-sm">{p.distributor_name || '-'}</td>
+                                      <td className="p-2 text-xs text-gray-500">{p.branch || '-'}</td>
+                                      <td className="p-2 text-center">
+                                        {editingParticipant === p.id ? (
+                                          <input type="number" value={editBv} onChange={e => setEditBv(e.target.value)} className="w-20 border border-gray-300 rounded px-1 text-center text-xs" />
+                                        ) : <span className="font-bold text-blue-600">{Number(p.current_bv || 0).toLocaleString()}</span>}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {editingParticipant === p.id ? (
+                                          <input type="number" value={editRecruits} onChange={e => setEditRecruits(e.target.value)} className="w-16 border border-gray-300 rounded px-1 text-center text-xs" />
+                                        ) : <span className="font-bold text-green-600">{p.current_recruits || 0}</span>}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        <Badge variant={p.status === 'active' ? 'success' : 'default'}>{p.status}</Badge>
+                                      </td>
+                                      <td className="p-2">
+                                        <div className="flex gap-1 justify-end">
+                                          {editingParticipant === p.id ? (
+                                            <>
+                                              <button onClick={() => handleUpdateParticipant(p.id)} className="text-xs text-green-600 hover:underline font-semibold">Save</button>
+                                              <button onClick={() => setEditingParticipant(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <button onClick={() => { setEditingParticipant(p.id); setEditBv(String(p.current_bv || 0)); setEditRecruits(String(p.current_recruits || 0)); }} className="text-xs text-blue-600 hover:underline">Edit</button>
+                                              <button onClick={() => handleRemoveParticipant(p.id)} className="text-xs text-red-500 hover:underline">Remove</button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Winners */}
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="font-semibold text-sm text-gray-700">🏆 Winners ({campaignDetail.winners?.length || 0})</div>
+                            <Button size="sm" variant="success" onClick={handleGenerateWinners} disabled={generatingWinners}>
+                              {generatingWinners ? 'Generating...' : '⚡ Auto-Generate Winners'}
+                            </Button>
+                          </div>
+                          {(campaignDetail.winners?.length || 0) === 0 ? (
+                            <div className="text-sm text-gray-400 text-center py-3">No winners yet. Click "Auto-Generate" once participants have their BV/recruits updated.</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm border-collapse">
+                                <thead>
+                                  <tr className="bg-amber-50">
+                                    <th className="text-center p-2 text-xs text-amber-800 font-semibold">Rank</th>
+                                    <th className="text-left p-2 text-xs text-amber-800 font-semibold">NB Code</th>
+                                    <th className="text-left p-2 text-xs text-amber-800 font-semibold">Name</th>
+                                    <th className="text-left p-2 text-xs text-amber-800 font-semibold">Branch</th>
+                                    <th className="text-left p-2 text-xs text-amber-800 font-semibold">Prize Tier</th>
+                                    <th className="text-left p-2 text-xs text-amber-800 font-semibold">Prize</th>
+                                    <th className="text-center p-2 text-xs text-amber-800 font-semibold">Status</th>
+                                    <th className="p-2"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {campaignDetail.winners.map((w, i) => (
+                                    <tr key={w.id} className="border-t border-amber-100 hover:bg-amber-50/50">
+                                      <td className="p-2 text-center font-black text-lg" style={{ color: i === 0 ? '#d97706' : i === 1 ? '#6b7280' : '#92400e' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${w.prize_rank}`}</td>
+                                      <td className="p-2 font-mono text-xs font-bold text-blue-700">{w.distributor_code}</td>
+                                      <td className="p-2 text-sm font-semibold">{w.distributor_name || '-'}</td>
+                                      <td className="p-2 text-xs text-gray-500">{w.branch || '-'}</td>
+                                      <td className="p-2 text-xs font-semibold text-amber-700">{w.prize_tier}</td>
+                                      <td className="p-2 text-xs text-gray-700">{w.prize_description}</td>
+                                      <td className="p-2 text-center">
+                                        <Badge variant={w.status === 'awarded' ? 'success' : w.status === 'verified' ? 'info' : 'warning'}>{w.status}</Badge>
+                                      </td>
+                                      <td className="p-2">
+                                        <div className="flex gap-1 justify-end">
+                                          {w.status === 'pending' && <button onClick={() => handleWinnerStatus(w.id, 'verified')} className="text-xs text-blue-600 hover:underline">Verify</button>}
+                                          {w.status === 'verified' && <button onClick={() => handleWinnerStatus(w.id, 'awarded')} className="text-xs text-green-600 hover:underline">Mark Awarded</button>}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2 pt-2 border-t border-gray-100">
+                          <button onClick={() => handleDeleteCampaign(c.id)} className="text-xs text-red-500 hover:underline ml-auto">🗑️ Delete Campaign</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
