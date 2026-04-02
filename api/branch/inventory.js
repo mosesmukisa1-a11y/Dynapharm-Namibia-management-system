@@ -143,11 +143,18 @@ async function getInventoryByBranch(branchId, enriched = false) {
   //     job — use GREATEST(bib_qty, ib_qty) so we never display a quantity lower than
   //     what inventory_balances says the closing balance is.
   try {
+    // Build all plausible location_id values for this branch so data stored
+    // under 'oshakati', 'oshakati_branch', or any normalised variant is found.
+    const ibCandidates = [resolvedId];
+    const strippedResolved = resolvedId.replace(/_branch$/, '');
+    if (!resolvedId.endsWith('_branch')) ibCandidates.push(resolvedId + '_branch');
+    if (strippedResolved !== resolvedId) ibCandidates.push(strippedResolved);
+
     const ibRows = await getMany(
       `SELECT product_name, batch_no, expiry_date, GREATEST(closing_qty, 0) AS quantity, unit_dp
        FROM inventory_balances
-       WHERE location_type = 'branch' AND location_id = $1`,
-      [resolvedId]
+       WHERE location_type = 'branch' AND location_id = ANY($1)`,
+      [ibCandidates]
     );
     const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
     // Build lookup map: key → index in normalized array

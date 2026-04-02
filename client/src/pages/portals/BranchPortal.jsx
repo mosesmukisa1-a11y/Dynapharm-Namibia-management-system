@@ -6303,7 +6303,7 @@ function CheckUpBookingTab() {
 
   const loadAppointments = () => {
     setAptsLoading(true);
-    const params = 'type=checkup' + (branchDisplayName ? `&branch=${encodeURIComponent(branchDisplayName)}` : '');
+    const params = 'type=checkup' + (effectiveBranch ? `&branch=${encodeURIComponent(effectiveBranch)}` : '');
     api.appointments.list(params)
       .then(data => setAppointments(Array.isArray(data) ? data : []))
       .catch(() => setAppointments([]))

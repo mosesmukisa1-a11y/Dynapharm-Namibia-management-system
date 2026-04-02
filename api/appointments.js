@@ -2,6 +2,21 @@ import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } 
 import { applyAuthCors } from './_lib/auth.js';
 import { createDistributorNotification } from './notifications.js';
 
+const BRANCH_ALIAS = {
+  'Windhoek CBD': 'townshop', 'windhoek cbd': 'townshop', 'windhoek_cbd': 'townshop', 'main': 'townshop',
+  'Oshakati': 'oshakati_branch', 'oshakati': 'oshakati_branch',
+  'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park', 'hochland park': 'hochland-park',
+  'Walvis Bay': 'walvisbay', 'walvis_bay': 'walvisbay', 'walvis bay': 'walvisbay', 'Walvisbay': 'walvisbay',
+  'Katima Mulilo': 'katima', 'katima mulilo': 'katima', 'katima_mulilo': 'katima',
+  'Gobabis': 'gobabis', 'Khomasdal': 'khomasdal', 'Swakopmund': 'swakopmund',
+  'Eenhana': 'eenhana', 'Ondangwa': 'ondangwa', 'Rundu': 'rundu',
+  'Otjiwarongo': 'otjiwarongo', 'Tsumeb': 'tsumeb', 'Okahao': 'okahao', 'Outapi': 'outapi',
+};
+function normBranch(val) {
+  if (!val) return val;
+  return BRANCH_ALIAS[val] || BRANCH_ALIAS[val.toLowerCase()] || val;
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -12,7 +27,7 @@ export default async function handler(req, res) {
   const method = req.method;
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
-  const branch = searchParams.get('branch');
+  const branch = normBranch(searchParams.get('branch'));
   const date = searchParams.get('date');
   const status = searchParams.get('status');
   const type = searchParams.get('type');
@@ -24,8 +39,9 @@ export default async function handler(req, res) {
       const conditions = [];
 
       const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
-      const userBranch = req.user ? (req.user.branch || '') : '';
-      if (req.user && userRole !== 'admin' && userBranch && !branch) {
+      const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
+      if (req.user && !FULL_ACCESS.has(userRole) && userBranch && !branch) {
         conditions.push('branch = $' + (params.length + 1));
         params.push(userBranch);
       }
@@ -35,7 +51,7 @@ export default async function handler(req, res) {
         params.push(id);
       }
       if (branch) {
-        if (req.user && userRole !== 'admin' && userBranch && branch !== userBranch) {
+        if (req.user && !FULL_ACCESS.has(userRole) && userBranch && branch !== userBranch) {
           return res.status(403).json({ error: 'Access denied to this branch' });
         }
         conditions.push('branch = $' + (params.length + 1));

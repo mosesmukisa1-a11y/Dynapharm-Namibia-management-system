@@ -1392,6 +1392,8 @@ server.on('error', (error) => {
         { table: 'branch_inventory_movements', col: 'branch_id' },
         { table: 'inventory_balances', col: 'location_id' },
         { table: 'users', col: 'branch' },
+        { table: 'appointments', col: 'branch' },
+        { table: 'reports', col: 'branch' },
       ];
       for (const { table, col } of tables) {
         try {
