@@ -485,14 +485,17 @@ function WalkInSalesTab() {
   const wiSetCustomerType = (type) => {
     setCustomerType(type);
     if (type === 'registered') { setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]); setSelectedReferral(null); setNoReferral(false); }
-    else { setSelectedReg(null); setRegSearch(''); setRegResults([]); }
+    else {
+      setSelectedReg(null); setRegSearch(''); setRegResults([]);
+      if (type === 'prescription' || type === 'consultation') { setSelectedReferral(null); setNoReferral(true); }
+    }
   };
 
   const wiReviewSale = () => {
     if (cart.length === 0) { setError('Please add products to cart'); return; }
     if (isMember && !selectedReg) { setError('Please select a registered client'); return; }
     if (!isMember && !newName.trim()) { setError('Please enter customer name'); return; }
-    if (!isMember && !noReferral && !selectedReferral) { setError('Please select a referral distributor or tick "no referral"'); return; }
+    if (!isMember && customerType !== 'prescription' && customerType !== 'consultation' && !noReferral && !selectedReferral) { setError('Please select a referral distributor or tick "no referral"'); return; }
     setError('');
     setShowConfirmModal(true);
   };
@@ -529,8 +532,8 @@ function WalkInSalesTab() {
         receipt_number: receiptNumber,
         branch: effectiveBranch,
         branchId: effectiveBranch,
-        customer_type: isMember ? 'member' : 'non_member',
-        customerType: isMember ? 'member' : 'non_member',
+        customer_type: isMember ? 'member' : customerType === 'prescription' ? 'prescription' : customerType === 'consultation' ? 'consultation' : 'non_member',
+        customerType: isMember ? 'member' : customerType === 'prescription' ? 'prescription' : customerType === 'consultation' ? 'consultation' : 'non_member',
         customer_name: custName,
         customerName: custName,
         customerPhone: custPhone,
@@ -783,6 +786,8 @@ function WalkInSalesTab() {
                     {[
                       { type: 'registered', icon: '🏅', label: 'Member', sub: 'DP price · BV', activeColor: '#c41e3a', activeBg: '#fff0f3', activeBorder: '#c41e3a' },
                       { type: 'new', icon: '👤', label: 'Walk-in', sub: 'CP price', activeColor: '#92400e', activeBg: '#fffbeb', activeBorder: '#f59e0b' },
+                      { type: 'prescription', icon: '💊', label: 'Prescription', sub: 'CP price · Rx', activeColor: '#166534', activeBg: '#f0fdf4', activeBorder: '#16a34a' },
+                      { type: 'consultation', icon: '🩺', label: 'Consultation', sub: 'Consult fee', activeColor: '#1e40af', activeBg: '#eff6ff', activeBorder: '#3b82f6' },
                     ].map(opt => {
                       const isAct = customerType === opt.type;
                       return (

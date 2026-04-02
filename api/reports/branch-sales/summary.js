@@ -27,7 +27,7 @@ export default async function handler(req, res) {
          COALESCE(SUM(grand_total), 0)::numeric                          AS total_revenue,
          COUNT(DISTINCT service_date)::int                                AS days_active,
          COALESCE(SUM(CASE WHEN activity_type = 'member_sale'            THEN grand_total ELSE 0 END), 0)::numeric AS member_total,
-         COALESCE(SUM(CASE WHEN activity_type = 'non_member_sale'        THEN grand_total ELSE 0 END), 0)::numeric AS non_member_total,
+         COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale') THEN grand_total ELSE 0 END), 0)::numeric AS non_member_total,
          COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing' THEN grand_total ELSE 0 END), 0)::numeric AS rx_total,
          COALESCE(SUM(CASE WHEN activity_type = 'consultation'           THEN grand_total ELSE 0 END), 0)::numeric AS consult_total,
          COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'            THEN grand_total ELSE 0 END), 0)::numeric AS walkin_total

@@ -145,7 +145,7 @@ function buildSaleRecord(payload, existing = {}) {
     customer_name: payload.customerName || existing.customer_name || null,
     customer_phone: payload.phone || payload.customerPhone || existing.customer_phone || null,
     customer_email: payload.email || payload.customerEmail || existing.customer_email || null,
-    customer_type: payload.customerType || existing.customer_type || 'customer',
+    customer_type: payload.customerType || payload.customer_type || existing.customer_type || 'customer',
     payment_method: payment,
     subtotal,
     discount,
@@ -390,7 +390,9 @@ export default async function handler(req, res) {
 
       const actType = record.customer_type === 'member' ? 'member_sale'
         : record.customer_type === 'non_member' ? 'non_member_sale'
-        : 'walkin_sale';
+        : record.customer_type === 'prescription' ? 'prescription_dispensing'
+        : record.customer_type === 'consultation' ? 'consultation'
+        : 'non_member_sale'; // default non-tagged walk-in to non_member_sale so it shows in Walk-in column
       const totalQty = saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
       const dpSubtotal = saleItems.reduce((s, i) => s + (Number(i.dpPrice || i.dp || 0) * Number(i.quantity || i.qty || 0)), 0);
       postActivityRecord({
