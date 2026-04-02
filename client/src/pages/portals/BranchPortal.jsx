@@ -1235,7 +1235,9 @@ function PrescriptionsTab() {
 
   const refreshDispenserData = () => {
     setLoading(true);
-    api.reports.list()
+    const params = {};
+    if (effectiveBranch) params.branch = effectiveBranch;
+    api.reports.list(params)
       .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -1665,6 +1667,7 @@ function PrescriptionsTab() {
   let filteredReports = reports.filter(r => {
     const meds = getMedicines(r);
     if (!meds || meds.length === 0) return false;
+    if (effectiveBranch && r.branch && r.branch !== effectiveBranch) return false;
     if (rxSearch) {
       const q = rxSearch.toLowerCase();
       const match = (r.client_name || r.full_name || '').toLowerCase().includes(q)
@@ -1689,11 +1692,14 @@ function PrescriptionsTab() {
 
   filteredReports.sort((a, b) => new Date(b.created_at || b.date || 0) - new Date(a.created_at || a.date || 0));
 
+  const branchReports = effectiveBranch
+    ? reports.filter(r => !r.branch || r.branch === effectiveBranch)
+    : reports;
   const groupCounts = {
-    all: reports.filter(r => getMedicines(r).length > 0).length,
-    recent: reports.filter(r => { const meds = getMedicines(r); return meds.length > 0 && new Date(r.created_at || r.date || 0) >= sevenDaysAgo; }).length,
-    partial: reports.filter(r => { const meds = getMedicines(r); const d = meds.filter(m => m.dispensed).length; return d > 0 && d < meds.length; }).length,
-    full: reports.filter(r => { const meds = getMedicines(r); return meds.length > 0 && meds.every(m => m.dispensed); }).length,
+    all: branchReports.filter(r => getMedicines(r).length > 0).length,
+    recent: branchReports.filter(r => { const meds = getMedicines(r); return meds.length > 0 && new Date(r.created_at || r.date || 0) >= sevenDaysAgo; }).length,
+    partial: branchReports.filter(r => { const meds = getMedicines(r); const d = meds.filter(m => m.dispensed).length; return d > 0 && d < meds.length; }).length,
+    full: branchReports.filter(r => { const meds = getMedicines(r); return meds.length > 0 && meds.every(m => m.dispensed); }).length,
   };
 
   return (
