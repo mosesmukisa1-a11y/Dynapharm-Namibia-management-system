@@ -4606,7 +4606,7 @@ function BankingTab() {
     }
     setSubmitting(true);
     try {
-      await api.branch.createDeposit({ amount: Number(depositForm.amount), bank_name: depositForm.bank_name.trim(), reference: depositForm.reference.trim(), deposit_date: depositForm.deposit_date || new Date().toISOString().slice(0, 10), notes: depositForm.notes.trim() });
+      await api.branch.createDeposit({ amount: Number(depositForm.amount), bankName: depositForm.bank_name.trim(), slipNumber: depositForm.reference.trim(), date: depositForm.deposit_date || new Date().toISOString().slice(0, 10), notes: depositForm.notes.trim() });
       setAlert({ type: 'success', message: 'Deposit recorded successfully' });
       setDepositForm({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
       setShowDepositForm(false);
@@ -4709,12 +4709,12 @@ function BankingTab() {
       {/* Deposit Form Modal */}
       {showDepositForm && (
         <div onClick={e => { if (e.target === e.currentTarget) setShowDepositForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
-          <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💰 Record Bank Deposit</div>
               <button onClick={() => setShowDepositForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
             </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={labelStyle}>Amount (N$) *</label><input type="number" min="1" value={depositForm.amount} onChange={e => setDepositForm(f => ({ ...f, amount: e.target.value }))} style={inputStyle} placeholder="0.00" /></div>
                 <div><label style={labelStyle}>Bank Name *</label><input type="text" value={depositForm.bank_name} onChange={e => setDepositForm(f => ({ ...f, bank_name: e.target.value }))} style={inputStyle} placeholder="e.g. FNB, Standard Bank" /></div>
@@ -4736,12 +4736,12 @@ function BankingTab() {
       {/* Expense Form Modal */}
       {showExpenseForm && (
         <div onClick={e => { if (e.target === e.currentTarget) setShowExpenseForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
-          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💸 Record Branch Expense</div>
               <button onClick={() => setShowExpenseForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
             </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Expense Category *</label>
