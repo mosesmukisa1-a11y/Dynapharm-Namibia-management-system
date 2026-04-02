@@ -1439,6 +1439,46 @@ server.on('error', (error) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    // ── Backfill reports.branch from linked appointments (one-time, idempotent) ─
+    try {
+      const branchNameToId = {
+        'Windhoek CBD': 'townshop', 'townshop': 'townshop',
+        'Oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch', 'oshakati': 'oshakati_branch',
+        'Hochlandpark': 'hochland-park', 'hochland-park': 'hochland-park',
+        'Walvis Bay': 'walvisbay', 'walvisbay': 'walvisbay',
+        'Katima Mulilo': 'katima', 'katima': 'katima',
+        'Gobabis': 'gobabis', 'gobabis': 'gobabis',
+        'Eenhana': 'eenhana', 'eenhana': 'eenhana',
+        'Ondangwa': 'ondangwa', 'ondangwa': 'ondangwa',
+        'Otjiwarongo': 'otjiwarongo', 'otjiwarongo': 'otjiwarongo',
+        'Swakopmund': 'swakopmund', 'swakopmund': 'swakopmund',
+        'Khomasdal': 'khomasdal', 'khomasdal': 'khomasdal',
+        'Rundu': 'rundu', 'rundu': 'rundu',
+        'Tsumeb': 'tsumeb', 'tsumeb': 'tsumeb',
+        'Okahao': 'okahao', 'okahao': 'okahao',
+        'Outapi': 'outapi', 'outapi': 'outapi',
+      };
+      const bfResult = await query(
+        `SELECT r.id, a.branch as apt_branch
+         FROM reports r
+         JOIN appointments a ON a.id = r.data->>'appointment_id'
+         WHERE r.branch IS NULL AND a.branch IS NOT NULL`
+      );
+      const nullBranchReports = bfResult?.rows || [];
+      let backfilled = 0;
+      for (const row of nullBranchReports) {
+        const branchId = branchNameToId[row.apt_branch] || row.apt_branch;
+        if (branchId) {
+          await query(`UPDATE reports SET branch = $1 WHERE id = $2`, [branchId, row.id]);
+          backfilled++;
+        }
+      }
+      if (backfilled > 0) console.log(`Reports branch backfill: updated ${backfilled} records`);
+    } catch (e) {
+      console.warn('[reports backfill]', e.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Auto-seed inventory_balances if empty ───────────────────────────────
     const ibCount = await getOne(`SELECT COUNT(*) as cnt FROM inventory_balances`);
     if (Number(ibCount?.cnt || 0) === 0) {

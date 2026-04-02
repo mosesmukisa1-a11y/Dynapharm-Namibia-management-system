@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
-import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO } from '../../lib/constants';
+import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO, getBranchId } from '../../lib/constants';
 import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
@@ -476,7 +476,7 @@ function CheckupsSection() {
         referral_nb: referralNb,
         nb_number: isMember ? (data.referral_nb || data.nb_number || null) : null,
         report_required: reportRequired,
-        branch: apt.branch || data.branch || user?.branch || null,
+        branch: getBranchId(apt.branch || data.branch || user?.branch || ''),
       });
       setShowReport(false);
       setSelectedCheckup(null);
