@@ -4922,10 +4922,10 @@ function BranchPaymentsTab() {
           </div>
           <Input label="Reference" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} />
           <Textarea label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-          <div className="flex gap-3">
-            <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>{submitting ? 'Recording...' : 'Record Payment'}</Button>
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3">
+          <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>{submitting ? 'Recording...' : '💾 Save Payment'}</Button>
+          <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
         </div>
       </Modal>
       <Card>

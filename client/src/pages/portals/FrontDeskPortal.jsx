@@ -457,25 +457,27 @@ function PaymentsTab() {
       </Card>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Payment">
-        <form onSubmit={handleCreate} className="p-6 space-y-4">
-          {error && <Alert type="error">{error}</Alert>}
-          <Input label="Client Name" value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} required />
-          <Input label="Amount (N$)" type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
-          <Select
-            label="Payment Method"
-            value={form.payment_method}
-            onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
-            options={[
-              { value: 'Cash', label: 'Cash' },
-              { value: 'Card', label: 'Card' },
-              { value: 'Mobile', label: 'Mobile Money' },
-              { value: 'Bank', label: 'Bank Transfer' },
-            ]}
-          />
-          <Input label="Reference" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
-          <div className="flex justify-end gap-2 pt-2">
+        <form onSubmit={handleCreate}>
+          <div className="p-6 space-y-4">
+            {error && <Alert type="error">{error}</Alert>}
+            <Input label="Client Name" value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} required />
+            <Input label="Amount (N$)" type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+            <Select
+              label="Payment Method"
+              value={form.payment_method}
+              onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
+              options={[
+                { value: 'Cash', label: 'Cash' },
+                { value: 'Card', label: 'Card' },
+                { value: 'Mobile', label: 'Mobile Money' },
+                { value: 'Bank', label: 'Bank Transfer' },
+              ]}
+            />
+            <Input label="Reference" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
+          </div>
+          <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Recording...' : 'Record Payment'}</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Recording...' : '💾 Save Payment'}</Button>
           </div>
         </form>
       </Modal>
