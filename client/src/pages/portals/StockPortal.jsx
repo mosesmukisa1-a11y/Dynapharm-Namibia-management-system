@@ -495,7 +495,7 @@ function FieldStockTab() {
                 <option value="windhoek_warehouse">Windhoek Warehouse</option>
                 <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
                 <option value="country_stock">Country Stock</option>
-                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
           </div>
@@ -608,7 +608,7 @@ function AdjustmentsTab() {
 export default function StockPortal() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('aiDashboard');
-  const [globalBranch, setGlobalBranch] = useState(user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : 'all');
+  const [globalBranch, setGlobalBranch] = useState(user?.branch || 'all');
 
   const tabs = [
     { id: 'aiDashboard', label: 'AI Command', icon: '🧠' },
@@ -636,7 +636,7 @@ export default function StockPortal() {
 
   const branchOptions = [
     { value: 'all', label: '🌍 All Branches' },
-    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: `📍 ${b}` })),
+    ...BRANCH_DETAILS.map(b => ({ value: b.id, label: `📍 ${b.name}` })),
     { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
     { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
     { value: 'country_stock', label: '📦 Country Stock' },
@@ -770,16 +770,16 @@ function AICommandCenter({ branch }) {
   const reorderRecs = stockAI.getReorderRecommendations(allBatches, data.movements, data.sales)
     .slice(0, 8);
 
-  const branchHealthScores = BRANCHES.map(brName => {
-    const key = brName.toLowerCase().replace(/\s+/g, '_');
-    const brData = data.branchData.find(bd => bd.branch_id === key || bd.branch_id === key + '_branch' || bd.branch_id.replace(/_branch$/, '') === key || bd.branch_id.startsWith(key));
+  const branchHealthScores = BRANCH_DETAILS.map(br => {
+    const key = br.id;
+    const brData = data.branchData.find(bd => bd.branch_id === key);
     const brBatches = brData ? (brData.inventory || []).map(inv => ({
       product_name: inv.product_name, quantity: inv.quantity, expiry_date: inv.expiry_date,
-    })) : data.batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === key);
+    })) : [];
     const health = stockAI.getBranchHealth(brBatches);
-    const totalStk = brData ? (brData.closing_qty || 0) : brBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-    const pendingReqs = data.transfers.filter(t => ((t.to_location || '').toLowerCase().replace(/\s+/g, '_') === key) && (t.status === 'pending' || t.status === 'requested')).length;
-    return { name: brName, key, health, totalStk, pendingReqs };
+    const totalStk = brData ? (brData.closing_qty || 0) : 0;
+    const pendingReqs = data.transfers.filter(t => (t.to_location || '') === key && (t.status === 'pending' || t.status === 'requested')).length;
+    return { name: br.name, key, health, totalStk, pendingReqs };
   });
 
   // ── Expiry Timeline ──────────────────────────────────────────
@@ -2119,7 +2119,7 @@ function WarehouseTab({ name }) {
 
   const branchDestinations = [
     { value: '', label: 'Select destination branch...' },
-    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: b })),
+    ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name })),
   ];
 
   const whSubTabs = [
@@ -2997,7 +2997,7 @@ function TransfersTab({ branch }) {
     { value: 'country_stock', label: 'Country Stock' },
     { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
     { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
-    ...BRANCHES.map(b => ({ value: b.toLowerCase().replace(/\s+/g, '_'), label: b })),
+    ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name })),
   ];
 
   const handleCreate = async (e) => {
@@ -3304,7 +3304,7 @@ function InventoryTab({ branch }) {
                 <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
               </optgroup>
               <optgroup label="Branches">
-                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </optgroup>
             </select>
           </div>
@@ -3766,7 +3766,7 @@ function OrdersTab({ branch }) {
               <select value={requestBranch} onChange={e => setRequestBranch(e.target.value)} required
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary">
                 <option value="">Select branch...</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <Select label="Priority" options={[{ value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }, { value: 'urgent', label: 'Urgent' }]} value={priority} onChange={e => setPriority(e.target.value)} />
@@ -4839,7 +4839,7 @@ function BatchTab({ branch }) {
                 <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
               </optgroup>
               <optgroup label="Branches">
-                {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </optgroup>
             </select>
           </div>
@@ -4960,10 +4960,10 @@ function BranchStockTab({ branch }) {
   const now = new Date();
   const periodLabel = fmtPeriodLabel(period.from, period.to);
 
-  const allBranchSummaries = BRANCHES.map(b => {
-    const key = b.toLowerCase().replace(/\s+/g, '_');
-    const data = branchData.find(d => d.branch_id === key || d.branch_id === key + '_branch' || d.branch_id.replace(/_branch$/, '') === key || d.branch_id.startsWith(key));
-    if (!data) return null;
+  const allBranchSummaries = BRANCH_DETAILS.map(b => {
+    const key = b.id;
+    const data = branchData.find(d => d.branch_id === key);
+    if (!data) return { name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null };
     const closingQty = data.closing_qty || 0;
     const closingDPC = (data.inventory || []).reduce((s, inv) => {
       const qty = Number(inv.quantity || 0);
@@ -5008,7 +5008,7 @@ function BranchStockTab({ branch }) {
     };
   }).filter(Boolean).filter(br => br.batchCount > 0 || br.salesQty > 0 || br.issued > 0 || selectedBranch !== 'all');
 
-  const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch || selectedBranch === b.key + '_branch' || b.key.startsWith(selectedBranch) || selectedBranch.startsWith(b.key));
+  const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch);
 
   const companySummary = {
     closing: allBranchSummaries.reduce((s, b) => s + b.closingQty, 0),
@@ -5224,7 +5224,7 @@ function BranchStockTab({ branch }) {
         ))}
         <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
           <option value="all">All Branches</option>
-          {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>
 
@@ -5414,9 +5414,10 @@ function StockReportsTab({ branch }) {
   const periodStart = period.from ? new Date(period.from) : new Date(0);
   const periodEnd = period.to ? new Date(period.to + 'T23:59:59') : new Date('2099-12-31');
 
-  const branchReports = BRANCHES.map(b => {
-    const key = b.toLowerCase().replace(/\s+/g, '_');
-    const data = branchData.find(d => d.branch_id === key || d.branch_id === key + '_branch' || d.branch_id.replace(/_branch$/, '') === key || d.branch_id.startsWith(key));
+  const branchReports = BRANCH_DETAILS.map(br => {
+    const key = br.id;
+    const b = br.name;
+    const data = branchData.find(d => d.branch_id === key);
     if (!data) return { name: b, key, formula: { opening: 0, issued: 0, returns: 0, expiryQty: 0, dispensed: 0, writeoffs: 0, promotions: 0, closing: 0, closingValue: 0, closingDPC: 0, salesQty: 0, salesRevenue: 0 } };
     const closingDPC = (data.inventory || []).reduce((s, inv) => {
       const qty = Number(inv.quantity || 0);
@@ -5520,7 +5521,7 @@ function StockReportsTab({ branch }) {
         <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>Filter by branch:</span>
         <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
           <option value="all">All Branches</option>
-          {BRANCHES.map(b => <option key={b} value={b.toLowerCase().replace(/\s+/g, '_')}>{b}</option>)}
+          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>
 
