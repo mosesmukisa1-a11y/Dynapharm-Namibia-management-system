@@ -768,7 +768,7 @@ function ApprovalsTab() {
               const dp = Number(item.unit_price || item.dp || 0);
               return (
                 <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="py-1 px-2 border-b font-medium">{item.product_name || item.name || item.description || '-'}</td>
+                  <td className="py-1 px-2 border-b font-medium">{item.productName || item.product_name || item.name || item.description || '-'}</td>
                   <td className="py-1 px-2 border-b text-center font-bold">{qty}</td>
                   <td className="py-1 px-2 border-b text-right text-gray-500">{item.unit || 'pcs'}</td>
                   <td className="py-1 px-2 border-b text-right">{dp > 0 ? formatCurrency(dp) : '—'}</td>
@@ -806,12 +806,12 @@ function ApprovalsTab() {
                     <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : 'success'}>
                       {r._type === 'cash' ? '💵 Cash' : r._type === 'leave' ? '📅 Leave' : '📦 Stock'}
                     </Badge>
-                    <span className="font-bold text-gray-800">{r.request_number || r.id}</span>
-                    <span className="text-xs text-gray-500">{formatDateTime(r.created_at)}</span>
+                    <span className="font-bold text-gray-800">{r.requestNumber || r.request_number || r.id}</span>
+                    <span className="text-xs text-gray-500">{formatDateTime(r.createdAt || r.created_at)}</span>
                   </div>
                   <p className="text-sm font-semibold text-gray-700">
-                    {r.employee_name || r.requested_by || r.user || '—'}
-                    {r.branch && <span className="ml-2 text-xs text-gray-400 font-normal">({r.branch || r.requesting_branch})</span>}
+                    {r.createdBy || r.employee_name || r.requested_by || r.user || '—'}
+                    {(r.requestingBranch || r.branch || r.requesting_branch) && <span className="ml-2 text-xs text-gray-400 font-normal">({r.requestingBranch || r.branch || r.requesting_branch})</span>}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
                     {r.reason || r.description || r.notes || r.product_name || ''}
@@ -835,7 +835,7 @@ function ApprovalsTab() {
               {r._type === 'stock' && r.items && (
                 <div className="mt-3 border-t border-gray-100 pt-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Product Line Items {r.requesting_branch && `· From: ${r.requesting_branch}`} {r.request_type && `· Type: ${r.request_type}`}
+                    Product Line Items {(r.requestingBranch || r.requesting_branch) && `· From: ${r.requestingBranch || r.requesting_branch}`} {(r.requestType || r.request_type) && `· Type: ${r.requestType || r.request_type}`}
                   </p>
                   {renderStockItems(r)}
                 </div>

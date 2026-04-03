@@ -40,10 +40,11 @@ function normalizeItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const quantity = Number(raw.quantity ?? raw.qty ?? 0);
   return {
-    productId: raw.productId || raw.id || raw.sku || raw.description || 'UNKNOWN',
-    productName: raw.productName || raw.description || raw.name || raw.productId || 'Item',
+    productId: raw.productId || raw.product_id || raw.id || raw.sku || raw.description || 'UNKNOWN',
+    productName: raw.productName || raw.product_name || raw.description || raw.name || raw.productId || raw.product_id || 'Item',
     quantity: Number.isFinite(quantity) ? quantity : 0,
     unit: raw.unit || raw.uom || 'units',
+    unitPrice: raw.unitPrice || raw.unit_price || raw.dp || null,
     metadata: raw.metadata || null,
   };
 }
@@ -125,10 +126,16 @@ async function loadItemsForRequests(requestIds) {
   if (!Array.isArray(requestIds) || requestIds.length === 0) return new Map();
   const rows = await getMany(
     `
-      SELECT *
-      FROM stock_request_items
-      WHERE request_id = ANY($1::text[])
-      ORDER BY created_at ASC
+      SELECT sri.*,
+             pp.dp AS dp_price,
+             pp.cp AS cp_price,
+             pp.description AS product_desc
+      FROM stock_request_items sri
+      LEFT JOIN product_prices pp
+        ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_name))
+        OR LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_id))
+      WHERE sri.request_id = ANY($1::text[])
+      ORDER BY sri.created_at ASC
     `,
     [requestIds]
   );
@@ -138,9 +145,11 @@ async function loadItemsForRequests(requestIds) {
       id: row.id,
       requestId: row.request_id,
       productId: row.product_id,
-      productName: row.product_name,
+      productName: row.product_name || row.product_desc,
       quantity: Number(row.quantity || 0),
       unit: row.unit || 'units',
+      dp: row.dp_price != null ? Number(row.dp_price) : null,
+      cp: row.cp_price != null ? Number(row.cp_price) : null,
       metadata: safeParseJson(row.metadata),
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     };
