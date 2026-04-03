@@ -469,7 +469,7 @@ app.put('/api/stock-requests/:id', async (req, res) => {
 // ── Product Price Routes ────────────────────────────────────────────────────────
 const STATIC_PRICE_LIST = [
   {description:"ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's",dp:260,cp:320,bv:43,cif:110},
-  {description:"BEE POLEN CAPSULE (30's)",dp:182,cp:237,bv:32,cif:78},
+  {description:"BEE POLLEN CAPSULE (30's)",dp:182,cp:237,bv:32,cif:78},
   {description:"BEE POLLEN CAPSULE (100's)",dp:320,cp:390,bv:75,cif:136},
   {description:"BODY CONTOUR CREAM",dp:290,cp:377,bv:75,cif:123},
   {description:"COMPACT POWDER 12g",dp:190,cp:247,bv:55,cif:81},
@@ -484,7 +484,6 @@ const STATIC_PRICE_LIST = [
   {description:"DI LIQUID ALFALFA PLUS GUARANA (500ml)",dp:430,cp:530,bv:75,cif:183},
   {description:"DI LIQUID ALFALFAPLUS GUARANA (150ml)",dp:200,cp:260,bv:21,cif:85},
   {description:"DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml",dp:430,cp:530,bv:75,cif:183},
-  {description:"Di Liquid Alpha Alpha 500ml",dp:430,cp:530,bv:75,cif:183},
   {description:"DI NONI 500ml",dp:350,cp:455,bv:110,cif:149},
   {description:"DI NONI JUICE 1 L",dp:750,cp:950,bv:175,cif:319},
   {description:"DYNA C- 100 TABLET 150's",dp:140,cp:182,bv:32,cif:60},
@@ -558,7 +557,6 @@ const STATIC_PRICE_LIST = [
   {description:"TONGKAT ALI CAPSULE 30's",dp:195,cp:254,bv:32,cif:83},
   {description:"YEEGANO CAPSULE 30's",dp:195,cp:254,bv:27,cif:83},
   {description:"YEEGANO CAPSULE 90's",dp:364,cp:454,bv:75,cif:155},
-  {description:"Yeeginako Tabs 90's , 30's",dp:364,cp:454,bv:75,cif:155},
   {description:"YEEGARLIC CAPSULE 90's",dp:300,cp:390,bv:64,cif:128},
   {description:"YEEGINKGO TABLET (30's)",dp:234,cp:304,bv:27,cif:99},
   {description:"YEEGINKGO TABLETS 90's",dp:420,cp:500,bv:80,cif:179},
