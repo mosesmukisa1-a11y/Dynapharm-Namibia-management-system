@@ -3,7 +3,7 @@ import DistributorPerformanceTab from '../../components/DistributorPerformanceTa
 import DispatchNote from '../../components/DispatchNote';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1194,12 +1194,157 @@ function campaignStatus(c) {
   return 'active';
 }
 
-function CampaignTypeConditionsForm({ type, conditions, onChange }) {
+/* ── Multi-select: Products (searchable) ───────────────────────────────────── */
+function MultiProductSelect({ label, value = [], onChange, products = [], single = false }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = products.filter(p => {
+    const name = typeof p === 'string' ? p : (p.description || p.name || '');
+    return name.toLowerCase().includes(search.toLowerCase());
+  }).slice(0, 60);
+
+  const getName = p => typeof p === 'string' ? p : (p.description || p.name || '');
+
+  const toggle = (name) => {
+    if (single) { onChange([name]); setOpen(false); setSearch(''); return; }
+    const next = value.includes(name) ? value.filter(v => v !== name) : [...value, name];
+    onChange(next);
+  };
+
+  const remove = (name) => onChange(value.filter(v => v !== name));
+
+  return (
+    <div ref={ref} className="relative">
+      {label && <div className="text-sm font-medium text-gray-700 mb-1">{label}</div>}
+      <div className="min-h-[40px] border border-gray-300 rounded-lg px-2 py-1.5 bg-white cursor-pointer flex flex-wrap gap-1 items-center"
+        onClick={() => setOpen(o => !o)}>
+        {value.length === 0
+          ? <span className="text-gray-400 text-sm px-1">{single ? 'Select a product...' : 'Select products (leave blank = all)...'}</span>
+          : value.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded-full">
+              {v}
+              <button type="button" onClick={e => { e.stopPropagation(); remove(v); }} className="text-blue-500 hover:text-blue-700 font-bold leading-none">×</button>
+            </span>
+          ))
+        }
+        <span className="ml-auto text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-300"
+              placeholder="Search products..." />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0
+              ? <div className="text-xs text-gray-400 text-center py-3">No products found</div>
+              : filtered.map(p => {
+                const name = getName(p);
+                const checked = value.includes(name);
+                return (
+                  <div key={name} onClick={() => toggle(name)}
+                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-blue-50 ${checked ? 'bg-blue-50' : ''}`}>
+                    {!single && <input type="checkbox" readOnly checked={checked} className="accent-blue-600 pointer-events-none" />}
+                    <span className={checked ? 'font-semibold text-blue-800' : ''}>{name}</span>
+                  </div>
+                );
+              })
+            }
+          </div>
+          {!single && value.length > 0 && (
+            <div className="px-3 py-2 border-t border-gray-100 flex justify-between items-center">
+              <span className="text-xs text-gray-500">{value.length} selected</span>
+              <button type="button" onClick={() => onChange([])} className="text-xs text-red-500 hover:underline">Clear all</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Multi-select: Branches (checkboxes) ───────────────────────────────────── */
+function MultiBranchSelect({ label, value = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const toggle = (name) => {
+    const next = value.includes(name) ? value.filter(v => v !== name) : [...value, name];
+    onChange(next);
+  };
+  const remove = (name) => onChange(value.filter(v => v !== name));
+  const allSelected = BRANCH_DETAILS.length === value.length;
+
+  return (
+    <div ref={ref} className="relative">
+      {label && <div className="text-sm font-medium text-gray-700 mb-1">{label}</div>}
+      <div className="min-h-[40px] border border-gray-300 rounded-lg px-2 py-1.5 bg-white cursor-pointer flex flex-wrap gap-1 items-center"
+        onClick={() => setOpen(o => !o)}>
+        {value.length === 0
+          ? <span className="text-gray-400 text-sm px-1">Select branches...</span>
+          : value.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">
+              {v}
+              <button type="button" onClick={e => { e.stopPropagation(); remove(v); }} className="text-green-600 hover:text-green-800 font-bold leading-none">×</button>
+            </span>
+          ))
+        }
+        <span className="ml-auto text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="px-3 py-2 border-b border-gray-100 flex justify-between items-center">
+            <span className="text-xs font-semibold text-gray-600">Select branches</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => onChange(BRANCH_DETAILS.map(b => b.name))} className="text-xs text-blue-600 hover:underline">All</button>
+              <button type="button" onClick={() => onChange([])} className="text-xs text-red-500 hover:underline">None</button>
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {BRANCH_DETAILS.map(b => {
+              const checked = value.includes(b.name);
+              return (
+                <div key={b.id} onClick={() => toggle(b.name)}
+                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-green-50 ${checked ? 'bg-green-50' : ''}`}>
+                  <input type="checkbox" readOnly checked={checked} className="accent-green-600 pointer-events-none" />
+                  <span className={checked ? 'font-semibold text-green-800' : ''}>{b.name}</span>
+                  <span className="text-xs text-gray-400 ml-auto">{b.region}</span>
+                </div>
+              );
+            })}
+          </div>
+          {value.length > 0 && (
+            <div className="px-3 py-2 border-t border-gray-100 text-xs text-gray-500">{value.length} of {BRANCH_DETAILS.length} selected</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CampaignTypeConditionsForm({ type, conditions, onChange, products = [] }) {
   const set = (key, val) => onChange({ ...conditions, [key]: val });
+  const getArr = (key) => Array.isArray(conditions[key]) ? conditions[key] : (conditions[key] ? String(conditions[key]).split(',').map(s => s.trim()).filter(Boolean) : []);
+
   if (type === 'discount') return (
     <div className="space-y-3">
       <Input label="Discount %" type="number" min="1" max="100" value={conditions.discount_pct || ''} onChange={e => set('discount_pct', e.target.value)} placeholder="e.g. 15" />
-      <Input label="Applicable Products (comma-separated, leave blank for all)" value={conditions.products || ''} onChange={e => set('products', e.target.value)} placeholder="e.g. YEEGINKGO 30's, PRO-LSB TABLET..." />
+      <MultiProductSelect label="Applicable Products (leave blank = all products)" value={getArr('products')} onChange={v => set('products', v)} products={products} />
       <Input label="Minimum Purchase Amount (N$)" type="number" value={conditions.min_purchase || ''} onChange={e => set('min_purchase', e.target.value)} placeholder="0 = no minimum" />
     </div>
   );
@@ -1209,7 +1354,7 @@ function CampaignTypeConditionsForm({ type, conditions, onChange }) {
         <Input label="Buy quantity (X)" type="number" min="1" value={conditions.buy_qty || ''} onChange={e => set('buy_qty', e.target.value)} placeholder="e.g. 1 or 2" />
         <Input label="Get quantity free (Y)" type="number" min="1" value={conditions.get_qty || ''} onChange={e => set('get_qty', e.target.value)} placeholder="e.g. 1" />
       </div>
-      <Input label="Qualifying Products (comma-separated)" value={conditions.products || ''} onChange={e => set('products', e.target.value)} placeholder="e.g. TEA TREE TOOTHPASTE, DYNA RH..." />
+      <MultiProductSelect label="Qualifying Products" value={getArr('products')} onChange={v => set('products', v)} products={products} />
       <Input label="Distributor Code Conditions (e.g. code ending in O)" value={conditions.code_condition || ''} onChange={e => set('code_condition', e.target.value)} placeholder="Optional: e.g. ends_with_O" />
       <Input label="Specific Distributor Codes (comma-separated)" value={conditions.distributor_codes || ''} onChange={e => set('distributor_codes', e.target.value)} placeholder="e.g. NB78370, NB68030" />
     </div>
@@ -1240,14 +1385,14 @@ function CampaignTypeConditionsForm({ type, conditions, onChange }) {
   );
 }
 
-function CampaignPrizeForm({ type, prize, onChange }) {
+function CampaignPrizeForm({ type, prize, onChange, products = [] }) {
   const set = (key, val) => onChange({ ...prize, [key]: val });
   if (type === 'discount') return (
     <Input label="Discount Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Up to 15% off on selected items" />
   );
   if (type === 'buy_x_get_y') return (
     <div className="space-y-3">
-      <Input label="Free Product Name" value={prize.free_product || ''} onChange={e => set('free_product', e.target.value)} placeholder="e.g. TEA TREE TOOTHPASTE" />
+      <MultiProductSelect label="Free Product" value={prize.free_product ? [prize.free_product] : []} onChange={v => set('free_product', v[0] || '')} products={products} single />
       <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Buy 2 get 1 free" />
     </div>
   );
@@ -1288,6 +1433,7 @@ function CampaignPrizeForm({ type, prize, onChange }) {
 function CampaignsTab() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [alert, setAlert] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
@@ -1303,6 +1449,7 @@ function CampaignsTab() {
   const defaultForm = {
     name: '', description: '', campaign_type: 'bv_achievement',
     start_date: '', end_date: '', scope: 'countrywide',
+    target_branches: [],
     conditions: {}, prize: {},
   };
   const [form, setForm] = useState(defaultForm);
@@ -1314,7 +1461,18 @@ function CampaignsTab() {
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadCampaigns(); }, []);
+  useEffect(() => {
+    loadCampaigns();
+    // Load product list for dropdowns
+    api.get('/prices').then(d => {
+      const list = Array.isArray(d) ? d : (d.prices || d.products || []);
+      setProducts(list.filter(p => !p.is_package));
+    }).catch(() => {
+      // fallback: use getLiveProductList
+      const live = getLiveProductList();
+      if (live.length > 0) setProducts(live);
+    });
+  }, []);
 
   const loadDetail = (id) => {
     setDetailLoading(true);
@@ -1486,25 +1644,34 @@ function CampaignsTab() {
                 <Input label="Start Date *" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
                 <Input label="End Date *" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
-                <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none">
-                  <option value="countrywide">Countrywide (All Branches)</option>
-                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
+                  <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value, target_branches: [] }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none">
+                    <option value="countrywide">Countrywide (All Branches)</option>
+                    <option value="specific">Specific Branches</option>
+                  </select>
+                </div>
+                {form.scope === 'specific' && (
+                  <MultiBranchSelect
+                    label="Target Branches"
+                    value={Array.isArray(form.target_branches) ? form.target_branches : []}
+                    onChange={v => setForm(f => ({ ...f, target_branches: v }))}
+                  />
+                )}
               </div>
 
               {/* Type-specific Conditions */}
               <div className="p-4 rounded-xl border-2" style={{ background: typeConfig.bg, borderColor: typeConfig.border }}>
                 <div className="font-semibold text-sm mb-3" style={{ color: typeConfig.text }}>📋 Conditions (How to Qualify)</div>
-                <CampaignTypeConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} />
+                <CampaignTypeConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} products={products} />
               </div>
 
               {/* Prize */}
               <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
                 <div className="font-semibold text-sm text-amber-800 mb-3">🏆 Prize / Reward</div>
-                <CampaignPrizeForm type={form.campaign_type} prize={form.prize} onChange={p => setForm(f => ({ ...f, prize: p }))} />
+                <CampaignPrizeForm type={form.campaign_type} prize={form.prize} onChange={p => setForm(f => ({ ...f, prize: p }))} products={products} />
               </div>
 
               <div className="sticky bottom-0 bg-white border-t border-gray-100 pt-4 flex gap-3">
@@ -1571,10 +1738,17 @@ function CampaignsTab() {
                             <div className="text-xs font-bold text-gray-500 uppercase mb-2">Conditions</div>
                             {(() => {
                               const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
-                              return Object.entries(cond).length === 0 ? <span className="text-xs text-gray-400">None set</span> :
-                                Object.entries(cond).map(([k, v]) => (
-                                  <div key={k} className="text-xs"><span className="font-semibold">{k.replace(/_/g, ' ')}:</span> {String(v)}</div>
-                                ));
+                              const entries = Object.entries(cond);
+                              if (entries.length === 0) return <span className="text-xs text-gray-400">None set</span>;
+                              return entries.map(([k, v]) => (
+                                <div key={k} className="text-xs mb-1">
+                                  <span className="font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>{' '}
+                                  {Array.isArray(v)
+                                    ? v.length === 0 ? <span className="text-gray-400">All</span>
+                                      : <span className="inline-flex flex-wrap gap-1 ml-1">{v.map(item => <span key={item} className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs">{item}</span>)}</span>
+                                    : String(v)}
+                                </div>
+                              ));
                             })()}
                           </div>
                           <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -1603,7 +1777,14 @@ function CampaignsTab() {
                               <div className="grid grid-cols-3 gap-2">
                                 <Input label="NB Code *" value={participantForm.distributor_code} onChange={e => setParticipantForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB78370" />
                                 <Input label="Name" value={participantForm.distributor_name} onChange={e => setParticipantForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="Full name" />
-                                <Input label="Branch" value={participantForm.branch} onChange={e => setParticipantForm(f => ({ ...f, branch: e.target.value }))} placeholder="e.g. Oshakati" />
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                                  <select value={participantForm.branch} onChange={e => setParticipantForm(f => ({ ...f, branch: e.target.value }))}
+                                    className="w-full px-2 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                                    <option value="">— Select branch —</option>
+                                    {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                  </select>
+                                </div>
                               </div>
                               <div className="flex gap-2">
                                 <Button size="sm" onClick={handleAddParticipant}>Add</Button>

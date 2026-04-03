@@ -1,30 +1,7 @@
 # Dynapharm Namibia Health Management System
 
 ## Overview
-This project is a cloud-based health management system for Dynapharm International Namibia, designed to centralize and optimize operations across sales, inventory, HR, finance, and CRM. Its primary purpose is to enhance efficiency, data accuracy, and provide real-time business insights. The system features a multi-portal architecture, an e-commerce shop, advanced pricing and profit analysis, and comprehensive reporting. The ambition is to digitize Dynapharm's business, improve engagement with customers and distributors, and support data-driven decision-making for market expansion and increased profitability in Namibia.
-
-## Recent Changes (Campaigns System - Full Build)
-- **Campaigns API** (`api/campaigns.js`): Full CRUD + sub-path routing for 4 campaign types. Endpoints: GET/POST `/campaigns`, GET/PUT/DELETE `/campaigns/:id`, GET/POST `/campaigns/:id/participants`, PATCH `/campaigns/:id/participants/:pid`, DELETE `/campaigns/:id/participants/:pid`, POST `/campaigns/:id/generate-winners`, PATCH `/campaigns/:id/winners/:wid`
-- **Sub-path routing fix** (`server.js`): `getHandler()` now walks up parent path segments, so `/api/campaigns/CAMP-xxx/participants` correctly routes to `api/campaigns.js` — enabling sub-path APIs in a single module file
-- **DB Migrations** (`server.js`): Extended `campaigns` table with `campaign_type`, `scope`, `conditions`, `prize`, `discount_percentage`, `target_branches` columns; created `campaign_participants` and `campaign_winners` tables with indexes
-- **Campaign Types Supported**: `discount` (percentage off), `buy_x_get_y` (product promotions), `bv_achievement` (tiered BV prizes), `elite_bingo` (BV + recruits = cash), `custom`
-- **Auto-winner generation**: POST `/campaigns/:id/generate-winners` evaluates all active participants against campaign conditions and writes to `campaign_winners` with prize tier, rank, and status
-- **Full CampaignsTab UI** (`GMPortal.jsx`): Gradient header with live stats; type-specific form with 5 tile selector; conditions/prize sub-forms that change based on campaign type; participant table (add, edit BV/recruits, remove); winners table with medal icons (🥇🥈🥉) and Verify/Award workflow; accordion campaign list with expand/collapse
-- **Frontend rebuild**: `npx vite build` must be run from project root (not client/ subdirectory) to use the root `vite.config.js` with React plugin
-
-## Recent Fixes (Finance Portal & Deposits)
-- **Deposit recording fixed**: `api/branch/deposits.js` POST now auto-assigns `branchId` from the logged-in user's session (`currentUser?.branch`) — branch users no longer need to select their branch when recording a deposit.
-- **verifyDeposit fixed**: Client `api.branch.verifyDeposit(id)` now sends the ID in the request body (PATCH to `/branch/deposits`) instead of the URL path, matching the backend PATCH handler.
-- **New**: `api/finance/notices.js` — Finance notices API using `notifications` table (`recipient_type = 'finance_notice'`).
-- **Finance Portal comprehensive rewrite**: All 8 tabs now have real API routes and improved UX:
-  - Dashboard: branch-by-branch financial overview using `/finance/branches/summary`
-  - Deposit Inbox: Finance views/verifies ALL branch deposits with filters (branch, status, date), approve/reject with notes, batch approve, CSV export
-  - Expenses: Finance reviews ALL branch expenses with approve/reject workflow; Finance adds HQ-level expenses (no branch selector confusion); separate "Add HQ Expense" form
-  - Bonus Workflow: CSV upload + review + export workflow (local state)
-  - Reports: real data from `/finance/branches/summary`, `/finance/reports/stock-value`, `/finance/reports/writeoffs`; date period filter
-  - Notices (was Communication): fully wired to `/finance/notices` API — posts and loads from DB
-  - Staff Services: leave request form + leave history tab using HR API
-- **New API client methods**: `api.branch.rejectDeposit()`, `api.finance.notices()`, `api.finance.createNotice()`, `api.finance.approveExpense()`, `api.finance.rejectExpense()`, `api.finance.deposits()`
+The Dynapharm Namibia Health Management System is a cloud-based solution designed to centralize and optimize Dynapharm International Namibia's operations across sales, inventory, HR, finance, and customer relationship management. The system aims to enhance efficiency, ensure data accuracy, and provide real-time business insights through a multi-portal architecture, an integrated e-commerce shop, advanced pricing and profit analysis capabilities, and comprehensive reporting. Its core purpose is to digitize Dynapharm's business processes, improve engagement with both customers and distributors, and facilitate data-driven decision-making to support market expansion and increase profitability within Namibia.
 
 ## User Preferences
 I prefer clear and concise communication.
@@ -37,69 +14,42 @@ Do not make changes to the file `dynapharm-complete-system.html`.
 ## System Architecture
 
 ### Frontend
-The frontend is a React-based Single Page Application (SPA) built with Vite, utilizing a modular structure, context-based authentication for role-based access to 11 portals, and an API client for backend communication. Styling is implemented using Tailwind CSS v4, adhering to Dynapharm's corporate theme with specific color schemes and gradient headers.
+The frontend is a React-based Single Page Application (SPA) built with Vite. It features a modular structure, context-based authentication for role-based access across 11 distinct portals, and a dedicated API client for backend communication. Styling is implemented using Tailwind CSS v4, adhering to Dynapharm's corporate theme, including specific color schemes and gradient headers.
 
 ### Backend
-The backend is an Express.js server providing API services. It features file-based routing, JWT-based authentication with cookie-based sessions, and a PostgreSQL connection pool. API routes are secured with middleware, with specific routes designated as public. The backend also handles camelCase to snake_case conversion for database interactions.
+The backend operates on an Express.js server, providing robust API services. It employs file-based routing and secures communications using JWT-based authentication with httpOnly cookie-based sessions. A PostgreSQL connection pool manages database interactions, and API routes are protected by middleware, with designated public routes. The backend also handles automatic camelCase to snake_case conversion for seamless database operations.
 
 ### Core Features
-- **Multi-Portal System**: 12 distinct portals (Distributor, Front Desk, Consultant, Branch, HR, Finance, GM, Director, MIS, Stock, Admin, Training) providing dedicated functionalities and UI/UX.
-- **Role-Based Access Control**: Granular access control based on user roles.
+- **Multi-Portal System**: Comprises 12 specialized portals (Distributor, Front Desk, Consultant, Branch, HR, Finance, GM, Director, MIS, Stock, Admin, Training) each offering tailored functionalities and UI/UX.
+- **Role-Based Access Control**: Ensures granular access permissions based on user roles.
 - **E-commerce Shop**: Supports both member (Distributor Price + BV tracking) and non-member (Consumer Price) purchasing flows with server-side validation.
-- **Pricing Engine**: Manages comprehensive pricing (DP, CP, BV, CIF) with fuzzy product lookup and profit calculation.
-- **AI Stock Management System**: An AI-powered inventory intelligence system (Stock Portal) with a Global Branch Selector, AI Command Center, and AI Reorder Tab using velocity-based demand forecasting. It includes supplier imports with batch/expiry tracking, country/branch stock views, field stock management, and various reports. The `stockAI Engine` uses pure JavaScript. The Stock Portal has 30+ fully built API routes under `/api/stock/*` covering: overview, ai-command, ai-reorder, barcode, country-stock, country-stock/items, monthly-sales (+ branches + products), valuation (+ locations + products), inventory, orders, distribution (+ requests + pending), field-stock, edit-requests, realtime, warehouses/windhoek/* (summary, inventory, incoming, outbound, movements), warehouses/ondangwa/* (summary, inventory, incoming, outbound, movements), and reports/* (summary, branch-stock, movements, expiry, low-stock, company). All routes verified with live data from DB.
-- **Centralized Stock Engine (`api/services/stockEngine.js`)**: Universal write+read service where `stock_movements` is the single source of truth and `inventory_balances` is a derived fast-read cache. Features functions like `postStockMovement()`, `recomputeInventoryBalance()`, `recomputeLocationBalances()`, `seedInventoryBalances()`, `getAvailableStock()`.
-- **Stock Movement Workflow**: Structured workflow from supplier import to branch receipt, with GM approval for transfers and full traceability via transfer statuses and audit trails.
-- **FEFO (First Expiry First Out) Logic**: Applied for stock deductions during write-offs, sales, and dispensing.
-- **Dispatch Note Document**: Detailed operational document with 7 sections for stock movement tracking, including item details, approvals, and receipt acknowledgements, with barcode and print/PDF support.
-- **Distributor and Staff Management**: Registration, bulk import, agreement management, and staff administration with approval workflows.
-- **Reporting and Analytics**: Dashboards and reports across portals for sales, profits, branch performance, and KPIs.
-- **Consultant Portal**: Manages client interactions, checkups, reports, follow-ups, consultation fees, and referral crediting.
-- **Director Portal**: Features 10 API endpoints for executive intelligence (`/api/director/*`) and a rewritten frontend with 7 tabs for comprehensive analysis, utilizing `recharts` for visualizations.
-- **GM/Finance/MIS Shared Engine**: `api/services/gmFinanceMisEngine.js` provides shared services for these three portals, reading exclusively from `inventory_balances` and `branch_walkin_sales`.
-- **Branch Activity Capture System**: Centralized transaction capture engine with `branch_activity_transactions` table as the single source of truth for all branch-facing workflows. `POST /api/branch-activity/capture` is the master endpoint that accepts any branch client interaction (consultation, full_body_checkup, walkin_sale, member_sale, non_member_sale, online_order, prescription_dispensing) and classifies it. `GET /api/reports/branch-sales/daily` aggregates directly from this table — daily report shows 0 only when there was truly no activity, not due to missing joins. `POST /api/branch-client-visits/checkin` tracks physical client attendance even without purchases. `POST /api/jobs/rebuild-daily-branch-report` backfills and repairs existing data from `branch_walkin_sales` and `stock_movements`. Both `walkin-sales.js` and `dispense.js` auto-post into `branch_activity_transactions` after each transaction. Validation enforces business rules (nb_number required for member_sale, etc.). Supports dry_run mode for the rebuild job.
-- **Live System Correction APIs**: 19 endpoints for system information, sample data management, distributor lookups (`/api/distributors/search?q=`, `/api/distributors/by-nb/:nb`), sales reports (branch/company level), stock import/dispatch/receipt, non-member sales, consultation details, and prescription dispensing.
-- **Frontend API Client (`client/src/lib/api.js`)**: Fully wired with namespaces for all portals: `api.gm.*`, `api.finance.*`, `api.director.*`, `api.system.*`, `api.sales.*`, `api.consultations.*`, `api.prescriptions.*`, `api.receipts.*`, and fixed `api.distributors.search()` to call `/distributors/search?q=`.
-- **GM Portal Live Summary**: Dashboard calls `/api/gm/summary` and renders a "Company Live Summary" card showing cross-branch sales, stock value (DP), stock unit counts (warehouse/branch/transit), and alert counts.
-- **Finance Portal Live Summary**: Dashboard calls `/api/finance/summary` and renders a "Backend Finance Summary" card showing revenue breakdown and stock valuation by location.
-- **Director Portal**: Fully data-connected via `useDirectorApi` hook calling `/api/director/*` endpoints (summary, profit-loss, revenue-trends, branches/performance, fast-moving products, registrations).
-- **Transactional Stock Deduction**: Walk-in sales utilize transactional FEFO multi-batch stock deduction with row locking and movement recording.
-- **Prescription Dispensing Workflow**: Full dispensing pipeline in the BranchPortal with draft, preview, and transactional dispense functionalities, including stock sufficiency validation. When staff save a completed prescription draft (all medicines dispensed + paid), a lightweight `POST /api/branch/capture-rx` endpoint automatically records the revenue in `branch_activity_transactions` as `prescription_dispensing` + `consultation` records. This endpoint is idempotent — same report ID is silently deduped. Prescription and consultation revenue now appear correctly in the Sales Review.
-- **Admin Branch Selector**: Admin users (role='admin') in the Branch Portal see an "Acting Branch" selector bar above the tabs. Selecting a branch passes the branchId via `PortalBranchContext` (React Context) to all sub-tabs (WalkInSalesTab, PrescriptionsTab). This allows admin to act on behalf of any branch — recording walk-in sales, processing prescriptions, viewing stock — without impersonating branch staff.
-- **Branch Portal Stock Module**: Enhanced stock engine with 7 sub-tabs: Inventory, Alerts (batch/expiry), Requests, Transfers, Movements, Write-Off, and Reports. Receive Stock flow shows the full GM-approved dispatch note read-only; receiver just confirms receipt with zero manual input — only marks discrepancies if needed (toggle button per item). Receiver is auto-signed from login.
-- **Branch ID Matching**: Optimized single-query resolution using `ANY($1)` array match instead of sequential queries. Flexible matching of branch names to database branch IDs across the Stock Portal and Branch Portal using a `BRANCH_CANONICAL` map.
-- **FEFO Stock Deduction**: Exact product name matching prioritized over fuzzy ILIKE to prevent cross-product deduction errors.
-- **Batch Upsert**: `ON CONFLICT DO UPDATE` for branch inventory batch insertion prevents duplicate key errors when receiving stock with existing batch records.
-- **Stale State Prevention**: Data loading effects use ref-based generation counters to discard stale responses when branch selection changes rapidly.
+- **Pricing Engine**: Manages comprehensive pricing structures (DP, CP, BV, CIF) with fuzzy product lookup and profit calculation.
+- **AI Stock Management System**: An AI-powered inventory intelligence system within the Stock Portal, featuring a Global Branch Selector, AI Command Center, and AI Reorder Tab utilizing velocity-based demand forecasting. It handles supplier imports with batch/expiry tracking, country/branch stock views, field stock management, and various reports. The `stockAI Engine` is implemented in pure JavaScript.
+- **Centralized Stock Engine**: `api/services/stockEngine.js` acts as a universal write+read service where `stock_movements` is the single source of truth and `inventory_balances` functions as a derived fast-read cache. It includes functionalities for posting stock movements, recomputing inventory balances, and seeding initial balances.
+- **Stock Movement Workflow**: A structured process from supplier import to branch receipt, including GM approval for transfers and full traceability via transfer statuses and audit trails. FEFO (First Expiry First Out) logic is applied for stock deductions.
+- **Dispatch Note Document**: A detailed operational document with 7 sections for stock movement tracking, including item details, approvals, and receipt acknowledgements, with barcode and print/PDF support.
+- **Distributor and Staff Management**: Features for registration, bulk import, agreement management, and staff administration with approval workflows.
+- **Reporting and Analytics**: Provides dashboards and reports across portals for sales, profits, branch performance, and key performance indicators.
+- **Consultant Portal**: Manages client interactions, check-ups, reports, follow-ups, consultation fees, and referral crediting.
+- **Director Portal**: Offers executive intelligence through 10 API endpoints and a rewritten frontend with 7 tabs for comprehensive analysis, utilizing `recharts` for data visualizations.
+- **Branch Activity Capture System**: Centralizes transaction capture via the `branch_activity_transactions` table, serving as the single source of truth for all branch-facing workflows. A master endpoint `POST /api/branch-activity/capture` categorizes various client interactions.
+- **Transactional Stock Deduction**: Walk-in sales use transactional FEFO multi-batch stock deduction with row locking and movement recording.
+- **Prescription Dispensing Workflow**: A complete dispensing pipeline in the Branch Portal, encompassing draft creation, preview, and transactional dispense functionalities, including stock sufficiency validation.
+- **Admin Branch Selector**: Admin users (role='admin') in the Branch Portal can select an "Acting Branch" to perform actions on behalf of any branch without impersonation.
+- **HR Portal Backend**: Fully integrated with backend APIs for managing leave requests, warnings, terminations, attendance, and performance reviews.
+- **Campaigns System**: Supports various campaign types (discount, buy_x_get_y, bv_achievement, elite_bingo, custom) with full CRUD API, participant management, and auto-winner generation.
+- **Finance Portal**: Enhanced with real API routes across all tabs, including a Deposit Inbox for managing branch deposits, Expense review, Bonus workflow, Reports, Notices, and Staff Services.
 - **Database Startup Migration**: Normalizes branch ID aliases and auto-seeds `inventory_balances` if empty on server boot.
 
 ### Database
-A PostgreSQL database with 42 fully migrated tables, pre-seeded with key data and a super admin user. New tables added: `finance_remittances` (remittance payments to suppliers) and `hr_records` (HR operational records for warnings, terminations, attendance, performance) and `hr_leave_requests` (employee leave requests with approval workflow).
-
-### Finance Portal Backend
-- **Remittance Tab**: Fully wired to `api/finance/remittances.js` and `finance_remittances` DB table. Records and lists supplier remittance payments with amount, reference, date, and status.
-- **Finance API**: `api.finance.remittances()` and `api.finance.createRemittance()` added to client `api.js`.
-
-### HR Portal Backend
-- **All tabs wired to live backend**: Leave, Warnings, Terminations, Attendance, Performance all use real API calls.
-- **Leave API** (`api/hr/leaves.js`): GET/POST/PUT `/api/hr/leaves` — supports listing, submitting, and approving leave requests.
-- **Records API** (`api/hr/records.js`): GET/POST `/api/hr/records?type=...` — supports warnings (subtype: Verbal/Written/Final), terminations, attendance (subtype: Present/Late/Absent/On Leave), performance reviews.
-- **HR API client**: `api.hr.leaves()`, `api.hr.submitLeave()`, `api.hr.updateLeave()`, `api.hr.records()`, `api.hr.createRecord()` added to client `api.js`.
-
-### GM Portal Fixes
-- **Leave approval** calls `PUT /api/hr/leaves?id={id}` (fixed from `/employees/leaves/{id}`)
-- **Transfer approvals** query `GET /api/stock/transfers?status=pending_approval`
-
-### Country Stock → Warehouse Dispatch
-- Transfers now use `status: 'pending_approval'` so they appear in GM approval queue
-- Transfer `from_warehouse='country_stock'`, `to_branch=warehouse_key` (e.g. 'windhoek_warehouse')
+A PostgreSQL database comprising 42 fully migrated tables. It is pre-seeded with essential data and a super admin user. Key tables include `finance_remittances` for supplier payments, `hr_records` for HR operational data (warnings, terminations, attendance, performance), and `hr_leave_requests` for employee leave management.
 
 ### Authentication
-Authentication is optional, allowing all portals to be accessible without login. JWT tokens stored in httpOnly cookies provide user identity. Staff and distributor registrations require admin approval.
+Authentication is optional, allowing all portals to be accessible without login for certain roles. JWT tokens, stored in httpOnly cookies, provide user identity. Staff and distributor registrations require administrative approval.
 
 ## External Dependencies
-- **PostgreSQL**: Primary database.
-- **Tailwind CSS v4**: CSS framework.
-- **XLSX.js**: For bulk distributor import.
-- **Vite**: Frontend build tool.
-- **Node.js/Express.js**: Backend runtime and web framework.
+- **PostgreSQL**: Primary relational database.
+- **Tailwind CSS v4**: Utility-first CSS framework for styling.
+- **XLSX.js**: Library used for handling Excel files, particularly for bulk distributor imports.
+- **Vite**: Modern frontend build tool.
+- **Node.js/Express.js**: Backend runtime environment and web application framework.
