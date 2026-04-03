@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import Landing from './pages/Landing';
 import Shop from './pages/Shop';
 import HealthCheckup from './pages/HealthCheckup';
@@ -32,18 +33,43 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/shop" element={<Shop />} />
         <Route path="/checkup" element={<HealthCheckup />} />
-        <Route path="/distributor" element={<DistributorPortal />} />
-        <Route path="/frontdesk" element={<FrontDeskPortal />} />
-        <Route path="/consultant" element={<ConsultantPortal />} />
-        <Route path="/branch" element={<BranchPortal />} />
-        <Route path="/hr" element={<HRPortal />} />
-        <Route path="/finance" element={<FinancePortal />} />
-        <Route path="/gm" element={<GMPortal />} />
-        <Route path="/director" element={<DirectorPortal />} />
-        <Route path="/mis" element={<MISPortal />} />
-        <Route path="/stock" element={<StockPortal />} />
-        <Route path="/admin" element={<AdminPortal />} />
-        <Route path="/training" element={<TrainingPortal />} />
+
+        <Route path="/distributor" element={
+          <ProtectedRoute portalId="distributor"><DistributorPortal /></ProtectedRoute>
+        } />
+        <Route path="/frontdesk" element={
+          <ProtectedRoute portalId="frontdesk"><FrontDeskPortal /></ProtectedRoute>
+        } />
+        <Route path="/consultant" element={
+          <ProtectedRoute portalId="consultant"><ConsultantPortal /></ProtectedRoute>
+        } />
+        <Route path="/branch" element={
+          <ProtectedRoute portalId="branch"><BranchPortal /></ProtectedRoute>
+        } />
+        <Route path="/hr" element={
+          <ProtectedRoute portalId="hr"><HRPortal /></ProtectedRoute>
+        } />
+        <Route path="/finance" element={
+          <ProtectedRoute portalId="finance"><FinancePortal /></ProtectedRoute>
+        } />
+        <Route path="/gm" element={
+          <ProtectedRoute portalId="gm"><GMPortal /></ProtectedRoute>
+        } />
+        <Route path="/director" element={
+          <ProtectedRoute portalId="director"><DirectorPortal /></ProtectedRoute>
+        } />
+        <Route path="/mis" element={
+          <ProtectedRoute portalId="mis"><MISPortal /></ProtectedRoute>
+        } />
+        <Route path="/stock" element={
+          <ProtectedRoute portalId="stock"><StockPortal /></ProtectedRoute>
+        } />
+        <Route path="/admin" element={
+          <ProtectedRoute portalId="admin"><AdminPortal /></ProtectedRoute>
+        } />
+        <Route path="/training" element={
+          <ProtectedRoute portalId="training"><TrainingPortal /></ProtectedRoute>
+        } />
       </Route>
     </Routes>
   );
