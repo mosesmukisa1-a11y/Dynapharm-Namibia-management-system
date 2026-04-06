@@ -4,7 +4,8 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCH_DETAILS, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2 } from 'lucide-react';
+import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2, Users, Printer } from 'lucide-react';
+import AccountsTab from '../../components/AccountsTab';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
@@ -18,6 +19,8 @@ export default function FinancePortal() {
     { id: 'expenses', label: 'Expenses', icon: '💸' },
     { id: 'pettyCash', label: 'Petty Cash', icon: '💵' },
     { id: 'overheads', label: 'Overheads', icon: '🏢' },
+    { id: 'payroll', label: 'Payroll', icon: '👷' },
+    { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'communication', label: 'Notices', icon: '📢' },
@@ -38,6 +41,8 @@ export default function FinancePortal() {
         {activeTab === 'expenses' && <ExpensesTab />}
         {activeTab === 'pettyCash' && <PettyCashTab />}
         {activeTab === 'overheads' && <OverheadsTab />}
+        {activeTab === 'payroll' && <PayrollTab />}
+        {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'communication' && <CommunicationTab />}
@@ -1657,6 +1662,283 @@ function OverheadsTab() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+/* ─── PAYROLL ───────────────────────────────────────────── */
+const SSC_RATE_P = 0.009;
+const SSC_CAP_MONTHLY = 81;
+
+function calcPAYE(annualGross) {
+  let tax = 0;
+  const brackets = [
+    { from: 0,       to: 50000,    rate: 0 },
+    { from: 50001,   to: 100000,   rate: 0.18 },
+    { from: 100001,  to: 300000,   rate: 0.25 },
+    { from: 300001,  to: 500000,   rate: 0.28 },
+    { from: 500001,  to: 800000,   rate: 0.30 },
+    { from: 800001,  to: 1500000,  rate: 0.32 },
+    { from: 1500001, to: Infinity, rate: 0.37 },
+  ];
+  for (const b of brackets) {
+    if (annualGross > b.from) {
+      const taxable = Math.min(annualGross, b.to) - b.from;
+      tax += taxable * b.rate;
+    }
+  }
+  return tax;
+}
+
+function PayrollTab() {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [search, setSearch] = useState('');
+  const [adjustments, setAdjustments] = useState({});
+  const [showSlip, setShowSlip] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/employees?limit=500')
+      .then(d => {
+        const list = Array.isArray(d) ? d : d.employees || [];
+        setEmployees(list.filter(e => e.salary > 0 || e.employmentType === 'full_time' || e.employmentType === 'part_time'));
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = employees.filter(e =>
+    !search || (e.name || e.fullName || '').toLowerCase().includes(search.toLowerCase()) ||
+    (e.branch || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const rows = filtered.map(emp => {
+    const gross = Number(emp.salary || 0);
+    const adj = adjustments[emp.id] || {};
+    const allowances = Number(adj.allowances || 0);
+    const deductions = Number(adj.deductions || 0);
+    const totalGross = gross + allowances;
+    const annualGross = totalGross * 12;
+    const annualPAYE = calcPAYE(annualGross);
+    const monthlyPAYE = annualPAYE / 12;
+    const sscEmployee = Math.min(totalGross * SSC_RATE_P, SSC_CAP_MONTHLY);
+    const sscEmployer = Math.min(totalGross * SSC_RATE_P, SSC_CAP_MONTHLY);
+    const net = totalGross - monthlyPAYE - sscEmployee - deductions;
+    const employerCost = totalGross + sscEmployer;
+    return { ...emp, gross, allowances, deductions, totalGross, monthlyPAYE, sscEmployee, sscEmployer, net, employerCost };
+  });
+
+  const totals = rows.reduce((acc, r) => ({
+    gross: acc.gross + r.totalGross,
+    paye: acc.paye + r.monthlyPAYE,
+    sscEmp: acc.sscEmp + r.sscEmployee,
+    sscEr: acc.sscEr + r.sscEmployer,
+    net: acc.net + r.net,
+    cost: acc.cost + r.employerCost,
+  }), { gross: 0, paye: 0, sscEmp: 0, sscEr: 0, net: 0, cost: 0 });
+
+  const fmt = (n) => formatCurrency(Number(n) || 0);
+
+  return (
+    <div className="space-y-4">
+      {error && <Alert variant="error">{error}</Alert>}
+
+      {/* Header */}
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap gap-3 items-end justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2"><Users size={16} />Payroll Run</h2>
+              <p className="text-xs text-gray-400">Namibian PAYE · SSC Act 34 of 1994 · Income Tax Act</p>
+            </div>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Pay Period</label>
+                <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Search</label>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or branch…"
+                  className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none w-40" />
+              </div>
+              <button onClick={() => window.print()}
+                className="flex items-center gap-1 px-3 py-1.5 rounded border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                <Printer size={13} /> Print
+              </button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Totals */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          { label: 'Total Gross', value: fmt(totals.gross), color: 'blue' },
+          { label: 'PAYE Deducted', value: fmt(totals.paye), color: 'orange' },
+          { label: 'SSC (Employee)', value: fmt(totals.sscEmp), color: 'purple' },
+          { label: 'SSC (Employer)', value: fmt(totals.sscEr), color: 'indigo' },
+          { label: 'Total Net Pay', value: fmt(totals.net), color: 'green' },
+          { label: 'Total Employer Cost', value: fmt(totals.cost), color: 'red' },
+        ].map(s => (
+          <Card key={s.label}>
+            <CardBody>
+              <p className="text-xs text-gray-500">{s.label}</p>
+              <p className={`text-base font-bold text-${s.color}-600 mt-0.5`}>{s.value}</p>
+            </CardBody>
+          </Card>
+        ))}
+      </div>
+
+      {/* Employee Table */}
+      {loading ? <LoadingSpinner /> : (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Employee Payroll — {month}</h3>
+            <p className="text-xs text-gray-400">{rows.length} employee{rows.length !== 1 ? 's' : ''}</p>
+          </CardHeader>
+          <CardBody>
+            {rows.length === 0 ? (
+              <div className="text-center text-gray-400 py-10">
+                <Users size={32} className="mx-auto mb-2 opacity-40" />
+                <p>No employees with salary data found.</p>
+                <p className="text-xs mt-1">Add salary information via the HR portal to generate payroll.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="text-left px-3 py-2">Employee</th>
+                      <th className="text-left px-3 py-2">Branch</th>
+                      <th className="text-right px-3 py-2">Basic Salary</th>
+                      <th className="text-right px-3 py-2">Allowances</th>
+                      <th className="text-right px-3 py-2">Gross Pay</th>
+                      <th className="text-right px-3 py-2">PAYE</th>
+                      <th className="text-right px-3 py-2">SSC (Emp)</th>
+                      <th className="text-right px-3 py-2">Other Ded.</th>
+                      <th className="text-right px-3 py-2 text-green-700">Net Pay</th>
+                      <th className="text-right px-3 py-2">Total Cost</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-800">{r.name || r.fullName || r.full_name || '—'}</p>
+                          <p className="text-xs text-gray-400">{r.position || r.role || ''}</p>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{branchLabel(r.branch) || r.branch || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{fmt(r.gross)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" min="0"
+                            value={adjustments[r.id]?.allowances || ''}
+                            onChange={e => setAdjustments(prev => ({ ...prev, [r.id]: { ...prev[r.id], allowances: e.target.value } }))}
+                            className="w-24 text-right border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+                            placeholder="0" />
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold">{fmt(r.totalGross)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-orange-600">{fmt(r.monthlyPAYE)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-purple-600">{fmt(r.sscEmployee)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" min="0"
+                            value={adjustments[r.id]?.deductions || ''}
+                            onChange={e => setAdjustments(prev => ({ ...prev, [r.id]: { ...prev[r.id], deductions: e.target.value } }))}
+                            className="w-24 text-right border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+                            placeholder="0" />
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-green-700">{fmt(r.net)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-red-600">{fmt(r.employerCost)}</td>
+                        <td className="px-3 py-2">
+                          <button onClick={() => setShowSlip(r)}
+                            className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-50 text-gray-600">
+                            Slip
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-blue-50 font-bold text-sm border-t-2 border-blue-200">
+                      <td className="px-3 py-2" colSpan={2}>TOTALS ({rows.length} employees)</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(totals.gross)}</td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(totals.gross)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-orange-700">{fmt(totals.paye)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-purple-700">{fmt(totals.sscEmp)}</td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-right font-mono text-green-700">{fmt(totals.net)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-red-700">{fmt(totals.cost)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* Namibian PAYE Rate Table */}
+            <div className="mt-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <h4 className="text-sm font-bold text-gray-700 mb-2">Namibian PAYE Brackets (Annual — Income Tax Act)</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {[
+                  ['N$0 – N$50,000', '0%'],
+                  ['N$50,001 – N$100,000', '18%'],
+                  ['N$100,001 – N$300,000', '25%'],
+                  ['N$300,001 – N$500,000', '28%'],
+                  ['N$500,001 – N$800,000', '30%'],
+                  ['N$800,001 – N$1,500,000', '32%'],
+                  ['Above N$1,500,000', '37%'],
+                ].map(([range, rate]) => (
+                  <div key={range} className="flex justify-between bg-white rounded px-2 py-1 border border-gray-100">
+                    <span className="text-gray-600">{range}</span>
+                    <span className="font-bold text-gray-800">{rate}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">SSC: 0.9% employee + 0.9% employer (cap: N$81/month). Submit monthly by last working day.</p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Pay Slip Modal */}
+      {showSlip && (
+        <Modal title={`Pay Slip — ${showSlip.name || showSlip.fullName || '—'}`} onClose={() => setShowSlip(null)}>
+          <div className="p-4 space-y-3 text-sm">
+            <div className="border-b pb-2">
+              <p className="font-bold text-lg text-gray-800">{showSlip.name || showSlip.fullName}</p>
+              <p className="text-gray-500">{showSlip.position || showSlip.role} · {showSlip.branch || 'Head Office'}</p>
+              <p className="text-gray-400 text-xs">Pay Period: {month}</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between"><span className="text-gray-600">Basic Salary</span><span className="font-mono">{fmt(showSlip.gross)}</span></div>
+              {showSlip.allowances > 0 && <div className="flex justify-between"><span className="text-gray-600">Allowances</span><span className="font-mono text-green-600">+{fmt(showSlip.allowances)}</span></div>}
+              <div className="flex justify-between font-semibold border-t pt-1"><span>Gross Pay</span><span className="font-mono">{fmt(showSlip.totalGross)}</span></div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Deductions</p>
+              <div className="flex justify-between text-orange-600"><span>PAYE (Income Tax)</span><span className="font-mono">-{fmt(showSlip.monthlyPAYE)}</span></div>
+              <div className="flex justify-between text-purple-600"><span>SSC (Employee 0.9%)</span><span className="font-mono">-{fmt(showSlip.sscEmployee)}</span></div>
+              {showSlip.deductions > 0 && <div className="flex justify-between text-red-600"><span>Other Deductions</span><span className="font-mono">-{fmt(showSlip.deductions)}</span></div>}
+            </div>
+            <div className="border-t pt-2 flex justify-between font-bold text-base text-green-700">
+              <span>NET PAY</span><span className="font-mono">{fmt(showSlip.net)}</span>
+            </div>
+            <div className="bg-gray-50 rounded p-2 text-xs text-gray-500">
+              <div className="flex justify-between"><span>Employer SSC Cost</span><span>{fmt(showSlip.sscEmployer)}</span></div>
+              <div className="flex justify-between font-semibold"><span>Total Cost to Employer</span><span>{fmt(showSlip.employerCost)}</span></div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button onClick={() => window.print()} className="flex-1">Print Slip</Button>
+              <Button variant="secondary" onClick={() => setShowSlip(null)} className="flex-1">Close</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

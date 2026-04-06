@@ -8,6 +8,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
+import AccountsTab from '../../components/AccountsTab';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -26,6 +27,7 @@ export default function GMPortal() {
     { id: 'priceList', label: 'Price List', icon: '💲' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
+    { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
@@ -46,6 +48,7 @@ export default function GMPortal() {
         {activeTab === 'priceList' && <PriceListTab />}
         {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
+        {activeTab === 'accounts' && <AccountsTab role="gm" />}
         {activeTab === 'bonus' && <BonusHistoryTab />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
