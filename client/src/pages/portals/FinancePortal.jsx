@@ -4,7 +4,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCH_DETAILS, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
-import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw } from 'lucide-react';
+import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2 } from 'lucide-react';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
@@ -16,6 +16,8 @@ export default function FinancePortal() {
     { id: 'remittance', label: 'Remittance', icon: '🚢' },
     { id: 'deposits', label: 'Deposit Inbox', icon: '🏦' },
     { id: 'expenses', label: 'Expenses', icon: '💸' },
+    { id: 'pettyCash', label: 'Petty Cash', icon: '💵' },
+    { id: 'overheads', label: 'Overheads', icon: '🏢' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'communication', label: 'Notices', icon: '📢' },
@@ -34,6 +36,8 @@ export default function FinancePortal() {
         {activeTab === 'remittance' && <RemittanceTab />}
         {activeTab === 'deposits' && <DepositsTab />}
         {activeTab === 'expenses' && <ExpensesTab />}
+        {activeTab === 'pettyCash' && <PettyCashTab />}
+        {activeTab === 'overheads' && <OverheadsTab />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'communication' && <CommunicationTab />}
@@ -1140,6 +1144,519 @@ function StaffTab() {
           )}
         </Card>
       )}
+    </div>
+  );
+}
+
+/* ─── PETTY CASH ─────────────────────────────────────────── */
+function PettyCashTab() {
+  const OVERHEAD_CATS = ['Office Supplies', 'Transport', 'Utilities', 'Maintenance', 'Cleaning', 'Communication', 'Staff Welfare', 'Entertainment', 'Other'];
+  const [accounts, setAccounts] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [txns, setTxns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [subTab, setSubTab] = useState('account');
+  const [showRequest, setShowRequest] = useState(false);
+  const [showSpend, setShowSpend] = useState(false);
+  const [reqForm, setReqForm] = useState({ amount: '', purpose: '', location: 'head_office' });
+  const [spendForm, setSpendForm] = useState({ amount: '', description: '', category: 'Office Supplies', branch_id: 'head_office', location: 'head_office' });
+  const [submitting, setSubmitting] = useState(false);
+  const [actionModal, setActionModal] = useState(null);
+  const [actionNote, setActionNote] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      api.finance.pettyCash.accounts().then(d => d.accounts || []).catch(() => []),
+      api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
+      api.finance.pettyCash.transactions().then(d => d.transactions || []).catch(() => []),
+    ]).then(([accts, reqs, txs]) => {
+      setAccounts(accts);
+      setRequests(reqs);
+      setTxns(txs);
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const handleRequest = async (e) => {
+    e.preventDefault();
+    if (!reqForm.amount || !reqForm.purpose) { setMessage('Error: Amount and purpose are required.'); return; }
+    setSubmitting(true);
+    try {
+      await api.finance.pettyCash.createRequest({ amount: Number(reqForm.amount), purpose: reqForm.purpose, location: reqForm.location });
+      setReqForm({ amount: '', purpose: '', location: 'head_office' });
+      setShowRequest(false);
+      setMessage('Petty cash request submitted — awaiting GM approval.');
+      load();
+    } catch (err) { setMessage('Error: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleSpend = async (e) => {
+    e.preventDefault();
+    if (!spendForm.amount || !spendForm.description) { setMessage('Error: Amount and description are required.'); return; }
+    setSubmitting(true);
+    try {
+      await api.finance.pettyCash.spend({ ...spendForm, amount: Number(spendForm.amount) });
+      setSpendForm({ amount: '', description: '', category: 'Office Supplies', branch_id: 'head_office', location: 'head_office' });
+      setShowSpend(false);
+      setMessage('Expense recorded against petty cash.');
+      load();
+    } catch (err) { setMessage('Error: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const totalBalance = accounts.reduce((s, a) => s + Number(a.balance || 0), 0);
+  const pendingReqs = requests.filter(r => r.status === 'pending_gm' || r.status === 'pending_director');
+  const issuedReqs = requests.filter(r => r.status === 'issued');
+
+  const statusBadge = (s) => {
+    const map = { pending_gm: ['warning', 'Awaiting GM'], pending_director: ['info', 'Awaiting Director'], issued: ['success', 'Issued'], rejected: ['danger', 'Rejected'] };
+    const [v, l] = map[s] || ['default', s];
+    return <Badge variant={v}>{l}</Badge>;
+  };
+
+  return (
+    <div className="space-y-5">
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} onClose={() => setMessage('')}>{message}</Alert>}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard title="Petty Cash Balance" value={formatCurrency(totalBalance)} color="green" icon={<Wallet size={24} />} />
+        <StatCard title="Pending Requests" value={pendingReqs.length} subtitle="Awaiting approval" color="orange" icon={<ClipboardList size={24} />} />
+        <StatCard title="Issued This Month" value={formatCurrency(issuedReqs.filter(r => r.issued_at?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.amount||0),0))} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="Total Transactions" value={txns.length} color="primary" icon={<Receipt size={24} />} />
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-2">
+        {['account', 'requests', 'history'].map(t => (
+          <button key={t} onClick={() => setSubTab(t)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer border-none transition-all ${subTab === t ? 'bg-primary text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {t === 'account' ? '💵 Account' : t === 'requests' ? '📋 Requests' : '📜 Transaction History'}
+          </button>
+        ))}
+        <button onClick={load} className="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer border border-gray-200 bg-white text-gray-500 ml-auto">↺ Refresh</button>
+      </div>
+
+      {subTab === 'account' && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h3 className="font-bold text-gray-800">Petty Cash Accounts</h3>
+                <p className="text-xs text-gray-500">Cash issued from banking account for daily office expenses</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setShowRequest(true)}><ClipboardList size={14} /> Request Cash</Button>
+                <Button size="sm" variant="secondary" onClick={() => setShowSpend(true)}><Receipt size={14} /> Record Spend</Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            {accounts.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <Wallet size={40} className="mx-auto mb-2 opacity-40" />
+                <p className="font-medium">No petty cash accounts yet</p>
+                <p className="text-sm mt-1">Request petty cash from the banking account to get started.</p>
+                <Button className="mt-4" size="sm" onClick={() => setShowRequest(true)}>Request Petty Cash</Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {accounts.map(a => (
+                  <div key={a.id} className="border border-gray-200 rounded-xl p-4 bg-gradient-to-br from-white to-green-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{branchLabel(a.location) || a.location}</span>
+                      <Badge variant={Number(a.balance) > 0 ? 'success' : 'danger'}>{Number(a.balance) > 0 ? 'Active' : 'Depleted'}</Badge>
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900 mb-1">{formatCurrency(a.balance)}</div>
+                    {a.last_topped_up_at && (
+                      <p className="text-xs text-gray-400">Last topped up {formatDate(a.last_topped_up_at)} by {a.last_topped_up_by}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {subTab === 'requests' && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-gray-800">Petty Cash Requests</h3>
+                <p className="text-xs text-gray-500">Finance → GM approval → Director issues</p>
+              </div>
+              <Button size="sm" onClick={() => setShowRequest(true)}><ClipboardList size={14} /> New Request</Button>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <Table
+              columns={[
+                { header: 'Date', render: r => formatDate(r.created_at) },
+                { header: 'Request #', render: r => <span className="text-xs font-mono text-gray-500">{r.request_number || r.id}</span> },
+                { header: 'Location', render: r => <span className="font-medium">{branchLabel(r.location) || r.location || 'Head Office'}</span> },
+                { header: 'Amount', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount)}</span> },
+                { header: 'Purpose', render: r => <span className="text-sm">{r.purpose}</span> },
+                { header: 'Status', render: r => statusBadge(r.status) },
+                { header: 'Requested By', render: r => <span className="text-xs text-gray-500">{r.requested_by || '—'}</span> },
+                { header: 'GM', render: r => r.gm_approved_by ? <span className="text-xs text-green-600">✓ {r.gm_approved_by}</span> : <span className="text-xs text-gray-400">Pending</span> },
+                { header: 'Issued By', render: r => r.issued_by ? <span className="text-xs text-green-700 font-semibold">✓ {r.issued_by}</span> : <span className="text-xs text-gray-400">—</span> },
+              ]}
+              data={requests}
+              emptyMessage="No petty cash requests yet"
+            />
+          </CardBody>
+        </Card>
+      )}
+
+      {subTab === 'history' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Transaction History</h3>
+          </CardHeader>
+          <CardBody>
+            <Table
+              columns={[
+                { header: 'Date', render: r => formatDate(r.created_at) },
+                { header: 'Type', render: r => <Badge variant={r.type === 'top_up' ? 'success' : 'danger'}>{r.type === 'top_up' ? '⬆ Top-Up' : '⬇ Expense'}</Badge> },
+                { header: 'Location', render: r => branchLabel(r.location) || r.location },
+                { header: 'Amount', render: r => <span className={`font-bold ${r.type === 'top_up' ? 'text-green-700' : 'text-red-600'}`}>{r.type === 'top_up' ? '+' : '-'}{formatCurrency(r.amount)}</span> },
+                { header: 'Description', render: r => <span className="text-sm">{r.description}</span> },
+                { header: 'Category', render: r => r.category ? <Badge variant="info">{r.category}</Badge> : '—' },
+                { header: 'By', render: r => <span className="text-xs text-gray-500">{r.performed_by || '—'}</span> },
+              ]}
+              data={txns}
+              emptyMessage="No transactions yet"
+            />
+          </CardBody>
+        </Card>
+      )}
+
+      <Modal open={showRequest} onClose={() => setShowRequest(false)} title="Request Petty Cash" size="md">
+        <form onSubmit={handleRequest} className="p-6 space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+            This request will be sent to the GM for approval, then to the Director for cash issuance. Once issued, the petty cash account balance will be updated.
+          </div>
+          <Input label="Amount (N$) *" type="number" min="1" step="0.01" value={reqForm.amount} onChange={e => setReqForm(f => ({ ...f, amount: e.target.value }))} placeholder="e.g. 500" required />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Location</label>
+            <select value={reqForm.location} onChange={e => setReqForm(f => ({ ...f, location: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+              <option value="head_office">Head Office</option>
+              {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Purpose *</label>
+            <textarea value={reqForm.purpose} onChange={e => setReqForm(f => ({ ...f, purpose: e.target.value }))} required
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={3}
+              placeholder="Explain what the petty cash will be used for..." />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={() => setShowRequest(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Request'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={showSpend} onClose={() => setShowSpend(false)} title="Record Petty Cash Expense" size="md">
+        <form onSubmit={handleSpend} className="p-6 space-y-4">
+          {accounts.length > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700 font-medium">
+              Available balance: {formatCurrency(accounts.find(a => a.location === spendForm.location)?.balance || 0)}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Amount (N$) *" type="number" min="1" step="0.01" value={spendForm.amount} onChange={e => setSpendForm(f => ({ ...f, amount: e.target.value }))} required />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Category</label>
+              <select value={spendForm.category} onChange={e => setSpendForm(f => ({ ...f, category: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                {OVERHEAD_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">From Account</label>
+              <select value={spendForm.location} onChange={e => setSpendForm(f => ({ ...f, location: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option value="head_office">Head Office</option>
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Associated Branch</label>
+              <select value={spendForm.branch_id} onChange={e => setSpendForm(f => ({ ...f, branch_id: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option value="head_office">Head Office</option>
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Description *</label>
+            <textarea value={spendForm.description} onChange={e => setSpendForm(f => ({ ...f, description: e.target.value }))} required
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
+              placeholder="What was the expense for?" />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={() => setShowSpend(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Recording…' : 'Record Expense'}</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+/* ─── OVERHEADS ──────────────────────────────────────────── */
+function OverheadsTab() {
+  const OVERHEAD_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Internet & Telecoms', 'Security', 'Cleaning & Hygiene', 'Transport & Fuel', 'Office Supplies', 'Maintenance & Repairs', 'Marketing & Advertising', 'Staff Welfare', 'Insurance', 'Equipment & Assets', 'Professional Services', 'Banking Charges', 'Other Overhead'];
+  const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: '', date: new Date().toISOString().slice(0, 10), payment_method: 'bank_transfer', notes: '' };
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [filterBranch, setFilterBranch] = useState('');
+  const [filterCat, setFilterCat] = useState('');
+  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  const load = () => {
+    setLoading(true);
+    api.branch.expenses()
+      .then(d => {
+        const all = Array.isArray(d) ? d : d.expenses || [];
+        setExpenses(all.filter(e => OVERHEAD_CATEGORIES.includes(e.category)));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.description || !form.amount || !form.branch_id) { setMessage('Error: Description, amount and branch are required.'); return; }
+    setSubmitting(true);
+    try {
+      await api.branch.createExpense({
+        branchId: form.branch_id,
+        date: form.date,
+        amount: Number(form.amount),
+        description: form.description,
+        category: form.category,
+        paymentMethod: form.payment_method,
+        notes: form.notes,
+        metadata: { type: 'overhead' },
+      });
+      setForm(emptyForm);
+      setShowForm(false);
+      setMessage('Overhead expense recorded.');
+      load();
+    } catch (err) { setMessage('Error: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  let filtered = expenses;
+  if (filterBranch) filtered = filtered.filter(e => (e.branchId || e.branch_id) === filterBranch);
+  if (filterCat) filtered = filtered.filter(e => e.category === filterCat);
+  if (filterMonth) filtered = filtered.filter(e => {
+    const d = e.date || e.created_at || '';
+    return d.startsWith(filterMonth);
+  });
+
+  const totalAll = filtered.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+  // Branch breakdown
+  const branchTotals = {};
+  filtered.forEach(e => {
+    const bid = e.branchId || e.branch_id || 'head_office';
+    branchTotals[bid] = (branchTotals[bid] || 0) + Number(e.amount || 0);
+  });
+
+  // Category breakdown
+  const catTotals = {};
+  filtered.forEach(e => {
+    catTotals[e.category] = (catTotals[e.category] || 0) + Number(e.amount || 0);
+  });
+
+  const sortedCats = Object.entries(catTotals).sort(([,a],[,b]) => b - a);
+
+  return (
+    <div className="space-y-5">
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} onClose={() => setMessage('')}>{message}</Alert>}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard title="Total Overheads" value={formatCurrency(totalAll)} color="red" icon={<Building2 size={24} />} />
+        <StatCard title="Branches Covered" value={Object.keys(branchTotals).length} color="blue" icon={<Building2 size={24} />} />
+        <StatCard title="Top Category" value={sortedCats[0]?.[0] || '—'} subtitle={sortedCats[0] ? formatCurrency(sortedCats[0][1]) : ''} color="orange" icon={<ClipboardList size={24} />} />
+        <StatCard title="Records" value={filtered.length} color="primary" icon={<Receipt size={24} />} />
+      </div>
+
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-wrap gap-2">
+          <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none" />
+          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+            <option value="">All Branches</option>
+            <option value="head_office">Head Office</option>
+            {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+            <option value="">All Categories</option>
+            {OVERHEAD_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {(filterBranch || filterCat) && (
+            <Button size="sm" variant="secondary" onClick={() => { setFilterBranch(''); setFilterCat(''); }}>
+              <XCircle size={13} /> Clear
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setShowForm(true)}><Receipt size={14} /> Add Overhead</Button>
+          <Button size="sm" variant="secondary" onClick={load}><RefreshCw size={14} /></Button>
+        </div>
+      </div>
+
+      {Object.keys(branchTotals).length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Branch Overhead Summary</h3></CardHeader>
+          <CardBody>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {Object.entries(branchTotals).sort(([,a],[,b]) => b - a).map(([bid, total]) => (
+                <div key={bid} className="border border-gray-200 rounded-xl p-3 bg-red-50 cursor-pointer hover:border-red-300 transition-colors"
+                  onClick={() => setFilterBranch(bid === filterBranch ? '' : bid)}>
+                  <div className="text-xs font-semibold text-gray-500 mb-1 truncate">{branchLabel(bid) === '—' ? 'Head Office' : branchLabel(bid)}</div>
+                  <div className="text-lg font-bold text-red-700">{formatCurrency(total)}</div>
+                  <div className="text-xs text-gray-400">{filtered.filter(e=>(e.branchId||e.branch_id)===bid).length} records</div>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {sortedCats.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Overhead by Category</h3></CardHeader>
+          <CardBody>
+            <div className="space-y-2">
+              {sortedCats.map(([cat, total]) => {
+                const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
+                return (
+                  <div key={cat} className="flex items-center gap-3">
+                    <span className="text-sm text-gray-700 w-44 truncate font-medium">{cat}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                      <div className="bg-red-600 h-2.5 rounded-full" style={{ width: pct + '%' }} />
+                    </div>
+                    <span className="text-sm font-bold text-gray-800 w-24 text-right">{formatCurrency(total)}</span>
+                    <span className="text-xs text-gray-400 w-10 text-right">{pct.toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="font-bold text-gray-800">All Overhead Expenses</h3>
+              <p className="text-xs text-gray-500">{filtered.length} records · Total: {formatCurrency(totalAll)}</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDate(r.date || r.created_at) },
+              { header: 'Branch', render: r => {
+                const bid = r.branchId || r.branch_id;
+                const lbl = bid === 'head_office' ? 'Head Office' : branchLabel(bid);
+                return <span className="font-semibold text-primary text-sm">{lbl || '—'}</span>;
+              }},
+              { header: 'Category', render: r => <Badge variant="danger">{r.category || '—'}</Badge> },
+              { header: 'Description', render: r => <span className="text-sm">{r.description || '—'}</span> },
+              { header: 'Amount', render: r => <span className="font-bold text-red-700">{formatCurrency(r.amount)}</span> },
+              { header: 'Method', render: r => <span className="text-xs text-gray-500 capitalize">{(r.payment_method || r.paymentMethod || '—').replace(/_/g,' ')}</span> },
+              { header: 'Status', render: r => {
+                const s = r.status || 'recorded';
+                return <Badge variant={s === 'approved' ? 'success' : s === 'rejected' ? 'danger' : 'warning'}>{s === 'recorded' ? 'Pending' : s.charAt(0).toUpperCase() + s.slice(1)}</Badge>;
+              }},
+            ]}
+            data={filtered}
+            emptyMessage="No overhead expenses for this period. Add one using the button above."
+          />
+        </CardBody>
+      </Card>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Add Overhead Expense" size="md">
+        <form onSubmit={handleAdd} className="p-6 space-y-4">
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
+            Overhead expenses are recurring or operational costs associated with a specific branch or head office.
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Amount (N$) *" type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+            <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Branch *</label>
+              <select value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))} required
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option value="">Select branch…</option>
+                <option value="head_office">Head Office</option>
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Category</label>
+              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                {OVERHEAD_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Description *" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Office rent April 2026" required />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Payment Method</label>
+              <select value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="petty_cash">Petty Cash</option>
+                <option value="cheque">Cheque</option>
+                <option value="eft">EFT</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Notes</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
+              placeholder="Invoice number, supplier, etc." />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Record Overhead'}</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

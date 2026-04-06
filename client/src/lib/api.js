@@ -255,6 +255,16 @@ export const api = {
     approveExpense: (id, notes = '') => api.patch('/branch/expenses', { id, status: 'approved', notes }),
     rejectExpense: (id, notes = '') => api.patch('/branch/expenses', { id, status: 'rejected', notes }),
     deposits: (params = '') => api.get(`/branch/deposits${params ? '?' + params : ''}`),
+    pettyCash: {
+      accounts: () => api.get('/finance/petty-cash/balance'),
+      requests: () => api.get('/finance/petty-cash/requests'),
+      createRequest: (data) => api.post('/finance/petty-cash/requests', data),
+      approve: (id, notes) => api.put(`/finance/petty-cash/requests/${id}/approve`, { notes }),
+      reject: (id, notes) => api.put(`/finance/petty-cash/requests/${id}/reject`, { notes }),
+      issue: (id, notes) => api.put(`/finance/petty-cash/requests/${id}/issue`, { notes }),
+      spend: (data) => api.post('/finance/petty-cash/spend', data),
+      transactions: (location) => api.get(`/finance/petty-cash/transactions${location ? '?location=' + location : ''}`),
+    },
   },
 
   hr: {

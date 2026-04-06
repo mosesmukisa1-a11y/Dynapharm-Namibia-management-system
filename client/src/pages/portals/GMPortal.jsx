@@ -557,6 +557,7 @@ function ApprovalsTab() {
   const [stockRequests, setStockRequests] = useState([]);
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [fieldRequests, setFieldRequests] = useState([]);
+  const [pettyCashRequests, setPettyCashRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -583,12 +584,14 @@ function ApprovalsTab() {
       api.stock.requests().then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
       api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs]) => {
+      api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
       setPendingTransfers(transfers);
       setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
+      setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
     }).finally(() => setLoading(false));
   };
 
@@ -615,6 +618,15 @@ function ApprovalsTab() {
           notes: note,
         });
         setFieldRequests(prev => prev.filter(r => r.id !== id));
+      } else if (type === 'petty_cash') {
+        if (action === 'approved') {
+          await api.finance.pettyCash.approve(id, note);
+          setMessage('✅ Petty cash approved — forwarded to Director for issuance.');
+        } else {
+          await api.finance.pettyCash.reject(id, note);
+          setMessage('❌ Petty cash request rejected.');
+        }
+        setPettyCashRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'transfer') {
         const newStatus = action === 'approved' ? 'approved' : 'rejected';
         const gmName = user?.full_name || user?.username || 'GM';
@@ -628,7 +640,7 @@ function ApprovalsTab() {
         setPendingTransfers(prev => prev.filter(r => r.id !== id));
         setMessage(action === 'approved' ? '✅ Transfer approved — branch can now receive the stock.' : '❌ Transfer rejected.');
       }
-      if (type !== 'transfer') setMessage(`Request ${action} successfully!`);
+      if (!['transfer', 'petty_cash'].includes(type)) setMessage(`Request ${action} successfully!`);
       setNoteModal(null);
       setNote('');
     } catch (err) {
@@ -719,26 +731,29 @@ function ApprovalsTab() {
       ...cashRequests.map(r => ({ ...r, _type: 'cash' })),
       ...leaveRequests.map(r => ({ ...r, _type: 'leave' })),
       ...stockRequests.map(r => ({ ...r, _type: 'stock' })),
+      ...pettyCashRequests.map(r => ({ ...r, _type: 'petty_cash' })),
     ];
 
     if (approvalTab === 'all') return allItems;
     if (approvalTab === 'cash') return allItems.filter(r => r._type === 'cash' || r.type === 'cash' || r.type === 'cash_request');
     if (approvalTab === 'leave') return allItems.filter(r => r._type === 'leave' || r.type === 'leave' || r.type === 'leave_request');
     if (approvalTab === 'stock') return allItems.filter(r => r._type === 'stock' || r.type === 'stock' || r.type === 'stock_movement');
+    if (approvalTab === 'petty_cash') return allItems.filter(r => r._type === 'petty_cash');
     if (approvalTab === 'other') return allItems.filter(r => {
       const t = r._type || r.type || '';
-      return !['cash', 'cash_request', 'leave', 'leave_request', 'stock', 'stock_movement'].includes(t);
+      return !['cash', 'cash_request', 'leave', 'leave_request', 'stock', 'stock_movement', 'petty_cash'].includes(t);
     });
     return allItems;
   };
 
   const filteredItems = getFilteredItems();
-  const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length;
+  const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length + pettyCashRequests.length;
 
   const subTabs = [
     { id: 'transfers', label: `🚚 Transfers${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
     { id: 'fieldstock', label: `🌿 Field Stock${fieldRequests.length > 0 ? ` (${fieldRequests.length})` : ''}` },
     { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
+    { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -803,8 +818,8 @@ function ApprovalsTab() {
               <div className="flex items-start justify-between flex-wrap gap-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : 'success'}>
-                      {r._type === 'cash' ? '💵 Cash' : r._type === 'leave' ? '📅 Leave' : '📦 Stock'}
+                    <Badge variant={r._type === 'cash' ? 'warning' : r._type === 'leave' ? 'info' : r._type === 'petty_cash' ? 'primary' : 'success'}>
+                      {r._type === 'cash' ? '💵 Cash' : r._type === 'leave' ? '📅 Leave' : r._type === 'petty_cash' ? '💵 Petty Cash' : '📦 Stock'}
                     </Badge>
                     <span className="font-bold text-gray-800">{r.requestNumber || r.request_number || r.id}</span>
                     <span className="text-xs text-gray-500">{formatDateTime(r.createdAt || r.created_at)}</span>
@@ -814,9 +829,15 @@ function ApprovalsTab() {
                     {(r.requestingBranch || r.branch || r.requesting_branch) && <span className="ml-2 text-xs text-gray-400 font-normal">({r.requestingBranch || r.branch || r.requesting_branch})</span>}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    {r.reason || r.description || r.notes || r.product_name || ''}
+                    {r.purpose || r.reason || r.description || r.notes || r.product_name || ''}
                   </p>
-                  {r.amount && (
+                  {r._type === 'petty_cash' && (
+                    <div className="mt-1 flex items-center gap-3">
+                      <span className="text-base font-bold text-green-700">{formatCurrency(r.amount)}</span>
+                      {r.location && <span className="text-xs text-gray-400">📍 {r.location === 'head_office' ? 'Head Office' : r.location}</span>}
+                    </div>
+                  )}
+                  {r.amount && r._type !== 'petty_cash' && (
                     <p className="text-base font-bold text-red-700 mt-1">{formatCurrency(r.amount)}</p>
                   )}
                 </div>

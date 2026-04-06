@@ -6,16 +6,20 @@ import {
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import { api } from '../../lib/api';
 import { getLiveProductList, findProductPrice } from '../../lib/pricing';
-import { formatCurrency, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import {
   Tabs, Card, CardBody, CardHeader, Button, Input, StatCard,
   LoadingSpinner, Table, Badge, Alert, Modal,
 } from '../../components/ui';
 import {
   Briefcase, TrendingUp, DollarSign, BarChart3, Users, Package,
-  AlertTriangle, Ship, Globe, Target, Activity,
+  AlertTriangle, Ship, Globe, Target, Activity, Wallet, CheckCircle, XCircle,
 } from 'lucide-react';
+
 import { useStockRealtime } from '../../hooks/useStockRealtime';
+
+const BRANCH_NAME_MAP_D = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
+const branchLabelD = (id) => BRANCH_NAME_MAP_D[id] || (id === 'head_office' ? 'Head Office' : id || '—');
 
 const today = new Date().toISOString().slice(0, 10);
 const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -54,6 +58,7 @@ export default function DirectorPortal() {
     { id: 'registrations', label: 'Registrations', icon: '📋' },
     { id: 'distributors', label: 'Distributor Network', icon: '👥' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
+    { id: 'financeApprovals', label: 'Finance Approvals', icon: '💵' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
 
@@ -82,6 +87,7 @@ export default function DirectorPortal() {
         {activeTab === 'registrations' && <RegistrationsTab start={applied.start} end={applied.end} />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
+        {activeTab === 'financeApprovals' && <FinanceApprovalsTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>
     </div>
@@ -754,5 +760,148 @@ function StaffTab() {
         </form>
       </CardBody>
     </Card>
+  );
+}
+
+function FinanceApprovalsTab() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [issueModal, setIssueModal] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  const loadRequests = () => {
+    setLoading(true);
+    api.finance.pettyCash.requests()
+      .then(d => setRequests((d.requests || []).filter(r => r.status === 'pending_director')))
+      .catch(() => setRequests([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadRequests(); }, []);
+
+  const handleIssue = async () => {
+    if (!issueModal) return;
+    setProcessing(true);
+    try {
+      await api.finance.pettyCash.issue(issueModal.id, notes);
+      setRequests(prev => prev.filter(r => r.id !== issueModal.id));
+      setMessage('✅ Funds issued — branch petty cash account has been credited.');
+      setIssueModal(null);
+      setNotes('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReject = async (req) => {
+    setProcessing(true);
+    try {
+      await api.finance.pettyCash.reject(req.id, 'Rejected by Director');
+      setRequests(prev => prev.filter(r => r.id !== req.id));
+      setMessage('❌ Petty cash request rejected.');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {message && (
+        <Alert variant={message.startsWith('✅') ? 'success' : message.startsWith('❌') ? 'error' : 'error'}
+          onClose={() => setMessage('')}>{message}</Alert>
+      )}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Wallet size={18} className="text-green-600" />
+            <h3 className="font-bold text-gray-800">Petty Cash — Pending Issuance</h3>
+          </div>
+        </CardHeader>
+        <CardBody>
+          {requests.length === 0 ? (
+            <p className="text-center text-gray-400 py-8">No petty cash requests awaiting issuance.</p>
+          ) : (
+            <div className="space-y-3">
+              {requests.map(req => (
+                <div key={req.id} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="primary">💵 Petty Cash</Badge>
+                        <span className="font-bold text-gray-800">#{req.id}</span>
+                        <span className="text-xs text-gray-400">
+                          {req.created_at ? new Date(req.created_at).toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        {req.created_by_name || req.created_by || '—'}
+                        <span className="ml-2 text-xs font-normal text-gray-400">
+                          {branchLabelD(req.location)}
+                        </span>
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">{req.purpose || '—'}</p>
+                      <p className="text-xl font-bold text-green-700 mt-1">{formatCurrency(req.amount)}</p>
+                      {req.gm_notes && (
+                        <p className="text-xs text-gray-400 mt-1">GM note: {req.gm_notes}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setIssueModal(req); setNotes(''); }}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer"
+                      >
+                        <CheckCircle size={13} /> Issue Funds
+                      </button>
+                      <button
+                        onClick={() => handleReject(req)}
+                        disabled={processing}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 cursor-pointer"
+                      >
+                        <XCircle size={13} /> Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {issueModal && (
+        <Modal title="Issue Petty Cash" onClose={() => setIssueModal(null)}>
+          <div className="space-y-4 p-4">
+            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+              <p className="text-sm text-gray-600">{issueModal.purpose}</p>
+              <p className="text-2xl font-bold text-green-700 mt-1">{formatCurrency(issueModal.amount)}</p>
+              <p className="text-xs text-gray-400">For {branchLabelD(issueModal.location)}</p>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Director Notes (optional)</label>
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[70px] resize-y"
+                placeholder="Any notes for Finance team..."
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button onClick={handleIssue} disabled={processing} className="flex-1">
+                {processing ? 'Processing…' : `Confirm & Issue ${formatCurrency(issueModal.amount)}`}
+              </Button>
+              <Button variant="secondary" onClick={() => setIssueModal(null)} className="flex-1">Cancel</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }

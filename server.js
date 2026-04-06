@@ -1490,6 +1490,61 @@ server.on('error', (error) => {
     } catch (e) {
       console.warn('[campaign tables init]', e.message);
     }
+
+    // ── Petty cash tables ────────────────────────────────────────────────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS petty_cash_accounts (
+          id VARCHAR(100) PRIMARY KEY,
+          location VARCHAR(100) UNIQUE NOT NULL,
+          balance NUMERIC(14,2) DEFAULT 0,
+          last_topped_up_at TIMESTAMPTZ,
+          last_topped_up_by VARCHAR(255),
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS petty_cash_requests (
+          id VARCHAR(100) PRIMARY KEY,
+          request_number VARCHAR(100),
+          amount NUMERIC(14,2) NOT NULL,
+          purpose TEXT NOT NULL,
+          location VARCHAR(100) DEFAULT 'head_office',
+          status VARCHAR(50) DEFAULT 'pending_gm',
+          requested_by VARCHAR(255),
+          gm_approved_by VARCHAR(255),
+          gm_approved_at TIMESTAMPTZ,
+          issued_by VARCHAR(255),
+          issued_at TIMESTAMPTZ,
+          rejected_by VARCHAR(255),
+          rejected_at TIMESTAMPTZ,
+          notes TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS petty_cash_transactions (
+          id VARCHAR(100) PRIMARY KEY,
+          location VARCHAR(100) NOT NULL,
+          type VARCHAR(30) NOT NULL,
+          amount NUMERIC(14,2) NOT NULL,
+          description TEXT,
+          category VARCHAR(100),
+          branch_id VARCHAR(100),
+          reference_id VARCHAR(100),
+          performed_by VARCHAR(255),
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pct_location ON petty_cash_transactions(location)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pct_type ON petty_cash_transactions(type)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pcr_status ON petty_cash_requests(status)`);
+    } catch (e) {
+      console.warn('[petty cash tables init]', e.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {
       const aptNorm = await query(
