@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, findProductPrice } from '../../lib/pricing';
@@ -707,9 +707,35 @@ function ExpensesTab() {
 
 /* ─── BONUS WORKFLOW ─────────────────────────────────────── */
 function BonusTab() {
-  const [bonuses, setBonuses] = useState([]);
+  const [activeSubTab, setActiveSubTab] = useState('upload');
+  const subTabs = [
+    { id: 'upload', label: 'Upload Bonuses' },
+    { id: 'history', label: 'Bonus History & Search' },
+    { id: 'committed', label: 'All Committed Bonuses' },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b border-gray-200 pb-0">
+        {subTabs.map(t => (
+          <button key={t.id} onClick={() => setActiveSubTab(t.id)}
+            className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${activeSubTab === t.id ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {activeSubTab === 'upload' && <BonusUploadSubTab />}
+      {activeSubTab === 'history' && <BonusHistorySubTab />}
+      {activeSubTab === 'committed' && <BonusCommittedSubTab />}
+    </div>
+  );
+}
+
+function BonusUploadSubTab() {
+  const [previewRows, setPreviewRows] = useState([]);
   const [message, setMessage] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
   const fileRef = useRef(null);
 
   const handleUpload = async (e) => {
@@ -719,34 +745,42 @@ function BonusTab() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('type', 'bonus');
-      const result = await api.upload(formData);
-      const rows = result.data || result.rows || [];
-      setBonuses(rows.map((r, i) => ({ id: i + 1, ...r, status: 'pending' })));
-      setMessage(`Uploaded ${rows.length} bonus records for review.`);
+      const result = await api.finance.uploadDistributorBonuses(formData);
+      if (!result.success) throw new Error(result.error || 'Upload failed');
+      setPreviewRows(result.rows || []);
+      setMessage(`Parsed ${result.count} bonus records. Review below then commit.`);
     } catch (err) { setMessage('Error: ' + err.message); }
-    finally { setUploading(false); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
 
-  const approve = id => setBonuses(prev => prev.map(b => b.id === id ? { ...b, status: 'approved' } : b));
-  const reject = id => setBonuses(prev => prev.map(b => b.id === id ? { ...b, status: 'rejected' } : b));
-  const approveAll = () => setBonuses(prev => prev.map(b => b.status === 'pending' ? { ...b, status: 'approved' } : b));
+  const removeRow = (idx) => setPreviewRows(prev => prev.filter((_, i) => i !== idx));
 
-  const exportCSV = () => {
-    const approved = bonuses.filter(b => b.status === 'approved');
-    if (!approved.length) return;
-    const csv = [
-      ['Distributor', 'NB Number', 'Amount', 'BV'],
-      ...approved.map(b => [b.distributor_name || b.name || '', b.nb_number || '', b.amount || '', b.bv || '']),
-    ].map(r => r.join(',')).join('\n');
+  const handleCommit = async () => {
+    if (!previewRows.length) return;
+    if (!period) { setMessage('Error: Please enter a period (e.g. 2026-03).'); return; }
+    setCommitting(true); setMessage('');
+    try {
+      const result = await api.finance.commitDistributorBonuses({ rows: previewRows, period });
+      if (!result.success) throw new Error(result.error || 'Commit failed');
+      setMessage(result.message || `Committed ${result.inserted} bonus records.`);
+      setPreviewRows([]);
+    } catch (err) { setMessage('Error: ' + err.message); }
+    finally { setCommitting(false); }
+  };
+
+  const exportPreviewXlsx = () => {
+    const rows = [
+      ['NB Number', 'Distributor Name', 'Amount Earned', 'Period'],
+      ...previewRows.map(r => [r.nb_number, r.distributor_name, r.amount_earned, period]),
+    ];
+    const csv = rows.map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `approved-bonuses-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `bonus-preview-${period}.csv`;
     a.click();
   };
 
-  const pending = bonuses.filter(b => b.status === 'pending');
-  const approved = bonuses.filter(b => b.status === 'approved');
+  const totalAmount = previewRows.reduce((s, r) => s + Number(r.amount_earned || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -754,66 +788,269 @@ function BonusTab() {
 
       <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
         <CardBody>
-          <h3 className="font-bold text-orange-900 mb-1">Distributor Bonus Processing</h3>
-          <p className="text-sm text-orange-700">Upload a bonus CSV from the company system, review each record, then export approved bonuses for payroll processing.</p>
+          <h3 className="font-bold text-orange-900 mb-1 flex items-center gap-2"><Upload size={16} /> Upload Distributor Bonus File</h3>
+          <p className="text-sm text-orange-700">Upload an Excel (.xlsx) or CSV file with columns: <strong>NB Number, Distributor Name, Amount, Period</strong>. Review the parsed records then commit to store them.</p>
         </CardBody>
       </Card>
 
-      {bonuses.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          <StatCard title="Total Records" value={bonuses.length} color="blue" icon={<ClipboardList size={24} />} />
-          <StatCard title="Pending Review" value={pending.length} color="orange" icon={<Receipt size={24} />} />
-          <StatCard title="Approved" value={approved.length} subtitle={formatCurrency(approved.reduce((s, b) => s + Number(b.amount || 0), 0))} color="green" icon={<CheckCircle size={24} />} />
-        </div>
-      )}
-
       <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Upload Bonus CSV</h3>
-            <div className="text-xs text-gray-500">Required columns: distributor_name, nb_number, amount, bv</div>
-          </div>
-        </CardHeader>
         <CardBody>
-          <input ref={fileRef} type="file" accept=".csv,.xlsx" onChange={handleUpload} className="hidden" />
-          <div className="flex gap-3 items-center">
-            <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Upload size={16} /> {uploading ? 'Uploading…' : 'Select CSV File'}
-            </Button>
-            {bonuses.length > 0 && (
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bonus Period (Month)</label>
+              <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div>
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleUpload} className="hidden" />
+              <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+                <Upload size={16} /> {uploading ? 'Parsing…' : 'Select Excel / CSV File'}
+              </Button>
+            </div>
+            {previewRows.length > 0 && (
               <>
-                <Button variant="success" onClick={approveAll} disabled={!pending.length}>Approve All Pending ({pending.length})</Button>
-                <Button variant="secondary" onClick={exportCSV} disabled={!approved.length}>
-                  <Download size={14} /> Export Approved ({approved.length})
-                </Button>
-                <Button variant="danger" size="sm" onClick={() => setBonuses([])}>Clear</Button>
+                <Button variant="secondary" onClick={exportPreviewXlsx}><Download size={14} /> Export Preview</Button>
+                <Button variant="danger" size="sm" onClick={() => setPreviewRows([])}>Clear</Button>
               </>
             )}
           </div>
         </CardBody>
       </Card>
 
-      {bonuses.length > 0 && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Bonus Records — Review</h3></CardHeader>
-          <Table
-            columns={[
-              { header: 'Distributor', render: r => r.distributor_name || r.name || '—' },
-              { header: 'NB Number', render: r => r.nb_number || '—' },
-              { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.amount || 0)}</span> },
-              { header: 'BV', render: r => r.bv || '—' },
-              { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status.charAt(0).toUpperCase() + r.status.slice(1)}</Badge> },
-              { header: 'Actions', render: r => r.status === 'pending' && (
-                <div className="flex gap-1">
-                  <Button size="sm" variant="success" onClick={() => approve(r.id)}>Approve</Button>
-                  <Button size="sm" variant="danger" onClick={() => reject(r.id)}>Reject</Button>
-                </div>
-              )},
-            ]}
-            data={bonuses}
-            emptyMessage="No records"
-          />
-        </Card>
+      {previewRows.length > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            <StatCard title="Records Parsed" value={previewRows.length} color="blue" icon={<ClipboardList size={24} />} />
+            <StatCard title="Total Amount" value={formatCurrency(totalAmount)} color="green" icon={<DollarSign size={24} />} />
+            <StatCard title="Period" value={period} color="orange" icon={<Receipt size={24} />} />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-gray-800">Preview — Review Before Committing</h3>
+                <Button onClick={handleCommit} disabled={committing} variant="success">
+                  <CheckCircle size={16} /> {committing ? 'Committing…' : `Commit ${previewRows.length} Records`}
+                </Button>
+              </div>
+            </CardHeader>
+            <Table
+              columns={[
+                { header: 'NB Number', render: r => <span className="font-mono font-bold text-primary">{r.nb_number}</span> },
+                { header: 'Distributor Name', render: r => r.distributor_name },
+                { header: 'Amount Earned', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount_earned || 0)}</span> },
+                { header: 'Remove', render: (r, idx) => <Button size="sm" variant="danger" onClick={() => removeRow(idx)}>Remove</Button> },
+              ]}
+              data={previewRows}
+              emptyMessage="No records"
+            />
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BonusHistorySubTab() {
+  const [search, setSearch] = useState('');
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const doSearch = async () => {
+    if (!search.trim()) return;
+    setLoading(true);
+    try {
+      const result = await api.finance.distributorBonusHistory({ search: search.trim() });
+      setHistory(result.history || []);
+      setSearched(true);
+    } catch (err) { setHistory([]); setSearched(true); }
+    finally { setLoading(false); }
+  };
+
+  const exportHistory = () => {
+    if (!history.length) return;
+    const rows = [
+      ['Period', 'NB Number', 'Distributor', 'Amount Earned', 'Amount Paid', 'Outstanding', 'Status', 'Branch Paid', 'Payment Date'],
+      ...history.map(b => [b.period, b.nb_number, b.distributor_name, b.amount_earned, b.amount_paid, Number(b.amount_earned)-Number(b.amount_paid), b.status, b.paid_by_branch_id||'', b.payment_date||'']),
+    ];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `bonus-history-${search.replace(/[^a-z0-9]/gi,'_')}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  };
+
+  const totalEarned = history.reduce((s, b) => s + Number(b.amount_earned || 0), 0);
+  const totalPaid = history.reduce((s, b) => s + Number(b.amount_paid || 0), 0);
+  const totalOutstanding = totalEarned - totalPaid;
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardBody>
+          <h3 className="font-bold text-blue-900 mb-1">Bonus History Report</h3>
+          <p className="text-sm text-blue-700">Search by distributor NB number or name to view their full bonus history across all periods.</p>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody>
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Search Distributor (NB Number or Name)</label>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') doSearch(); }}
+                placeholder="e.g. NB001234 or John Doe"
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <Button onClick={doSearch} disabled={loading || !search.trim()}>
+              <Filter size={16} /> {loading ? 'Searching…' : 'Search'}
+            </Button>
+            {history.length > 0 && (
+              <Button variant="secondary" onClick={exportHistory}><Download size={14} /> Export</Button>
+            )}
+          </div>
+        </CardBody>
+      </Card>
+
+      {searched && history.length > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            <StatCard title="Total Earned" value={formatCurrency(totalEarned)} color="green" icon={<DollarSign size={24} />} />
+            <StatCard title="Total Paid" value={formatCurrency(totalPaid)} color="blue" icon={<CheckCircle size={24} />} />
+            <StatCard title="Outstanding" value={formatCurrency(totalOutstanding)} color={totalOutstanding > 0 ? 'orange' : 'green'} icon={<Wallet size={24} />} />
+          </div>
+
+          <Card>
+            <CardHeader><h3 className="font-bold text-gray-800">Bonus History — {history[0]?.distributor_name || search}</h3></CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">NB Number</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Distributor</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Earned</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outstanding</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {history.map(r => {
+                    const out = Number(r.amount_earned) - Number(r.amount_paid);
+                    return (
+                      <React.Fragment key={r.id}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold">{r.period}</td>
+                          <td className="px-4 py-3 font-mono text-primary">{r.nb_number}</td>
+                          <td className="px-4 py-3">{r.distributor_name}</td>
+                          <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(r.amount_earned)}</td>
+                          <td className="px-4 py-3 text-right font-bold text-blue-700">{formatCurrency(r.amount_paid)}</td>
+                          <td className="px-4 py-3 text-right font-bold" style={{ color: out > 0.01 ? '#ea580c' : '#16a34a' }}>{formatCurrency(out)}</td>
+                          <td className="px-4 py-3"><Badge variant={r.status === 'paid' ? 'success' : r.status === 'partial' ? 'warning' : 'danger'}>{r.status}</Badge></td>
+                        </tr>
+                        {Array.isArray(r.payments) && r.payments.map(p => (
+                          <tr key={p.id} style={{ background: '#f0f9ff' }}>
+                            <td className="px-4 py-2 pl-10 text-xs text-gray-400 italic" colSpan={1}>↳ Payment</td>
+                            <td className="px-4 py-2 text-xs text-gray-500">{p.paid_at ? formatDate(p.paid_at) : '—'}</td>
+                            <td className="px-4 py-2 text-xs text-gray-500">{branchLabel(p.branch_id)}</td>
+                            <td className="px-4 py-2 text-xs text-gray-400" colSpan={2}></td>
+                            <td className="px-4 py-2 text-right text-xs font-bold text-blue-700">{formatCurrency(p.amount)}</td>
+                            <td className="px-4 py-2 text-xs text-gray-400">{p.recorded_by || '—'}</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+      {searched && history.length === 0 && (
+        <div className="text-center text-gray-400 py-8">No bonus records found for "{search}".</div>
+      )}
+    </div>
+  );
+}
+
+function BonusCommittedSubTab() {
+  const [bonuses, setBonuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPeriod, setFilterPeriod] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (filterStatus) params.status = filterStatus;
+      if (filterPeriod) params.period = filterPeriod;
+      const result = await api.finance.distributorBonuses({ ...params, include_payments: true });
+      setBonuses(result.bonuses || []);
+    } catch (err) { setBonuses([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [filterStatus, filterPeriod]);
+
+  const totalEarned = bonuses.reduce((s, b) => s + Number(b.amount_earned || 0), 0);
+  const totalPaid = bonuses.reduce((s, b) => s + Number(b.amount_paid || 0), 0);
+  const pendingCount = bonuses.filter(b => b.status !== 'paid').length;
+
+  const periods = [...new Set(bonuses.map(b => b.period).filter(Boolean))].sort().reverse();
+
+  return (
+    <div className="space-y-4">
+      {loading ? <LoadingSpinner /> : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard title="Total Bonuses" value={bonuses.length} color="blue" icon={<ClipboardList size={24} />} />
+            <StatCard title="Total Earned" value={formatCurrency(totalEarned)} color="green" icon={<DollarSign size={24} />} />
+            <StatCard title="Total Paid" value={formatCurrency(totalPaid)} color="blue" icon={<CheckCircle size={24} />} />
+            <StatCard title="Outstanding" value={formatCurrency(totalEarned - totalPaid)} color={totalEarned - totalPaid > 0 ? 'orange' : 'green'} icon={<Wallet size={24} />} />
+          </div>
+
+          <div className="flex flex-wrap gap-3 items-center">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+            </select>
+            <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+              <option value="">All Periods</option>
+              {periods.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <Button size="sm" variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button>
+          </div>
+
+          <Card>
+            <CardHeader><h3 className="font-bold text-gray-800">All Committed Bonuses</h3></CardHeader>
+            <Table
+              columns={[
+                { header: 'Period', render: r => <span className="font-semibold">{r.period}</span> },
+                { header: 'NB Number', render: r => <span className="font-mono text-primary text-sm">{r.nb_number}</span> },
+                { header: 'Distributor', render: r => r.distributor_name },
+                { header: 'Earned', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount_earned)}</span> },
+                { header: 'Paid', render: r => <span className="font-bold text-blue-700">{formatCurrency(r.amount_paid)}</span> },
+                { header: 'Outstanding', render: r => {
+                  const out = Number(r.amount_earned) - Number(r.amount_paid);
+                  return <span className={`font-bold ${out > 0.01 ? 'text-orange-600' : 'text-green-600'}`}>{formatCurrency(out)}</span>;
+                }},
+                { header: 'Status', render: r => <Badge variant={r.status === 'paid' ? 'success' : r.status === 'partial' ? 'warning' : 'danger'}>{r.status}</Badge> },
+                { header: 'Branch Paid', render: r => r.paid_by_branch_id ? branchLabel(r.paid_by_branch_id) : '—' },
+              ]}
+              data={bonuses}
+              emptyMessage="No committed bonus records found"
+            />
+          </Card>
+        </>
       )}
     </div>
   );

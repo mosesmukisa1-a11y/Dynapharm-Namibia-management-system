@@ -12,9 +12,10 @@ export default function DistributorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'mybonus', label: 'My Bonus', icon: '💰' },
     { id: 'shop', label: 'Shop', icon: '🛒' },
     { id: 'register', label: 'New Member', icon: '📝' },
-    { id: 'bv', label: 'BV & Profit', icon: '💰' },
+    { id: 'bv', label: 'BV & Profit', icon: '📈' },
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'media', label: 'Media & News', icon: '📰' },
@@ -26,6 +27,7 @@ export default function DistributorPortal() {
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'mybonus' && <MyBonusTab />}
         {activeTab === 'shop' && <ShopTab />}
         {activeTab === 'register' && <NewMemberTab />}
         {activeTab === 'bv' && <BVProfitTab />}
@@ -34,6 +36,171 @@ export default function DistributorPortal() {
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
+    </div>
+  );
+}
+
+function MyBonusTab() {
+  const { user } = useAuth();
+  const [bonuses, setBonuses] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [publicNB, setPublicNB] = useState('');
+  const [nbInput, setNBInput] = useState('');
+
+  const fetchBonuses = async (nb) => {
+    setLoading(true);
+    try {
+      const result = await api.distributors.bonuses(nb || null);
+      setBonuses(result.bonuses || []);
+      setSummary(result.summary || null);
+    } catch (err) {
+      setBonuses([]); setSummary(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      const nb = user.username?.toUpperCase() || user.metadata?.nb_number || '';
+      setPublicNB(nb);
+      fetchBonuses(null);
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const hasOutstanding = bonuses.some(b => (Number(b.amount_earned) - Number(b.amount_paid)) > 0.01);
+
+  return (
+    <div className="space-y-5">
+      {!user && (
+        <Card>
+          <CardBody>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your bonus history</label>
+                <input type="text" value={nbInput} onChange={e => setNBInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNB(nbInput.trim()); fetchBonuses(nbInput.trim()); } }}
+                  placeholder="e.g. NB001234"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNB(nb); fetchBonuses(nb); } }}>Look Up</Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {loading ? <LoadingSpinner /> : (
+        <>
+          {hasOutstanding && (
+            <div className="p-4 bg-orange-50 border border-orange-300 rounded-xl flex items-start gap-3">
+              <span className="text-2xl">🔔</span>
+              <div>
+                <p className="font-bold text-orange-800">You have an outstanding bonus!</p>
+                <p className="text-sm text-orange-700 mt-0.5">One or more of your bonuses have not been fully paid yet. Please contact your branch to collect your bonus payment.</p>
+              </div>
+            </div>
+          )}
+
+          {summary && (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-xl p-4 text-white bg-gradient-to-br from-green-500 to-green-700 text-center">
+                <p className="text-xs opacity-80 uppercase tracking-wide">Total Earned</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalEarned || 0)}</p>
+              </div>
+              <div className="rounded-xl p-4 text-white bg-gradient-to-br from-blue-500 to-blue-700 text-center">
+                <p className="text-xs opacity-80 uppercase tracking-wide">Total Paid</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalPaid || 0)}</p>
+              </div>
+              <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(summary.totalOutstanding || 0) > 0 ? 'from-orange-500 to-orange-700' : 'from-gray-400 to-gray-600'} text-center`}>
+                <p className="text-xs opacity-80 uppercase tracking-wide">Outstanding</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalOutstanding || 0)}</p>
+              </div>
+            </div>
+          )}
+
+          <Card>
+            <CardHeader>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <span>💰</span> My Bonus History {publicNB && <span className="text-sm font-normal text-gray-500">— {publicNB}</span>}
+              </h3>
+            </CardHeader>
+            {bonuses.length === 0 ? (
+              <CardBody>
+                <p className="text-center text-gray-400 py-6 text-sm">No bonus records found. Bonuses are uploaded by Finance each month.</p>
+              </CardBody>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Earned</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outstanding</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Paid By</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {bonuses.map(b => {
+                      const outstanding = Number(b.amount_earned) - Number(b.amount_paid);
+                      return (
+                        <tr key={b.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold">{b.period}</td>
+                          <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(b.amount_earned)}</td>
+                          <td className="px-4 py-3 text-right font-bold text-blue-700">{formatCurrency(b.amount_paid)}</td>
+                          <td className="px-4 py-3 text-right font-bold">
+                            <span className={outstanding > 0.01 ? 'text-orange-600' : 'text-green-600'}>{formatCurrency(outstanding)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={b.status === 'paid' ? 'success' : b.status === 'partial' ? 'warning' : 'danger'}>{b.status}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{b.paid_by_branch_id || '—'}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{b.payment_date ? formatDate(b.payment_date) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {bonuses.some(b => (b.payments || []).length > 0) && (
+            <Card>
+              <CardHeader><h3 className="font-bold text-gray-800">Payment Details</h3></CardHeader>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount Paid</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Branch</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {bonuses.flatMap(b => (b.payments || []).map(p => (
+                      <tr key={p.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-semibold">{b.period}</td>
+                        <td className="px-4 py-3 text-right font-bold text-blue-700">{formatCurrency(p.amount)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{p.branch_id}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(p.paid_at)}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{p.notes || '—'}</td>
+                      </tr>
+                    )))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }

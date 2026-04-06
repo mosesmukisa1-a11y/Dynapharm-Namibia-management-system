@@ -4116,6 +4116,31 @@ function BranchStockTab() {
                 if (!requests || requests.length === 0) { alert('No stock requests loaded for this branch. Please navigate to the Stock Requests tab first to load data.'); return; }
                 printReceivingStockReport(requests, branchName);
               }},
+              { icon: '🎁', title: 'Bonus Payments Report', desc: 'Distributor bonus payments made by this branch with optional date range filter.', action: async () => {
+                try {
+                  const fromDate = prompt('From date (YYYY-MM-DD), leave blank for all:') || '';
+                  const toDate = prompt('To date (YYYY-MM-DD), leave blank for all:') || '';
+                  const params = { branch: branchIdParam };
+                  if (fromDate) params.from = fromDate;
+                  if (toDate) params.to = toDate;
+                  const result = await api.branch.bonusPayments(params);
+                  const paidList = result.paidHistory || [];
+                  if (paidList.length === 0) { alert('No bonus payments recorded for this branch.'); return; }
+                  const totalPaid = paidList.reduce((s, p) => s + Number(p.amount || 0), 0);
+                  const rows = paidList.map(p =>
+                    `<tr><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.nb_number || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.distributor_name || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.period || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${Number(p.amount || 0).toFixed(2)}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-NA') : '-'}</td></tr>`
+                  ).join('');
+                  printStockDocument(`Bonus Payments Report — ${branchName}`, `
+                    <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">DISTRIBUTOR BONUS PAYMENTS</h3>
+                    <table style="width:100%;border-collapse:collapse;font-size:11px">
+                      <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 10px">NB Number</th><th style="text-align:left;padding:8px 10px">Distributor</th><th style="text-align:left;padding:8px 10px">Period</th><th style="text-align:right;padding:8px 10px">Amount</th><th style="text-align:left;padding:8px 10px">Date Paid</th></tr></thead>
+                      <tbody>${rows}</tbody>
+                      <tfoot><tr style="background:#f0fdf4;border-top:2px solid #86efac"><td colspan="3" style="padding:10px;font-weight:800">TOTAL PAID</td><td style="padding:10px;text-align:right;font-weight:900;color:#166534;font-size:13px">N$ ${totalPaid.toFixed(2)}</td><td></td></tr></tfoot>
+                    </table>`, branchName);
+                } catch (e) {
+                  alert('Failed to load bonus payments: ' + (e.message || 'Unknown error'));
+                }
+              }},
             ].map(card => (
               <div key={card.title} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '18px 20px', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: '2rem' }}>{card.icon}</div>
@@ -5313,117 +5338,224 @@ function OnlineOrdersTab() {
 }
 
 function BonusTab() {
-  const [bonuses, setBonuses] = useState([]);
+  const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const branchId = portalBranch || user?.branch || '';
+  const [pendingBonuses, setPendingBonuses] = useState([]);
+  const [paidHistory, setPaidHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ distributor_name: '', nb_number: '', amount: '', bv_amount: '', period: '', notes: '' });
-  const [bonusMonth, setBonusMonth] = useState('');
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [selectedBonus, setSelectedBonus] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [payForm, setPayForm] = useState({ amount: '', paid_at: new Date().toISOString().slice(0, 10), notes: '' });
   const [bonusSearch, setBonusSearch] = useState('');
+  const [filterPeriod, setFilterPeriod] = useState('');
 
-  const loadBonuses = () => {
+  const load = async () => {
     setLoading(true);
-    api.get('/branch/payments?type=bonus')
-      .then(d => setBonuses(Array.isArray(d) ? d : d.payments || d.bonuses || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    try {
+      const result = await api.branch.bonusPayments({ branch: branchId });
+      setPendingBonuses(result.bonuses || []);
+      setPaidHistory(result.paidHistory || []);
+    } catch (err) {
+      setAlert({ type: 'error', message: 'Failed to load bonus data: ' + (err.message || '') });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { loadBonuses(); }, []);
+  useEffect(() => { load(); }, [branchId]);
 
-  const handleSubmit = async () => {
-    if (!form.distributor_name.trim() || !form.amount || Number(form.amount) <= 0) return;
+  const openPayForm = (bonus) => {
+    const outstanding = Number(bonus.amount_earned) - Number(bonus.amount_paid);
+    setSelectedBonus(bonus);
+    setPayForm({ amount: outstanding.toFixed(2), paid_at: new Date().toISOString().slice(0, 10), notes: '' });
+    setShowPayForm(true);
+  };
+
+  const handleRecordPayment = async () => {
+    if (!selectedBonus || !payForm.amount || Number(payForm.amount) <= 0) return;
     setSubmitting(true);
     try {
-      await api.branch.createPayment({
-        type: 'bonus',
-        client_name: form.distributor_name.trim(),
-        nb_number: form.nb_number.trim(),
-        amount: Number(form.amount),
-        bv_amount: Number(form.bv_amount) || 0,
-        period: form.period,
-        notes: form.notes,
-        payment_method: 'Bank Transfer',
+      await api.branch.recordBonusPayment({
+        bonus_id: selectedBonus.id,
+        branch_id: branchId,
+        amount: Number(payForm.amount),
+        paid_at: payForm.paid_at,
+        notes: payForm.notes,
       });
-      setAlert({ type: 'success', message: 'Bonus payout recorded' });
-      setForm({ distributor_name: '', nb_number: '', amount: '', bv_amount: '', period: '', notes: '' });
-      setShowForm(false);
-      loadBonuses();
+      setAlert({ type: 'success', message: `Payment of ${formatCurrency(Number(payForm.amount))} recorded for ${selectedBonus.distributor_name}.` });
+      setShowPayForm(false);
+      setSelectedBonus(null);
+      load();
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to record bonus' });
+      setAlert({ type: 'error', message: err.message || 'Failed to record payment' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const filteredBonuses = bonuses.filter(b => {
-    let match = true;
-    if (bonusSearch.trim()) {
-      const q = bonusSearch.toLowerCase();
-      match = (b.client_name || b.distributor_name || '').toLowerCase().includes(q) || (b.nb_number || '').toLowerCase().includes(q);
-    }
-    if (bonusMonth && b.period) {
-      match = match && b.period.toLowerCase().includes(bonusMonth.toLowerCase());
-    }
-    return match;
+  const filtered = pendingBonuses.filter(b => {
+    const q = bonusSearch.toLowerCase();
+    const matchSearch = !bonusSearch || (b.distributor_name || '').toLowerCase().includes(q) || (b.nb_number || '').toLowerCase().includes(q);
+    const matchPeriod = !filterPeriod || (b.period || '') === filterPeriod;
+    return matchSearch && matchPeriod;
   });
+
+  const periods = [...new Set(pendingBonuses.map(b => b.period).filter(Boolean))].sort().reverse();
+  const totalOutstanding = filtered.reduce((s, b) => s + Math.max(0, Number(b.amount_earned) - Number(b.amount_paid)), 0);
+  const totalPaidThisBranch = paidHistory.reduce((s, p) => s + Number(p.amount || 0), 0);
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div>
-      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-        <h3 className="text-white text-lg font-bold m-0">🎁 Bonus Payouts</h3>
-        <p className="text-white/75 text-sm mt-1 m-0">Manage distributor bonus payments</p>
+    <div className="space-y-4">
+      <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">🎁 Distributor Bonus Payments</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">Record cash bonus payments to distributors. Bonuses are uploaded by Finance each month.</p>
       </div>
 
-      <div className="flex gap-3 items-center mb-4 flex-wrap" style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-        <input type="month" value={bonusMonth} onChange={e => setBonusMonth(e.target.value)} className="px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" style={{ maxWidth: '200px' }} />
-        <input type="text" placeholder="Search NB or Name..." value={bonusSearch} onChange={e => setBonusSearch(e.target.value)} className="flex-1 min-w-[240px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-        <button onClick={loadBonuses} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
-      </div>
+      {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
-      <div className="mb-3 text-sm" style={{ color: '#2c3e50' }}>
-        {filteredBonuses.length} bonus record{filteredBonuses.length !== 1 ? 's' : ''} found
-      </div>
-
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Bonus Payout">
-        <div className="p-6 space-y-4">
-          <Input label="Distributor Name" value={form.distributor_name} onChange={e => setForm({ ...form, distributor_name: e.target.value })} />
-          <Input label="NB Number" value={form.nb_number} onChange={e => setForm({ ...form, nb_number: e.target.value })} />
-          <Input label="Bonus Amount (N$)" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
-          <Input label="BV Amount" type="number" value={form.bv_amount} onChange={e => setForm({ ...form, bv_amount: e.target.value })} />
-          <Input label="Period" value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} placeholder="e.g. March 2026" />
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-          <div className="flex gap-3">
-            <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Recording...' : 'Record Payout'}
-            </Button>
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="rounded-xl p-4 bg-orange-50 border border-orange-200 text-center">
+          <p className="text-xs text-orange-600 uppercase tracking-wide font-semibold">Pending Bonuses</p>
+          <p className="text-2xl font-bold text-orange-700">{filtered.length}</p>
+          <p className="text-xs text-orange-500">{formatCurrency(totalOutstanding)} outstanding</p>
         </div>
-      </Modal>
+        <div className="rounded-xl p-4 bg-green-50 border border-green-200 text-center">
+          <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Paid By This Branch</p>
+          <p className="text-2xl font-bold text-green-700">{paidHistory.length}</p>
+          <p className="text-xs text-green-500">{formatCurrency(totalPaidThisBranch)} total</p>
+        </div>
+        <div className="rounded-xl p-4 bg-blue-50 border border-blue-200 text-center">
+          <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Periods</p>
+          <p className="text-2xl font-bold text-blue-700">{periods.length}</p>
+          <p className="text-xs text-blue-500">Bonus months</p>
+        </div>
+      </div>
 
-      <div style={{ maxHeight: '460px', overflowY: 'auto', background: 'white', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
-        {filteredBonuses.length === 0 ? (
-          <p className="text-center py-5" style={{ color: '#7f8c8d' }}>No pending bonuses</p>
+      <div className="flex flex-wrap gap-3 items-center">
+        <input type="text" placeholder="Search NB or Name..." value={bonusSearch} onChange={e => setBonusSearch(e.target.value)}
+          className="flex-1 min-w-[200px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+          <option value="">All Periods</option>
+          {periods.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <Button size="sm" variant="secondary" onClick={load}>🔄 Refresh</Button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h4 className="font-bold text-gray-800">Pending & Partial Bonuses</h4>
+          <p className="text-xs text-gray-500">Distributors with outstanding bonus amounts</p>
+        </div>
+        {filtered.length === 0 ? (
+          <p className="text-center text-gray-400 py-8 text-sm">No pending bonuses. Finance uploads bonus records monthly.</p>
         ) : (
-          <Table
-            columns={[
-              { header: 'Distributor', render: r => r.client_name || r.distributor_name || '-' },
-              { header: 'NB Number', render: r => r.nb_number || '-' },
-              { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
-              { header: 'Period', key: 'period' },
-              { header: 'Status', render: r => <Badge variant={r.status === 'paid' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
-              { header: 'Date', render: r => formatDateTime(r.created_at) },
-            ]}
-            data={filteredBonuses}
-            emptyMessage="No bonus records"
-          />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">NB Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Distributor</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Earned</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outstanding</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(b => {
+                  const outstanding = Math.max(0, Number(b.amount_earned) - Number(b.amount_paid));
+                  return (
+                    <tr key={b.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-mono font-bold text-primary text-sm">{b.nb_number}</td>
+                      <td className="px-4 py-3 font-medium">{b.distributor_name}</td>
+                      <td className="px-4 py-3 text-gray-600">{b.period}</td>
+                      <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(b.amount_earned)}</td>
+                      <td className="px-4 py-3 text-right text-blue-700">{formatCurrency(b.amount_paid)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-orange-600">{formatCurrency(outstanding)}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={b.status === 'partial' ? 'warning' : 'danger'}>{b.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Button size="sm" variant="success" onClick={() => openPayForm(b)}>Record Payment</Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {paidHistory.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-green-50 border-b border-green-200">
+            <h4 className="font-bold text-gray-800">Bonus Payments Made by This Branch</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">NB Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Distributor</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount Paid</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Recorded By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paidHistory.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-primary text-sm">{p.nb_number}</td>
+                    <td className="px-4 py-3 font-medium">{p.distributor_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.period}</td>
+                    <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(p.amount)}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(p.paid_at)}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{p.recorded_by || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <Modal open={showPayForm} onClose={() => { setShowPayForm(false); setSelectedBonus(null); }} title="Record Bonus Payment" size="md">
+        {selectedBonus && (
+          <div className="p-6 space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="font-semibold text-blue-900">{selectedBonus.distributor_name}</p>
+              <p className="text-sm text-blue-700">NB: {selectedBonus.nb_number} · Period: {selectedBonus.period}</p>
+              <p className="text-sm text-blue-700">Outstanding: <strong>{formatCurrency(Math.max(0, Number(selectedBonus.amount_earned) - Number(selectedBonus.amount_paid)))}</strong></p>
+            </div>
+            <Input label="Payment Amount (N$)" type="number" min="0.01" step="0.01"
+              value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} />
+            <Input label="Payment Date" type="date"
+              value={payForm.paid_at} onChange={e => setPayForm(f => ({ ...f, paid_at: e.target.value }))} />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
+              <textarea value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
+                placeholder="Receipt number, remarks..." />
+            </div>
+            <div className="flex gap-3">
+              <Button className="flex-1" variant="success" onClick={handleRecordPayment} disabled={submitting}>
+                {submitting ? 'Recording…' : 'Record Payment'}
+              </Button>
+              <Button variant="secondary" onClick={() => { setShowPayForm(false); setSelectedBonus(null); }}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

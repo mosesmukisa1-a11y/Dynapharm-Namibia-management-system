@@ -69,6 +69,7 @@ export const api = {
     create: (data) => api.post('/distributors', data),
     search: (q, activeOnly = false) => api.get(`/distributors/search?q=${encodeURIComponent(q)}&activeOnly=${activeOnly}`),
     byNb: (nb) => api.get(`/distributors/by-nb/${encodeURIComponent(nb)}`),
+    bonuses: (nb) => nb ? api.get(`/distributor/bonus?nb=${encodeURIComponent(nb)}`) : api.get('/distributor/bonus'),
   },
 
   appointments: {
@@ -188,6 +189,8 @@ export const api = {
     dispense: (data) => api.post('/branch/dispense', data),
     captureRx: (data) => api.post('/branch/capture-rx', data),
     stockSummary: (params = '') => api.get(`/branch/stock-summary${params ? '?' + params : ''}`),
+    bonusPayments: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/bonus-payments${qs ? '?' + qs : ''}`); },
+    recordBonusPayment: (data) => api.post('/branch/bonus-payments', data),
   },
 
   branchActivity: {
@@ -255,6 +258,10 @@ export const api = {
     approveExpense: (id, notes = '') => api.patch('/branch/expenses', { id, status: 'approved', notes }),
     rejectExpense: (id, notes = '') => api.patch('/branch/expenses', { id, status: 'rejected', notes }),
     deposits: (params = '') => api.get(`/branch/deposits${params ? '?' + params : ''}`),
+    distributorBonuses: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/distributor-bonuses${qs ? '?' + qs : ''}`); },
+    uploadDistributorBonuses: (formData) => request('/finance/distributor-bonuses/upload', { method: 'POST', body: formData }),
+    commitDistributorBonuses: (data) => api.post('/finance/distributor-bonus-commit', data),
+    distributorBonusHistory: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/distributor-bonus-history${qs ? '?' + qs : ''}`); },
     pettyCash: {
       accounts: () => api.get('/finance/petty-cash/balance'),
       requests: () => api.get('/finance/petty-cash/requests'),
