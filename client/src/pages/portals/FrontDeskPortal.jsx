@@ -5,6 +5,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, W
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Table, Alert, Select, Textarea } from '../../components/ui';
 import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus, Package, Eye, Send, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import StaffServicesTab from '../../components/StaffServicesTab';
 
 export default function FrontDeskPortal() {
   const [activeTab, setActiveTab] = useState('appointments');
@@ -998,71 +999,3 @@ function StaffCommunicationTab() {
   );
 }
 
-function StaffServicesTab() {
-  const [form, setForm] = useState({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-  const [submitted, setSubmitted] = useState(false);
-  const [requests, setRequests] = useState([]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const request = {
-      ...form,
-      id: Date.now(),
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-    setRequests(prev => [request, ...prev]);
-    setSubmitted(true);
-    setForm({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-    setTimeout(() => setSubmitted(false), 3000);
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Leave Request</h3></CardHeader>
-        <CardBody>
-          {submitted && <Alert type="success" className="mb-4">Leave request submitted successfully!</Alert>}
-          <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
-            <Select
-              label="Leave Type"
-              value={form.leave_type}
-              onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))}
-              options={[
-                { value: 'Annual', label: 'Annual Leave' },
-                { value: 'Sick', label: 'Sick Leave' },
-                { value: 'Personal', label: 'Personal Leave' },
-                { value: 'Family', label: 'Family Responsibility' },
-              ]}
-            />
-            <div />
-            <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} required />
-            <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} required />
-            <div className="md:col-span-2">
-              <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required />
-            </div>
-            <div className="md:col-span-2 flex justify-end">
-              <Button type="submit">Submit Leave Request</Button>
-            </div>
-          </form>
-        </CardBody>
-      </Card>
-
-      {requests.length > 0 && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">My Leave Requests</h3></CardHeader>
-          <Table
-            columns={[
-              { header: 'Type', render: r => <Badge variant="info">{r.leave_type}</Badge> },
-              { header: 'From', render: r => formatDate(r.start_date) },
-              { header: 'To', render: r => formatDate(r.end_date) },
-              { header: 'Status', render: r => <Badge variant="warning">{r.status}</Badge> },
-            ]}
-            data={requests}
-            emptyMessage="No leave requests"
-          />
-        </Card>
-      )}
-    </div>
-  );
-}

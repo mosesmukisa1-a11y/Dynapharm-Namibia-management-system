@@ -5,6 +5,7 @@ import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DAT
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import StaffServicesTab from '../../components/StaffServicesTab';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -1903,6 +1904,10 @@ function AnalyticsSection() {
 }
 
 function StaffServicesSection() {
+  return <StaffServicesTab accentColor="#6d28d9" />;
+}
+
+function _OldStaffServicesSection_unused_IGNORE() {
   const [leaveModal, setLeaveModal] = useState(false);
   const [cashModal, setCashModal] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: '', startDate: '', endDate: '', reason: '', urgent: false });

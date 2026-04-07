@@ -4,6 +4,7 @@ import { formatDate, formatDateTime, BRANCH_DETAILS } from '../../lib/constants'
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus } from 'lucide-react';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
+import StaffServicesTab from '../../components/StaffServicesTab';
 
 export default function HRPortal() {
   const [activeTab, setActiveTab] = useState('employees');
@@ -868,44 +869,3 @@ function DataTab() {
   );
 }
 
-function StaffServicesTab() {
-  const [form, setForm] = useState({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setSubmitted(true);
-    setForm({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-    setTimeout(() => setSubmitted(false), 3000);
-  };
-
-  return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Personal Leave Request</h3></CardHeader>
-      <CardBody>
-        {submitted && <Alert type="success" className="mb-4">Leave request submitted!</Alert>}
-        <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
-          <Select
-            label="Leave Type"
-            value={form.leave_type}
-            onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))}
-            options={[
-              { value: 'Annual', label: 'Annual Leave' },
-              { value: 'Sick', label: 'Sick Leave' },
-              { value: 'Personal', label: 'Personal Leave' },
-            ]}
-          />
-          <div />
-          <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} required />
-          <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} required />
-          <div className="md:col-span-2">
-            <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required />
-          </div>
-          <div className="md:col-span-2 flex justify-end">
-            <Button type="submit">Submit Request</Button>
-          </div>
-        </form>
-      </CardBody>
-    </Card>
-  );
-}

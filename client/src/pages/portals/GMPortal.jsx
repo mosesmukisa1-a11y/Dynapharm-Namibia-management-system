@@ -563,6 +563,9 @@ function ApprovalsTab() {
   const [pettyCashRequests, setPettyCashRequests] = useState([]);
   const [rentEditRequests, setRentEditRequests] = useState([]);
   const [salaryEditRequests, setSalaryEditRequests] = useState([]);
+  const [casRequests, setCasRequests] = useState([]);
+  const [casModal, setCasModal] = useState(null);
+  const [casNote, setCasNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -596,7 +599,8 @@ function ApprovalsTab() {
       api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
       api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs]) => {
+      api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -605,6 +609,7 @@ function ApprovalsTab() {
       setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
       setRentEditRequests(rentReqs);
       setSalaryEditRequests(salaryReqs);
+      setCasRequests(casReqs);
     }).finally(() => setLoading(false));
   };
 
@@ -779,6 +784,25 @@ function ApprovalsTab() {
     }
   };
 
+  const handleCasAction = async (action) => {
+    if (!casModal) return;
+    setProcessing(true);
+    try {
+      await api.patch(`/cash-requests/${casModal.id}`, { status: action, note: casNote });
+      const msg = action === 'approved'
+        ? `✅ Cash advance approved for ${casModal.staff_name || casModal.requested_by} — N$ ${Number(casModal.amount).toFixed(2)}.`
+        : `❌ Cash advance request rejected.`;
+      setMessage(msg);
+      setCasRequests(prev => prev.filter(r => r.id !== casModal.id));
+      setCasModal(null);
+      setCasNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleSalaryReview = async (action) => {
     if (!salaryReviewModal) return;
     setProcessing(true);
@@ -803,6 +827,7 @@ function ApprovalsTab() {
     { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
     { id: 'rent_edits', label: `🏘️ Rent Edits${rentEditRequests.length > 0 ? ` (${rentEditRequests.length})` : ''}` },
     { id: 'salary_edits', label: `💼 Salary Edits${salaryEditRequests.length > 0 ? ` (${salaryEditRequests.length})` : ''}` },
+    { id: 'cas_approvals', label: `💵 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1341,8 +1366,85 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {approvalTab === 'cas_approvals' && (
+        <div className="space-y-4">
+          {casRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-16 text-gray-400">
+              <CheckCircle size={48} className="mb-2 opacity-30" />
+              <p className="font-semibold text-gray-500">No Pending CAS Approvals</p>
+              <p className="text-sm text-gray-400 mt-1">Cash advance requests reviewed by Finance will appear here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <strong>{casRequests.length}</strong> cash advance request{casRequests.length !== 1 ? 's' : ''} reviewed by Finance awaiting your final approval.
+              </div>
+              {casRequests.map(r => (
+                <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-bold text-gray-800">{r.request_number}</span>
+                      <span className="font-bold text-lg text-green-700">N$ {Number(r.amount || 0).toFixed(2)}</span>
+                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>💼 Finance Reviewed</span>
+                    </div>
+                    <button onClick={() => { setCasModal(r); setCasNote(''); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:bg-primary/90 cursor-pointer">
+                      Review &amp; Approve
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Requested by:</span> {r.staff_name || r.requested_by} · <span className="font-semibold">Branch:</span> {r.branch}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
+                    {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
+                    {r.finance_note && <div className="text-xs mt-2 p-2 rounded bg-blue-50 border border-blue-100 text-blue-800">Finance Note: {r.finance_note}</div>}
+                    <div className="text-xs text-gray-400 mt-2">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString('en-NA') : '—'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {casModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) { setCasModal(null); setCasNote(''); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 24px', background: 'linear-gradient(135deg,#166534,#15803d)' }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800 }}>💵 Final CAS Approval</h3>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>{casModal.request_number} · Finance Reviewed</p>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Staff</span>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{casModal.staff_name || casModal.requested_by}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Amount</span>
+                  <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.05rem' }}>N$ {Number(casModal.amount || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{casModal.purpose}</div>
+                {casModal.finance_note && <div style={{ marginTop: 8, fontSize: '0.8rem', padding: '6px 10px', background: '#eff6ff', borderRadius: 6, color: '#1e40af' }}>Finance Note: {casModal.finance_note}</div>}
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>GM Note (optional)</label>
+                <textarea value={casNote} onChange={e => setCasNote(e.target.value)} rows={2} placeholder="Add a note…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setCasModal(null); setCasNote(''); }} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                <button onClick={() => handleCasAction('rejected')} disabled={processing} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 10, background: '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>❌ Reject</button>
+                <button onClick={() => handleCasAction('approved')} disabled={processing} style={{ flex: 2, padding: '10px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#166534,#15803d)', color: '#fff', fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                  {processing ? '⏳ Processing…' : '✅ Approve Cash Advance'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 

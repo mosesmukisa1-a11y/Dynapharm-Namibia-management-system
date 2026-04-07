@@ -4,22 +4,20 @@ import { api } from '../lib/api';
 const AuthContext = createContext(null);
 
 const ROLE_PORTAL_ACCESS = {
-  admin: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'admin', 'training', 'staff'],
+  admin: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'mis', 'stock', 'admin', 'training'],
   distributor: ['distributor'],
-  frontdesk: ['distributor', 'frontdesk', 'staff'],
-  consultant: ['consultant', 'staff'],
-  dispenser: ['branch', 'staff'],
-  branch_manager: ['frontdesk', 'branch', 'staff'],
-  hr_manager: ['hr', 'staff'],
-  finance: ['finance', 'staff'],
-  gm: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'stock', 'staff'],
-  director: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'stock', 'staff'],
-  mis: ['mis', 'staff'],
-  stock: ['stock', 'staff'],
-  warehouse: ['stock', 'staff'],
-  training: ['training', 'distributor', 'staff'],
-  staff: ['staff'],
-  support_staff: ['staff'],
+  frontdesk: ['distributor', 'frontdesk'],
+  consultant: ['consultant'],
+  dispenser: ['branch'],
+  branch_manager: ['frontdesk', 'branch'],
+  hr_manager: ['hr'],
+  finance: ['finance'],
+  gm: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'stock'],
+  director: ['distributor', 'frontdesk', 'consultant', 'branch', 'hr', 'finance', 'gm', 'director', 'stock'],
+  mis: ['mis'],
+  stock: ['stock'],
+  warehouse: ['stock'],
+  training: ['training', 'distributor'],
 };
 
 const SESSION_ALIVE_KEY = 'dyna_session_alive';
