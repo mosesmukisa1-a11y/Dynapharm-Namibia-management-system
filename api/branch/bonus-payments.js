@@ -93,10 +93,10 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = req.body || {};
-      const { bonus_id, amount, paid_at, notes } = body;
+      const { bonus_id, paid_at, notes } = body;
 
-      if (!bonus_id || !amount) {
-        return res.status(400).json({ success: false, error: 'bonus_id and amount are required' });
+      if (!bonus_id) {
+        return res.status(400).json({ success: false, error: 'bonus_id is required' });
       }
 
       const branchScope = getBranchScope(req.user);
@@ -118,20 +118,13 @@ export default async function handler(req, res) {
         return res.status(404).json({ success: false, error: 'Bonus record not found' });
       }
 
-      if (!isFullAccess) {
-        const distributor = await getOne(
-          `SELECT branch FROM distributors WHERE distributor_code = $1`,
-          [bonus.nb_number]
-        );
-        if (distributor && distributor.branch && distributor.branch !== branchId) {
-          return res.status(403).json({ success: false, error: 'This distributor is not registered at your branch' });
-        }
+      if (bonus.status === 'paid') {
+        return res.status(409).json({ success: false, error: `This bonus for ${bonus.distributor_name} (${bonus.period}) has already been paid by branch ${bonus.paid_by_branch_id || 'another branch'}.` });
       }
 
-      const payAmount = parseFloat(amount);
-      const outstanding = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
-      if (payAmount <= 0 || payAmount > outstanding + 0.01) {
-        return res.status(400).json({ success: false, error: `Payment amount exceeds outstanding balance of ${outstanding.toFixed(2)}` });
+      const payAmount = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
+      if (payAmount <= 0.01) {
+        return res.status(409).json({ success: false, error: 'No outstanding balance on this bonus.' });
       }
 
       const payId = `BPAY-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
@@ -144,18 +137,44 @@ export default async function handler(req, res) {
         [payId, bonus_id, branchId, payAmount, paidDate, recordedBy, notes || null]
       );
 
-      const newAmountPaid = parseFloat(bonus.amount_paid) + payAmount;
-      const newOutstanding = parseFloat(bonus.amount_earned) - newAmountPaid;
-      const newStatus = newOutstanding <= 0.01 ? 'paid' : 'partial';
-
       await query(
         `UPDATE distributor_bonuses
-         SET amount_paid = $1, status = $2, paid_by_branch_id = $3, payment_date = $4, updated_at = NOW()
-         WHERE id = $5`,
-        [newAmountPaid, newStatus, branchId, paidDate, bonus_id]
+         SET amount_paid = amount_earned, status = 'paid', paid_by_branch_id = $1, payment_date = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [branchId, paidDate, bonus_id]
       );
 
-      return res.json({ success: true, payment_id: payId, new_status: newStatus, amount_paid: newAmountPaid, outstanding: Math.max(0, newOutstanding) });
+      const moveId = `BMOV-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      const activeSession = await getOne(
+        `SELECT id FROM branch_cash_sessions WHERE branch_id = $1 AND is_open = true ORDER BY opened_at DESC LIMIT 1`,
+        [branchId]
+      );
+      if (activeSession) {
+        await query(
+          `INSERT INTO branch_cash_movements (id, session_id, branch_id, type, description, amount, recorded_by, recorded_at, reference, notes)
+           VALUES ($1, $2, $3, 'expense', $4, $5, $6, NOW(), $7, $8)`,
+          [moveId, activeSession.id, branchId, `Bonus payment to ${bonus.distributor_name} (${bonus.nb_number}) - ${bonus.period}`, payAmount, recordedBy, payId, notes || null]
+        );
+      }
+
+      return res.json({
+        success: true,
+        payment_id: payId,
+        new_status: 'paid',
+        amount_paid: payAmount,
+        outstanding: 0,
+        receipt: {
+          payment_id: payId,
+          nb_number: bonus.nb_number,
+          distributor_name: bonus.distributor_name,
+          period: bonus.period,
+          amount: payAmount,
+          paid_at: paidDate,
+          branch_id: branchId,
+          recorded_by: recordedBy,
+          notes: notes || null,
+        }
+      });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

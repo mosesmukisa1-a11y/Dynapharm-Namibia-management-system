@@ -5339,6 +5339,68 @@ function OnlineOrdersTab() {
   );
 }
 
+function printBonusPaymentReceipt({ payment_id, nb_number, distributor_name, period, amount, paid_at, branch_id, recorded_by, notes }) {
+  const branchLabel = (branch_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const dateStr = paid_at ? new Date(paid_at).toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
+  const amtStr = `N$ ${Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  const win = window.open('', '_blank', 'width=420,height=620');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bonus Receipt</title><style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Courier New',monospace;font-size:12px;color:#1e293b;background:#fff;padding:0}
+    .wrap{width:320px;margin:0 auto;padding:18px 14px}
+    .logo{text-align:center;margin-bottom:8px}
+    .co{font-size:13px;font-weight:900;color:#c41e3a;letter-spacing:0.5px}
+    .sub{font-size:9px;color:#64748b;margin-top:1px}
+    .title{text-align:center;font-size:11px;font-weight:700;border-top:2px dashed #cbd5e1;border-bottom:2px dashed #cbd5e1;padding:6px 0;margin:10px 0;letter-spacing:1px;color:#1e40af}
+    .row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px}
+    .row.bold{font-weight:700}
+    .label{color:#64748b}
+    .val{font-weight:600;text-align:right;max-width:190px;word-break:break-word}
+    .divider{border-top:1px dashed #cbd5e1;margin:8px 0}
+    .amount-box{background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:10px;text-align:center;margin:12px 0}
+    .amount-lbl{font-size:9px;color:#16a34a;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+    .amount-val{font-size:22px;font-weight:900;color:#15803d;margin-top:2px}
+    .stamp{text-align:center;margin-top:16px;padding:8px;border:2px solid #22c55e;border-radius:8px;background:#f0fdf4}
+    .stamp-text{font-size:14px;font-weight:900;color:#15803d;letter-spacing:2px}
+    .sig{margin-top:20px;border-top:1px solid #1e293b;padding-top:4px;font-size:9px;color:#64748b;text-align:center}
+    .footer{text-align:center;font-size:9px;color:#94a3b8;margin-top:14px;border-top:1px dashed #cbd5e1;padding-top:8px}
+    .print-btn{display:block;width:100%;margin-top:14px;padding:10px;background:#c41e3a;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer}
+    @media print{.print-btn{display:none}body{padding:0}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+  </style></head><body>
+  <div class="wrap">
+    <div class="logo">
+      <div class="co">DYNAPHARM INTERNATIONAL</div>
+      <div class="co" style="font-size:11px">NAMIBIA</div>
+      <div class="sub">Bonus Payment Receipt</div>
+    </div>
+    <div class="title">✓ BONUS PAYMENT RECEIPT</div>
+    <div class="row"><span class="label">Receipt #</span><span class="val">${payment_id}</span></div>
+    <div class="row"><span class="label">Date</span><span class="val">${dateStr}</span></div>
+    <div class="row"><span class="label">Branch</span><span class="val">${branchLabel}</span></div>
+    <div class="divider"></div>
+    <div class="row bold"><span class="label">NB Number</span><span class="val">${nb_number}</span></div>
+    <div class="row bold"><span class="label">Distributor</span><span class="val">${distributor_name}</span></div>
+    <div class="row"><span class="label">Bonus Period</span><span class="val">${period}</span></div>
+    <div class="amount-box">
+      <div class="amount-lbl">Total Amount Paid</div>
+      <div class="amount-val">${amtStr}</div>
+    </div>
+    <div class="divider"></div>
+    <div class="row"><span class="label">Recorded By</span><span class="val">${recorded_by || '—'}</span></div>
+    ${notes ? `<div class="row"><span class="label">Notes</span><span class="val">${notes}</span></div>` : ''}
+    <div class="stamp">
+      <div class="stamp-text">✓ PAID IN FULL</div>
+    </div>
+    <div class="sig">Distributor Signature: ___________________________</div>
+    <div class="sig" style="margin-top:10px">Authorised By: ___________________________</div>
+    <div class="footer">This is an official Dynapharm bonus payment record.<br>Keep this receipt for your records.</div>
+    <button class="print-btn" onclick="window.print();setTimeout(()=>window.close(),500)">🖨️ Print Receipt</button>
+  </div></body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
+
 function BonusTab() {
   const portalBranch = useContext(PortalBranchContext);
   const { user } = useAuth();
@@ -5347,10 +5409,10 @@ function BonusTab() {
   const [paidHistory, setPaidHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState(null);
-  const [showPayForm, setShowPayForm] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [selectedBonus, setSelectedBonus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [payForm, setPayForm] = useState({ amount: '', paid_at: new Date().toISOString().slice(0, 10), notes: '' });
+  const [payNotes, setPayNotes] = useState('');
   const [bonusSearch, setBonusSearch] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('');
 
@@ -5369,33 +5431,48 @@ function BonusTab() {
 
   useEffect(() => { load(); }, [branchId]);
 
-  const openPayForm = (bonus) => {
-    const outstanding = Number(bonus.amount_earned) - Number(bonus.amount_paid);
+  const openConfirm = (bonus) => {
     setSelectedBonus(bonus);
-    setPayForm({ amount: outstanding.toFixed(2), paid_at: new Date().toISOString().slice(0, 10), notes: '' });
-    setShowPayForm(true);
+    setPayNotes('');
+    setShowConfirm(true);
   };
 
-  const handleRecordPayment = async () => {
-    if (!selectedBonus || !payForm.amount || Number(payForm.amount) <= 0) return;
+  const handleProcessPayment = async () => {
+    if (!selectedBonus) return;
     setSubmitting(true);
     try {
-      await api.branch.recordBonusPayment({
+      const result = await api.branch.recordBonusPayment({
         bonus_id: selectedBonus.id,
         branch_id: branchId,
-        amount: Number(payForm.amount),
-        paid_at: payForm.paid_at,
-        notes: payForm.notes,
+        paid_at: new Date().toISOString().slice(0, 10),
+        notes: payNotes,
       });
-      setAlert({ type: 'success', message: `Payment of ${formatCurrency(Number(payForm.amount))} recorded for ${selectedBonus.distributor_name}.` });
-      setShowPayForm(false);
+      setShowConfirm(false);
       setSelectedBonus(null);
+      setAlert({ type: 'success', message: `✅ Bonus of ${formatCurrency(result.amount_paid)} paid to ${result.receipt?.distributor_name || ''}. Printing receipt…` });
       load();
+      if (result.receipt) {
+        setTimeout(() => printBonusPaymentReceipt({ ...result.receipt, branch_id: branchId }), 300);
+      }
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to record payment' });
+      setAlert({ type: 'error', message: err.message || 'Failed to process payment' });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const reprintFromHistory = (p) => {
+    printBonusPaymentReceipt({
+      payment_id: p.id,
+      nb_number: p.nb_number,
+      distributor_name: p.distributor_name,
+      period: p.period,
+      amount: p.amount,
+      paid_at: p.paid_at,
+      branch_id: p.branch_id || branchId,
+      recorded_by: p.recorded_by,
+      notes: p.notes,
+    });
   };
 
   const filtered = pendingBonuses.filter(b => {
@@ -5405,7 +5482,7 @@ function BonusTab() {
     return matchSearch && matchPeriod;
   });
 
-  const periods = [...new Set(pendingBonuses.map(b => b.period).filter(Boolean))].sort().reverse();
+  const allPeriods = [...new Set([...pendingBonuses, ...paidHistory].map(b => b.period).filter(Boolean))].sort().reverse();
   const totalOutstanding = filtered.reduce((s, b) => s + Math.max(0, Number(b.amount_earned) - Number(b.amount_paid)), 0);
   const totalPaidThisBranch = paidHistory.reduce((s, p) => s + Number(p.amount || 0), 0);
 
@@ -5415,26 +5492,26 @@ function BonusTab() {
     <div className="space-y-4">
       <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
         <h3 className="text-white text-lg font-bold m-0">🎁 Distributor Bonus Payments</h3>
-        <p className="text-white/75 text-sm mt-1 m-0">Record cash bonus payments to distributors. Bonuses are uploaded by Finance each month.</p>
+        <p className="text-white/75 text-sm mt-1 m-0">Process cash bonus payments to distributors. Each bonus can only be paid once across all branches.</p>
       </div>
 
       {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="rounded-xl p-4 bg-orange-50 border border-orange-200 text-center">
-          <p className="text-xs text-orange-600 uppercase tracking-wide font-semibold">Pending Bonuses</p>
+          <p className="text-xs text-orange-600 uppercase tracking-wide font-semibold">Pending Payouts</p>
           <p className="text-2xl font-bold text-orange-700">{filtered.length}</p>
           <p className="text-xs text-orange-500">{formatCurrency(totalOutstanding)} outstanding</p>
         </div>
         <div className="rounded-xl p-4 bg-green-50 border border-green-200 text-center">
           <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Paid By This Branch</p>
           <p className="text-2xl font-bold text-green-700">{paidHistory.length}</p>
-          <p className="text-xs text-green-500">{formatCurrency(totalPaidThisBranch)} total</p>
+          <p className="text-xs text-green-500">{formatCurrency(totalPaidThisBranch)} total paid</p>
         </div>
         <div className="rounded-xl p-4 bg-blue-50 border border-blue-200 text-center">
-          <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Periods</p>
-          <p className="text-2xl font-bold text-blue-700">{periods.length}</p>
-          <p className="text-xs text-blue-500">Bonus months</p>
+          <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Bonus Periods</p>
+          <p className="text-2xl font-bold text-blue-700">{allPeriods.length}</p>
+          <p className="text-xs text-blue-500">{allPeriods[0] || '—'} latest</p>
         </div>
       </div>
 
@@ -5444,18 +5521,25 @@ function BonusTab() {
         <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
           className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
           <option value="">All Periods</option>
-          {periods.map(p => <option key={p} value={p}>{p}</option>)}
+          {allPeriods.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <Button size="sm" variant="secondary" onClick={load}>🔄 Refresh</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h4 className="font-bold text-gray-800">Pending & Partial Bonuses</h4>
-          <p className="text-xs text-gray-500">Distributors with outstanding bonus amounts</p>
+        <div className="px-4 py-3 bg-orange-50 border-b border-orange-200 flex items-center justify-between">
+          <div>
+            <h4 className="font-bold text-gray-800">Pending Bonus Payouts</h4>
+            <p className="text-xs text-gray-500">Distributors awaiting payment — any branch can process</p>
+          </div>
+          <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded-full">{filtered.length} pending</span>
         </div>
         {filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-8 text-sm">No pending bonuses. Finance uploads bonus records monthly.</p>
+          <div className="text-center py-12">
+            <p className="text-3xl mb-2">🎁</p>
+            <p className="text-gray-500 font-medium">No pending bonuses</p>
+            <p className="text-gray-400 text-xs mt-1">Finance uploads bonus records each month from the Finance Portal</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -5464,11 +5548,8 @@ function BonusTab() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">NB Number</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Distributor</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Earned</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outstanding</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount to Pay</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -5479,14 +5560,17 @@ function BonusTab() {
                       <td className="px-4 py-3 font-mono font-bold text-primary text-sm">{b.nb_number}</td>
                       <td className="px-4 py-3 font-medium">{b.distributor_name}</td>
                       <td className="px-4 py-3 text-gray-600">{b.period}</td>
-                      <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(b.amount_earned)}</td>
-                      <td className="px-4 py-3 text-right text-blue-700">{formatCurrency(b.amount_paid)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-orange-600">{formatCurrency(outstanding)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-orange-600 text-base">{formatCurrency(outstanding)}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={b.status === 'partial' ? 'warning' : 'danger'}>{b.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Button size="sm" variant="success" onClick={() => openPayForm(b)}>Record Payment</Button>
+                        <div className="flex gap-2 justify-center">
+                          <button
+                            onClick={() => openConfirm(b)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white border-none cursor-pointer"
+                            style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }}
+                          >
+                            💳 Process Payment
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -5499,8 +5583,12 @@ function BonusTab() {
 
       {paidHistory.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-green-50 border-b border-green-200">
-            <h4 className="font-bold text-gray-800">Bonus Payments Made by This Branch</h4>
+          <div className="px-4 py-3 bg-green-50 border-b border-green-200 flex items-center justify-between">
+            <div>
+              <h4 className="font-bold text-gray-800">✅ Bonus Payments Made by This Branch</h4>
+              <p className="text-xs text-gray-500">All distributor bonuses processed here — click Print to reprint receipts</p>
+            </div>
+            <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">{paidHistory.length} paid</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -5512,17 +5600,27 @@ function BonusTab() {
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount Paid</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Recorded By</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paidHistory.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono text-primary text-sm">{p.nb_number}</td>
+                  <tr key={p.id} className="hover:bg-green-50">
+                    <td className="px-4 py-3 font-mono text-primary text-sm font-bold">{p.nb_number}</td>
                     <td className="px-4 py-3 font-medium">{p.distributor_name}</td>
                     <td className="px-4 py-3 text-gray-600">{p.period}</td>
                     <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(p.amount)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatDate(p.paid_at)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.recorded_by || '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => reprintFromHistory(p)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer"
+                        style={{ background: '#f1f5f9', color: '#374151' }}
+                      >
+                        🖨️ Print Receipt
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -5531,29 +5629,49 @@ function BonusTab() {
         </div>
       )}
 
-      <Modal open={showPayForm} onClose={() => { setShowPayForm(false); setSelectedBonus(null); }} title="Record Bonus Payment" size="md">
+      <Modal open={showConfirm} onClose={() => { setShowConfirm(false); setSelectedBonus(null); }} title="Process Bonus Payment" size="md">
         {selectedBonus && (
           <div className="p-6 space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="font-semibold text-blue-900">{selectedBonus.distributor_name}</p>
-              <p className="text-sm text-blue-700">NB: {selectedBonus.nb_number} · Period: {selectedBonus.period}</p>
-              <p className="text-sm text-blue-700">Outstanding: <strong>{formatCurrency(Math.max(0, Number(selectedBonus.amount_earned) - Number(selectedBonus.amount_paid)))}</strong></p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 font-medium">
+              ⚠️ This payment will be recorded as PAID IN FULL and marked across all branches. This action cannot be undone.
             </div>
-            <Input label="Payment Amount (N$)" type="number" min="0.01" step="0.01"
-              value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} />
-            <Input label="Payment Date" type="date"
-              value={payForm.paid_at} onChange={e => setPayForm(f => ({ ...f, paid_at: e.target.value }))} />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-600 font-medium">Distributor</span>
+                <span className="font-bold text-blue-900">{selectedBonus.distributor_name}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-600 font-medium">NB Number</span>
+                <span className="font-mono font-bold text-blue-900">{selectedBonus.nb_number}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-600 font-medium">Bonus Period</span>
+                <span className="font-bold text-blue-900">{selectedBonus.period}</span>
+              </div>
+              <div className="border-t border-blue-200 pt-2 flex justify-between">
+                <span className="text-blue-600 font-medium">Amount to Pay</span>
+                <span className="text-xl font-black text-green-700">{formatCurrency(Math.max(0, Number(selectedBonus.amount_earned) - Number(selectedBonus.amount_paid)))}</span>
+              </div>
+            </div>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
-              <textarea value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+              <label className="block text-sm font-medium text-gray-700">Notes / Remarks (optional)</label>
+              <textarea value={payNotes} onChange={e => setPayNotes(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
-                placeholder="Receipt number, remarks..." />
+                placeholder="ID verified, receipt number, any notes…" />
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+              📄 A receipt will be printed automatically after processing.
             </div>
             <div className="flex gap-3">
-              <Button className="flex-1" variant="success" onClick={handleRecordPayment} disabled={submitting}>
-                {submitting ? 'Recording…' : 'Record Payment'}
-              </Button>
-              <Button variant="secondary" onClick={() => { setShowPayForm(false); setSelectedBonus(null); }}>Cancel</Button>
+              <button
+                className="flex-1 py-3 rounded-lg text-white font-bold text-sm border-none cursor-pointer disabled:opacity-50"
+                style={{ background: submitting ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#15803d)' }}
+                onClick={handleProcessPayment}
+                disabled={submitting}
+              >
+                {submitting ? '⏳ Processing…' : `💳 Confirm & Pay ${formatCurrency(Math.max(0, Number(selectedBonus.amount_earned) - Number(selectedBonus.amount_paid)))}`}
+              </button>
+              <Button variant="secondary" onClick={() => { setShowConfirm(false); setSelectedBonus(null); }}>Cancel</Button>
             </div>
           </div>
         )}
