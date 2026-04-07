@@ -7,6 +7,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
+import NetworkReportTab from '../../components/NetworkReportTab';
 
 export default function DistributorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -16,6 +17,7 @@ export default function DistributorPortal() {
     { id: 'shop', label: 'Shop', icon: '🛒' },
     { id: 'register', label: 'New Member', icon: '📝' },
     { id: 'bv', label: 'BV & Profit', icon: '📈' },
+    { id: 'network', label: 'My Network', icon: '🌐' },
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'media', label: 'Media & News', icon: '📰' },
@@ -31,12 +33,32 @@ export default function DistributorPortal() {
         {activeTab === 'shop' && <ShopTab />}
         {activeTab === 'register' && <NewMemberTab />}
         {activeTab === 'bv' && <BVProfitTab />}
+        {activeTab === 'network' && <MyNetworkTab />}
         {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
     </div>
+  );
+}
+
+function MyNetworkTab() {
+  const { user } = useAuth();
+  const nb = (user?.username || user?.distributor_code || user?.nb_number || '').toUpperCase();
+  if (!nb) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+        Unable to determine your NB number. Please contact the branch.
+      </div>
+    );
+  }
+  return (
+    <NetworkReportTab
+      rootNb={nb}
+      areaLabel={nb}
+      title={`🌐 My Network — ${nb}`}
+    />
   );
 }
 

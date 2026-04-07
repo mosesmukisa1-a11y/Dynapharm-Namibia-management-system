@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate, BRANCHES } from '../lib/constants';
 import { Card, CardHeader, CardBody, Badge, LoadingSpinner, Table, Input } from './ui';
+import NetworkReportTab from './NetworkReportTab';
 
 // ─── PDF helpers ─────────────────────────────────────────────────────────────
 function dpDoc(title, body) {
@@ -163,6 +164,7 @@ const INITIAL_LIMIT = 300;
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function DistributorPerformanceTab({ branchFilter = null, title = 'Distributor Performance' }) {
+  const [viewMode, setViewMode] = useState('performance'); // 'performance' | 'gmreport'
   const [distributors, setDistributors] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -253,7 +255,27 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
   const totalReferrals = filtered.reduce((s, d) => s + d._referrals, 0);
   const activeCount = filtered.filter(d => d.status === 'active' || !d.status).length;
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && viewMode === 'performance') return <LoadingSpinner />;
+
+  // ── GM Report view ─────────────────────────────────────────────────────────
+  if (viewMode === 'gmreport') {
+    return (
+      <div>
+        <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setViewMode('performance')}
+            style={{ padding: '7px 18px', background: '#fff', color: '#c41e3a', border: '1.5px solid #c41e3a', borderRadius: 99, fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+            ← Back to Performance View
+          </button>
+        </div>
+        <NetworkReportTab
+          branchFilter={branchFilter}
+          areaLabel={branchFilter || 'All Branches'}
+          title="📊 Distributor Monthly Activity (GM Report)"
+        />
+      </div>
+    );
+  }
 
   const sL = (txt) => (
     <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>{txt}</div>
@@ -278,6 +300,10 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', marginTop: 4, margin: 0 }}>BVs · Referrals · Sales · Commission Performance</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setViewMode('gmreport')}
+            style={{ padding: '9px 18px', background: '#fff3', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: '99px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+            📊 GM Report View
+          </button>
           <button onClick={loadInitial}
             style={{ padding: '9px 18px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '99px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
             🔄 Refresh
