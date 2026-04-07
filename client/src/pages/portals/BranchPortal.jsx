@@ -66,8 +66,10 @@ function SalesReviewTab() {
   const rows = salesPreviewData?.rows || [];
   const grandTotal = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
   const grandTx    = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
-  const grandWalkIn = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
-  const grandRx     = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
+  const grandWalkIn  = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
+  const grandRx      = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
+  const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
+  const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
   const thS = { padding: '9px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: '#c41e3a', whiteSpace: 'nowrap' };
   const thR = { ...thS, textAlign: 'right' };
   const tdS = { padding: '9px 12px', fontSize: '0.85rem', borderBottom: '1px solid #f0e8ea', color: '#1e293b', whiteSpace: 'nowrap' };
@@ -157,10 +159,10 @@ function SalesReviewTab() {
                 <tr style={{ background: '#1e293b' }}>
                   <td style={{ ...tdS, color: '#fff', fontWeight: 800, background: 'transparent' }}>TOTAL</td>
                   <td style={{ ...tdR, color: '#fff', background: 'transparent' }}>{grandTx.toLocaleString()}</td>
-                  <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                  <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandMember)}</td>
                   <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkIn)}</td>
                   <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
-                  <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}></td>
+                  <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
                   <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
                 </tr>
               </tbody>
