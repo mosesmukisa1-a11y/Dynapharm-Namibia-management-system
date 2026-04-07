@@ -54,9 +54,9 @@ export default async function handler(req, res) {
         bonuses = await getMany(
           `SELECT b.*, COALESCE(b.amount_earned, 0) - COALESCE(b.amount_paid, 0) AS outstanding
            FROM distributor_bonuses b
-           LEFT JOIN distributors d ON d.distributor_code = b.nb_number
+           LEFT JOIN users u ON u.nb_number = b.nb_number
            WHERE b.status IN ('pending', 'partial')
-             AND (d.branch = $1 OR b.paid_by_branch_id = $1)
+             AND (u.branch = $1 OR b.paid_by_branch_id = $1)
            ORDER BY b.period DESC, b.distributor_name`,
           [effectiveBranch]
         );
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
 
       if (!isFullAccess) {
         const distributor = await getOne(
-          `SELECT branch FROM distributors WHERE distributor_code = $1`,
+          `SELECT branch FROM users WHERE nb_number = $1`,
           [bonus.nb_number]
         );
         if (distributor && distributor.branch && distributor.branch !== branchId) {
