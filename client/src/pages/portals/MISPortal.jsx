@@ -788,6 +788,11 @@ function printCSIDoc(entries, filters) {
       </tr>`).join('');
   }).join('');
 
+  const grandQty = entries.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const grandDP  = entries.reduce((s, r) => s + Number(r.total_dp || 0), 0);
+  const grandBV  = entries.reduce((s, r) => s + Number(r.total_bv || 0), 0);
+  const receiptCount = groups.length;
+
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CSI Entry Report</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -796,11 +801,20 @@ function printCSIDoc(entries, filters) {
     .company { color:#c41e3a; font-weight:900; font-size:14px; }
     .report-title { font-size:13px; font-weight:800; color:#8b0000; margin-top:4px; }
     .meta { text-align:right; color:#64748b; font-size:9px; line-height:1.6; }
+    .summary-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+    .summary-card { border:1px solid #e2e8f0; border-radius:6px; padding:7px 10px; background:#f8fafc; }
+    .summary-label { font-size:7.5px; color:#94a3b8; text-transform:uppercase; font-weight:700; letter-spacing:0.4px; }
+    .summary-value { font-size:13px; font-weight:900; margin-top:2px; }
+    .c-gray { color:#1e293b; } .c-yellow { color:#b45309; } .c-blue { color:#1d4ed8; } .c-green { color:#15803d; }
     table { width:100%; border-collapse:collapse; margin-top:4px; }
     th { background:#c41e3a; color:#fff; padding:5px 6px; text-align:left; font-size:8.5px; font-weight:700; white-space:nowrap; }
     td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:8.5px; vertical-align:top; }
     td[rowspan] { border-right:1px solid #e2e8f0; background:#fff; font-weight:600; }
     tr td:not([rowspan]):not(:first-of-type) { border-left:1px dotted #e2e8f0; }
+    tfoot td { background:#111827; color:#fff; font-weight:800; font-size:9px; padding:6px; border:none; }
+    tfoot .t-yellow { color:#fde68a; text-align:right; }
+    tfoot .t-blue   { color:#93c5fd; text-align:right; }
+    tfoot .t-green  { color:#86efac; text-align:right; }
     .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; }
     .filter-row { font-size:9px; color:#64748b; margin-bottom:10px; }
     @media print { .print-btn { display:none; } body { padding:8px; } }
@@ -812,7 +826,13 @@ function printCSIDoc(entries, filters) {
       <div class="report-title">📋 CSI Entry Report</div>
       <div class="filter-row">Branch: ${branchLabel} &nbsp;|&nbsp; Period: ${dateRange}</div>
     </div>
-    <div class="meta">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Time: ${new Date().toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'})}<br>Records: ${entries.length}</div>
+    <div class="meta">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Time: ${new Date().toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'})}<br>Line Items: ${entries.length}</div>
+  </div>
+  <div class="summary-bar">
+    <div class="summary-card"><div class="summary-label">Total Receipts</div><div class="summary-value c-gray">${receiptCount}</div></div>
+    <div class="summary-card"><div class="summary-label">Total Items (QTY)</div><div class="summary-value c-yellow">${grandQty}</div></div>
+    <div class="summary-card"><div class="summary-label">Grand Total DP</div><div class="summary-value c-blue">N$ ${grandDP.toFixed(2)}</div></div>
+    <div class="summary-card"><div class="summary-label">Grand Total BV</div><div class="summary-value c-green">${grandBV.toFixed(2)}</div></div>
   </div>
   <table>
     <thead><tr>
@@ -821,6 +841,12 @@ function printCSIDoc(entries, filters) {
       <th>DP</th><th>BV</th><th>QTY</th><th>Total DP</th><th>Total BV</th>
     </tr></thead>
     <tbody>${rows}</tbody>
+    <tfoot><tr>
+      <td colspan="10">GRAND TOTALS — ${receiptCount} receipt${receiptCount !== 1 ? 's' : ''}, ${entries.length} line item${entries.length !== 1 ? 's' : ''}</td>
+      <td class="t-yellow">${grandQty}</td>
+      <td class="t-blue">N$ ${grandDP.toFixed(2)}</td>
+      <td class="t-green">${grandBV.toFixed(2)}</td>
+    </tr></tfoot>
   </table>
   </body></html>`);
   win.document.close();
@@ -840,6 +866,10 @@ function CSIGroupedTable({ entries }) {
       groups[seen.get(key)].items.push(row);
     }
   }
+
+  const totalQty    = entries.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const totalDP     = entries.reduce((s, r) => s + Number(r.total_dp || 0), 0);
+  const totalBV     = entries.reduce((s, r) => s + Number(r.total_bv || 0), 0);
 
   const th = 'px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200 whitespace-nowrap';
   const td = 'px-3 py-2 text-sm text-gray-700 align-top';
@@ -903,6 +933,22 @@ function CSIGroupedTable({ entries }) {
             ));
           })}
         </tbody>
+        <tfoot>
+          <tr className="border-t-4 border-gray-300 bg-gray-900">
+            <td colSpan={9} className="px-3 py-2.5 text-sm font-bold text-white uppercase tracking-wide">
+              Page Totals ({entries.length} line{entries.length !== 1 ? 's' : ''}, {groups.length} receipt{groups.length !== 1 ? 's' : ''})
+            </td>
+            <td className="px-3 py-2.5 text-sm font-bold text-right text-yellow-300 whitespace-nowrap">
+              {totalQty}
+            </td>
+            <td className="px-3 py-2.5 text-sm font-bold text-right text-blue-300 whitespace-nowrap">
+              {totalDP.toFixed(2)}
+            </td>
+            <td className="px-3 py-2.5 text-sm font-bold text-right text-green-300 whitespace-nowrap">
+              {totalBV.toFixed(2)}
+            </td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
@@ -1021,6 +1067,27 @@ function CSIEntryTab() {
                 </div>
               )}
             </div>
+            {entries.length > 0 && (() => {
+              const grandQty = entries.reduce((s, r) => s + Number(r.qty || 0), 0);
+              const grandDP  = entries.reduce((s, r) => s + Number(r.total_dp || 0), 0);
+              const grandBV  = entries.reduce((s, r) => s + Number(r.total_bv || 0), 0);
+              const receipts = new Set(entries.map(r => r.receipt_number || (r.date + '|' + r.nb_number))).size;
+              return (
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Receipts', value: receipts, color: 'text-gray-800', bg: 'bg-gray-100' },
+                    { label: 'Total Items (QTY)', value: grandQty, color: 'text-yellow-700', bg: 'bg-yellow-50 border border-yellow-200' },
+                    { label: 'Grand Total DP', value: `N$ ${grandDP.toFixed(2)}`, color: 'text-blue-700', bg: 'bg-blue-50 border border-blue-200' },
+                    { label: 'Grand Total BV', value: grandBV.toFixed(2), color: 'text-green-700', bg: 'bg-green-50 border border-green-200' },
+                  ].map(({ label, value, color, bg }) => (
+                    <div key={label} className={`rounded-lg px-4 py-3 ${bg}`}>
+                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</div>
+                      <div className={`text-lg font-bold mt-0.5 ${color}`}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </CardHeader>
           {loading ? <LoadingSpinner /> : (
             <>
