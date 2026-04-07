@@ -5,7 +5,7 @@ async function ensureAgreementsTable() {
   await query(`
     CREATE TABLE IF NOT EXISTS distributor_agreements (
       id TEXT PRIMARY KEY,
-      nb_number TEXT UNIQUE NOT NULL,
+      nb_number TEXT UNIQUE,
       last_name TEXT NOT NULL,
       first_name TEXT NOT NULL,
       middle_initial TEXT,
@@ -39,15 +39,26 @@ async function ensureAgreementsTable() {
       processing_branch TEXT NOT NULL,
       declaration_agreed BOOLEAN DEFAULT FALSE,
       declaration_date TEXT,
-      status TEXT DEFAULT 'pending',
+      status TEXT DEFAULT 'pending_payment',
       processed_by TEXT,
       received_by TEXT,
       date_received TEXT,
+      approved_by TEXT,
+      approved_at TIMESTAMPTZ,
+      payment_method TEXT,
+      payment_reference TEXT,
       created_by TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Make nb_number nullable in case table existed with NOT NULL constraint
+  await query(`ALTER TABLE distributor_agreements ALTER COLUMN nb_number DROP NOT NULL`).catch(() => {});
+  // Add new approval tracking columns if they don't exist
+  await query(`ALTER TABLE distributor_agreements ADD COLUMN IF NOT EXISTS approved_by TEXT`).catch(() => {});
+  await query(`ALTER TABLE distributor_agreements ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
+  await query(`ALTER TABLE distributor_agreements ADD COLUMN IF NOT EXISTS payment_method TEXT`).catch(() => {});
+  await query(`ALTER TABLE distributor_agreements ADD COLUMN IF NOT EXISTS payment_reference TEXT`).catch(() => {});
 }
 
 let tableReady = false;
@@ -103,23 +114,17 @@ export default async function handler(req, res) {
       const id = searchParams.get('id');
       const nbNumber = searchParams.get('nb_number');
       const userRole = req.user.role || '';
-      const isStaff = ['admin', 'branch_manager', 'stock_manager', 'director'].includes(userRole);
+      const isStaff = ['admin', 'branch_manager', 'stock_manager', 'director', 'gm', 'mis'].includes(userRole);
 
       if (id) {
         const agreement = await getOne('SELECT * FROM distributor_agreements WHERE id = $1', [id]);
         if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
-        if (!isStaff && agreement.nb_number !== req.user.username?.toUpperCase()) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
         return res.json(agreement);
       }
 
       if (nbNumber) {
         const agreement = await getOne('SELECT * FROM distributor_agreements WHERE nb_number = $1', [nbNumber.toUpperCase()]);
         if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
-        if (!isStaff && agreement.nb_number !== req.user.username?.toUpperCase()) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
         return res.json(agreement);
       }
 
@@ -129,7 +134,7 @@ export default async function handler(req, res) {
 
       const status = searchParams.get('status');
       const branch = searchParams.get('branch');
-      let sql = 'SELECT id, nb_number, first_name, last_name, processing_branch, kit_type, status, created_at FROM distributor_agreements';
+      let sql = 'SELECT * FROM distributor_agreements';
       const conditions = [];
       const params = [];
       if (status) {
@@ -185,6 +190,87 @@ export default async function handler(req, res) {
 
       const agreementId = `AGR-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 
+      const agreementData = {
+        id: agreementId,
+        nb_number: null,
+        last_name: body.last_name.trim(),
+        first_name: body.first_name.trim(),
+        middle_initial: (body.middle_initial || '').trim(),
+        birthdate: body.birthdate || null,
+        age: body.age ? parseInt(body.age) : null,
+        sex: body.sex || null,
+        nationality: body.nationality || null,
+        mailing_address_street: body.mailing_address_street || null,
+        mailing_address_town: body.mailing_address_town || null,
+        contact_residence: body.contact_residence || null,
+        contact_office: body.contact_office || null,
+        contact_mobile: body.contact_mobile,
+        zip_code: body.zip_code || null,
+        tax_id: body.tax_id || null,
+        sss_no: body.sss_no || null,
+        beneficiary: body.beneficiary || null,
+        upline_id: body.upline_id ? body.upline_id.toUpperCase() : null,
+        upline_name: body.upline_name || null,
+        upline_address: body.upline_address || null,
+        upline_town: body.upline_town || null,
+        upline_contact_residence: body.upline_contact_residence || null,
+        upline_contact_office: body.upline_contact_office || null,
+        upline_contact_mobile: body.upline_contact_mobile || null,
+        upline_zip_code: body.upline_zip_code || null,
+        upline_tax_id: body.upline_tax_id || null,
+        upline_sss_no: body.upline_sss_no || null,
+        sponsor_id: body.sponsor_id ? body.sponsor_id.toUpperCase() : null,
+        sponsor_name: body.sponsor_name || null,
+        kit_type: body.kit_type,
+        materials_received: body.materials_received ? JSON.stringify(body.materials_received) : null,
+        processing_branch: body.processing_branch,
+        declaration_agreed: body.declaration_agreed || false,
+        declaration_date: body.declaration_date || new Date().toISOString().slice(0, 10),
+        status: 'pending_payment',
+        created_by: req.user?.username || body.created_by || 'system',
+      };
+
+      const agrCols = Object.keys(agreementData);
+      const agrVals = Object.values(agreementData);
+      const agrPlaceholders = agrCols.map((_, i) => `$${i + 1}`).join(', ');
+      await query(
+        `INSERT INTO distributor_agreements (${agrCols.join(', ')}) VALUES (${agrPlaceholders})`,
+        agrVals
+      );
+
+      return res.status(201).json({
+        success: true,
+        agreement_id: agreementId,
+        status: 'pending_payment',
+        message: `Registration submitted successfully. Please proceed to the ${body.processing_branch} branch with payment of N$ 1,200.00 to receive your NB number. Reference: ${agreementId}`,
+      });
+    }
+
+    // PATCH — Branch approves pending registration, issues NB number
+    if (req.method === 'PATCH') {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const userRole = req.user.role || '';
+      const isStaff = ['admin', 'branch_manager', 'stock_manager', 'director'].includes(userRole);
+      if (!isStaff) {
+        return res.status(403).json({ error: 'Only branch staff can approve registrations' });
+      }
+
+      const body = req.body || {};
+      const id = body.id || searchParams.get('id');
+      if (!id) return res.status(400).json({ error: 'Agreement ID is required' });
+
+      const existing = await getOne('SELECT * FROM distributor_agreements WHERE id = $1', [id]);
+      if (!existing) return res.status(404).json({ error: 'Agreement not found' });
+      if (existing.nb_number) {
+        return res.status(400).json({ error: 'This registration has already been approved and issued NB: ' + existing.nb_number });
+      }
+
+      const paymentMethod = body.payment_method || 'cash';
+      const paymentReference = body.payment_reference || null;
+      const approvedBy = req.user.username || req.user.full_name || 'branch';
+
       const result = await withTransaction(async (client) => {
         const nbNumber = await getNextNBNumber(client);
 
@@ -195,78 +281,42 @@ export default async function handler(req, res) {
           throw new Error(`NB number ${nbNumber} already exists. Please try again.`);
         }
 
-        const agreementData = {
-          id: agreementId,
-          nb_number: nbNumber,
-          last_name: body.last_name.trim(),
-          first_name: body.first_name.trim(),
-          middle_initial: (body.middle_initial || '').trim(),
-          birthdate: body.birthdate || null,
-          age: body.age ? parseInt(body.age) : null,
-          sex: body.sex || null,
-          nationality: body.nationality || null,
-          mailing_address_street: body.mailing_address_street || null,
-          mailing_address_town: body.mailing_address_town || null,
-          contact_residence: body.contact_residence || null,
-          contact_office: body.contact_office || null,
-          contact_mobile: body.contact_mobile,
-          zip_code: body.zip_code || null,
-          tax_id: body.tax_id || null,
-          sss_no: body.sss_no || null,
-          beneficiary: body.beneficiary || null,
-          upline_id: body.upline_id ? body.upline_id.toUpperCase() : null,
-          upline_name: body.upline_name || null,
-          upline_address: body.upline_address || null,
-          upline_town: body.upline_town || null,
-          upline_contact_residence: body.upline_contact_residence || null,
-          upline_contact_office: body.upline_contact_office || null,
-          upline_contact_mobile: body.upline_contact_mobile || null,
-          upline_zip_code: body.upline_zip_code || null,
-          upline_tax_id: body.upline_tax_id || null,
-          upline_sss_no: body.upline_sss_no || null,
-          sponsor_id: body.sponsor_id ? body.sponsor_id.toUpperCase() : null,
-          sponsor_name: body.sponsor_name || null,
-          kit_type: body.kit_type,
-          materials_received: body.materials_received ? JSON.stringify(body.materials_received) : null,
-          processing_branch: body.processing_branch,
-          declaration_agreed: body.declaration_agreed || false,
-          declaration_date: body.declaration_date || new Date().toISOString().slice(0, 10),
-          status: 'pending',
-          created_by: req.user?.username || body.created_by || 'system',
-        };
-
-        const agrCols = Object.keys(agreementData);
-        const agrVals = Object.values(agreementData);
-        const agrPlaceholders = agrCols.map((_, i) => `$${i + 1}`).join(', ');
+        // Update agreement with NB number and approval info
         await client.query(
-          `INSERT INTO distributor_agreements (${agrCols.join(', ')}) VALUES (${agrPlaceholders})`,
-          agrVals
+          `UPDATE distributor_agreements SET 
+            nb_number = $1, status = 'approved', approved_by = $2, approved_at = NOW(),
+            payment_method = $3, payment_reference = $4, updated_at = NOW()
+           WHERE id = $5`,
+          [nbNumber, approvedBy, paymentMethod, paymentReference, id]
         );
 
-        const distributorName = `${body.first_name.trim()} ${body.last_name.trim()}`;
+        // Create distributor record
+        const distributorName = `${existing.first_name.trim()} ${existing.last_name.trim()}`;
         const distId = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
         const today = new Date().toISOString().slice(0, 10);
         const distData = {
           id: distId,
           distributor_code: nbNumber,
           distributor_name: distributorName,
-          mobile_no: body.contact_mobile,
-          email: body.email || null,
+          mobile_no: existing.contact_mobile,
+          email: existing.email || null,
           status: 'active',
-          branch: body.processing_branch,
-          location: body.mailing_address_town || body.mailing_address_street || null,
+          branch: existing.processing_branch,
+          location: existing.mailing_address_town || existing.mailing_address_street || null,
           entity_type: 'distributor',
           position: 'Distributor',
           position_code: 'DI',
           date_joined: today,
-          sponsor_code: body.sponsor_id ? body.sponsor_id.toUpperCase() : (body.upline_id ? body.upline_id.toUpperCase() : null),
-          sex: body.sex || null,
+          sponsor_code: existing.sponsor_id ? existing.sponsor_id.toUpperCase() : (existing.upline_id ? existing.upline_id.toUpperCase() : null),
+          sex: existing.sex || null,
           agreement_data: JSON.stringify({
-            agreement_id: agreementId,
-            kit_type: body.kit_type,
-            sponsor_id: body.sponsor_id || null,
-            upline_id: body.upline_id || null,
+            agreement_id: id,
+            kit_type: existing.kit_type,
+            sponsor_id: existing.sponsor_id || null,
+            upline_id: existing.upline_id || null,
             registration_date: new Date().toISOString(),
+            approved_by: approvedBy,
+            payment_method: paymentMethod,
           }),
         };
         const distCols = Object.keys(distData);
@@ -278,29 +328,30 @@ export default async function handler(req, res) {
           distVals
         );
 
+        // Deduct registration kit from branch stock
         try {
           await client.query('SAVEPOINT stock_movement');
-          const kitProduct = body.kit_type === 'fertilizers'
+          const kitProduct = existing.kit_type === 'fertilizers'
             ? 'REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)'
             : 'REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)';
           const wimId = `WIM-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
           await client.query(
             `INSERT INTO warehouse_inventory_movements (id, product_id, product_name, movement_type, quantity, reference, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [wimId, kitProduct, kitProduct, 'sale', -1, agreementId, `Registration kit (${body.kit_type}) for new distributor ${nbNumber} at ${body.processing_branch}`, req.user?.username || 'system']
+            [wimId, kitProduct, kitProduct, 'sale', -1, id, `Registration kit (${existing.kit_type}) issued to ${nbNumber} — ${distributorName} at ${existing.processing_branch}`, approvedBy]
           );
         } catch (stockErr) {
           await client.query('ROLLBACK TO SAVEPOINT stock_movement');
           console.error('Stock movement for registration kit (non-critical):', stockErr.message);
         }
 
-        return { agreementData, nbNumber };
+        return { nbNumber, distributorName };
       });
 
-      return res.status(201).json({
+      return res.json({
         success: true,
-        agreement: { ...result.agreementData, id: agreementId },
         nb_number: result.nbNumber,
-        message: `Distributor registered successfully with NB Number: ${result.nbNumber}`,
+        distributor_name: result.distributorName,
+        message: `Registration approved. NB Number issued: ${result.nbNumber}`,
       });
     }
 

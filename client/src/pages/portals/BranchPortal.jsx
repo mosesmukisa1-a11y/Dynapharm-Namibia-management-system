@@ -5725,6 +5725,163 @@ function OrderPaymentModal({ order, onClose, onPaid }) {
   );
 }
 
+function PendingMembershipsSection({ branch }) {
+  const { user } = useAuth();
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+  const [approving, setApproving] = useState(null);
+  const [approveForm, setApproveForm] = useState({ payment_method: 'cash', payment_reference: '' });
+  const [alert, setAlert] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/distributor-agreement?status=pending_payment${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`);
+      setRegistrations(res.agreements || []);
+    } catch { setRegistrations([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [branch]);
+
+  const handleApprove = async (agr) => {
+    setAlert(null);
+    try {
+      const res = await api.patch('/distributor-agreement', {
+        id: agr.id,
+        payment_method: approveForm.payment_method,
+        payment_reference: approveForm.payment_reference || null,
+      });
+      setAlert({ type: 'success', message: `✅ NB Number issued: ${res.nb_number} — ${res.distributor_name}` });
+      setApproving(null);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Approval failed' });
+    }
+  };
+
+  const pending = registrations.filter(r => !r.nb_number || r.status === 'pending_payment');
+
+  if (loading) return <div className="text-center py-4 text-gray-400 text-sm">Loading pending registrations…</div>;
+  if (pending.length === 0) return (
+    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 text-center text-gray-400 text-sm">
+      ✅ No pending membership registrations
+    </div>
+  );
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-base font-bold text-amber-700">⏳ Pending Member Registrations</span>
+        <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>
+        <button onClick={load} className="ml-auto text-xs text-gray-400 hover:text-gray-600 cursor-pointer border-none bg-transparent">🔄 Refresh</button>
+      </div>
+      {alert && <Alert type={alert.type} className="mb-3">{alert.message}</Alert>}
+      <div className="space-y-2">
+        {pending.map(agr => {
+          const isExp = expanded === agr.id;
+          const isApp = approving === agr.id;
+          return (
+            <div key={agr.id} className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-start justify-between flex-wrap gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-800">{agr.first_name} {agr.last_name}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 font-semibold">Awaiting Payment</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold capitalize">{agr.kit_type} Kit</span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                      <span>📅 {new Date(agr.created_at).toLocaleDateString('en-NA', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                      <span>📞 {agr.contact_mobile}</span>
+                      {agr.sponsor_id && <span>👤 Sponsor: {agr.sponsor_id}</span>}
+                      <span className="font-mono text-gray-400">{agr.id}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 ml-2">
+                    <button onClick={() => setExpanded(isExp ? null : agr.id)}
+                      className="px-3 py-1.5 rounded-lg border border-amber-300 text-xs font-semibold text-amber-700 bg-white hover:bg-amber-50 cursor-pointer">
+                      {isExp ? '▲ Hide' : '▼ Details'}
+                    </button>
+                    <button onClick={() => { setApproving(isApp ? null : agr.id); setAlert(null); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer border-none"
+                      style={{ background: 'linear-gradient(135deg,#166534,#15803d)' }}>
+                      ✅ Issue NB
+                    </button>
+                  </div>
+                </div>
+
+                {isExp && (
+                  <div className="mt-3 border-t border-amber-200 pt-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
+                    {[
+                      ['Full Name', `${agr.first_name} ${agr.middle_initial || ''} ${agr.last_name}`.trim()],
+                      ['Mobile', agr.contact_mobile],
+                      ['Branch', agr.processing_branch],
+                      ['Kit Type', agr.kit_type],
+                      ['Upline', agr.upline_id || '—'],
+                      ['Sponsor', agr.sponsor_id || '—'],
+                      ['Declaration Date', agr.declaration_date || '—'],
+                      ['Submitted By', agr.created_by || '—'],
+                    ].map(([k, v]) => (
+                      <div key={k} className="bg-white rounded p-2 border border-amber-100">
+                        <span className="text-gray-400 block">{k}</span>
+                        <span className="font-semibold">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isApp && (
+                  <div className="mt-3 border-t border-amber-200 pt-3 bg-white rounded-lg p-3 border border-green-200">
+                    <p className="text-sm font-semibold text-green-800 mb-2">Confirm Payment & Issue NB Number</p>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Confirm you have received <strong>N$ 1,200.00</strong> from <strong>{agr.first_name} {agr.last_name}</strong>. 
+                      This will assign an NB number and deduct the {agr.kit_type} starter kit from stock.
+                    </p>
+                    <div className="flex gap-3 flex-wrap mb-3">
+                      <div className="flex-1 min-w-[150px]">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
+                        <select value={approveForm.payment_method}
+                          onChange={e => setApproveForm(f => ({ ...f, payment_method: e.target.value }))}
+                          className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-300">
+                          <option value="cash">Cash</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                          <option value="mobile_money">Mobile Money</option>
+                          <option value="card">Card</option>
+                          <option value="cheque">Cheque</option>
+                        </select>
+                      </div>
+                      <div className="flex-1 min-w-[150px]">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Reference / Receipt No.</label>
+                        <input type="text" value={approveForm.payment_reference}
+                          onChange={e => setApproveForm(f => ({ ...f, payment_reference: e.target.value }))}
+                          placeholder="Optional"
+                          className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-300" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApprove(agr)}
+                        className="flex-1 py-2 rounded-lg text-sm font-bold text-white cursor-pointer border-none"
+                        style={{ background: 'linear-gradient(135deg,#166534,#15803d)' }}>
+                        ✅ Confirm Payment & Issue NB Number
+                      </button>
+                      <button onClick={() => setApproving(null)}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 border border-gray-300 bg-white cursor-pointer hover:bg-gray-50">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function OnlineOrdersTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
@@ -5798,6 +5955,8 @@ function OnlineOrdersTab() {
 
   return (
     <div>
+      <PendingMembershipsSection branch={user?.branch} />
+
       <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>

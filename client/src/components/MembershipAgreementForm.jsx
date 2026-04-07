@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { BRANCHES, BRANCH_DETAILS, COMPANY_INFO } from '../lib/constants';
 import { useAuth } from '../contexts/AuthContext';
 import { Button, Alert, Modal, LoadingSpinner } from './ui';
-import { Printer, Share2, Mail, Download, Search, CheckCircle } from 'lucide-react';
+import { Printer, Share2, Mail, Download, Search, CheckCircle, Clock } from 'lucide-react';
 
 const MATERIALS_LIST = [
   'Bag',
@@ -401,25 +401,66 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
   };
 
   if (result) {
+    const isPending = result.status === 'pending_payment' || !result.nb_number;
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-8 text-center">
-          <CheckCircle size={56} className="text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-green-800 mb-2">Registration Successful!</h2>
-          <p className="text-gray-600 mb-4">{result.message}</p>
-          <div className="bg-white rounded-lg p-6 inline-block shadow-sm border border-green-200 mb-6">
-            <p className="text-sm text-gray-500 mb-1">Assigned NB Number</p>
-            <p className="text-3xl font-bold text-[#c41e3a] tracking-widest">{result.nb_number}</p>
+        {isPending ? (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-8 text-center">
+            <Clock size={56} className="text-amber-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-amber-800 mb-2">Registration Submitted!</h2>
+            <p className="text-gray-700 mb-4 text-sm leading-relaxed">
+              The application has been submitted successfully. The new member must visit the
+              selected branch with payment of <strong>N$ 1,200.00</strong> to receive their NB number.
+            </p>
+            <div className="bg-white rounded-lg p-4 border border-amber-200 mb-4 text-left space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Applicant</span>
+                <span className="font-semibold text-gray-800">{form.first_name} {form.last_name}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Processing Branch</span>
+                <span className="font-semibold text-gray-800">{form.processing_branch}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Kit Type</span>
+                <span className="font-semibold text-gray-800 capitalize">{form.kit_type}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Reference ID</span>
+                <span className="font-mono text-xs font-bold text-amber-700">{result.agreement_id}</span>
+              </div>
+            </div>
+            <div className="bg-amber-100 border border-amber-300 rounded-lg p-3 mb-6 text-sm text-amber-800">
+              <strong>Next steps:</strong> The branch will verify payment, issue the NB number, and deduct the starter kit from stock. The new member will then appear in the distributor system.
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button onClick={handlePrint}><Printer size={16} /> Print Agreement</Button>
+              <Button variant="secondary" onClick={handleShareWhatsApp}><Share2 size={16} /> WhatsApp</Button>
+              <Button variant="secondary" onClick={handleShareEmail}><Mail size={16} /> Email</Button>
+              <Button variant="secondary" onClick={() => { setResult(null); setForm(f => ({ ...f, last_name: '', first_name: '', middle_initial: '', birthdate: '', age: '', sex: '', contact_mobile: '', contact_residence: '', contact_office: '', mailing_address_street: '', mailing_address_town: '', zip_code: '', tax_id: '', sss_no: '', beneficiary: '', upline_id: '', upline_name: '', upline_address: '', upline_town: '', upline_contact_residence: '', upline_contact_office: '', upline_contact_mobile: '', upline_zip_code: '', upline_tax_id: '', upline_sss_no: '', sponsor_id: '', sponsor_name: '', declaration_agreed: false, materials_received: [], materials_others: '' })); }}>
+                Register Another
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button onClick={handlePrint}><Printer size={16} /> Print Agreement</Button>
-            <Button variant="secondary" onClick={handleShareWhatsApp}><Share2 size={16} /> WhatsApp</Button>
-            <Button variant="secondary" onClick={handleShareEmail}><Mail size={16} /> Email</Button>
-            <Button variant="secondary" onClick={() => { setResult(null); setForm(f => ({ ...f, last_name: '', first_name: '', middle_initial: '', birthdate: '', age: '', sex: '', contact_mobile: '', contact_residence: '', contact_office: '', mailing_address_street: '', mailing_address_town: '', zip_code: '', tax_id: '', sss_no: '', beneficiary: '', upline_id: '', upline_name: '', upline_address: '', upline_town: '', upline_contact_residence: '', upline_contact_office: '', upline_contact_mobile: '', upline_zip_code: '', upline_tax_id: '', upline_sss_no: '', sponsor_id: '', sponsor_name: '', declaration_agreed: false, materials_received: [], materials_others: '' })); }}>
-              Register Another
-            </Button>
+        ) : (
+          <div className="bg-green-50 border-2 border-green-300 rounded-xl p-8 text-center">
+            <CheckCircle size={56} className="text-green-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-green-800 mb-2">Registration Approved!</h2>
+            <p className="text-gray-600 mb-4">{result.message}</p>
+            <div className="bg-white rounded-lg p-6 inline-block shadow-sm border border-green-200 mb-6">
+              <p className="text-sm text-gray-500 mb-1">Assigned NB Number</p>
+              <p className="text-3xl font-bold text-[#c41e3a] tracking-widest">{result.nb_number}</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button onClick={handlePrint}><Printer size={16} /> Print Agreement</Button>
+              <Button variant="secondary" onClick={handleShareWhatsApp}><Share2 size={16} /> WhatsApp</Button>
+              <Button variant="secondary" onClick={handleShareEmail}><Mail size={16} /> Email</Button>
+              <Button variant="secondary" onClick={() => { setResult(null); setForm(f => ({ ...f, last_name: '', first_name: '', middle_initial: '', birthdate: '', age: '', sex: '', contact_mobile: '', contact_residence: '', contact_office: '', mailing_address_street: '', mailing_address_town: '', zip_code: '', tax_id: '', sss_no: '', beneficiary: '', upline_id: '', upline_name: '', upline_address: '', upline_town: '', upline_contact_residence: '', upline_contact_office: '', upline_contact_mobile: '', upline_zip_code: '', upline_tax_id: '', upline_sss_no: '', sponsor_id: '', sponsor_name: '', declaration_agreed: false, materials_received: [], materials_others: '' })); }}>
+                Register Another
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -621,9 +662,9 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
       <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '2px solid #f0e8ea', padding: '14px 0', zIndex: 20 }}>
         <div className="max-w-4xl mx-auto px-1">
           <Button type="submit" className="w-full py-3 text-base" disabled={submitting}>
-            {submitting ? 'Processing Registration...' : 'Submit Distributor Agreement (N$ 1,200.00)'}
+            {submitting ? 'Submitting Registration...' : 'Submit Distributor Agreement (N$ 1,200.00)'}
           </Button>
-          <p className="text-center text-xs text-gray-400 mt-2">A unique NB number will be automatically assigned upon submission.</p>
+          <p className="text-center text-xs text-gray-400 mt-2">The NB number will be issued by the selected branch after payment of N$ 1,200.00 is received and verified.</p>
         </div>
       </div>
     </form>
