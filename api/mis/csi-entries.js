@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { getMany } from '../db.js';
+import { query } from '../db.js';
 
 function parseDate(value) {
   if (!value) return null;
@@ -25,11 +25,13 @@ export default async function handler(req, res) {
     const endParam = searchParams.get('endDate');
 
     const params = [];
-    const where = [];
+    const where = [
+      `(s.customer_type = 'member' OR (s.referral_nb IS NOT NULL AND s.referral_nb != ''))`
+    ];
 
     if (branchParam && branchParam !== 'all' && branchParam !== '') {
       params.push(branchParam);
-      where.push(`branch_name = $${params.length}`);
+      where.push(`s.branch_id = $${params.length}`);
     }
 
     const start = parseDate(startParam);
@@ -37,21 +39,69 @@ export default async function handler(req, res) {
 
     if (start) {
       params.push(start.toISOString().slice(0, 10));
-      where.push(`date >= $${params.length}`);
+      where.push(`s.sale_date::date >= $${params.length}::date`);
     }
 
     if (end) {
-      params.push(end.toISOString().slice(0, 10));
-      where.push(`date <= $${params.length}`);
+      const endOfDay = new Date(end);
+      endOfDay.setHours(23, 59, 59, 999);
+      params.push(endOfDay.toISOString().slice(0, 10));
+      where.push(`s.sale_date::date <= $${params.length}::date`);
     }
 
-    let queryText = `SELECT * FROM mis_csi_entries`;
-    if (where.length > 0) {
-      queryText += ` WHERE ${where.join(' AND ')}`;
-    }
-    queryText += ` ORDER BY date DESC, id DESC LIMIT 5000`;
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
-    const rows = await getMany(queryText, params);
+    const sql = `
+      SELECT
+        s.branch_id                                                         AS branch_name,
+        COALESCE(NULLIF(s.distributor_nb, ''), NULLIF(s.referral_nb, ''))  AS nb_number,
+        s.customer_name                                                     AS name,
+        s.sale_number                                                       AS receipt_number,
+        s.sale_date::date                                                   AS date,
+        COALESCE(
+          NULLIF(TRIM(item->>'sku'),  ''),
+          NULLIF(TRIM(item->>'code'), ''),
+          ''
+        )                                                                   AS product_code,
+        COALESCE(
+          NULLIF(TRIM(item->>'product_name'), ''),
+          NULLIF(TRIM(item->>'name'),         ''),
+          NULLIF(TRIM(item->>'description'),  ''),
+          'Unknown'
+        )                                                                   AS product_description,
+        ROUND(COALESCE(
+          (item->>'dp')::numeric,
+          (item->>'dpPrice')::numeric,
+          (item->>'unit_price')::numeric,
+          0
+        ), 2)                                                               AS dp,
+        ROUND(COALESCE((item->>'bv')::numeric, 0), 2)                      AS bv,
+        COALESCE(
+          (item->>'quantity')::integer,
+          (item->>'qty')::integer,
+          1
+        )                                                                   AS qty,
+        ROUND(
+          COALESCE((item->>'dp')::numeric, (item->>'dpPrice')::numeric, (item->>'unit_price')::numeric, 0)
+          * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
+        2)                                                                  AS total_dp,
+        ROUND(
+          COALESCE((item->>'bv')::numeric, 0)
+          * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
+        2)                                                                  AS total_bv
+      FROM branch_walkin_sales s,
+        jsonb_array_elements(
+          CASE
+            WHEN s.items IS NOT NULL AND jsonb_typeof(s.items) = 'array' THEN s.items
+            ELSE '[]'::jsonb
+          END
+        ) AS item
+      ${whereClause}
+      ORDER BY s.sale_date DESC, s.id DESC
+      LIMIT 5000
+    `;
+
+    const { rows } = await query(sql, params);
 
     return res.status(200).json({
       success: true,
