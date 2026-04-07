@@ -69,7 +69,7 @@ export default async function handler(req, res) {
     const nbNumbers = [...new Set(rows.map(r => r.nb_number).filter(Boolean))];
     const existingDistributors = nbNumbers.length
       ? await getMany(
-          `SELECT id, nb_number FROM users WHERE nb_number = ANY($1)`,
+          `SELECT id, distributor_code AS nb_number FROM distributors WHERE distributor_code = ANY($1)`,
           [nbNumbers]
         ).catch(() => [])
       : [];

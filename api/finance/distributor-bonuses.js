@@ -258,7 +258,7 @@ async function handleUpload(req, res) {
         if (parsed.length > 0) {
           const nbNumbers = [...new Set(parsed.map(r => r.nb_number))];
           const existingDistributors = await getMany(
-            `SELECT nb_number, id FROM users WHERE nb_number = ANY($1) OR username = ANY($1)`,
+            `SELECT distributor_code AS nb_number, id FROM distributors WHERE distributor_code = ANY($1)`,
             [nbNumbers]
           ).catch(() => []);
           const distMap = {};
