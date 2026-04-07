@@ -7,7 +7,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRA
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 
@@ -198,6 +198,7 @@ export default function BranchPortal() {
     { id: 'distributorPerf', label: 'Distributor Performance', icon: '👥' },
     { id: 'salesReview', label: 'Sales Review', icon: '📈' },
     { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
+    { id: 'campaigns', label: 'Campaigns', icon: '📢' },
   ];
 
   return (
@@ -281,6 +282,7 @@ export default function BranchPortal() {
           {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
           {activeTab === 'salesReview' && <SalesReviewTab />}
           {activeTab === 'checkup' && <CheckUpBookingTab />}
+          {activeTab === 'campaigns' && <BranchCampaignsTab />}
         </div>
       </div>
     </PortalBranchContext.Provider>
@@ -7051,6 +7053,317 @@ function CheckUpBookingTab() {
               })}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Branch Campaigns Tab ───────────────────────────────────────────────────────
+const BRANCH_CAMP_TYPE_LABELS = {
+  discount: '🏷️ Discount',
+  buy_x_get_y: '🎁 Buy X Get Y',
+  bv_achievement: '🏆 BV Achievement',
+  elite_bingo: '🎯 Elite Bingo',
+  custom: '⚙️ Custom',
+};
+const BRANCH_CAMP_COLORS = {
+  discount: { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
+  buy_x_get_y: { bg: '#f0fdf4', border: '#86efac', text: '#166534' },
+  bv_achievement: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e' },
+  elite_bingo: { bg: '#fdf4ff', border: '#d8b4fe', text: '#6b21a8' },
+  custom: { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' },
+};
+
+function branchCampBadge(c) {
+  const now = new Date();
+  const start = new Date(c.start_date);
+  const end = new Date(c.end_date);
+  if (now > end) return <Badge variant="default">Ended</Badge>;
+  if (now < start) return <Badge variant="info">Upcoming</Badge>;
+  return <Badge variant="success">Active</Badge>;
+}
+
+function isLiveCampaign(c) {
+  const now = new Date();
+  return now >= new Date(c.start_date) && now <= new Date(c.end_date);
+}
+
+function BranchCampaignsTab() {
+  const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
+
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [alertMsg, setAlertMsg] = useState(null);
+  const [saleModal, setSaleModal] = useState(null);
+  const [inventory, setInventory] = useState([]);
+  const [saleForm, setSaleForm] = useState({ distributor_code: '', distributor_name: '', paid_product: '', paid_qty: 1, free_product: '', free_qty: 1, notes: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('active');
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/campaigns').then(d => {
+      const all = Array.isArray(d) ? d : (d.campaigns || []);
+      const relevant = all.filter(c => {
+        if (c.status === 'pending_approval' || c.status === 'rejected') return false;
+        const scope = (c.scope || '').toLowerCase();
+        // Nationwide / countrywide / all / empty = visible to all branches
+        if (!scope || scope === 'countrywide' || scope === 'nationwide' || scope === 'all') return true;
+
+        // Parse conditions for stock_assignments branch targeting
+        const cond = typeof c.conditions === 'string'
+          ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })()
+          : (c.conditions || {});
+
+        // Check stock_assignments — 'all' value means all branches
+        const stockAssignments = Array.isArray(cond.stock_assignments) ? cond.stock_assignments : [];
+        const assignedBranches = stockAssignments.map(a => a.branch).filter(Boolean);
+        if (assignedBranches.includes('all') || assignedBranches.includes(effectiveBranch)) return true;
+        // If there are specific branch assignments, filter out non-targeted branches
+        if (assignedBranches.length > 0) return false;
+
+        // Fall back to target_branches
+        let branches = c.target_branches;
+        if (typeof branches === 'string') { try { branches = JSON.parse(branches); } catch { return true; } }
+        if (Array.isArray(branches) && branches.length > 0) {
+          return branches.includes('all') || branches.includes(effectiveBranch);
+        }
+        return true;
+      });
+      setCampaigns(relevant);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [effectiveBranch]);
+
+  const openSaleModal = (c) => {
+    setSaleModal(c);
+    const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
+    const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
+    const prefillPaid = cond.products_text ? cond.products_text.split(',')[0]?.trim() : '';
+    const prefillFree = prize.free_product || '';
+    const prefillBuyQty = cond.buy_qty || 1;
+    const prefillGetQty = cond.get_qty || 1;
+    setSaleForm({ distributor_code: '', distributor_name: '', paid_product: prefillPaid, paid_qty: prefillBuyQty, free_product: prefillFree, free_qty: prefillGetQty, notes: '' });
+    setAlertMsg(null);
+    api.stock.branchInventory(`branch=${encodeURIComponent(effectiveBranch)}`).then(d => {
+      setInventory(Array.isArray(d) ? d : (d.inventory || []));
+    }).catch(() => {});
+  };
+
+  const handleSale = async (e) => {
+    e.preventDefault();
+    const needsFreeItem = saleModal?.campaign_type === 'buy_x_get_y';
+    if (!saleForm.paid_product) {
+      setAlertMsg({ type: 'error', msg: 'Please select the paid product.' });
+      return;
+    }
+    if (needsFreeItem && !saleForm.free_product) {
+      setAlertMsg({ type: 'error', msg: 'This campaign requires a free product selection.' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.branch.campaignSale({
+        campaign_id: saleModal.id,
+        campaign_name: saleModal.name,
+        branch: effectiveBranch,
+        distributor_code: saleForm.distributor_code,
+        distributor_name: saleForm.distributor_name,
+        paid_product: saleForm.paid_product,
+        paid_qty: Number(saleForm.paid_qty),
+        free_product: saleForm.free_product,
+        free_qty: Number(saleForm.free_qty),
+        notes: saleForm.notes,
+        processed_by: user?.username || user?.full_name || 'branch',
+      });
+      setAlertMsg({ type: 'success', msg: 'Campaign sale processed and stock deducted.' });
+      setTimeout(() => setSaleModal(null), 1200);
+    } catch (err) {
+      setAlertMsg({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const now = new Date();
+  const filtered = filterStatus === 'all' ? campaigns
+    : filterStatus === 'active' ? campaigns.filter(c => isLiveCampaign(c))
+    : filterStatus === 'upcoming' ? campaigns.filter(c => new Date(c.start_date) > now)
+    : campaigns.filter(c => new Date(c.end_date) < now);
+
+  const productOptions = inventory.map(i => ({ value: i.product_name || i.name, label: `${i.product_name || i.name} (qty: ${i.total_qty ?? i.quantity ?? 0})` }));
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg,#8b0000,#c41e3a)' }}>
+        <div className="flex items-center gap-3">
+          <Megaphone size={28} className="text-white" />
+          <div>
+            <h3 className="text-white text-lg font-bold m-0">📢 Branch Campaigns</h3>
+            <p className="text-white/70 text-sm mt-0.5 m-0">View active promotions and process campaign sales.</p>
+          </div>
+        </div>
+        <div className="flex gap-5 mt-3">
+          {[
+            { label: 'Active', val: campaigns.filter(c => isLiveCampaign(c)).length, color: '#86efac' },
+            { label: 'Upcoming', val: campaigns.filter(c => new Date(c.start_date) > now).length, color: '#fcd34d' },
+            { label: 'Ended', val: campaigns.filter(c => new Date(c.end_date) < now).length, color: '#fca5a5' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <div className="text-2xl font-black" style={{ color: s.color }}>{s.val}</div>
+              <div className="text-xs text-white/60">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { id: 'active', label: 'Active Now' },
+          { id: 'upcoming', label: 'Upcoming' },
+          { id: 'ended', label: 'Ended' },
+          { id: 'all', label: 'All' },
+        ].map(f => (
+          <button key={f.id} onClick={() => setFilterStatus(f.id)}
+            style={{ padding: '5px 14px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+              background: filterStatus === f.id ? '#c41e3a' : '#f1f5f9', color: filterStatus === f.id ? '#fff' : '#475569' }}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <LoadingSpinner /> : (
+        filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <div style={{ fontSize: 48, opacity: 0.3 }}>📢</div>
+            <div className="mt-2">No campaigns found for this filter.</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map(c => {
+              const cc = BRANCH_CAMP_COLORS[c.campaign_type] || BRANCH_CAMP_COLORS.custom;
+              const live = isLiveCampaign(c);
+              const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
+              const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
+              return (
+                <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cc.border, background: cc.bg }}>
+                  <div className="p-4">
+                    <div className="flex flex-wrap justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="font-bold text-gray-800">{c.name}</span>
+                          {branchCampBadge(c)}
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#fff', color: cc.text, border: `1px solid ${cc.border}` }}>
+                            {BRANCH_CAMP_TYPE_LABELS[c.campaign_type] || c.campaign_type}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 mb-1">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
+                        {c.description && <div className="text-sm text-gray-600 mb-1">{c.description}</div>}
+                        <div className="text-xs text-gray-600 space-y-0.5">
+                          {cond.buy_qty && cond.get_qty && <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>}
+                          {cond.discount_pct && <div>📌 Discount: <strong>{cond.discount_pct}%</strong> off</div>}
+                          {cond.min_purchase && <div>📌 Min purchase: N${cond.min_purchase}</div>}
+                          {prize.description && <div>🏆 {prize.description}</div>}
+                          {prize.free_product && <div>🎁 Free product: <strong>{prize.free_product}</strong></div>}
+                          {prize.cash_reward && <div>💰 Cash reward: N${prize.cash_reward}</div>}
+                        </div>
+                      </div>
+                      {live && (
+                        <button onClick={() => openSaleModal(c)}
+                          style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                          + Process Sale
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+
+      {saleModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <div className="font-bold text-lg text-gray-800">Process Campaign Sale</div>
+                <div className="text-sm text-gray-500">{saleModal.name}</div>
+              </div>
+              <button onClick={() => setSaleModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+            </div>
+            {alertMsg && <Alert type={alertMsg.type} className="mb-4" onClose={() => setAlertMsg(null)}>{alertMsg.msg}</Alert>}
+            <form onSubmit={handleSale} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Distributor Code" value={saleForm.distributor_code} onChange={e => setSaleForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB001234" />
+                <Input label="Distributor Name" value={saleForm.distributor_name} onChange={e => setSaleForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-3">
+                <div className="text-sm font-semibold text-blue-800">Paid Item (deducted as sale)</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
+                    <select value={saleForm.paid_product} onChange={e => setSaleForm(f => ({ ...f, paid_product: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+                      <option value="">-- Select product --</option>
+                      {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <Input label="Qty" type="number" min="1" value={saleForm.paid_qty} onChange={e => setSaleForm(f => ({ ...f, paid_qty: e.target.value }))} />
+                </div>
+              </div>
+              {saleModal?.campaign_type === 'buy_x_get_y' ? (
+                <div className="p-3 rounded-lg border-2 border-green-200 bg-green-50 space-y-3">
+                  <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(required — deducted as campaign free item)</span></div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
+                      <select value={saleForm.free_product} onChange={e => setSaleForm(f => ({ ...f, free_product: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-200">
+                        <option value="">-- Select product --</option>
+                        {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    <Input label="Qty" type="number" min="1" value={saleForm.free_qty} onChange={e => setSaleForm(f => ({ ...f, free_qty: e.target.value }))} />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg border border-green-200 bg-green-50 space-y-2">
+                  <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(optional)</span></div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Product (if any)</label>
+                      <select value={saleForm.free_product} onChange={e => setSaleForm(f => ({ ...f, free_product: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-200">
+                        <option value="">-- None --</option>
+                        {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    {saleForm.free_product && <Input label="Qty" type="number" min="1" value={saleForm.free_qty} onChange={e => setSaleForm(f => ({ ...f, free_qty: e.target.value }))} />}
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                <textarea value={saleForm.notes} onChange={e => setSaleForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[50px]"
+                  placeholder="Any additional notes..." />
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="submit" disabled={submitting}
+                  style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {submitting ? 'Processing…' : '✓ Process Campaign Sale'}
+                </button>
+                <button type="button" onClick={() => setSaleModal(null)}
+                  style={{ padding: '10px 18px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

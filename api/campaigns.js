@@ -78,28 +78,90 @@ export default async function handler(req, res) {
       const id = genId('CAMP');
       const {
         name, description = '', campaign_type = 'custom',
-        start_date, end_date, status = 'upcoming',
+        start_date, end_date,
         branch = 'countrywide', scope = 'countrywide',
         conditions = {}, prize = {},
         discount_percentage = 0,
         target_branches = [],
+        submitted_by = null,
+        stock_assignments = [],
       } = body;
 
       if (!name || !start_date || !end_date) {
         return res.status(400).json({ error: 'name, start_date and end_date are required' });
       }
 
+      // Role-based status enforcement
+      const userRole = req.user?.role || '';
+      const gmRoles = ['gm', 'admin', 'director'];
+      const stockRoles = ['stock'];
+      const allowedCreatorRoles = [...gmRoles, ...stockRoles];
+      if (!allowedCreatorRoles.includes(userRole)) {
+        return res.status(403).json({ error: 'Only stock or GM users can create campaigns' });
+      }
+
+      let status;
+      if (gmRoles.includes(userRole)) {
+        // GM/admin/director can create with any valid status
+        status = body.status || 'upcoming';
+      } else {
+        // Stock users must create in pending_approval (enforced server-side)
+        if (body.status && body.status !== 'pending_approval') {
+          return res.status(403).json({ error: 'Stock users can only create campaigns pending GM approval' });
+        }
+        status = 'pending_approval';
+      }
+
+      const effectiveSubmittedBy = submitted_by || (status === 'pending_approval' ? (req.user?.username || null) : null);
+
+      const conditionsWithAssignments = {
+        ...conditions,
+        stock_assignments: Array.isArray(stock_assignments) ? stock_assignments.filter(a => a.product) : [],
+      };
+
       await query(
-        `INSERT INTO campaigns (id, name, description, campaign_type, start_date, end_date, status, branch, scope, conditions, prize, discount_percentage, target_branches, created_by, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW())`,
+        `INSERT INTO campaigns (id, name, description, campaign_type, start_date, end_date, status, branch, scope, conditions, prize, discount_percentage, target_branches, created_by, submitted_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())`,
         [id, name, description, campaign_type, start_date, end_date, status, branch, scope,
-         JSON.stringify(conditions), JSON.stringify(prize),
+         JSON.stringify(conditionsWithAssignments), JSON.stringify(prize),
          Number(discount_percentage) || 0,
          JSON.stringify(Array.isArray(target_branches) ? target_branches : []),
-         req.user?.username || 'system']
+         req.user?.username || 'system',
+         effectiveSubmittedBy]
       );
       const created = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
       return res.status(201).json({ success: true, campaign: created });
+    }
+
+    // ── PATCH /api/campaigns/:id/review ────────────────────────────────────────
+    if (req.method === 'PATCH' && path.match(/^\/[^/]+\/review$/)) {
+      if (req.user?.role !== 'gm') {
+        return res.status(403).json({ error: 'Only the GM can approve or reject campaigns' });
+      }
+
+      const id = path.split('/')[1];
+      const body = await parseJsonBody(req);
+      const { action, rejection_note = '' } = body;
+
+      if (!['approve', 'reject'].includes(action)) {
+        return res.status(400).json({ error: 'action must be "approve" or "reject"' });
+      }
+
+      const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+
+      if (existing.status !== 'pending_approval') {
+        return res.status(400).json({ error: 'Campaign is not pending approval' });
+      }
+
+      const newStatus = action === 'approve' ? 'upcoming' : 'rejected';
+      await query(
+        `UPDATE campaigns SET status = $1, rejection_note = $2, reviewed_at = NOW(), reviewed_by = $3, updated_at = NOW() WHERE id = $4`,
+        [newStatus, action === 'reject' ? rejection_note : null, req.user?.username || 'gm', id]
+      );
+
+      const updated = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      return res.json({ success: true, campaign: updated });
     }
 
     // ── PUT /api/campaigns/:id ─────────────────────────────────────────────────

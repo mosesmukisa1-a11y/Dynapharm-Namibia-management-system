@@ -191,6 +191,7 @@ export const api = {
     stockSummary: (params = '') => api.get(`/branch/stock-summary${params ? '?' + params : ''}`),
     bonusPayments: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/bonus-payments${qs ? '?' + qs : ''}`); },
     recordBonusPayment: (data) => api.post('/branch/bonus-payments', data),
+    campaignSale: (data) => api.post('/branch/campaign-sale', data),
   },
 
   branchActivity: {

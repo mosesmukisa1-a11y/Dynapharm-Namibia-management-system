@@ -1710,6 +1710,7 @@ function CampaignsTab() {
   const [showForm, setShowForm] = useState(false);
   const [alert, setAlert] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [activeSection, setActiveSection] = useState('all');
   const [campaignDetail, setCampaignDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [generatingWinners, setGeneratingWinners] = useState(false);
@@ -1760,6 +1761,10 @@ function CampaignsTab() {
     setShowForm(false);
   };
 
+  const [reviewModal, setReviewModal] = useState(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.name || !form.start_date || !form.end_date) {
@@ -1777,6 +1782,26 @@ function CampaignsTab() {
       loadCampaigns();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
+    }
+  };
+
+  const handleReview = async (action) => {
+    if (!reviewModal) return;
+    if (action === 'reject' && !reviewNote.trim()) {
+      setAlert({ type: 'error', msg: 'A rejection note is required.' });
+      return;
+    }
+    setReviewing(true);
+    try {
+      await api.patch(`/campaigns/${reviewModal.id}/review`, { action, rejection_note: reviewNote });
+      setAlert({ type: 'success', msg: `Campaign ${action === 'approve' ? 'approved and set as upcoming' : 'rejected'} successfully.` });
+      setReviewModal(null);
+      setReviewNote('');
+      loadCampaigns();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -1874,6 +1899,71 @@ function CampaignsTab() {
           ))}
         </div>
       </div>
+
+      {/* Pending Approval Queue */}
+      {campaigns.filter(c => c.status === 'pending_approval').length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Clock size={18} className="text-amber-600" />
+              <h3 className="font-bold text-gray-800">Pending Approval Queue</h3>
+              <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 99, padding: '2px 10px', fontSize: '0.78rem', fontWeight: 800 }}>
+                {campaigns.filter(c => c.status === 'pending_approval').length} awaiting review
+              </span>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div className="space-y-3">
+              {campaigns.filter(c => c.status === 'pending_approval').map(c => {
+                const tc2 = TYPE_COLORS[c.campaign_type] || TYPE_COLORS.custom;
+                return (
+                  <div key={c.id} className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
+                    <div className="flex flex-wrap justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="font-bold text-gray-800">{c.name}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: tc2.bg, color: tc2.text, border: `1px solid ${tc2.border}` }}>
+                            {CAMPAIGN_TYPES.find(t => t.value === c.campaign_type)?.label || c.campaign_type}
+                          </span>
+                          <Badge variant="warning"><Clock size={10} className="inline mr-1" />Pending Approval</Badge>
+                        </div>
+                        <div className="text-xs text-gray-500">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {c.submitted_by && <span>Submitted by: <strong>{c.submitted_by}</strong></span>}
+                          {c.submitted_by && c.created_at && <span className="mx-1">·</span>}
+                          {c.created_at && <span>{new Date(c.created_at).toLocaleString()}</span>}
+                        </div>
+                        {c.description && <div className="text-sm text-gray-600 mt-1">{c.description}</div>}
+                        {/* Show conditions summary */}
+                        {(() => {
+                          const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
+                          const entries = Object.entries(cond).filter(([, v]) => v !== '' && v !== null);
+                          if (entries.length === 0) return null;
+                          return (
+                            <div className="mt-2 text-xs text-gray-600">
+                              <strong>Conditions:</strong> {entries.map(([k, v]) => `${k.replace(/_/g,' ')}: ${v}`).join(' · ')}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => setReviewModal({ ...c, _action: 'approve' })}
+                          style={{ padding: '6px 16px', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+                          ✓ Approve
+                        </button>
+                        <button onClick={() => setReviewModal({ ...c, _action: 'reject' })}
+                          style={{ padding: '6px 14px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+                          ✕ Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <div className="flex justify-between items-center">
         <div className="text-sm text-gray-500">{campaigns.length} campaign(s) on record</div>
@@ -2185,6 +2275,47 @@ function CampaignsTab() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div className="font-bold text-lg text-gray-800 mb-1">
+              {reviewModal._action === 'approve' ? '✅ Approve Campaign' : '❌ Reject Campaign'}
+            </div>
+            <div className="text-sm text-gray-500 mb-4">{reviewModal.name}</div>
+            {reviewModal._action === 'approve' ? (
+              <div className="text-sm text-gray-700 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                This campaign will be marked as <strong>upcoming</strong> and will automatically become active on its start date.
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Rejection Reason <span className="text-red-500">*</span></label>
+                <textarea value={reviewNote} onChange={e => setReviewNote(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 min-h-[80px]"
+                  placeholder="Explain why this campaign is being rejected..." />
+              </div>
+            )}
+            <div className="flex gap-3">
+              {reviewModal._action === 'approve' ? (
+                <button onClick={() => handleReview('approve')} disabled={reviewing}
+                  style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {reviewing ? 'Approving…' : '✓ Confirm Approve'}
+                </button>
+              ) : (
+                <button onClick={() => handleReview('reject')} disabled={reviewing}
+                  style={{ flex: 1, padding: '10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {reviewing ? 'Rejecting…' : '✕ Confirm Reject'}
+                </button>
+              )}
+              <button onClick={() => { setReviewModal(null); setReviewNote(''); }}
+                style={{ padding: '10px 18px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

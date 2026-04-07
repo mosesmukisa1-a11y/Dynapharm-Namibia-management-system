@@ -4,7 +4,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu } from 'lucide-react';
+import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 // ── Stock AI Engine ────────────────────────────────────────────────────────────
@@ -632,6 +632,7 @@ export default function StockPortal() {
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
+    { id: 'campaigns', label: 'Campaigns', icon: '📢' },
   ];
 
   const branchOptions = [
@@ -699,6 +700,7 @@ export default function StockPortal() {
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
+        {activeTab === 'campaigns' && <StockCampaignsTab />}
       </div>
     </div>
   );
@@ -5797,6 +5799,369 @@ function RealtimeTab({ branch }) {
           emptyMessage="No recent movements"
         />
       </Card>
+    </div>
+  );
+}
+
+// ── Stock Campaigns Tab ────────────────────────────────────────────────────────
+const CAMP_TYPES = [
+  { value: 'discount', label: '🏷️ Discount', desc: 'Percentage off on selected products' },
+  { value: 'buy_x_get_y', label: '🎁 Buy X Get Y', desc: 'Purchase N and get M free' },
+  { value: 'bv_achievement', label: '🏆 BV Achievement', desc: 'Prizes for accumulating BV points' },
+  { value: 'elite_bingo', label: '🎯 Elite Bingo', desc: 'Recruit + maintain BV target' },
+  { value: 'custom', label: '⚙️ Custom', desc: 'Define your own rules' },
+];
+
+const CAMP_COLORS = {
+  discount: { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
+  buy_x_get_y: { bg: '#f0fdf4', border: '#86efac', text: '#166534' },
+  bv_achievement: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e' },
+  elite_bingo: { bg: '#fdf4ff', border: '#d8b4fe', text: '#6b21a8' },
+  custom: { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' },
+  pending_approval: { bg: '#fff7ed', border: '#fdba74', text: '#9a3412' },
+  rejected: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b' },
+};
+
+function campStatusBadge(c) {
+  if (c.status === 'pending_approval') return <Badge variant="warning"><Clock size={11} className="inline mr-1" />Pending Approval</Badge>;
+  if (c.status === 'rejected') return <Badge variant="danger"><XCircle size={11} className="inline mr-1" />Rejected</Badge>;
+  if (c.status === 'completed') return <Badge variant="default">Completed</Badge>;
+  const now = new Date();
+  const end = new Date(c.end_date);
+  const start = new Date(c.start_date);
+  if (now > end) return <Badge variant="default">Ended</Badge>;
+  if (now < start) return <Badge variant="info">Upcoming</Badge>;
+  return <Badge variant="success">Active</Badge>;
+}
+
+function StockCampaignsTab() {
+  const { user } = useAuth();
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
+  const [alert, setAlert] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const defaultForm = {
+    name: '', description: '', campaign_type: 'buy_x_get_y',
+    start_date: '', end_date: '', scope: 'countrywide',
+    target_branches: [],
+    conditions: {}, prize: {},
+    discount_percentage: 0,
+    stock_assignments: [{ product: '', quantity: '', branch: 'all' }],
+  };
+  const [form, setForm] = useState(defaultForm);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/campaigns').then(d => {
+      setCampaigns(Array.isArray(d) ? d : d.campaigns || []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    api.get('/prices').then(d => {
+      const list = Array.isArray(d) ? d : (d.prices || d.products || []);
+      setProducts(list.filter(p => !p.is_package));
+    }).catch(() => {});
+  }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.name || !form.start_date || !form.end_date) {
+      setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.post('/campaigns', {
+        ...form,
+        status: 'pending_approval',
+        submitted_by: user?.username || user?.full_name || 'stock',
+        discount_percentage: form.campaign_type === 'discount' ? Number(form.conditions?.discount_pct || 0) : 0,
+      });
+      setAlert({ type: 'success', msg: 'Campaign submitted for GM approval.' });
+      setForm(defaultForm);
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filtered = statusFilter === 'all' ? campaigns : campaigns.filter(c => c.status === statusFilter);
+  const pendingCount = campaigns.filter(c => c.status === 'pending_approval').length;
+
+  const tc = form.campaign_type ? (CAMP_COLORS[form.campaign_type] || CAMP_COLORS.custom) : CAMP_COLORS.custom;
+
+  return (
+    <div className="space-y-5">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg,#1e3a5f,#2980b9)' }}>
+        <div className="flex items-center gap-3">
+          <Megaphone size={28} className="text-white" />
+          <div>
+            <h3 className="text-white text-lg font-bold m-0">📢 Stock Campaigns</h3>
+            <p className="text-white/70 text-sm mt-0.5 m-0">Create campaigns for GM approval. Approved campaigns become active.</p>
+          </div>
+        </div>
+        <div className="flex gap-4 mt-3">
+          {[
+            { label: 'Total', val: campaigns.length, color: '#93c5fd' },
+            { label: 'Pending Approval', val: pendingCount, color: '#fcd34d' },
+            { label: 'Active', val: campaigns.filter(c => c.status === 'active' || (c.status === 'upcoming' && new Date() >= new Date(c.start_date) && new Date() <= new Date(c.end_date))).length, color: '#86efac' },
+            { label: 'Rejected', val: campaigns.filter(c => c.status === 'rejected').length, color: '#fca5a5' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <div className="text-xl font-black" style={{ color: s.color }}>{s.val}</div>
+              <div className="text-xs text-white/60">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center gap-3 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          {['all', 'pending_approval', 'upcoming', 'active', 'completed', 'rejected'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              style={{ padding: '5px 14px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                background: statusFilter === s ? '#2980b9' : '#f1f5f9', color: statusFilter === s ? '#fff' : '#475569' }}>
+              {s === 'pending_approval' ? 'Pending Approval' : s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === 'pending_approval' && pendingCount > 0 && (
+                <span style={{ marginLeft: 5, background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '1px 6px', fontSize: '0.72rem' }}>{pendingCount}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <Button onClick={() => { setShowForm(f => !f); setAlert(null); }}>
+          <Plus size={16} /> {showForm ? 'Cancel' : 'Submit New Campaign'}
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Submit New Campaign for GM Approval</h3>
+          </CardHeader>
+          <CardBody>
+            <Alert type="info" className="mb-4">
+              This campaign will be sent to the GM for approval before becoming active.
+            </Alert>
+            <form onSubmit={handleCreate} className="space-y-5">
+              <div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">Campaign Type</div>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                  {CAMP_TYPES.map(t => (
+                    <button key={t.value} type="button" onClick={() => setForm(f => ({ ...f, campaign_type: t.value, conditions: {}, prize: {} }))}
+                      className="p-3 rounded-lg border-2 text-left transition-all"
+                      style={form.campaign_type === t.value
+                        ? { background: CAMP_COLORS[t.value].bg, borderColor: CAMP_COLORS[t.value].border }
+                        : { background: '#f8fafc', borderColor: '#e2e8f0' }}>
+                      <div className="font-semibold text-sm" style={{ color: form.campaign_type === t.value ? CAMP_COLORS[t.value].text : '#374151' }}>{t.label}</div>
+                      <div className="text-xs text-gray-500 mt-1">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Input label="Campaign Title *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Buy 2 Get 1 Free Promotion" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[60px]"
+                  placeholder="Brief summary of this campaign..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Start Date *" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+                <Input label="End Date *" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
+              </div>
+
+              {/* Conditions summary */}
+              <div className="p-4 rounded-xl border-2" style={{ background: tc.bg, borderColor: tc.border }}>
+                <div className="font-semibold text-sm mb-3" style={{ color: tc.text }}>📋 Conditions / Rules</div>
+                <StockCampaignConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} products={products} />
+              </div>
+
+              <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
+                <div className="font-semibold text-sm text-amber-800 mb-3">🏆 Prize / Reward</div>
+                <StockCampaignPrizeForm type={form.campaign_type} prize={form.prize} onChange={p => setForm(f => ({ ...f, prize: p }))} products={products} />
+              </div>
+
+              <div className="p-4 rounded-xl border-2 border-purple-200 bg-purple-50">
+                <div className="font-semibold text-sm text-purple-800 mb-1">📦 Stock Assignment</div>
+                <div className="text-xs text-purple-600 mb-3">Specify the products and quantities allocated for this campaign across branches.</div>
+                {(form.stock_assignments || [{ product: '', quantity: '', branch: 'all' }]).map((a, i) => (
+                  <div key={i} className="grid grid-cols-3 gap-2 mb-2 items-end">
+                    <div className="col-span-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
+                      <select value={a.product} onChange={e => {
+                        const sa = [...(form.stock_assignments || [{ product: '', quantity: '', branch: 'all' }])];
+                        sa[i] = { ...sa[i], product: e.target.value };
+                        setForm(f => ({ ...f, stock_assignments: sa }));
+                      }} className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300">
+                        <option value="">-- Select --</option>
+                        {products.map(p => <option key={p.id || p.name} value={p.name || p.product_name}>{p.name || p.product_name}</option>)}
+                      </select>
+                    </div>
+                    <Input label="Qty Reserved" type="number" min="0" value={a.quantity}
+                      onChange={e => { const sa = [...(form.stock_assignments || [])]; sa[i] = { ...sa[i], quantity: e.target.value }; setForm(f => ({ ...f, stock_assignments: sa })); }} />
+                    <div className="flex gap-1 items-center">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                        <select value={a.branch} onChange={e => { const sa = [...(form.stock_assignments || [])]; sa[i] = { ...sa[i], branch: e.target.value }; setForm(f => ({ ...f, stock_assignments: sa })); }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300">
+                          <option value="all">All Branches</option>
+                          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      {i > 0 && <button type="button" onClick={() => { const sa = [...(form.stock_assignments || [])]; sa.splice(i, 1); setForm(f => ({ ...f, stock_assignments: sa })); }}
+                        className="text-red-400 hover:text-red-600 mt-4 shrink-0">✕</button>}
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setForm(f => ({ ...f, stock_assignments: [...(f.stock_assignments || [{ product: '', quantity: '', branch: 'all' }]), { product: '', quantity: '', branch: 'all' }] }))}
+                  className="text-xs text-purple-700 hover:underline mt-1">+ Add Product</button>
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit for GM Approval'}</Button>
+                <Button variant="ghost" type="button" onClick={() => { setShowForm(false); setForm(defaultForm); }}>Cancel</Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
+      {loading ? <LoadingSpinner /> : (
+        <div className="space-y-3">
+          {filtered.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">No campaigns found. Submit a new campaign above.</div>
+          ) : filtered.map(c => {
+            const cColors = CAMP_COLORS[c.status === 'pending_approval' ? 'pending_approval' : c.status === 'rejected' ? 'rejected' : (c.campaign_type || 'custom')] || CAMP_COLORS.custom;
+            return (
+              <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cColors.border, background: cColors.bg }}>
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-bold text-gray-800">{c.name}</span>
+                        {campStatusBadge(c)}
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#fff', border: `1px solid ${cColors.border}`, color: cColors.text }}>
+                          {CAMP_TYPES.find(t => t.value === c.campaign_type)?.label || c.campaign_type}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
+                      {c.description && <div className="text-sm text-gray-600 mt-1">{c.description}</div>}
+                      {c.submitted_by && <div className="text-xs text-gray-400 mt-1">Submitted by: {c.submitted_by}</div>}
+                      {c.status === 'rejected' && c.rejection_note && (
+                        <div className="mt-2 text-xs text-red-600 bg-red-50 rounded p-2 border border-red-200">
+                          <strong>Rejection reason:</strong> {c.rejection_note}
+                        </div>
+                      )}
+                      {c.status === 'pending_approval' && (
+                        <div className="mt-2 text-xs text-amber-700 bg-amber-50 rounded p-2 border border-amber-200">
+                          ⏳ Awaiting GM review
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StockCampaignConditionsForm({ type, conditions, onChange, products = [] }) {
+  const set = (key, val) => onChange({ ...conditions, [key]: val });
+  const getArr = (key) => Array.isArray(conditions[key]) ? conditions[key] : (conditions[key] ? String(conditions[key]).split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  if (type === 'discount') return (
+    <div className="space-y-3">
+      <Input label="Discount %" type="number" min="1" max="100" value={conditions.discount_pct || ''} onChange={e => set('discount_pct', e.target.value)} placeholder="e.g. 15" />
+      <Input label="Minimum Purchase Amount (N$)" type="number" value={conditions.min_purchase || ''} onChange={e => set('min_purchase', e.target.value)} placeholder="0 = no minimum" />
+    </div>
+  );
+  if (type === 'buy_x_get_y') return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Buy quantity (X)" type="number" min="1" value={conditions.buy_qty || ''} onChange={e => set('buy_qty', e.target.value)} placeholder="e.g. 1" />
+        <Input label="Get quantity free (Y)" type="number" min="1" value={conditions.get_qty || ''} onChange={e => set('get_qty', e.target.value)} placeholder="e.g. 1" />
+      </div>
+      <Input label="Qualifying Products (comma-separated, blank = all)" value={conditions.products_text || ''} onChange={e => set('products_text', e.target.value)} placeholder="e.g. Shake, Grow" />
+    </div>
+  );
+  if (type === 'bv_achievement') return (
+    <div className="space-y-3">
+      <Input label="Maximum Winners (0 = unlimited)" type="number" min="0" value={conditions.max_winners || ''} onChange={e => set('max_winners', e.target.value)} placeholder="0" />
+    </div>
+  );
+  if (type === 'elite_bingo') return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Min BV Required" type="number" value={conditions.min_bv || '3000'} onChange={e => set('min_bv', e.target.value)} placeholder="3000" />
+        <Input label="Min New Recruits" type="number" value={conditions.min_recruits || '2'} onChange={e => set('min_recruits', e.target.value)} placeholder="2" />
+      </div>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      <Input label="Minimum BV" type="number" value={conditions.min_bv || ''} onChange={e => set('min_bv', e.target.value)} placeholder="Optional" />
+      <Input label="Other Rules" value={conditions.rules || ''} onChange={e => set('rules', e.target.value)} placeholder="Describe additional conditions..." />
+    </div>
+  );
+}
+
+function StockCampaignPrizeForm({ type, prize, onChange, products = [] }) {
+  const set = (key, val) => onChange({ ...prize, [key]: val });
+  if (type === 'discount') return (
+    <Input label="Discount Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Up to 15% off on selected items" />
+  );
+  if (type === 'buy_x_get_y') return (
+    <div className="space-y-3">
+      <Input label="Free Product Name" value={prize.free_product || ''} onChange={e => set('free_product', e.target.value)} placeholder="e.g. Shake" />
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Buy 1 Get 1 Free" />
+    </div>
+  );
+  if (type === 'bv_achievement') return (
+    <div className="space-y-3">
+      <div className="text-sm font-medium text-gray-700 mb-1">Prize Tiers</div>
+      {(prize.tiers || [{ bv_required: '', label: '', prize: '' }]).map((tier, i) => (
+        <div key={i} className="p-3 border border-gray-200 rounded-lg space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-semibold text-gray-500">TIER {i + 1}</span>
+            {i > 0 && <button type="button" onClick={() => { const t = [...(prize.tiers || [])]; t.splice(i, 1); set('tiers', t); }} className="text-xs text-red-500 hover:underline">Remove</button>}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Input label="Min BV" type="number" value={tier.bv_required || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], bv_required: e.target.value }; set('tiers', t); }} placeholder="e.g. 3000" />
+            <Input label="Tier Label" value={tier.label || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], label: e.target.value }; set('tiers', t); }} placeholder="e.g. Gold" />
+            <Input label="Prize" value={tier.prize || ''} onChange={e => { const t = [...(prize.tiers || [])]; t[i] = { ...t[i], prize: e.target.value }; set('tiers', t); }} placeholder="e.g. Hamper" />
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={() => set('tiers', [...(prize.tiers || []), { bv_required: '', label: '', prize: '' }])}
+        className="text-sm text-blue-600 hover:underline">+ Add Tier</button>
+    </div>
+  );
+  if (type === 'elite_bingo') return (
+    <div className="space-y-3">
+      <Input label="Cash Reward (N$)" type="number" value={prize.cash_reward || ''} onChange={e => set('cash_reward', e.target.value)} placeholder="e.g. 1400" />
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. N$1400 cash" />
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Trophy, cash, voucher..." />
+      <Input label="Prize Value (N$)" type="number" value={prize.value || ''} onChange={e => set('value', e.target.value)} placeholder="Optional monetary value" />
     </div>
   );
 }
