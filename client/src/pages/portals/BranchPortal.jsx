@@ -532,6 +532,7 @@ function WalkInSalesTab() {
 
       const saleData = {
         receipt_number: receiptNumber,
+        saleNumber: receiptNumber,
         branch: effectiveBranch,
         branchId: effectiveBranch,
         customer_type: isMember ? 'member' : customerType === 'prescription' ? 'prescription' : customerType === 'consultation' ? 'consultation' : 'non_member',
@@ -548,10 +549,6 @@ function WalkInSalesTab() {
         payment_method: paymentMethod,
         paymentMethod: paymentMethod,
         items: itemsWithProfit,
-        products: cartData.items.map(item => ({
-          product_id: item.id, name: item.name || item.description, quantity: item.qty,
-          unitPrice: item.unitPrice, lineTotal: item.lineTotal, bv: item.lineBV,
-        })),
         total_amount: cartData.totalAmount,
         total: cartData.totalAmount,
         subtotal: cartData.totalAmount,
@@ -706,7 +703,17 @@ function WalkInSalesTab() {
           <div className="divide-y">
             {filteredSales.map((s, i) => {
               const sIsM = (s.customerType || s.customer_type) === 'member';
-              const saleItems = s.products || s.items || [];
+              const rawItems = s.products || s.items || [];
+              // For old sales missing dpPrice, look up from loaded price list
+              const lookupDp = (name) => {
+                const p = products.find(pr => (pr.name || pr.description || '').toLowerCase().trim() === (name || '').toLowerCase().trim());
+                return p ? (p.dp || 0) : 0;
+              };
+              const saleItems = rawItems.map(it => {
+                if ((it.dpPrice != null && it.dpPrice > 0) || (it.dp != null && it.dp > 0)) return it;
+                const lookedUpDp = lookupDp(it.product_name || it.name || it.description || '');
+                return lookedUpDp > 0 ? { ...it, dpPrice: lookedUpDp, cpPrice: it.cpPrice || it.cp || 0 } : it;
+              });
               const sBranchAmt = !sIsM ? saleItems.reduce((sum, it) => sum + ((it.dpPrice || it.dp || 0) * (Number(it.quantity || it.qty || 1))), 0) : null;
               const sTotalAmt = s.total || s.totalAmount || s.total_amount || 0;
               const saleParams = {
