@@ -30,11 +30,10 @@ export default async function handler(req, res) {
     //   1. Member's own purchase: customer_type='member', distributor_nb = their own NB
     //   2. Non-member referral sale: referral_nb = the referring member's NB
     //      → attributed to the referring member (show their NB + their name from distributors table)
-    // Exclude the default system referral NB (NB005676 = Dynapharm Namibia placeholder)
     const baseCondition = `(
       (s.customer_type = 'member' AND s.distributor_nb IS NOT NULL AND TRIM(s.distributor_nb) != '')
       OR (
-        (s.referral_nb IS NOT NULL AND TRIM(s.referral_nb) != '' AND TRIM(s.referral_nb) != 'NB005676')
+        (s.referral_nb IS NOT NULL AND TRIM(s.referral_nb) != '')
         AND (s.customer_type IS DISTINCT FROM 'member')
       )
     )`;
