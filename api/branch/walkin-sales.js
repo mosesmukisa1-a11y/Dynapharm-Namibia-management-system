@@ -92,6 +92,8 @@ function normalizeSaleRow(row) {
     status: row.status || data.status || 'completed',
     products: Array.isArray(items) ? items : [],
     distributorReferral: data.distributorReferral || metadata?.distributorReferral || null,
+    referral_nb: row.referral_nb || data.referral_nb || data.referralNB || data.distributorReferral?.nb_number || null,
+    distributor_nb: row.distributor_nb || data.distributor_nb || data.distributorNB || null,
     clientId: data.clientId || data.client_id || null,
     clientReferenceNumber: data.clientReferenceNumber || data.client_reference_number || null,
     soldBy: data.soldBy || row.created_by || null,
@@ -155,6 +157,20 @@ function buildSaleRecord(payload, existing = {}) {
     status: payload.status || existing.status || 'completed',
     items: JSON.stringify(products),
     data: JSON.stringify({ ...payload, id }),
+    referral_nb: (
+      payload.referral_nb ||
+      payload.referralNB ||
+      payload.distributorReferral?.nb_number ||
+      existing.referral_nb ||
+      null
+    ),
+    distributor_nb: (
+      payload.distributor_nb ||
+      payload.distributorNB ||
+      payload.distributor_nb_number ||
+      existing.distributor_nb ||
+      null
+    ),
     metadata: JSON.stringify({
       distributorReferral: payload.distributorReferral || null,
       referralId:
@@ -211,6 +227,13 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
   if (search) {
     params.push(`%${search.toLowerCase()}%`);
     conditions.push(`LOWER(customer_name) LIKE $${params.length}`);
+  }
+
+  const distributorNb = searchParams.get('distributor_nb') || searchParams.get('referral_nb');
+  if (distributorNb) {
+    const nbUpper = distributorNb.toUpperCase();
+    params.push(nbUpper);
+    conditions.push(`(UPPER(referral_nb) = $${params.length} OR UPPER(distributor_nb) = $${params.length})`);
   }
 
   const hasDateFilter = searchParams.get('from') || searchParams.get('to');

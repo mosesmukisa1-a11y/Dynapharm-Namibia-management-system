@@ -277,6 +277,7 @@ function DashboardTab() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [branchSales, setBranchSales] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [publicNBCode, setPublicNBCode] = useState('');
@@ -285,13 +286,16 @@ function DashboardTab() {
   const fetchByNB = async (nbCode) => {
     setLoading(true);
     try {
-      const [orderData, distData] = await Promise.all([
+      const [orderData, distData, branchData] = await Promise.all([
         api.orders.list({ distributor_code: nbCode }).catch(() => []),
         api.get(`/distributors?code=${encodeURIComponent(nbCode)}`).catch(() => null),
+        api.branch.walkinSalesByDistributor(nbCode).catch(() => ({ sales: [] })),
       ]);
       const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
       setOrders(all);
       if (distData && distData.distributor_code) setProfile(distData);
+      const sales = Array.isArray(branchData) ? branchData : branchData.sales || [];
+      setBranchSales(sales);
     } catch {}
     setLoading(false);
   };
@@ -309,11 +313,15 @@ function DashboardTab() {
   if (loading) return <LoadingSpinner />;
 
   const myOrders = orders;
-  const totalSpent = myOrders.reduce((sum, o) => sum + Number(o.total_amount || o.subtotal || 0), 0);
-  const totalBV = myOrders.reduce((sum, o) => {
+  const onlineSpent = myOrders.reduce((sum, o) => sum + Number(o.total_amount || o.subtotal || 0), 0);
+  const branchSpent = branchSales.reduce((sum, s) => sum + Number(s.total || s.totalAmount || 0), 0);
+  const totalSpent = onlineSpent + branchSpent;
+  const onlineBV = myOrders.reduce((sum, o) => {
     const items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
     return sum + items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
   }, 0);
+  const branchBV = branchSales.reduce((sum, s) => sum + Number(s.totalBV || s.total_bv || 0), 0);
+  const totalBV = onlineBV + branchBV;
 
   const displayName = profile?.distributor_name || user?.full_name || publicNBCode || 'Distributor';
   const nbNumber = profile?.distributor_code || publicNBCode || '';
@@ -366,8 +374,8 @@ function DashboardTab() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Total Orders</p>
-            <p className="text-2xl font-bold">{myOrders.length}</p>
+            <p className="text-white/70 text-xs mb-1">Transactions</p>
+            <p className="text-2xl font-bold">{myOrders.length + branchSales.length}</p>
           </div>
           <div className="bg-white/15 rounded-xl p-4 text-center">
             <p className="text-white/70 text-xs mb-1">Total Spent</p>
@@ -488,6 +496,60 @@ function DashboardTab() {
           </CardBody>
         </Card>
       </div>
+
+      {branchSales.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingBag size={18} /> Recent Branch Sales</h3>
+          </CardHeader>
+          <CardBody>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {branchSales.slice(0, 10).map((sale, idx) => {
+                const items = Array.isArray(sale.products) ? sale.products : [];
+                return (
+                  <div key={sale.id || idx} className="border border-green-100 rounded-lg overflow-hidden">
+                    <div className="flex justify-between items-center p-3 bg-green-50">
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">{sale.saleNumber || sale.sale_number || `Sale #${idx + 1}`}</p>
+                        <p className="text-xs text-gray-400">{formatDate(sale.sale_date || sale.timestamp || sale.created_at)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {items.length} product{items.length !== 1 ? 's' : ''} · BV: <span className="font-semibold text-blue-600">{Number(sale.totalBV || sale.bv || 0).toFixed(1)}</span>
+                          {sale.branch_id && <span className="ml-2">· {sale.branch_id}</span>}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-primary">{formatCurrency(sale.total || sale.totalAmount || 0)}</p>
+                        <Badge variant="success">branch sale</Badge>
+                        <p className="text-xs text-green-600 font-semibold mt-0.5">✓ Completed</p>
+                      </div>
+                    </div>
+                    {items.length > 0 && (
+                      <table className="w-full text-xs border-collapse">
+                        <tbody>
+                          {items.map((item, j) => {
+                            const qty = Number(item.quantity || item.qty || 1);
+                            const price = Number(item.unit_price || item.unitPrice || item.dpPrice || item.dp || 0);
+                            const bv = Number(item.bv || 0);
+                            return (
+                              <tr key={j} className={j % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
+                                <td className="py-1 px-3 font-medium text-gray-800">{item.product_name || item.name || '-'}</td>
+                                <td className="py-1 px-2 text-center text-gray-600">×{qty}</td>
+                                <td className="py-1 px-2 text-right text-gray-600">{formatCurrency(price)}</td>
+                                <td className="py-1 px-2 text-right text-blue-600 text-xs">{(bv * qty).toFixed(1)} BV</td>
+                                <td className="py-1 px-3 text-right font-bold text-green-700">{formatCurrency(price * qty)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -723,24 +785,34 @@ function ShopTab() {
 function BVProfitTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [branchSales, setBranchSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [publicNBCode, setPublicNBCode] = useState('');
   const [nbInput, setNBInput] = useState('');
 
-  const fetchByNB = (nbCode) => {
+  const fetchByNB = async (nbCode) => {
     setLoading(true);
-    api.orders.list({ distributor_code: nbCode })
-      .then(data => {
-        const all = Array.isArray(data) ? data : data.orders || [];
-        setOrders(all);
-      })
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
+    try {
+      const [orderData, branchData] = await Promise.all([
+        api.orders.list({ distributor_code: nbCode }).catch(() => []),
+        api.branch.walkinSalesByDistributor(nbCode).catch(() => ({ sales: [] })),
+      ]);
+      const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
+      setOrders(all);
+      const sales = Array.isArray(branchData) ? branchData : branchData.sales || [];
+      setBranchSales(sales);
+    } catch {
+      setOrders([]); setBranchSales([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (user?.username) {
-      fetchByNB(user.username.toUpperCase());
+      const nb = user.username.toUpperCase();
+      setPublicNBCode(nb);
+      fetchByNB(nb);
     } else {
       setLoading(false);
     }
@@ -752,7 +824,7 @@ function BVProfitTab() {
   orders.forEach(o => {
     const month = (o.created_at || '').slice(0, 7);
     if (!month) return;
-    if (!monthlyData[month]) monthlyData[month] = { orders: 0, amount: 0, bv: 0, profit: 0 };
+    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0, profit: 0 };
     monthlyData[month].orders += 1;
     const amt = Number(o.total_amount || o.subtotal || 0);
     monthlyData[month].amount += amt;
@@ -762,6 +834,22 @@ function BVProfitTab() {
       const dp = Number(i.unit_price || i.dp || 0);
       const cp = Number(i.cp || dp * 1.3);
       monthlyData[month].profit += (cp - dp) * Number(i.quantity || 1);
+    });
+  });
+  branchSales.forEach(s => {
+    const date = s.sale_date || s.saleDate || s.created_at || s.timestamp || '';
+    const month = date.slice(0, 7);
+    if (!month) return;
+    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0, profit: 0 };
+    monthlyData[month].branchSales += 1;
+    monthlyData[month].amount += Number(s.total || s.totalAmount || 0);
+    monthlyData[month].bv += Number(s.totalBV || s.bv || 0);
+    const items = Array.isArray(s.products) ? s.products : [];
+    items.forEach(i => {
+      const dp = Number(i.unit_price || i.dpPrice || i.dp || 0);
+      const cp = Number(i.cpPrice || i.cp || dp * 1.3);
+      const qty = Number(i.quantity || i.qty || 1);
+      monthlyData[month].profit += (cp - dp) * qty;
     });
   });
 
@@ -795,7 +883,7 @@ function BVProfitTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title="Total BV" value={totalBV.toFixed(1)} color="blue" />
         <StatCard title="Est. Profit" value={formatCurrency(totalProfit)} color="green" />
-        <StatCard title="Total Orders" value={orders.length} color="purple" />
+        <StatCard title="Total Transactions" value={orders.length + branchSales.length} color="purple" />
         <StatCard title="Months Active" value={months.length} color="orange" />
       </div>
 
@@ -803,14 +891,19 @@ function BVProfitTab() {
         <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><BarChart3 size={18} /> Monthly BV & Profit Breakdown</h3></CardHeader>
         <CardBody>
           {months.length === 0 ? (
-            <EmptyState icon={<BarChart3 size={48} />} title="No Data Yet" description="Place orders to see BV and profit tracking here." />
+            <EmptyState icon={<BarChart3 size={48} />} title="No Data Yet" description="Your BV will appear here when branch sales or online orders are linked to your NB number." />
           ) : (
             <div className="space-y-3">
               {months.map(([month, data]) => (
                 <div key={month} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-semibold text-gray-800">{new Date(month + '-01').toLocaleDateString('en-ZA', { year: 'numeric', month: 'long' })}</p>
-                    <p className="text-xs text-gray-500">{data.orders} order(s) | Total: {formatCurrency(data.amount)}</p>
+                    <p className="text-xs text-gray-500">
+                      {data.orders > 0 && `${data.orders} online order(s)`}
+                      {data.orders > 0 && data.branchSales > 0 && ' · '}
+                      {data.branchSales > 0 && `${data.branchSales} branch sale(s)`}
+                      {' | '}Total: {formatCurrency(data.amount)}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-blue-600">{data.bv.toFixed(1)} BV</p>

@@ -173,6 +173,7 @@ export const api = {
     cashSessions: (params = '') => api.get(`/branch/cash-sessions${params ? '?' + params : ''}`),
     createCashSession: (data) => api.post('/branch/cash-sessions', data),
     walkinSales: (params = '') => api.get(`/branch/walkin-sales${params ? '?' + params : ''}`),
+    walkinSalesByDistributor: (nb) => api.get(`/branch/walkin-sales?distributor_nb=${encodeURIComponent(nb)}&limit=500`),
     createWalkinSale: (data) => api.post('/branch/walkin-sales', data),
     cashMovements: () => api.get('/branch/cash-movements'),
     createCashMovement: (data) => api.post('/branch/cash-movements', data),
