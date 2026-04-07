@@ -5,8 +5,9 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
-import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle } from 'lucide-react';
+import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle, Download, Printer } from 'lucide-react';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
+import * as XLSX from 'xlsx';
 
 export default function MISPortal() {
   const [activeTab, setActiveTab] = useState('audit');
@@ -16,6 +17,7 @@ export default function MISPortal() {
     { id: 'branchStatus', label: 'Branch Status', icon: '📊' },
     { id: 'encodedSales', label: 'Encoded Sales', icon: '📝' },
     { id: 'receipts', label: 'Receipts', icon: '🧾' },
+    { id: 'csiEntry', label: 'CSI Entry', icon: '📋' },
     { id: 'stock', label: 'Stock', icon: '📦' },
     { id: 'catalogs', label: 'Catalogs', icon: '📖' },
     { id: 'drafts', label: 'Drafts', icon: '✏️' },
@@ -38,6 +40,7 @@ export default function MISPortal() {
         {activeTab === 'branchStatus' && <BranchStatusTab />}
         {activeTab === 'encodedSales' && <EncodedSalesTab />}
         {activeTab === 'receipts' && <ReceiptsTab />}
+        {activeTab === 'csiEntry' && <CSIEntryTab />}
         {activeTab === 'stock' && <MISStockTab />}
         {activeTab === 'catalogs' && <CatalogsTab />}
         {activeTab === 'drafts' && <DraftsTab />}
@@ -739,6 +742,219 @@ function CatalogsTab() {
           emptyMessage="No products match your search"
         />
       </Card>
+    </div>
+  );
+}
+
+function printCSIDoc(entries, filters) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  const fmt = (v) => v != null && v !== '' ? v : '-';
+  const fmtNum = (v) => Number(v || 0).toFixed(2);
+  const branchLabel = filters.branch && filters.branch !== 'all' ? filters.branch : 'All Branches';
+  const dateRange = [filters.startDate, filters.endDate].filter(Boolean).join(' to ') || 'All Dates';
+
+  const rows = entries.map((e, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${fmt(e.branch_name)}</td>
+      <td>${fmt(e.nb_number)}</td>
+      <td>${fmt(e.name)}</td>
+      <td>${fmt(e.receipt_number)}</td>
+      <td>${fmt(e.date)}</td>
+      <td>${fmt(e.product_code)}</td>
+      <td>${fmt(e.product_description)}</td>
+      <td>${fmtNum(e.dp)}</td>
+      <td>${fmtNum(e.bv)}</td>
+      <td>${fmt(e.qty)}</td>
+      <td>${fmtNum(e.total_dp)}</td>
+      <td>${fmtNum(e.total_bv)}</td>
+    </tr>`).join('');
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CSI Entry Report</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #1e293b; padding: 20px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #c41e3a; padding-bottom:10px; margin-bottom:16px; }
+    .company { color:#c41e3a; font-weight:900; font-size:14px; }
+    .report-title { font-size:13px; font-weight:800; color:#8b0000; margin-top:4px; }
+    .meta { text-align:right; color:#64748b; font-size:9px; line-height:1.6; }
+    table { width:100%; border-collapse:collapse; margin-top:4px; }
+    th { background:#c41e3a; color:#fff; padding:5px 6px; text-align:left; font-size:8.5px; font-weight:700; white-space:nowrap; }
+    td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:8.5px; }
+    tr:nth-child(even) td { background:#fdf7f8; }
+    .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; }
+    .filter-row { font-size:9px; color:#64748b; margin-bottom:10px; }
+    @media print { .print-btn { display:none; } body { padding:8px; } }
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+  <div class="header">
+    <div>
+      <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+      <div class="report-title">📋 CSI Entry Report</div>
+      <div class="filter-row">Branch: ${branchLabel} &nbsp;|&nbsp; Period: ${dateRange}</div>
+    </div>
+    <div class="meta">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Time: ${new Date().toLocaleTimeString('en-NA',{hour:'2-digit',minute:'2-digit'})}<br>Records: ${entries.length}</div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>#</th><th>Branch Name</th><th>NB Number</th><th>Name</th><th>Receipt No.</th>
+      <th>Date</th><th>Product Code</th><th>Product Description</th>
+      <th>DP</th><th>BV</th><th>QTY</th><th>Total DP</th><th>Total BV</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </body></html>`);
+  win.document.close();
+}
+
+const CSI_PAGE_SIZE = 100;
+
+function CSIEntryTab() {
+  const [branch, setBranch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const handleSearch = async (overrides = {}) => {
+    setLoading(true);
+    setSearched(true);
+    setPage(1);
+    try {
+      const params = {};
+      const b = overrides.branch !== undefined ? overrides.branch : branch;
+      const s = overrides.startDate !== undefined ? overrides.startDate : startDate;
+      const e = overrides.endDate !== undefined ? overrides.endDate : endDate;
+      if (b && b !== 'all') params.branch = b;
+      if (s) params.startDate = s;
+      if (e) params.endDate = e;
+      const data = await api.mis.csiEntries(params);
+      setEntries(Array.isArray(data) ? data : data.entries || []);
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { handleSearch(); }, []);
+
+  const exportCSV = () => {
+    if (entries.length === 0) return;
+    const headers = ['Branch Name', 'NB Number', 'Name', 'Receipt Number', 'Date', 'Product Code', 'Product Description', 'DP', 'BV', 'QTY', 'Total DP', 'Total BV'];
+    const rows = entries.map(e => [
+      e.branch_name, e.nb_number, e.name, e.receipt_number, e.date,
+      e.product_code, e.product_description, e.dp, e.bv, e.qty, e.total_dp, e.total_bv,
+    ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`));
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `csi-entries-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const exportExcel = () => {
+    if (entries.length === 0) return;
+    const wsData = [
+      ['Branch Name', 'NB Number', 'Name', 'Receipt Number', 'Date', 'Product Code', 'Product Description', 'DP', 'BV', 'QTY', 'Total DP', 'Total BV'],
+      ...entries.map(e => [
+        e.branch_name, e.nb_number, e.name, e.receipt_number, e.date,
+        e.product_code, e.product_description,
+        Number(e.dp || 0), Number(e.bv || 0), Number(e.qty || 0),
+        Number(e.total_dp || 0), Number(e.total_bv || 0),
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CSI Entries');
+    XLSX.writeFile(wb, `csi-entries-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const filters = { branch, startDate, endDate };
+  const totalPages = Math.max(1, Math.ceil(entries.length / CSI_PAGE_SIZE));
+  const pagedEntries = entries.slice((page - 1) * CSI_PAGE_SIZE, page * CSI_PAGE_SIZE);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">CSI Entry Report</h3></CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Branch</label>
+              <select value={branch} onChange={e => setBranch(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                <option value="">All Branches / Country</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <Input label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <Input label="End Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            <Button onClick={() => handleSearch()} disabled={loading}>
+              <Search size={14} /> {loading ? 'Searching...' : 'Search / Filter'}
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      {searched && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">
+                Results — {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+                {totalPages > 1 && <span className="text-sm font-normal text-gray-500 ml-2">(page {page} of {totalPages})</span>}
+              </h3>
+              {entries.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  <Button size="sm" variant="secondary" onClick={() => printCSIDoc(entries, filters)}>
+                    🖨️ Print PDF
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={exportCSV}>
+                    <Download size={14} /> Export CSV
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={exportExcel}>
+                    <Download size={14} /> Export Excel
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          {loading ? <LoadingSpinner /> : (
+            <>
+              <Table
+                columns={[
+                  { header: 'Branch Name', render: r => r.branch_name || '-' },
+                  { header: 'NB Number', render: r => r.nb_number || '-' },
+                  { header: 'Name', render: r => r.name || '-' },
+                  { header: 'Receipt No.', render: r => r.receipt_number || '-' },
+                  { header: 'Date', render: r => r.date ? formatDate(r.date) : '-' },
+                  { header: 'Product Code', render: r => r.product_code || '-' },
+                  { header: 'Product Description', render: r => r.product_description || '-' },
+                  { header: 'DP', render: r => <span className="font-medium">{Number(r.dp || 0).toFixed(2)}</span> },
+                  { header: 'BV', render: r => Number(r.bv || 0).toFixed(2) },
+                  { header: 'QTY', render: r => Number(r.qty || 0) },
+                  { header: 'Total DP', render: r => <span className="font-semibold text-blue-700">{Number(r.total_dp || 0).toFixed(2)}</span> },
+                  { header: 'Total BV', render: r => <span className="font-semibold text-green-700">{Number(r.total_bv || 0).toFixed(2)}</span> },
+                ]}
+                data={pagedEntries}
+                emptyMessage="No CSI entries found for the selected filters"
+              />
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-gray-100">
+                  <Button size="sm" variant="secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</Button>
+                  <span className="text-sm text-gray-600">{page} / {totalPages}</span>
+                  <Button size="sm" variant="secondary" disabled={page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next →</Button>
+                </div>
+              )}
+            </>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

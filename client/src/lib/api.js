@@ -234,6 +234,7 @@ export const api = {
     reconcile: (params = '') => api.get(`/mis/reconcile${params ? '?' + params : ''}`),
     stock: () => api.get('/mis/stock'),
     stockReport: (params = '') => api.get(`/mis/stock-report${params ? '?' + params : ''}`),
+    csiEntries: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/mis/csi-entries${qs ? '?' + qs : ''}`); },
   },
 
   prices: {

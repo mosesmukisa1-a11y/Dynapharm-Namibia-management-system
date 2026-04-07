@@ -45,18 +45,6 @@ waitForPort = 3001
 [workflows.workflow.metadata]
 outputType = "console"
 
-[[ports]]
-localPort = 3001
-externalPort = 80
-
-[[ports]]
-localPort = 5000
-externalPort = 5000
-
-[[ports]]
-localPort = 5001
-externalPort = 3002
-
 [userenv]
 
 [userenv.shared]
@@ -69,3 +57,19 @@ build = ["npm", "run", "build"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[[ports]]
+localPort = 3001
+externalPort = 3002
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
+localPort = 5001
+externalPort = 80
+
+[[ports]]
+localPort = 5002
+externalPort = 3001

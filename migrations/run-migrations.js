@@ -107,6 +107,7 @@ async function main() {
       '018_create_training_schedules_table.sql',
       '019_repair_branch_allocations.sql',
       '022_campaign_workflow_fields.sql',
+      '023_create_mis_csi_entries.sql',
     ];
     
     for (const migration of migrations) {
