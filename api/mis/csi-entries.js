@@ -26,12 +26,14 @@ export default async function handler(req, res) {
 
     const params = [];
 
-    // Include: own member purchases, referral sales, prescription/consultation referrals
-    // Covers: customer_type='member' (own NB), referral_nb set, or distributor_nb set
+    // CSI tracks member/distributor purchases only.
+    // Show only sales where the CUSTOMER is a member with their own NB number.
+    // Referral sales (non-member clients referred by a distributor) are excluded
+    // because the displayed NB (referral_nb) would not match the customer's name.
     const baseCondition = `(
       s.customer_type = 'member'
-      OR (s.referral_nb  IS NOT NULL AND TRIM(s.referral_nb)  != '')
-      OR (s.distributor_nb IS NOT NULL AND TRIM(s.distributor_nb) != '')
+      AND s.distributor_nb IS NOT NULL
+      AND TRIM(s.distributor_nb) != ''
     )`;
 
     const where = [baseCondition];
@@ -61,7 +63,7 @@ export default async function handler(req, res) {
     const sql = `
       SELECT
         s.branch_id                                                              AS branch_name,
-        COALESCE(NULLIF(TRIM(s.distributor_nb), ''), NULLIF(TRIM(s.referral_nb), '')) AS nb_number,
+        TRIM(s.distributor_nb)                                                   AS nb_number,
         s.customer_name                                                          AS name,
         s.sale_number                                                            AS receipt_number,
         s.sale_date::date                                                        AS date,
