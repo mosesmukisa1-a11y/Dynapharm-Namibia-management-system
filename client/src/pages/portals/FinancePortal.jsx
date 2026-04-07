@@ -789,7 +789,21 @@ function BonusUploadSubTab() {
       <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
         <CardBody>
           <h3 className="font-bold text-orange-900 mb-1 flex items-center gap-2"><Upload size={16} /> Upload Distributor Bonus File</h3>
-          <p className="text-sm text-orange-700">Upload an Excel (.xlsx) or CSV file with columns: <strong>NB Number, Distributor Name, Amount, Period</strong>. Review the parsed records then commit to store them.</p>
+          <div className="text-sm text-orange-700 space-y-1">
+            <p>Upload the Dynapharm bonus CSV or Excel file. Review the parsed records then commit to store them.</p>
+            <div className="flex flex-wrap gap-4 mt-2">
+              <div className="bg-orange-100 rounded px-3 py-2 text-xs">
+                <p className="font-bold mb-1">✅ Dynapharm CSV Format (recommended)</p>
+                <p>Columns: <strong>DRN, NAME, STOCKIST, AREA, NAD</strong></p>
+                <p>Amounts like <strong>2 565,80</strong> are handled automatically</p>
+                <p>Header rows (company name, date, area) are skipped automatically</p>
+              </div>
+              <div className="bg-orange-100 rounded px-3 py-2 text-xs">
+                <p className="font-bold mb-1">📊 Excel / Generic CSV</p>
+                <p>Columns: <strong>NB Number, Distributor Name, Amount</strong></p>
+              </div>
+            </div>
+          </div>
         </CardBody>
       </Card>
 
@@ -836,10 +850,12 @@ function BonusUploadSubTab() {
             </CardHeader>
             <Table
               columns={[
-                { header: 'NB Number', render: r => <span className="font-mono font-bold text-primary">{r.nb_number}</span> },
+                { header: 'DRN / NB #', render: r => <span className="font-mono font-bold text-primary">{r.nb_number}</span> },
                 { header: 'Distributor Name', render: r => r.distributor_name },
-                { header: 'Amount Earned', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount_earned || 0)}</span> },
-                { header: 'Remove', render: (r, idx) => <Button size="sm" variant="danger" onClick={() => removeRow(idx)}>Remove</Button> },
+                ...(previewRows.some(r => r.area) ? [{ header: 'Area', render: r => <span className="text-xs text-gray-500">{r.area || '—'}</span> }] : []),
+                ...(previewRows.some(r => r.stockist) ? [{ header: 'Stockist', render: r => <span className="text-xs text-gray-500">{r.stockist || '—'}</span> }] : []),
+                { header: 'Amount (NAD)', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount_earned || 0)}</span> },
+                { header: '', render: (r, idx) => <button className="text-xs text-red-500 hover:text-red-700" onClick={() => removeRow(idx)}>✕ Remove</button> },
               ]}
               data={previewRows}
               emptyMessage="No records"

@@ -50,6 +50,74 @@ function parseExcelFile(buffer) {
   return rows;
 }
 
+/**
+ * Parse Namibian/Philippine-style number: "2 565,80" → 2565.80
+ * Handles space thousands separator + comma decimal separator.
+ */
+function parseNamibianAmount(str) {
+  if (str == null || str === '') return 0;
+  const s = String(str)
+    .replace(/['"]/g, '')  // strip quotes
+    .trim()
+    .replace(/\s/g, '')    // remove spaces (thousands separator)
+    .replace(',', '.');    // comma → dot for decimal
+  return parseFloat(s) || 0;
+}
+
+/**
+ * Parse the Dynapharm bonus CSV format.
+ * Skips header rows (company name, report date, area) and finds the actual
+ * column header row by looking for DRN or NB/NAME keywords.
+ * Handles comma and semicolon delimiters.
+ */
+function parseDynapharmCSV(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // Find the column header row; detect delimiter (pipe, semicolon, comma)
+  let headerIdx = -1;
+  let delimiter = ',';
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const upper = lines[i].toUpperCase();
+    if (upper.includes('DRN') || (upper.includes('NB') && upper.includes('NAME')) || upper.includes('NAD')) {
+      headerIdx = i;
+      if (upper.includes('|')) delimiter = '|';
+      else if (upper.includes(';')) delimiter = ';';
+      else delimiter = ',';
+      break;
+    }
+  }
+
+  if (headerIdx === -1) return null; // couldn't find header — fall back to XLSX
+
+  // Parse a single CSV line (handles quoted fields)
+  const parseLine = (line) => {
+    const result = [];
+    let cur = '';
+    let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === delimiter && !inQ) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headers = parseLine(lines[headerIdx]).map(h =>
+    h.replace(/['"]/g, '').toLowerCase().trim()
+  );
+
+  const rows = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const vals = parseLine(lines[i]);
+    if (vals.every(v => !v)) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
 function normalizeRow(row) {
   const getValue = (...candidates) => {
     for (const c of candidates) {
@@ -59,13 +127,17 @@ function normalizeRow(row) {
     return '';
   };
 
-  const nbNumber = getValue('nb number', 'nb_number', 'nbnumber', 'drn', 'distributor_code', 'code').toUpperCase();
-  const name = getValue('distributor name', 'distributor_name', 'name', 'full_name');
-  const amount = parseFloat(getValue('amount', 'bonus', 'bonus_amount')) || 0;
+  const nbNumber = getValue('drn', 'nb number', 'nb_number', 'nbnumber', 'distributor_code', 'code').toUpperCase();
+  const name = getValue('name', 'distributor name', 'distributor_name', 'full_name');
+  // NAD column uses European format — must use parseNamibianAmount
+  const rawAmount = getValue('nad', 'amount', 'bonus', 'bonus_amount', 'amount earned');
+  const amount = parseNamibianAmount(rawAmount);
   const period = getValue('period', 'month', 'period_month');
+  const area = getValue('area', 'zone', 'region') || '';
+  const stockist = getValue('stockist', 'type', 'category') || '';
 
   if (!nbNumber || !name || amount <= 0) return null;
-  return { nb_number: nbNumber, distributor_name: name, amount_earned: amount, period };
+  return { nb_number: nbNumber, distributor_name: name, amount_earned: amount, period, area, stockist };
 }
 
 export default async function handler(req, res) {
@@ -156,11 +228,30 @@ async function handleUpload(req, res) {
       }
 
       try {
-        const rows = parseExcelFile(req.file.buffer);
+        const fileName = (req.file.originalname || '').toLowerCase();
+        const isCsv = fileName.endsWith('.csv') || req.file.mimetype === 'text/csv' || req.file.mimetype === 'application/csv';
+
+        let rows;
+        if (isCsv) {
+          // Try Dynapharm CSV format first (has header rows, DRN/NAD columns, European amounts)
+          const text = req.file.buffer.toString('utf8');
+          const csvRows = parseDynapharmCSV(text);
+          if (csvRows) {
+            rows = csvRows;
+          } else {
+            // Fall back: parse CSV through XLSX
+            const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+          }
+        } else {
+          rows = parseExcelFile(req.file.buffer);
+        }
+
         const parsed = rows.map(normalizeRow).filter(Boolean);
 
         if (parsed.length === 0) {
-          res.status(400).json({ success: false, error: 'No valid rows found. Expected columns: NB Number, Distributor Name, Amount, Period' });
+          res.status(400).json({ success: false, error: 'No valid rows found. Supported format: DRN, NAME, STOCKIST, AREA, NAD columns (Dynapharm CSV format), or NB Number, Distributor Name, Amount columns (Excel format).' });
           return resolve();
         }
 
