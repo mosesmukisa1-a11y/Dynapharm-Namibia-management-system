@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import { syncInventoryBalances } from '../services/inventoryBalanceSync.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -197,6 +198,12 @@ export default async function handler(req, res) {
       br.product_count = products.size;
       br.opening_qty = Math.max(0, br.closing_qty + br.qty_sold + br.qty_dispensed + br.qty_written_off + br.qty_transferred_out - br.qty_received - br.qty_returned - br.qty_adjusted);
     }
+
+    // Sync branch_inventory_batches quantities into inventory_balances to keep Stock Manager
+    // consistent with the Branch inventory view. Run asynchronously so response is not delayed.
+    syncInventoryBalances(branchInventory).catch(e =>
+      console.error('[branch/stock-summary] inventory_balances sync error:', e.message)
+    );
 
     res.json({
       success: true,

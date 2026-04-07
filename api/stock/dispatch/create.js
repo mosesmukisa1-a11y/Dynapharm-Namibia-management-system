@@ -5,6 +5,7 @@
  * and sets status to 'pending_approval' — consistent with the transfers endpoint.
  */
 import { query, getOne, getMany } from '../../db.js';
+import { recomputeInventoryBalance } from '../../services/stockEngine.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -46,20 +47,61 @@ export default async function handler(req, res) {
     return res.status(422).json({ success: false, error: 'Dispatch validation failed', validationErrors });
   }
 
-  // Check stock availability for each batch
+  // Check stock availability for each batch using case-insensitive, trimmed matching.
+  // Falls back to stock_movements net quantity when inventory_balances returns 0 (stale cache).
   const stockErrors = [];
   for (const item of items) {
-    const productName = item.productName || item.product_name || '';
+    const productName = (item.productName || item.product_name || '').trim();
     if (!productName) continue;
+    const batchNo = (item.batchNo || '').trim();
+
     const available = await getOne(
       `SELECT COALESCE(closing_qty, 0) as qty FROM inventory_balances
-       WHERE location_type = 'warehouse' AND location_id = $1
-         AND product_name = $2 AND batch_no = $3`,
-      [sourceWarehouseId, productName, item.batchNo]
+       WHERE location_type = 'warehouse'
+         AND LOWER(TRIM(location_id)) = LOWER(TRIM($1))
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+         AND COALESCE(batch_no, '') = $3`,
+      [sourceWarehouseId, productName, batchNo]
     );
-    const availQty = Number(available?.qty || 0);
+    let availQty = Number(available?.qty || 0);
+
+    // Fallback: if inventory_balances is 0 or missing, derive from stock_movements net
+    if (availQty <= 0) {
+      const INWARD_TYPES = ['supplier_import_receipt', 'warehouse_receipt', 'branch_receipt', 'transfer_in', 'received', 'return_in', 'positive_adjustment'];
+      const OUTWARD_TYPES = ['warehouse_dispatch', 'transfer_out', 'reserved', 'walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'online_order_fulfilment', 'prescription_dispense', 'write_off', 'return_out', 'negative_adjustment', 'sale', 'field_use'];
+      const movements = await getMany(
+        `SELECT movement_type, quantity, source_location, destination_location
+         FROM stock_movements
+         WHERE status = 'posted'
+           AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+           AND COALESCE(batch_no, '') = $2`,
+        [productName, batchNo]
+      );
+      const normalizedWarehouse = sourceWarehouseId.trim().toLowerCase();
+      let inward = 0, outward = 0;
+      for (const m of movements) {
+        const dst = (m.destination_location || '').trim().toLowerCase();
+        const src = (m.source_location || '').trim().toLowerCase();
+        if (dst === normalizedWarehouse && INWARD_TYPES.includes(m.movement_type)) inward += Number(m.quantity || 0);
+        if (src === normalizedWarehouse && OUTWARD_TYPES.includes(m.movement_type)) outward += Number(m.quantity || 0);
+      }
+      const movementsNet = inward - outward;
+      if (movementsNet > 0) {
+        // Cache is stale — recompute in background and use movements-derived qty
+        console.warn(`[dispatch/create] inventory_balances stale for ${productName}/${batchNo} at ${sourceWarehouseId}. Recomputing.`);
+        recomputeInventoryBalance({
+          locationType: 'warehouse',
+          locationId: sourceWarehouseId,
+          productName,
+          batchNo,
+          expiryDate: item.expiryDate || item.expiry_date || null,
+        }).catch(e => console.error('[dispatch/create] recompute error:', e.message));
+        availQty = movementsNet;
+      }
+    }
+
     if (availQty < Number(item.quantity)) {
-      stockErrors.push(`${productName} batch ${item.batchNo}: requested ${item.quantity}, available ${availQty}`);
+      stockErrors.push(`${productName} batch ${batchNo}: requested ${item.quantity}, available ${availQty}`);
     }
   }
   if (stockErrors.length > 0) {

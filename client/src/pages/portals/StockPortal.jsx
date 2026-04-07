@@ -4984,7 +4984,7 @@ function BranchStockTab({ branch }) {
     });
     Object.values(productMap).forEach(p => products.push(p));
     return {
-      name: b, key,
+      name: b.name, key,
       closingQty,
       closingDPC,
       closingValue: closingDPC,

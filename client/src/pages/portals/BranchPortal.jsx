@@ -2592,6 +2592,7 @@ function BranchStockTab() {
   const [viewRequest, setViewRequest] = useState(null);
   const [viewTransfer, setViewTransfer] = useState(null);
   const [invFilter, setInvFilter] = useState({ search: '', status: 'all', batch: '', expiry: '' });
+  const [expandedInvProducts, setExpandedInvProducts] = useState(new Set());
   const [movFilter, setMovFilter] = useState({ search: '', type: 'all', dateFrom: '', dateTo: '' });
   const [stockCardModal, setStockCardModal] = useState(null);
   const [stockCardData, setStockCardData] = useState(null);
@@ -3112,6 +3113,34 @@ function BranchStockTab() {
           if (invFilter.status === 'in_stock' && q <= 0) return false;
           return true;
         });
+
+        // Group batches by product name so the same product doesn't repeat as multiple top-level rows
+        const invProductGroups = [];
+        const invGroupMap = {};
+        for (const r of filteredInv) {
+          const pName = r.product_name || r.productName || r.description || '';
+          const normKey = pName.trim().toLowerCase();
+          if (!invGroupMap[normKey]) {
+            invGroupMap[normKey] = { productName: pName, batches: [], totalQty: 0, totalRcvd: 0, totalSold: 0, totalDisp: 0, totalTrf: 0, totalWO: 0, totalDpValue: 0, hasExpired: false, hasExpiring: false };
+            invProductGroups.push(invGroupMap[normKey]);
+          }
+          const g = invGroupMap[normKey];
+          const q = Number(r.quantity || 0);
+          const exp = r.expiry_date || r.expiryDate;
+          const p = findProductPrice(pName);
+          const dpUnit = p?.dp ? Number(p.dp) : 0;
+          g.batches.push(r);
+          g.totalQty += q;
+          g.totalRcvd += Number(r.qty_received || r.qtyReceived || 0);
+          g.totalSold += Number(r.qty_sold || r.qtySold || 0);
+          g.totalDisp += Number(r.qty_dispensed || r.qtyDispensed || 0);
+          g.totalTrf += Number(r.qty_transferred || r.qtyTransferred || 0);
+          g.totalWO += Number(r.qty_written_off || r.qtyWrittenOff || 0);
+          g.totalDpValue += dpUnit * q;
+          if (exp && new Date(exp) < now) g.hasExpired = true;
+          if (exp && new Date(exp) <= thirtyDays && new Date(exp) >= now) g.hasExpiring = true;
+        }
+
         const totalQty = filteredInv.reduce((s, r) => s + Number(r.quantity || 0), 0);
         const totalDP = filteredInv.reduce((s, r) => {
           const price = Number(r.unit_price || r.unitPrice || 0);
@@ -3122,6 +3151,13 @@ function BranchStockTab() {
         const thS = { textAlign: 'left', padding: '8px 6px', borderBottom: '2px solid #c41e3a', fontWeight: 700, color: '#374151', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' };
         const thR = { ...thS, textAlign: 'right' };
         const thC = { ...thS, textAlign: 'center' };
+        const toggleInvProduct = (normKey) => {
+          setExpandedInvProducts(prev => {
+            const next = new Set(prev);
+            if (next.has(normKey)) next.delete(normKey); else next.add(normKey);
+            return next;
+          });
+        };
 
         return (
         <Card>
@@ -3152,7 +3188,7 @@ function BranchStockTab() {
             {(invFilter.search || invFilter.batch || invFilter.status !== 'all') && (
               <button onClick={() => setInvFilter({ search: '', status: 'all', batch: '', expiry: '' })} style={{ padding: '6px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.78rem', cursor: 'pointer', background: '#f9fafb', color: '#64748b' }}>Clear</button>
             )}
-            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{filteredInv.length} batch line{filteredInv.length !== 1 ? 's' : ''}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{invProductGroups.length} product{invProductGroups.length !== 1 ? 's' : ''} · {filteredInv.length} batch line{filteredInv.length !== 1 ? 's' : ''}</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
@@ -3175,53 +3211,89 @@ function BranchStockTab() {
                 </tr>
               </thead>
               <tbody>
-                {filteredInv.length === 0 ? (
+                {invProductGroups.length === 0 ? (
                   <tr><td colSpan={14} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
-                ) : filteredInv.map((r, idx) => {
-                  const pName = r.product_name || r.productName || r.description || '-';
-                  const q = Number(r.quantity || 0);
-                  const exp = r.expiry_date || r.expiryDate;
-                  const isExp = exp ? new Date(exp) < now : false;
-                  const isExpiring = exp ? new Date(exp) <= thirtyDays && new Date(exp) >= now : false;
-                  const daysLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
-                  const p = findProductPrice(pName);
+                ) : invProductGroups.map((g, gIdx) => {
+                  const normKey = g.productName.trim().toLowerCase();
+                  const isExpanded = expandedInvProducts.has(normKey);
+                  const hasManyBatches = g.batches.length > 1;
+                  const p = findProductPrice(g.productName);
                   const dpUnit = p?.dp ? Number(p.dp) : 0;
-                  const dpTotal = dpUnit * q;
-                  const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : isExpiring ? 'Expiring' : 'OK';
-                  const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 || isExpiring ? '#d97706' : '#166534';
-                  const statusBg = q <= 0 || isExp ? '#fef2f2' : q < 10 || isExpiring ? '#fffbeb' : '#f0fdf4';
-                  const rcvd = Number(r.qty_received || r.qtyReceived || 0);
-                  const sold = Number(r.qty_sold || r.qtySold || 0);
-                  const disp = Number(r.qty_dispensed || r.qtyDispensed || 0);
-                  const trf = Number(r.qty_transferred || r.qtyTransferred || 0);
-                  const wo = Number(r.qty_written_off || r.qtyWrittenOff || 0);
-                  const srcWh = r.source_warehouse || r.sourceWarehouse || '';
-                  const lastMov = r.last_movement_date || r.lastMovementDate;
+                  const groupStatusLabel = g.totalQty <= 0 ? 'Out' : g.totalQty < 10 ? 'Low' : g.hasExpired ? 'Expired' : g.hasExpiring ? 'Expiring' : 'OK';
+                  const groupStatusColor = g.totalQty <= 0 || g.hasExpired ? '#c41e3a' : g.totalQty < 10 || g.hasExpiring ? '#d97706' : '#166534';
+                  const groupStatusBg = g.totalQty <= 0 || g.hasExpired ? '#fef2f2' : g.totalQty < 10 || g.hasExpiring ? '#fffbeb' : '#f0fdf4';
                   const cellStyle = { padding: '7px 6px', fontSize: '0.76rem' };
-                  return (
-                    <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0', cursor: 'pointer' }} onClick={() => openStockCard(pName)} title={`Click to view stock card for ${pName}`}>
-                      <td style={{ ...cellStyle, fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pName}>{pName}</td>
-                      <td style={{ ...cellStyle, color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{r.batch_no || r.batchNo || '—'}</td>
-                      <td style={{ ...cellStyle, color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
-                        {exp ? formatDate(exp) : '—'}
-                        {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.65rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d</span>}
-                        {isExp && <span style={{ display: 'block', fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700 }}>EXPIRED</span>}
+                  const rows = [(
+                    <tr key={`group-${normKey}`}
+                      style={{ background: gIdx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: hasManyBatches && isExpanded ? 'none' : '1px solid #f5f0f0', cursor: 'pointer' }}
+                      onClick={() => { if (hasManyBatches) toggleInvProduct(normKey); else openStockCard(g.productName); }}
+                      title={hasManyBatches ? `Click to ${isExpanded ? 'collapse' : 'expand'} ${g.batches.length} batches` : `Click to view stock card for ${g.productName}`}
+                    >
+                      <td style={{ ...cellStyle, fontWeight: 700, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.productName}>
+                        {hasManyBatches && <span style={{ marginRight: 5, color: '#c41e3a', fontSize: '0.7rem', fontWeight: 900 }}>{isExpanded ? '▼' : '▶'}</span>}
+                        {g.productName}
+                        {hasManyBatches && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: '#94a3b8', fontWeight: 500 }}>{g.batches.length} batches</span>}
                       </td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: rcvd > 0 ? '#166534' : '#d1d5db' }}>{rcvd || '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: sold > 0 ? '#2563eb' : '#d1d5db' }}>{sold || '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: disp > 0 ? '#6366f1' : '#d1d5db' }}>{disp || '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: trf > 0 ? '#9333ea' : '#d1d5db' }}>{trf || '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: wo > 0 ? '#c41e3a' : '#d1d5db' }}>{wo || '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534' }}>{q}</td>
+                      <td style={{ ...cellStyle, color: '#94a3b8', fontSize: '0.72rem' }}>{hasManyBatches ? `${g.batches.length} batches` : (g.batches[0]?.batch_no || g.batches[0]?.batchNo || '—')}</td>
+                      <td style={{ ...cellStyle, color: '#6b7280' }}>{hasManyBatches ? '—' : (() => { const exp = g.batches[0]?.expiry_date || g.batches[0]?.expiryDate; return exp ? formatDate(exp) : '—'; })()}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: g.totalRcvd > 0 ? '#166534' : '#d1d5db' }}>{g.totalRcvd || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: g.totalSold > 0 ? '#2563eb' : '#d1d5db' }}>{g.totalSold || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: g.totalDisp > 0 ? '#6366f1' : '#d1d5db' }}>{g.totalDisp || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: g.totalTrf > 0 ? '#9333ea' : '#d1d5db' }}>{g.totalTrf || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: g.totalWO > 0 ? '#c41e3a' : '#d1d5db' }}>{g.totalWO || '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: g.totalQty <= 0 ? '#c41e3a' : g.totalQty < 10 ? '#d97706' : '#166534' }}>{g.totalQty}</td>
                       <td style={{ ...cellStyle, textAlign: 'center' }}>
-                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, color: statusColor, background: statusBg, border: `1px solid ${statusColor}22` }}>{statusLabel}</span>
+                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, color: groupStatusColor, background: groupStatusBg, border: `1px solid ${groupStatusColor}22` }}>{groupStatusLabel}</span>
                       </td>
                       <td style={{ ...cellStyle, textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: dpTotal > 0 ? '#1e293b' : '#94a3b8' }}>{dpTotal > 0 ? `N$ ${dpTotal.toFixed(2)}` : '—'}</td>
-                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={srcWh}>{srcWh ? fmtLocation(srcWh) : '—'}</td>
-                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{lastMov ? formatDateTime(lastMov) : '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: g.totalDpValue > 0 ? '#1e293b' : '#94a3b8' }}>{g.totalDpValue > 0 ? `N$ ${g.totalDpValue.toFixed(2)}` : '—'}</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
                     </tr>
-                  );
+                  )];
+                  if (hasManyBatches && isExpanded) {
+                    g.batches.forEach((r, bIdx) => {
+                      const q = Number(r.quantity || 0);
+                      const exp = r.expiry_date || r.expiryDate;
+                      const isExp = exp ? new Date(exp) < now : false;
+                      const isExpiring = exp ? new Date(exp) <= thirtyDays && new Date(exp) >= now : false;
+                      const daysLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
+                      const batchStatusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 || isExpiring ? '#d97706' : '#166534';
+                      const batchStatusBg = q <= 0 || isExp ? '#fef2f2' : q < 10 || isExpiring ? '#fffbeb' : '#f0fdf4';
+                      const batchStatusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : isExpiring ? 'Expiring' : 'OK';
+                      const srcWh = r.source_warehouse || r.sourceWarehouse || '';
+                      const lastMov = r.last_movement_date || r.lastMovementDate;
+                      const batchCellStyle = { ...cellStyle, fontSize: '0.72rem', background: '#f8f5ff' };
+                      rows.push(
+                        <tr key={`batch-${r.id || normKey + bIdx}`}
+                          style={{ borderBottom: bIdx === g.batches.length - 1 ? '2px solid #e8d5ff' : '1px solid #f0ecff', cursor: 'pointer' }}
+                          onClick={() => openStockCard(g.productName)}
+                          title={`View stock card for ${g.productName}`}
+                        >
+                          <td style={{ ...batchCellStyle, paddingLeft: 24, color: '#6366f1', fontStyle: 'italic' }}>↳ Batch {bIdx + 1}</td>
+                          <td style={{ ...batchCellStyle, fontFamily: 'monospace', color: '#6366f1' }}>{r.batch_no || r.batchNo || '—'}</td>
+                          <td style={{ ...batchCellStyle, color: isExp ? '#c41e3a' : isExpiring ? '#d97706' : '#6b7280', fontWeight: isExp || isExpiring ? 700 : 400 }}>
+                            {exp ? formatDate(exp) : '—'}
+                            {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.62rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d</span>}
+                          </td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_received || r.qtyReceived || 0) || '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_sold || r.qtySold || 0) || '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_dispensed || r.qtyDispensed || 0) || '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_transferred || r.qtyTransferred || 0) || '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_written_off || r.qtyWrittenOff || 0) || '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', fontWeight: 700, color: q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#6366f1' }}>{q}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'center' }}>
+                            <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 20, fontSize: '0.62rem', fontWeight: 700, color: batchStatusColor, background: batchStatusBg, border: `1px solid ${batchStatusColor}22` }}>{batchStatusLabel}</span>
+                          </td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 && q > 0 ? `N$ ${(dpUnit * q).toFixed(2)}` : '—'}</td>
+                          <td style={{ ...batchCellStyle, color: '#6b7280', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={srcWh}>{srcWh ? fmtLocation(srcWh) : '—'}</td>
+                          <td style={{ ...batchCellStyle, color: '#6b7280', whiteSpace: 'nowrap' }}>{lastMov ? formatDateTime(lastMov) : '—'}</td>
+                        </tr>
+                      );
+                    });
+                  }
+                  return rows;
                 })}
               </tbody>
               {filteredInv.length > 0 && (
