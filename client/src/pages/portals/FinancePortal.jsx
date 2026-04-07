@@ -21,9 +21,6 @@ export default function FinancePortal() {
     { id: 'expenses', label: 'Expenses', icon: '💸' },
     { id: 'pettyCash', label: 'Petty Cash', icon: '💵' },
     { id: 'overheads', label: 'Overheads', icon: '🏢' },
-    { id: 'rent', label: 'Rent / Lease', icon: '🏘️' },
-    { id: 'salary', label: 'Salary Ledger', icon: '💼' },
-    { id: 'payroll', label: 'Payroll', icon: '👷' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
@@ -46,9 +43,6 @@ export default function FinancePortal() {
         {activeTab === 'expenses' && <ExpensesTab />}
         {activeTab === 'pettyCash' && <PettyCashTab />}
         {activeTab === 'overheads' && <OverheadsTab />}
-        {activeTab === 'rent' && <RentPaymentsTab />}
-        {activeTab === 'salary' && <SalaryLedgerTab role="finance" />}
-        {activeTab === 'payroll' && <PayrollTab />}
         {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
@@ -1741,6 +1735,32 @@ function PettyCashTab() {
 
 /* ─── OVERHEADS ──────────────────────────────────────────── */
 function OverheadsTab() {
+  const [subTab, setSubTab] = useState('overheads');
+  const subTabs = [
+    { id: 'overheads', label: '🏢 Overhead Expenses' },
+    { id: 'salary',   label: '💼 Salary Ledger' },
+    { id: 'payroll',  label: '👷 Payroll' },
+    { id: 'rent',     label: '🏘️ Rent / Lease' },
+  ];
+  return (
+    <div>
+      <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+        {subTabs.map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap rounded-t-lg border-b-2 transition-colors ${subTab === t.id ? 'border-blue-900 text-blue-900 bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'} cursor-pointer`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'overheads' && <OverheadExpensesSubTab />}
+      {subTab === 'salary'    && <SalaryLedgerTab role="finance" />}
+      {subTab === 'payroll'   && <PayrollTab />}
+      {subTab === 'rent'      && <RentPaymentsTab />}
+    </div>
+  );
+}
+
+function OverheadExpensesSubTab() {
   const OVERHEAD_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Internet & Telecoms', 'Security', 'Cleaning & Hygiene', 'Transport & Fuel', 'Office Supplies', 'Maintenance & Repairs', 'Marketing & Advertising', 'Staff Welfare', 'Insurance', 'Equipment & Assets', 'Professional Services', 'Banking Charges', 'Other Overhead'];
   const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: '', date: new Date().toISOString().slice(0, 10), payment_method: 'bank_transfer', notes: '' };
   const [expenses, setExpenses] = useState([]);
