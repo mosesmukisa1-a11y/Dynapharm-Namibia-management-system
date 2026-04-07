@@ -4968,12 +4968,11 @@ function BranchPaymentsTab() {
   const load = async () => {
     setLoading(true);
     try {
-      const [salesRes, bonusRes, expensesRes, paymentsRes, depositsRes] = await Promise.allSettled([
+      const [salesRes, bonusRes, expensesRes, paymentsRes] = await Promise.allSettled([
         api.branch.walkinSales(`branch=${encodeURIComponent(branchId)}&limit=300`),
         api.branch.bonusPayments({ branch: branchId }),
-        api.branch.expenses(),
+        api.branch.expenses({ branch: branchId, limit: 300 }),
         api.branch.payments({ branch: branchId }),
-        api.branch.deposits(`branch=${encodeURIComponent(branchId)}&limit=100`),
       ]);
 
       const entries = [];
@@ -5046,26 +5045,6 @@ function BranchPaymentsTab() {
         }));
       }
 
-      if (depositsRes.status === 'fulfilled') {
-        const deps = depositsRes.value?.deposits || [];
-        deps.forEach(d => {
-          if (!branchId || d.branch_id === branchId || d.branchId === branchId) {
-            entries.push({
-              id: d.id,
-              type: 'deposit',
-              direction: 'in',
-              date: d.date,
-              description: `Bank Deposit — ${d.bank_name || 'Bank'}`,
-              subtext: `Slip: ${d.slip_number || '—'} · ${d.status || 'pending'}`,
-              amount: Number(d.amount || 0),
-              by: d.deposited_by || d.created_by || '',
-              reference: d.slip_number || '',
-              raw: d,
-            });
-          }
-        });
-      }
-
       entries.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
       setAllEntries(entries);
     } catch (err) {
@@ -5082,11 +5061,11 @@ function BranchPaymentsTab() {
     setSubmitting(true);
     try {
       await api.branch.createExpense({
-        branch_id: branchId,
+        branchId,
         description: expenseForm.description.trim(),
         amount: Number(expenseForm.amount),
         category: expenseForm.category,
-        payment_method: expenseForm.payment_method,
+        paymentMethod: expenseForm.payment_method,
         notes: expenseForm.notes.trim(),
         date: new Date().toISOString().slice(0, 10),
       });
@@ -5126,7 +5105,6 @@ function BranchPaymentsTab() {
     bonus_payment: { label: 'Bonus Payment',    color: '#c41e3a', bg: '#fff0f0', border: '#fecaca', icon: '🎁' },
     expense:       { label: 'Expense',          color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '📤' },
     payment:       { label: 'Payment Received', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: '💳' },
-    deposit:       { label: 'Bank Deposit',     color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: '🏦' },
   };
 
   const TYPE_TABS = [
@@ -5135,7 +5113,6 @@ function BranchPaymentsTab() {
     { key: 'bonus_payment', label: '🎁 Bonus Payments' },
     { key: 'expense', label: '📤 Expenses' },
     { key: 'payment', label: '💳 Payments' },
-    { key: 'deposit', label: '🏦 Deposits' },
   ];
 
   const filtered = allEntries.filter(e => {
@@ -5149,8 +5126,12 @@ function BranchPaymentsTab() {
     return true;
   });
 
-  const totalIn = filtered.filter(e => e.direction === 'in').reduce((s, e) => s + e.amount, 0);
-  const totalOut = filtered.filter(e => e.direction === 'out').reduce((s, e) => s + e.amount, 0);
+  const totalSales = filtered.filter(e => e.type === 'sale').reduce((s, e) => s + e.amount, 0);
+  const totalBonus = filtered.filter(e => e.type === 'bonus_payment').reduce((s, e) => s + e.amount, 0);
+  const totalExpenses = filtered.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+  const totalPayments = filtered.filter(e => e.type === 'payment').reduce((s, e) => s + e.amount, 0);
+  const totalIn = totalSales + totalPayments;
+  const totalOut = totalBonus + totalExpenses;
 
   const countByType = (type) => allEntries.filter(e => e.type === type).length;
 
@@ -5176,8 +5157,8 @@ function BranchPaymentsTab() {
           <p className="text-xl font-black text-red-700">{formatCurrency(totalOut)}</p>
           <p className="text-xs text-red-500">{filtered.filter(e => e.direction === 'out').length} entries</p>
         </div>
-        <div className="rounded-xl p-4 border text-center" style={{ background: totalIn - totalOut >= 0 ? '#f0fdf4' : '#fff0f0', borderColor: totalIn - totalOut >= 0 ? '#bbf7d0' : '#fecaca' }}>
-          <p className="text-xs uppercase font-semibold tracking-wide" style={{ color: totalIn - totalOut >= 0 ? '#16a34a' : '#c41e3a' }}>Net</p>
+        <div className="rounded-xl p-4 border text-center" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
+          <p className="text-xs uppercase font-semibold tracking-wide" style={{ color: '#0f172a' }}>Net Cash</p>
           <p className="text-xl font-black" style={{ color: totalIn - totalOut >= 0 ? '#15803d' : '#b91c1c' }}>{formatCurrency(Math.abs(totalIn - totalOut))}</p>
           <p className="text-xs" style={{ color: totalIn - totalOut >= 0 ? '#16a34a' : '#c41e3a' }}>{totalIn - totalOut >= 0 ? '▲ surplus' : '▼ deficit'}</p>
         </div>
