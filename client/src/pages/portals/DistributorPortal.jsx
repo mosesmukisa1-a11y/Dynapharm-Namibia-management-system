@@ -786,6 +786,7 @@ function BVProfitTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [branchSales, setBranchSales] = useState([]);
+  const [profitLedger, setProfitLedger] = useState([]);
   const [loading, setLoading] = useState(true);
   const [publicNBCode, setPublicNBCode] = useState('');
   const [nbInput, setNBInput] = useState('');
@@ -793,16 +794,18 @@ function BVProfitTab() {
   const fetchByNB = async (nbCode) => {
     setLoading(true);
     try {
-      const [orderData, branchData] = await Promise.all([
+      const [orderData, branchData, ledgerData] = await Promise.all([
         api.orders.list({ distributor_code: nbCode }).catch(() => []),
         api.branch.walkinSalesByDistributor(nbCode).catch(() => ({ sales: [] })),
+        api.branch.distributorProfit({ distributor_nb: nbCode }).catch(() => ({ entries: [] })),
       ]);
       const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
       setOrders(all);
       const sales = Array.isArray(branchData) ? branchData : branchData.sales || [];
       setBranchSales(sales);
+      setProfitLedger(Array.isArray(ledgerData?.entries) ? ledgerData.entries : []);
     } catch {
-      setOrders([]); setBranchSales([]);
+      setOrders([]); setBranchSales([]); setProfitLedger([]);
     } finally {
       setLoading(false);
     }
@@ -846,10 +849,10 @@ function BVProfitTab() {
     monthlyData[month].bv += Number(s.totalBV || s.bv || 0);
     const items = Array.isArray(s.products) ? s.products : [];
     items.forEach(i => {
-      const dp = Number(i.unit_price || i.dpPrice || i.dp || 0);
-      const cp = Number(i.cpPrice || i.cp || dp * 1.3);
+      const dp = Number(i.dpPrice || i.dp || 0);
+      const cp = Number(i.cpPrice || i.cp || i.unit_price || (dp > 0 ? dp * 1.3 : 0));
       const qty = Number(i.quantity || i.qty || 1);
-      monthlyData[month].profit += (cp - dp) * qty;
+      if (dp > 0 && cp > dp) monthlyData[month].profit += (cp - dp) * qty;
     });
   });
 
@@ -915,6 +918,53 @@ function BVProfitTab() {
           )}
         </CardBody>
       </Card>
+
+      {profitLedger.length > 0 && (() => {
+        const pendingEntries = profitLedger.filter(e => e.status === 'pending');
+        const paidEntries = profitLedger.filter(e => e.status === 'paid');
+        const pendingTotal = pendingEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+        const paidTotal = paidEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+        return (
+          <Card>
+            <CardHeader>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="p-3 bg-red-50 rounded-lg text-center">
+                  <p className="text-xs text-red-600 font-semibold uppercase tracking-wide mb-1">Pending Payment</p>
+                  <p className="text-xl font-black text-red-700">{formatCurrency(pendingTotal)}</p>
+                  <p className="text-xs text-red-500">{pendingEntries.length} sale(s) unpaid</p>
+                </div>
+                <div className="p-3 bg-green-50 rounded-lg text-center">
+                  <p className="text-xs text-green-600 font-semibold uppercase tracking-wide mb-1">Paid Out</p>
+                  <p className="text-xl font-black text-green-700">{formatCurrency(paidTotal)}</p>
+                  <p className="text-xs text-green-500">{paidEntries.length} sale(s) paid</p>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {profitLedger.slice(0, 20).map((e, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 text-sm">
+                    <div>
+                      <span className="font-mono text-xs text-gray-500 mr-2">{e.sale_receipt || e.sale_id || '—'}</span>
+                      <span className="text-gray-600">{e.sale_date ? new Date(e.sale_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-bold ${e.status === 'paid' ? 'text-green-700' : 'text-red-700'}`}>{formatCurrency(Number(e.profit_amount))}</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${e.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {pendingTotal > 0 && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded p-2 mt-3">⚠️ You have {formatCurrency(pendingTotal)} pending. Contact your branch to arrange payment.</p>
+              )}
+            </CardBody>
+          </Card>
+        );
+      })()}
 
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">BV Accumulation Guide</h3></CardHeader>

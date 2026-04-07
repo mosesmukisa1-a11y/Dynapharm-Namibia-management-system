@@ -189,6 +189,7 @@ export default function BranchPortal() {
     { id: 'stock', label: 'Stock', icon: '📦' },
     { id: 'banking', label: 'Banking', icon: '🏦' },
     { id: 'payments', label: 'Payments', icon: '💳' },
+    { id: 'distProfit', label: 'Distributor Profit', icon: '💰' },
     { id: 'onlineOrders', label: 'Online Orders', icon: '🛍️' },
     { id: 'bonus', label: 'Bonus', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
@@ -273,6 +274,7 @@ export default function BranchPortal() {
           {activeTab === 'stock' && <BranchStockTab />}
           {activeTab === 'banking' && <BankingTab />}
           {activeTab === 'payments' && <BranchPaymentsTab />}
+          {activeTab === 'distProfit' && <DistributorProfitTab />}
           {activeTab === 'onlineOrders' && <OnlineOrdersTab />}
           {activeTab === 'bonus' && <BonusTab />}
           {activeTab === 'communication' && <CommunicationTab />}
@@ -4945,6 +4947,210 @@ function BankingTab() {
               <button onClick={() => setShowDrawer(false)} style={{ padding: '10px 28px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Close</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DistributorProfitTab() {
+  const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const branchId = portalBranch || user?.branch || '';
+
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState(null);
+  const [payingNb, setPayingNb] = useState(null);
+  const [payForm, setPayForm] = useState({ payment_method: 'Cash', note: '' });
+  const [paySubmitting, setPaySubmitting] = useState(false);
+  const [expandedNb, setExpandedNb] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.branch.distributorProfitGroups({ branch_id: branchId });
+      setGroups(res.groups || []);
+    } catch { setGroups([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (branchId) load(); }, [branchId]);
+
+  const totalPending = groups.reduce((s, g) => s + (g.pending || 0), 0);
+  const totalPaid = groups.reduce((s, g) => s + (g.paid || 0), 0);
+
+  const handlePayAll = async (nb) => {
+    setPaySubmitting(true);
+    try {
+      await api.branch.payDistributorProfit(nb, branchId, {
+        payment_method: payForm.payment_method,
+        note: payForm.note,
+        paid_by: user?.full_name || user?.username || 'branch',
+      });
+      setAlert({ type: 'success', msg: 'Payment recorded successfully' });
+      setPayingNb(null);
+      await load();
+    } catch (e) {
+      setAlert({ type: 'error', msg: e.message || 'Payment failed' });
+    } finally { setPaySubmitting(false); }
+  };
+
+  const kpiCard = (label, value, sub, color) => (
+    <div style={{ background: color, borderRadius: 14, padding: '18px 20px', color: '#fff', minWidth: 160, flex: 1 }}>
+      <div style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.75, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: '1.55rem', fontWeight: 900 }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  const filteredGroups = groups.filter(g => {
+    if (filterStatus === 'pending') return g.pending > 0;
+    if (filterStatus === 'paid') return g.paid > 0;
+    return true;
+  });
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Loading distributor profit data…</div>;
+
+  return (
+    <div style={{ padding: '20px 0' }}>
+      {alert && (
+        <div style={{ margin: '0 0 16px', padding: '10px 16px', borderRadius: 8, background: alert.type === 'success' ? '#f0fdf4' : '#fff1f2', border: `1px solid ${alert.type === 'success' ? '#86efac' : '#fca5a5'}`, color: alert.type === 'success' ? '#166534' : '#991b1b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{alert.msg}</span>
+          <button onClick={() => setAlert(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: 'inherit' }}>×</button>
+        </div>
+      )}
+
+      {/* KPI Row */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        {kpiCard('Pending Payout', formatCurrency(totalPending), `${groups.filter(g => g.pending > 0).length} distributor(s)`, '#c41e3a')}
+        {kpiCard('Total Paid Out', formatCurrency(totalPaid), `${groups.filter(g => g.paid > 0).length} distributor(s)`, '#166534')}
+        {kpiCard('Total Profit Generated', formatCurrency(totalPending + totalPaid), `${groups.length} distributor(s)`, '#1e40af')}
+      </div>
+
+      {/* Info Note */}
+      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginBottom: 18 }}>
+        💡 Distributor profit = CP − DP earned by the referring distributor on each non-member walk-in sale. Pending amounts need to be paid out to distributors.
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {['all', 'pending', 'paid'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            style={{ padding: '5px 16px', borderRadius: 20, border: '1.5px solid', borderColor: filterStatus === s ? '#c41e3a' : '#e2e8f0', background: filterStatus === s ? '#c41e3a' : '#fff', color: filterStatus === s ? '#fff' : '#374151', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Distributor Groups */}
+      {filteredGroups.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>💰</div>
+          <div style={{ fontWeight: 600 }}>No distributor profit entries yet</div>
+          <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Profit will appear here automatically when non-member walk-in sales are recorded.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {filteredGroups.map(g => {
+            const isExpanded = expandedNb === g.distributor_nb;
+            const hasPending = g.pending > 0;
+            return (
+              <div key={g.distributor_nb} style={{ background: '#fff', border: '1.5px solid', borderColor: hasPending ? '#fca5a5' : '#d1fae5', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                {/* Header Row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }} onClick={() => setExpandedNb(isExpanded ? null : g.distributor_nb)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 20, background: hasPending ? '#fee2e2' : '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
+                      {hasPending ? '⏳' : '✅'}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>{g.distributor_name || g.distributor_nb}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{g.distributor_nb} · {g.entries?.length || 0} sale(s)</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
+                    {g.pending > 0 && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>PENDING</div>
+                      <div style={{ fontWeight: 800, color: '#c41e3a', fontSize: '1rem' }}>{formatCurrency(g.pending)}</div>
+                    </div>}
+                    {g.paid > 0 && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>PAID</div>
+                      <div style={{ fontWeight: 700, color: '#166534', fontSize: '1rem' }}>{formatCurrency(g.paid)}</div>
+                    </div>}
+                    {hasPending && (
+                      <button onClick={e => { e.stopPropagation(); setPayingNb(g.distributor_nb); setPayForm({ payment_method: 'Cash', note: '' }); }}
+                        style={{ padding: '7px 16px', borderRadius: 8, background: '#c41e3a', color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+                        Pay Out
+                      </button>
+                    )}
+                    <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{isExpanded ? '▲' : '▼'}</span>
+                  </div>
+                </div>
+
+                {/* Expanded Entry List */}
+                {isExpanded && (
+                  <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 18px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                      <thead>
+                        <tr style={{ color: '#94a3b8', borderBottom: '1px solid #f1f5f9' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Receipt</th>
+                          <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Date</th>
+                          <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>Profit</th>
+                          <th style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 600 }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(g.entries || []).map((e, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                            <td style={{ padding: '5px 6px', color: '#374151', fontFamily: 'monospace' }}>{e.sale_receipt || e.sale_id || '—'}</td>
+                            <td style={{ padding: '5px 6px', color: '#64748b' }}>{e.sale_date ? new Date(e.sale_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(e.profit_amount))}</td>
+                            <td style={{ padding: '5px 6px', textAlign: 'center' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: e.status === 'paid' ? '#dcfce7' : '#fee2e2', color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>
+                                {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Pay Out Modal (inline) */}
+                {payingNb === g.distributor_nb && (
+                  <div style={{ borderTop: '1.5px solid #fca5a5', background: '#fff8f8', padding: '16px 18px' }}>
+                    <div style={{ fontWeight: 700, color: '#c41e3a', marginBottom: 12 }}>Pay Out {formatCurrency(g.pending)} to {g.distributor_name || g.distributor_nb}</div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: 160 }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Payment Method</label>
+                        <select value={payForm.payment_method} onChange={e => setPayForm(p => ({ ...p, payment_method: e.target.value }))}
+                          style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: '0.85rem' }}>
+                          {['Cash', 'EFT', 'Bank Transfer', 'Mobile Money'].map(m => <option key={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 2, minWidth: 200 }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Note (optional)</label>
+                        <input value={payForm.note} onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))} placeholder="Payment reference or note"
+                          style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button onClick={() => handlePayAll(g.distributor_nb)} disabled={paySubmitting}
+                        style={{ padding: '8px 20px', borderRadius: 8, background: '#166534', color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', opacity: paySubmitting ? 0.6 : 1 }}>
+                        {paySubmitting ? 'Processing…' : `Confirm Pay ${formatCurrency(g.pending)}`}
+                      </button>
+                      <button onClick={() => setPayingNb(null)}
+                        style={{ padding: '8px 16px', borderRadius: 8, background: '#f1f5f9', color: '#374151', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

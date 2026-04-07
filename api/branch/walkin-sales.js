@@ -450,6 +450,27 @@ export default async function handler(req, res) {
         captured_by: record.created_by || null,
       }).catch(e => console.error('[activityCapture] walkin-sale post error:', e.message));
 
+      // Auto-record distributor profit for non-member sales
+      if (record.customer_type !== 'member') {
+        const meta = safeJsonParse(record.metadata, {});
+        const referralNb = meta.referralId || record.referral_nb || 'NB005676';
+        const referralName = meta.referralName || 'Dynapharm Namibia';
+        const profitAmount = saleItems.reduce((s, i) => {
+          const qty = Number(i.quantity || i.qty || 0);
+          const dp = Number(i.dpPrice || i.dp || 0);
+          const cp = Number(i.cpPrice || i.cp || 0);
+          return s + Math.max(0, (cp - dp) * qty);
+        }, 0);
+        if (profitAmount > 0) {
+          const profitId = 'BDP-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+          query(
+            `INSERT INTO branch_distributor_profit (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',NOW(),NOW())`,
+            [profitId, record.branch_id, referralNb, referralName, insertedRow.id, record.sale_number, record.sale_date, profitAmount]
+          ).catch(e => console.error('[distributorProfit] insert error:', e.message));
+        }
+      }
+
       return res.status(201).json({
         success: true,
         sale: normalizeSaleRow(insertedRow),
