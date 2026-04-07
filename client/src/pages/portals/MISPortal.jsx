@@ -768,6 +768,9 @@ function printCSIDoc(entries, filters) {
   const rows = groups.map(({ header, items }) => {
     rowNum++;
     const rs = items.length;
+    const recQty = items.reduce((s, r) => s + Number(r.qty || 0), 0);
+    const recDP  = items.reduce((s, r) => s + Number(r.total_dp || 0), 0);
+    const recBV  = items.reduce((s, r) => s + Number(r.total_bv || 0), 0);
     return items.map((item, ii) => `
       <tr>
         ${ii === 0 ? `
@@ -785,7 +788,13 @@ function printCSIDoc(entries, filters) {
         <td style="text-align:right">${fmt(item.qty)}</td>
         <td style="text-align:right">${fmtNum(item.total_dp)}</td>
         <td style="text-align:right">${fmtNum(item.total_bv)}</td>
-      </tr>`).join('');
+      </tr>`).join('') + `
+      <tr class="subtotal-row">
+        <td colspan="10" style="text-align:right;font-style:italic;color:#64748b">Receipt subtotal (${items.length} item${items.length !== 1 ? 's' : ''})</td>
+        <td style="text-align:right;font-weight:800;color:#374151">${recQty}</td>
+        <td style="text-align:right;font-weight:800;color:#1d4ed8">N$ ${recDP.toFixed(2)}</td>
+        <td style="text-align:right;font-weight:800;color:#15803d">${recBV.toFixed(2)}</td>
+      </tr>`;
   }).join('');
 
   const grandQty = entries.reduce((s, r) => s + Number(r.qty || 0), 0);
@@ -811,6 +820,7 @@ function printCSIDoc(entries, filters) {
     td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:8.5px; vertical-align:top; }
     td[rowspan] { border-right:1px solid #e2e8f0; background:#fff; font-weight:600; }
     tr td:not([rowspan]):not(:first-of-type) { border-left:1px dotted #e2e8f0; }
+    .subtotal-row td { background:#f1f5f9; border-top:1px solid #cbd5e1; font-size:8.5px; padding:3px 6px; }
     tfoot td { background:#111827; color:#fff; font-weight:800; font-size:9px; padding:6px; border:none; }
     tfoot .t-yellow { color:#fde68a; text-align:right; }
     tfoot .t-blue   { color:#93c5fd; text-align:right; }
@@ -901,36 +911,49 @@ function CSIGroupedTable({ entries }) {
             const isEven = gi % 2 === 0;
             const rowBg = isEven ? 'bg-white' : 'bg-gray-50/60';
             const borderTop = 'border-t-2 border-gray-200';
-            return items.map((item, ii) => (
-              <tr key={`${group.key}-${ii}`} className={`${rowBg} hover:bg-blue-50/40 transition-colors`}>
-                {ii === 0 && (
-                  <>
-                    <td className={`${td} font-medium text-primary ${borderTop}`} rowSpan={rowSpan}>
-                      {header.branch_name || '-'}
-                    </td>
-                    <td className={`${td} font-semibold text-gray-800 ${borderTop}`} rowSpan={rowSpan}>
-                      {header.nb_number || '-'}
-                    </td>
-                    <td className={`${td} ${borderTop}`} rowSpan={rowSpan}>
-                      {header.name || '-'}
-                    </td>
-                    <td className={`${td} font-mono text-xs text-blue-700 ${borderTop}`} rowSpan={rowSpan}>
-                      {header.receipt_number || '-'}
-                    </td>
-                    <td className={`${td} whitespace-nowrap ${borderTop}`} rowSpan={rowSpan}>
-                      {header.date ? new Date(header.date).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
-                    </td>
-                  </>
-                )}
-                <td className={`${td} text-gray-500 ${ii === 0 ? borderTop : ''}`}>{item.product_code || '-'}</td>
-                <td className={`${td} font-medium ${ii === 0 ? borderTop : ''}`}>{item.product_description || '-'}</td>
-                <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.dp || 0).toFixed(2)}</td>
-                <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.bv || 0).toFixed(2)}</td>
-                <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`}>{Number(item.qty || 0)}</td>
-                <td className={`${tdNum} font-semibold text-blue-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_dp || 0).toFixed(2)}</td>
-                <td className={`${tdNum} font-semibold text-green-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_bv || 0).toFixed(2)}</td>
-              </tr>
-            ));
+            const recQty = items.reduce((s, r) => s + Number(r.qty || 0), 0);
+            const recDP  = items.reduce((s, r) => s + Number(r.total_dp || 0), 0);
+            const recBV  = items.reduce((s, r) => s + Number(r.total_bv || 0), 0);
+            return [
+              ...items.map((item, ii) => (
+                <tr key={`${group.key}-${ii}`} className={`${rowBg} hover:bg-blue-50/40 transition-colors`}>
+                  {ii === 0 && (
+                    <>
+                      <td className={`${td} font-medium text-primary ${borderTop}`} rowSpan={rowSpan}>
+                        {header.branch_name || '-'}
+                      </td>
+                      <td className={`${td} font-semibold text-gray-800 ${borderTop}`} rowSpan={rowSpan}>
+                        {header.nb_number || '-'}
+                      </td>
+                      <td className={`${td} ${borderTop}`} rowSpan={rowSpan}>
+                        {header.name || '-'}
+                      </td>
+                      <td className={`${td} font-mono text-xs text-blue-700 ${borderTop}`} rowSpan={rowSpan}>
+                        {header.receipt_number || '-'}
+                      </td>
+                      <td className={`${td} whitespace-nowrap ${borderTop}`} rowSpan={rowSpan}>
+                        {header.date ? new Date(header.date).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
+                      </td>
+                    </>
+                  )}
+                  <td className={`${td} text-gray-500 ${ii === 0 ? borderTop : ''}`}>{item.product_code || '-'}</td>
+                  <td className={`${td} font-medium ${ii === 0 ? borderTop : ''}`}>{item.product_description || '-'}</td>
+                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.dp || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.bv || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`}>{Number(item.qty || 0)}</td>
+                  <td className={`${tdNum} font-semibold text-blue-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_dp || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} font-semibold text-green-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_bv || 0).toFixed(2)}</td>
+                </tr>
+              )),
+              <tr key={`${group.key}-subtotal`} className="bg-slate-100 border-t border-slate-300">
+                <td colSpan={9} className="px-3 py-1.5 text-xs font-semibold text-slate-500 text-right italic">
+                  Receipt subtotal ({items.length} item{items.length !== 1 ? 's' : ''})
+                </td>
+                <td className="px-3 py-1.5 text-xs font-bold text-right text-slate-700 whitespace-nowrap">{recQty}</td>
+                <td className="px-3 py-1.5 text-xs font-bold text-right text-blue-700 whitespace-nowrap">{recDP.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-xs font-bold text-right text-green-700 whitespace-nowrap">{recBV.toFixed(2)}</td>
+              </tr>,
+            ];
           })}
         </tbody>
         <tfoot>
