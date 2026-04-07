@@ -781,13 +781,13 @@ function printCSIDoc(entries, filters) {
           <td rowspan="${rs}" style="font-family:monospace">${fmt(header.receipt_number)}</td>
           <td rowspan="${rs}">${fmtDate(header.date)}</td>
         ` : ''}
-        <td>${fmt(item.product_code)}</td>
-        <td>${fmt(item.product_description)}</td>
-        <td style="text-align:right">${fmtNum(item.dp)}</td>
-        <td style="text-align:right">${fmtNum(item.bv)}</td>
-        <td style="text-align:right">${fmt(item.qty)}</td>
-        <td style="text-align:right">${fmtNum(item.total_dp)}</td>
-        <td style="text-align:right">${fmtNum(item.total_bv)}</td>
+        <td style="${item.is_free ? 'background:#fff0f0' : ''}">${fmt(item.product_code)}</td>
+        <td style="${item.is_free ? 'background:#fff0f0' : ''}">${fmt(item.product_description)}${item.is_free ? ' <span style="display:inline-block;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle;">FREE</span>' : ''}</td>
+        <td style="text-align:right;${item.is_free ? 'background:#fff0f0;color:#b91c1c;font-weight:700' : ''}">${item.is_free ? 'FREE' : fmtNum(item.dp)}</td>
+        <td style="text-align:right;${item.is_free ? 'background:#fff0f0;color:#b91c1c' : ''}">${item.is_free ? '—' : fmtNum(item.bv)}</td>
+        <td style="text-align:right;${item.is_free ? 'background:#fff0f0' : ''}">${fmt(item.qty)}</td>
+        <td style="text-align:right;${item.is_free ? 'background:#fff0f0;color:#b91c1c;font-weight:700' : ''}">${item.is_free ? 'FREE' : fmtNum(item.total_dp)}</td>
+        <td style="text-align:right;${item.is_free ? 'background:#fff0f0;color:#b91c1c' : ''}">${item.is_free ? '—' : fmtNum(item.total_bv)}</td>
       </tr>`).join('') + `
       <tr class="subtotal-row">
         <td colspan="10" style="text-align:right;font-style:italic;color:#64748b">Receipt subtotal (${items.length} item${items.length !== 1 ? 's' : ''})</td>
@@ -936,13 +936,18 @@ function CSIGroupedTable({ entries }) {
                       </td>
                     </>
                   )}
-                  <td className={`${td} text-gray-500 ${ii === 0 ? borderTop : ''}`}>{item.product_code || '-'}</td>
-                  <td className={`${td} font-medium ${ii === 0 ? borderTop : ''}`}>{item.product_description || '-'}</td>
-                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.dp || 0).toFixed(2)}</td>
-                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.bv || 0).toFixed(2)}</td>
-                  <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`}>{Number(item.qty || 0)}</td>
-                  <td className={`${tdNum} font-semibold text-blue-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_dp || 0).toFixed(2)}</td>
-                  <td className={`${tdNum} font-semibold text-green-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_bv || 0).toFixed(2)}</td>
+                  <td className={`${td} text-gray-500 ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0' } : {}}>{item.product_code || '-'}</td>
+                  <td className={`${td} font-medium ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0' } : {}}>
+                    {item.product_description || '-'}
+                    {item.is_free && (
+                      <span style={{ display: 'inline-block', marginLeft: 6, background: '#ef4444', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, verticalAlign: 'middle', letterSpacing: '0.05em' }}>FREE</span>
+                    )}
+                  </td>
+                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0', color: '#b91c1c', fontWeight: 700 } : {}}>{item.is_free ? 'FREE' : Number(item.dp || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0', color: '#b91c1c' } : {}}>{item.is_free ? '—' : Number(item.bv || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0' } : {}}>{Number(item.qty || 0)}</td>
+                  <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0', color: '#b91c1c', fontWeight: 700 } : { color: '#1d4ed8' }}>{item.is_free ? 'FREE' : Number(item.total_dp || 0).toFixed(2)}</td>
+                  <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`} style={item.is_free ? { background: '#fff0f0', color: '#b91c1c' } : { color: '#15803d' }}>{item.is_free ? '—' : Number(item.total_bv || 0).toFixed(2)}</td>
                 </tr>
               )),
               <tr key={`${group.key}-subtotal`} className="bg-slate-100 border-t border-slate-300">

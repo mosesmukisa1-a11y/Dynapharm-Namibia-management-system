@@ -3901,7 +3901,7 @@ function BranchStockTab() {
           return true;
         });
         const inwardTypes = ['received', 'receive', 'stock_receipt', 'transfer_in', 'return', 'return_in', 'adjustment'];
-        const outwardTypes = ['sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'write_off', 'transfer_out', 'field_use', 'return_out', 'dispense', 'prescription_dispense', 'online_order_sale'];
+        const outwardTypes = ['sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'write_off', 'transfer_out', 'field_use', 'return_out', 'dispense', 'prescription_dispense', 'online_order_sale', 'campaign_sale', 'campaign_free_item'];
         const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalDPOut = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => {
@@ -3909,13 +3909,13 @@ function BranchStockTab() {
           return s + capturedPrice * Math.abs(Number(m.quantity || 0));
         }, 0);
         const typeLabel = (t) => {
-          const map = { received: 'Stock Receipt', receive: 'Stock Receipt', stock_receipt: 'Stock Receipt', sale: 'Walk-in Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Prescription Dispense', prescription_dispense: 'Prescription Dispense', online_order_sale: 'Online Order Sale' };
+          const map = { received: 'Stock Receipt', receive: 'Stock Receipt', stock_receipt: 'Stock Receipt', sale: 'Walk-in Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Prescription Dispense', prescription_dispense: 'Prescription Dispense', online_order_sale: 'Online Order Sale', campaign_sale: 'Campaign Sale', campaign_free_item: 'Campaign Free Item' };
           return map[t] || (t || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         };
         const typeBadge = (t) => {
           const tl = (t || '').toLowerCase();
-          const colors = { received: '#166534', receive: '#166534', sale: '#2563eb', write_off: '#c41e3a', transfer_in: '#7c3aed', transfer_out: '#9333ea', field_use: '#0891b2', return: '#059669', adjustment: '#d97706', dispense: '#6366f1' };
-          const bgs = { received: '#f0fdf4', receive: '#f0fdf4', sale: '#eff6ff', write_off: '#fef2f2', transfer_in: '#f5f3ff', transfer_out: '#faf5ff', field_use: '#ecfeff', return: '#ecfdf5', adjustment: '#fffbeb', dispense: '#eef2ff' };
+          const colors = { received: '#166534', receive: '#166534', sale: '#2563eb', write_off: '#c41e3a', transfer_in: '#7c3aed', transfer_out: '#9333ea', field_use: '#0891b2', return: '#059669', adjustment: '#d97706', dispense: '#6366f1', campaign_sale: '#b45309', campaign_free_item: '#b91c1c' };
+          const bgs = { received: '#f0fdf4', receive: '#f0fdf4', sale: '#eff6ff', write_off: '#fef2f2', transfer_in: '#f5f3ff', transfer_out: '#faf5ff', field_use: '#ecfeff', return: '#ecfdf5', adjustment: '#fffbeb', dispense: '#eef2ff', campaign_sale: '#fffbeb', campaign_free_item: '#fff0f0' };
           const color = colors[tl] || '#64748b';
           const bg = bgs[tl] || '#f1f5f9';
           return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color, background: bg, border: `1px solid ${color}22`, whiteSpace: 'nowrap' }}>{typeLabel(tl)}</span>;
@@ -7948,6 +7948,91 @@ function isLiveCampaign(c) {
   return now >= new Date(c.start_date) && now <= new Date(c.end_date);
 }
 
+function printCampaignReceipt(receipt, branchDisplayName) {
+  const BRANCH_NAMES = {
+    windhoek: 'Windhoek', walvisbay: 'Walvis Bay', swakopmund: 'Swakopmund',
+    oshakati: 'Oshakati', rundu: 'Rundu', katima: 'Katima Mulilo',
+    keetmanshoop: 'Keetmanshoop', otjiwarongo: 'Otjiwarongo', gobabis: 'Gobabis',
+  };
+  const branchName = BRANCH_NAMES[receipt.branch] || branchDisplayName || receipt.branch || '';
+  const dateStr = receipt.sale_date
+    ? new Date(receipt.sale_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const isMember = receipt.customer_type === 'member';
+  const items = Array.isArray(receipt.items) ? receipt.items : [];
+
+  const itemRows = items.map(it => {
+    if (it.is_free) {
+      return `
+        <tr style="background:#fff0f0;">
+          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;">${it.product_name}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:center;">${it.quantity}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:right;color:#b91c1c;font-weight:700;">FREE</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:right;color:#b91c1c;font-weight:700;">FREE</td>
+        </tr>`;
+    }
+    return `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${it.product_name}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${it.quantity}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Number(it.unit_price || it.dp || 0).toFixed(2)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Number(it.total_dp || (it.unit_price || 0) * it.quantity).toFixed(2)}</td>
+      </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Campaign Receipt</title>
+  <style>
+    body{font-family:'Arial',sans-serif;font-size:13px;color:#1a202c;max-width:400px;margin:0 auto;padding:20px;}
+    h2{text-align:center;color:#9b1c2e;margin:0 0 2px;}
+    .sub{text-align:center;font-size:11px;color:#64748b;margin:0 0 12px;}
+    .divider{border:none;border-top:2px dashed #e2e8f0;margin:12px 0;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th{background:#f8fafc;padding:6px 8px;text-align:left;font-size:11px;color:#475569;border-bottom:2px solid #e2e8f0;}
+    th:nth-child(2){text-align:center;}th:nth-child(3),th:nth-child(4){text-align:right;}
+    .free-badge{display:inline-block;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;vertical-align:middle;}
+    .total-row{font-weight:700;font-size:13px;}
+    .campaign-banner{background:#9b1c2e;color:#fff;text-align:center;padding:6px 10px;border-radius:8px;font-weight:700;font-size:12px;margin-bottom:10px;}
+    @media print{body{padding:0;}}
+  </style></head><body>
+  <h2>DYNAPHARM INTERNATIONAL</h2>
+  <div class="sub">Namibia · ${branchName} Branch</div>
+  <div class="sub">Campaign Sale Receipt</div>
+  <hr class="divider">
+  <div class="campaign-banner">🎁 ${receipt.campaign_name || 'Campaign Sale'}</div>
+  <table>
+    <tr><td style="color:#64748b;font-size:11px;">Receipt #</td><td colspan="3" style="font-weight:700;">${receipt.sale_number}</td></tr>
+    <tr><td style="color:#64748b;font-size:11px;">Date</td><td colspan="3">${dateStr}</td></tr>
+    <tr><td style="color:#64748b;font-size:11px;">Customer</td><td colspan="3">${receipt.customer_name || '—'}</td></tr>
+    <tr><td style="color:#64748b;font-size:11px;">Type</td><td colspan="3">${isMember ? 'Member' : 'Non-Member'}</td></tr>
+    ${receipt.nb_number ? `<tr><td style="color:#64748b;font-size:11px;">NB#</td><td colspan="3">${receipt.nb_number}</td></tr>` : ''}
+  </table>
+  <hr class="divider">
+  <table>
+    <thead><tr><th>Product</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+    <tbody>${itemRows}</tbody>
+    <tfoot>
+      <tr class="total-row" style="border-top:2px solid #1a202c;">
+        <td colspan="3" style="padding:8px 8px 4px;text-align:right;">Total Paid:</td>
+        <td style="padding:8px 8px 4px;text-align:right;">N$${Number(receipt.total_dp || 0).toFixed(2)}</td>
+      </tr>
+      <tr><td colspan="3" style="padding:2px 8px 8px;text-align:right;color:#64748b;font-size:11px;">BV Earned:</td>
+        <td style="padding:2px 8px 8px;text-align:right;color:#064e3b;font-size:11px;">${Number(receipt.total_bv || 0).toFixed(2)} BV</td></tr>
+    </tfoot>
+  </table>
+  <hr class="divider">
+  ${items.some(i => i.is_free) ? `<div style="background:#fff0f0;border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;text-align:center;color:#b91c1c;font-weight:700;font-size:12px;margin:8px 0;">🎁 FREE item(s) included — Campaign promotion</div>` : ''}
+  ${receipt.notes ? `<div style="font-size:11px;color:#64748b;margin-top:8px;">Notes: ${receipt.notes}</div>` : ''}
+  <div style="text-align:center;margin-top:16px;font-size:10px;color:#94a3b8;">Thank you for your purchase!<br>Dynapharm International Namibia</div>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=480,height=700');
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { w.print(); }, 400);
+}
+
 function BranchCampaignsTab() {
   const { user } = useAuth();
   const portalBranch = useContext(PortalBranchContext);
@@ -7958,9 +8043,22 @@ function BranchCampaignsTab() {
   const [alertMsg, setAlertMsg] = useState(null);
   const [saleModal, setSaleModal] = useState(null);
   const [inventory, setInventory] = useState([]);
-  const [saleForm, setSaleForm] = useState({ distributor_code: '', distributor_name: '', paid_product: '', paid_qty: 1, free_product: '', free_qty: 1, notes: '' });
+  const [saleForm, setSaleForm] = useState({ paid_product: '', paid_qty: 1, free_product: '', free_qty: 1, notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('active');
+  const [lastReceipt, setLastReceipt] = useState(null);
+
+  // Member search state
+  const [campMemberType, setCampMemberType] = useState('member');
+  const [campSearch, setCampSearch] = useState('');
+  const [campResults, setCampResults] = useState([]);
+  const [campSelected, setCampSelected] = useState(null);
+  const [nonMemberName, setNonMemberName] = useState('');
+  const [campRefSearch, setCampRefSearch] = useState('');
+  const [campRefResults, setCampRefResults] = useState([]);
+  const [campRefSelected, setCampRefSelected] = useState(null);
+  const campSearchTimer = useRef(null);
+  const campRefTimer = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -7969,22 +8067,14 @@ function BranchCampaignsTab() {
       const relevant = all.filter(c => {
         if (c.status === 'pending_approval' || c.status === 'rejected') return false;
         const scope = (c.scope || '').toLowerCase();
-        // Nationwide / countrywide / all / empty = visible to all branches
         if (!scope || scope === 'countrywide' || scope === 'nationwide' || scope === 'all') return true;
-
-        // Parse conditions for stock_assignments branch targeting
         const cond = typeof c.conditions === 'string'
           ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })()
           : (c.conditions || {});
-
-        // Check stock_assignments — 'all' value means all branches
         const stockAssignments = Array.isArray(cond.stock_assignments) ? cond.stock_assignments : [];
         const assignedBranches = stockAssignments.map(a => a.branch).filter(Boolean);
         if (assignedBranches.includes('all') || assignedBranches.includes(effectiveBranch)) return true;
-        // If there are specific branch assignments, filter out non-targeted branches
         if (assignedBranches.length > 0) return false;
-
-        // Fall back to target_branches
         let branches = c.target_branches;
         if (typeof branches === 'string') { try { branches = JSON.parse(branches); } catch { return true; } }
         if (Array.isArray(branches) && branches.length > 0) {
@@ -7996,15 +8086,62 @@ function BranchCampaignsTab() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [effectiveBranch]);
 
+  const searchCampMember = (q) => {
+    setCampSearch(q);
+    if (campSelected) setCampSelected(null);
+    setCampResults([]);
+    if (!q || q.length < 2) return;
+    if (campSearchTimer.current) clearTimeout(campSearchTimer.current);
+    campSearchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(q);
+        setCampResults(Array.isArray(res) ? res : (res.distributors || []));
+      } catch { setCampResults([]); }
+    }, 300);
+  };
+
+  const selectCampMember = (d) => {
+    const nd = normalizeDistributor(d);
+    setCampSelected(nd);
+    setCampResults([]);
+    setCampSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || '');
+  };
+
+  const searchCampRef = (q) => {
+    setCampRefSearch(q);
+    if (campRefSelected) setCampRefSelected(null);
+    setCampRefResults([]);
+    if (!q || q.length < 2) return;
+    if (campRefTimer.current) clearTimeout(campRefTimer.current);
+    campRefTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.distributors.search(q);
+        setCampRefResults(Array.isArray(res) ? res : (res.distributors || []));
+      } catch { setCampRefResults([]); }
+    }, 300);
+  };
+
+  const selectCampRef = (d) => {
+    const nd = normalizeDistributor(d);
+    setCampRefSelected(nd);
+    setCampRefResults([]);
+    setCampRefSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || '');
+  };
+
   const openSaleModal = (c) => {
     setSaleModal(c);
+    setLastReceipt(null);
     const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
     const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
     const prefillPaid = cond.products_text ? cond.products_text.split(',')[0]?.trim() : '';
     const prefillFree = prize.free_product || '';
     const prefillBuyQty = cond.buy_qty || 1;
     const prefillGetQty = cond.get_qty || 1;
-    setSaleForm({ distributor_code: '', distributor_name: '', paid_product: prefillPaid, paid_qty: prefillBuyQty, free_product: prefillFree, free_qty: prefillGetQty, notes: '' });
+    setSaleForm({ paid_product: prefillPaid, paid_qty: prefillBuyQty, free_product: prefillFree, free_qty: prefillGetQty, notes: '' });
+    setCampMemberType('member');
+    setCampSearch(''); setCampResults([]); setCampSelected(null);
+    setNonMemberName('');
+    setCampRefSearch(''); setCampRefResults([]); setCampRefSelected(null);
     setAlertMsg(null);
     api.stock.branchInventory(`branch=${encodeURIComponent(effectiveBranch)}`).then(d => {
       setInventory(Array.isArray(d) ? d : (d.inventory || []));
@@ -8013,7 +8150,17 @@ function BranchCampaignsTab() {
 
   const handleSale = async (e) => {
     e.preventDefault();
+    const isMember = campMemberType === 'member';
     const needsFreeItem = saleModal?.campaign_type === 'buy_x_get_y';
+
+    if (isMember && !campSelected) {
+      setAlertMsg({ type: 'error', msg: 'Please search and select the member by NB number.' });
+      return;
+    }
+    if (!isMember && !nonMemberName.trim()) {
+      setAlertMsg({ type: 'error', msg: 'Please enter the non-member customer name.' });
+      return;
+    }
     if (!saleForm.paid_product) {
       setAlertMsg({ type: 'error', msg: 'Please select the paid product.' });
       return;
@@ -8022,23 +8169,26 @@ function BranchCampaignsTab() {
       setAlertMsg({ type: 'error', msg: 'This campaign requires a free product selection.' });
       return;
     }
+
     setSubmitting(true);
     try {
-      await api.branch.campaignSale({
-        campaign_id: saleModal.id,
+      const result = await api.branch.campaignSale({
+        campaign_id:   saleModal.id,
         campaign_name: saleModal.name,
-        branch: effectiveBranch,
-        distributor_code: saleForm.distributor_code,
-        distributor_name: saleForm.distributor_name,
-        paid_product: saleForm.paid_product,
-        paid_qty: Number(saleForm.paid_qty),
-        free_product: saleForm.free_product,
-        free_qty: Number(saleForm.free_qty),
-        notes: saleForm.notes,
-        processed_by: user?.username || user?.full_name || 'branch',
+        branch:        effectiveBranch,
+        customer_type: campMemberType,
+        customer_name: isMember ? (campSelected?.name || '') : nonMemberName.trim(),
+        nb_number:     isMember ? (campSelected?.nb_number || '') : '',
+        referral_nb:   !isMember ? (campRefSelected?.nb_number || '') : '',
+        paid_product:  saleForm.paid_product,
+        paid_qty:      Number(saleForm.paid_qty),
+        free_product:  saleForm.free_product,
+        free_qty:      Number(saleForm.free_qty),
+        notes:         saleForm.notes,
+        processed_by:  user?.username || user?.full_name || 'branch',
       });
-      setAlertMsg({ type: 'success', msg: 'Campaign sale processed and stock deducted.' });
-      setTimeout(() => setSaleModal(null), 1200);
+      setLastReceipt(result.receipt || null);
+      setAlertMsg({ type: 'success', msg: 'Campaign sale processed successfully!' });
     } catch (err) {
       setAlertMsg({ type: 'error', msg: err.message });
     } finally {
@@ -8146,7 +8296,7 @@ function BranchCampaignsTab() {
 
       {saleModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 18, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 28, maxWidth: 540, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', maxHeight: '93vh', overflowY: 'auto' }}>
             <div className="flex justify-between items-center mb-4">
               <div>
                 <div className="font-bold text-lg text-gray-800">Process Campaign Sale</div>
@@ -8155,11 +8305,113 @@ function BranchCampaignsTab() {
               <button onClick={() => setSaleModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
             </div>
             {alertMsg && <Alert type={alertMsg.type} className="mb-4" onClose={() => setAlertMsg(null)}>{alertMsg.msg}</Alert>}
-            <form onSubmit={handleSale} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Distributor Code" value={saleForm.distributor_code} onChange={e => setSaleForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB001234" />
-                <Input label="Distributor Name" value={saleForm.distributor_name} onChange={e => setSaleForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="Optional" />
+
+            {lastReceipt && (
+              <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 12, padding: 16, marginBottom: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 32 }}>✅</div>
+                <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 6 }}>Sale Processed Successfully!</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Receipt #{lastReceipt.sale_number}</div>
+                <div className="flex gap-2 justify-center">
+                  <button type="button" onClick={() => printCampaignReceipt(lastReceipt, effectiveBranch)}
+                    style={{ padding: '8px 20px', background: '#9b1c2e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                    🖨 Print Receipt
+                  </button>
+                  <button type="button" onClick={() => setSaleModal(null)}
+                    style={{ padding: '8px 20px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                    Close
+                  </button>
+                </div>
               </div>
+            )}
+
+            <form onSubmit={handleSale} className="space-y-4">
+              {/* Member / Non-Member toggle */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Customer Type</label>
+                <div className="flex gap-2">
+                  {[{ id: 'member', label: '👤 Member' }, { id: 'non_member', label: '🚶 Non-Member' }].map(t => (
+                    <button key={t.id} type="button" onClick={() => { setCampMemberType(t.id); setCampSelected(null); setCampSearch(''); setCampResults([]); setNonMemberName(''); setCampRefSelected(null); setCampRefSearch(''); setCampRefResults([]); }}
+                      style={{ flex: 1, padding: '8px 10px', border: '2px solid', borderColor: campMemberType === t.id ? '#9b1c2e' : '#e2e8f0', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', background: campMemberType === t.id ? '#9b1c2e' : '#f8fafc', color: campMemberType === t.id ? '#fff' : '#475569' }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Member NB search */}
+              {campMemberType === 'member' ? (
+                <div style={{ position: 'relative' }}>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Search Member by NB# or Name</label>
+                  <input type="text" value={campSearch} onChange={e => searchCampMember(e.target.value)}
+                    placeholder="Type NB number or name…" autoComplete="off"
+                    style={{ width: '100%', padding: '9px 12px', border: '1.5px solid', borderColor: campSelected ? '#16a34a' : '#d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: campSelected ? '#f0fdf4' : '#fff' }} />
+                  {campResults.length > 0 && (
+                    <div style={{ position: 'absolute', zIndex: 100, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.13)', top: '100%', left: 0, right: 0, maxHeight: 200, overflowY: 'auto' }}>
+                      {campResults.slice(0, 8).map(d => {
+                        const nd = normalizeDistributor(d);
+                        return (
+                          <div key={nd.id || nd.nb_number} onClick={() => selectCampMember(d)}
+                            style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>{nd.name}</div>
+                            <div style={{ fontSize: 11, color: '#9b1c2e' }}>NB#{nd.nb_number} · {nd.phone || '—'}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {campSelected && (
+                    <div style={{ marginTop: 6, padding: '8px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#15803d', fontSize: 13 }}>{campSelected.name}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>NB#{campSelected.nb_number}</div>
+                      </div>
+                      <button type="button" onClick={() => { setCampSelected(null); setCampSearch(''); setCampResults([]); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Non-Member Customer Name</label>
+                    <input type="text" value={nonMemberName} onChange={e => setNonMemberName(e.target.value)}
+                      placeholder="Enter customer name…"
+                      style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Referring Member (optional)</label>
+                    <input type="text" value={campRefSearch} onChange={e => searchCampRef(e.target.value)}
+                      placeholder="Search referring member by NB# or name…" autoComplete="off"
+                      style={{ width: '100%', padding: '9px 12px', border: '1.5px solid', borderColor: campRefSelected ? '#16a34a' : '#d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: campRefSelected ? '#f0fdf4' : '#fff' }} />
+                    {campRefResults.length > 0 && (
+                      <div style={{ position: 'absolute', zIndex: 100, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.13)', top: '100%', left: 0, right: 0, maxHeight: 180, overflowY: 'auto' }}>
+                        {campRefResults.slice(0, 8).map(d => {
+                          const nd = normalizeDistributor(d);
+                          return (
+                            <div key={nd.id || nd.nb_number} onClick={() => selectCampRef(d)}
+                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              <div style={{ fontWeight: 700, fontSize: 13 }}>{nd.name}</div>
+                              <div style={{ fontSize: 11, color: '#9b1c2e' }}>NB#{nd.nb_number} · {nd.phone || '—'}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {campRefSelected && (
+                      <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: 12 }}>
+                          <span style={{ fontWeight: 700, color: '#15803d' }}>{campRefSelected.name}</span>
+                          <span style={{ color: '#64748b', marginLeft: 6 }}>NB#{campRefSelected.nb_number}</span>
+                        </div>
+                        <button type="button" onClick={() => { setCampRefSelected(null); setCampRefSearch(''); setCampRefResults([]); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-3">
                 <div className="text-sm font-semibold text-blue-800">Paid Item (deducted as sale)</div>
                 <div className="grid grid-cols-3 gap-2">

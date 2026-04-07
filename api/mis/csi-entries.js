@@ -134,7 +134,9 @@ export default async function handler(req, res) {
             0
           )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
-        2)                                                                       AS total_bv
+        2)                                                                       AS total_bv,
+        -- Free item flag from campaign sales
+        COALESCE((item->>'is_free')::boolean, false)                             AS is_free
       FROM branch_walkin_sales s
       CROSS JOIN LATERAL jsonb_array_elements(
           CASE
