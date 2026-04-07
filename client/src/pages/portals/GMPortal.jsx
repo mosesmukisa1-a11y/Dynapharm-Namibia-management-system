@@ -561,6 +561,7 @@ function ApprovalsTab() {
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [fieldRequests, setFieldRequests] = useState([]);
   const [pettyCashRequests, setPettyCashRequests] = useState([]);
+  const [rentEditRequests, setRentEditRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -570,6 +571,8 @@ function ApprovalsTab() {
   const [amendItems, setAmendItems] = useState([]);
   const [amendComment, setAmendComment] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [rentReviewModal, setRentReviewModal] = useState(null);
+  const [rentReviewNote, setRentReviewNote] = useState('');
 
   const fmtLoc = (loc) => {
     if (!loc) return '—';
@@ -588,13 +591,15 @@ function ApprovalsTab() {
       api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
       api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs]) => {
+      api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
       setPendingTransfers(transfers);
       setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
       setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
+      setRentEditRequests(rentReqs);
     }).finally(() => setLoading(false));
   };
 
@@ -752,11 +757,29 @@ function ApprovalsTab() {
   const filteredItems = getFilteredItems();
   const totalCount = cashRequests.length + leaveRequests.length + stockRequests.length + pettyCashRequests.length;
 
+  const handleRentReview = async (action) => {
+    if (!rentReviewModal) return;
+    setProcessing(true);
+    try {
+      const result = await api.finance.rent.reviewEdit(rentReviewModal.id, action, rentReviewNote);
+      if (!result.success) throw new Error(result.error || 'Failed');
+      setMessage(action === 'approve' ? '✅ Rent edit approved and applied.' : '❌ Rent edit request rejected.');
+      setRentEditRequests(prev => prev.filter(r => r.id !== rentReviewModal.id));
+      setRentReviewModal(null);
+      setRentReviewNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const subTabs = [
     { id: 'transfers', label: `🚚 Transfers${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
     { id: 'fieldstock', label: `🌿 Field Stock${fieldRequests.length > 0 ? ` (${fieldRequests.length})` : ''}` },
     { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
     { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
+    { id: 'rent_edits', label: `🏘️ Rent Edits${rentEditRequests.length > 0 ? ` (${rentEditRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1092,8 +1115,100 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {/* Rent Edit Requests sub-tab */}
+      {approvalTab === 'rent_edits' && (
+        <div className="space-y-4">
+          {rentEditRequests.length === 0 ? (
+            <EmptyState icon={<CheckCircle size={48} />} title="No Pending Rent Edit Requests" description="Finance-submitted rent/lease edits awaiting your approval will appear here." />
+          ) : (
+            <>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                <strong>{rentEditRequests.length}</strong> rent/lease edit{rentEditRequests.length !== 1 ? 's' : ''} from Finance awaiting your approval.
+              </div>
+              <div className="space-y-3">
+                {rentEditRequests.map(r => {
+                  const changes = typeof r.proposed_changes === 'string' ? JSON.parse(r.proposed_changes) : (r.proposed_changes || {});
+                  const changedFields = Object.keys(changes).filter(k => changes[k] !== null && changes[k] !== undefined);
+                  return (
+                    <div key={r.id} className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-blue-100 bg-blue-50">
+                        <div>
+                          <span className="font-bold text-blue-900">🏘️ {r.branch_name}</span>
+                          <span className="ml-3 text-xs text-blue-600">Requested by: {r.requested_by}</span>
+                          <span className="ml-3 text-xs text-gray-400">{fmtDate(r.requested_at)}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setRentReviewModal(r); setRentReviewNote(''); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer">
+                            Review
+                          </button>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Current → Proposed Changes</p>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {changedFields.map(k => (
+                            <div key={k} className="bg-amber-50 border border-amber-200 rounded p-2">
+                              <span className="font-semibold text-gray-600">{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}:</span>
+                              <span className="ml-1 text-amber-900 font-bold">{String(changes[k])}</span>
+                              <span className="ml-1 text-gray-400">(was: {String(r[k] ?? '—')})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {/* Rent Review Modal */}
+          {rentReviewModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+                <div style={{ padding: '16px 24px', borderBottom: '2px solid #3b82f6', background: '#eff6ff' }}>
+                  <h2 style={{ margin: 0, fontSize: 18, color: '#1e3a8a' }}>🏘️ Review Rent Edit — {rentReviewModal.branch_name}</h2>
+                </div>
+                <div style={{ padding: 24 }}>
+                  {(() => {
+                    const ch = typeof rentReviewModal.proposed_changes === 'string' ? JSON.parse(rentReviewModal.proposed_changes) : (rentReviewModal.proposed_changes || {});
+                    return (
+                      <div className="space-y-2 mb-4">
+                        {Object.entries(ch).map(([k, v]) => (
+                          <div key={k} className="flex justify-between text-sm border-b pb-1">
+                            <span className="text-gray-500">{k.replace(/_/g, ' ')}</span>
+                            <span className="font-bold text-blue-900">{String(v)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Review Notes (optional)</label>
+                  <textarea value={rentReviewNote} onChange={e => setRentReviewNote(e.target.value)} rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3 focus:outline-none" placeholder="Add notes…" />
+                  <div className="flex gap-3">
+                    <button onClick={() => handleRentReview('approve')} disabled={processing}
+                      className="flex-1 py-2 rounded-lg bg-green-600 text-white font-bold text-sm hover:bg-green-700 disabled:opacity-50 cursor-pointer">
+                      ✓ Approve &amp; Apply
+                    </button>
+                    <button onClick={() => handleRentReview('reject')} disabled={processing}
+                      className="flex-1 py-2 rounded-lg bg-red-600 text-white font-bold text-sm hover:bg-red-700 disabled:opacity-50 cursor-pointer">
+                      ✕ Reject
+                    </button>
+                    <button onClick={() => setRentReviewModal(null)}
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-100 cursor-pointer">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 

@@ -19,6 +19,7 @@ export default function FinancePortal() {
     { id: 'expenses', label: 'Expenses', icon: '💸' },
     { id: 'pettyCash', label: 'Petty Cash', icon: '💵' },
     { id: 'overheads', label: 'Overheads', icon: '🏢' },
+    { id: 'rent', label: 'Rent / Lease', icon: '🏘️' },
     { id: 'payroll', label: 'Payroll', icon: '👷' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
@@ -41,6 +42,7 @@ export default function FinancePortal() {
         {activeTab === 'expenses' && <ExpensesTab />}
         {activeTab === 'pettyCash' && <PettyCashTab />}
         {activeTab === 'overheads' && <OverheadsTab />}
+        {activeTab === 'rent' && <RentPaymentsTab />}
         {activeTab === 'payroll' && <PayrollTab />}
         {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
@@ -1941,6 +1943,232 @@ function calcPAYE(annualGross) {
     }
   }
   return tax;
+}
+
+/* ─── RENT / LEASE PAYMENTS ──────────────────────────────── */
+function RentPaymentsTab() {
+  const [rents, setRents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+  const [editModal, setEditModal] = useState(null);
+  const [addModal, setAddModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [addForm, setAddForm] = useState({
+    branch_name: '', lease_property_name: '', total_payable: '', operational_expenses: '0',
+    rent_amount: '', outstanding_payments: '', comment: '', account_number: '', bank_branch_name: '', code: '', effective_from: '2026-04'
+  });
+
+  const load = () => {
+    setLoading(true);
+    api.finance.rent.list()
+      .then(d => setRents(d.rents || []))
+      .catch(() => setMsg('Error: Failed to load rent data'))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const openEdit = (r) => {
+    setEditForm({ ...r });
+    setEditModal(r);
+    setMsg('');
+  };
+
+  const submitEdit = async () => {
+    if (!editModal) return;
+    setSaving(true); setMsg('');
+    try {
+      const changes = {
+        lease_property_name: editForm.lease_property_name,
+        total_payable: Number(editForm.total_payable) || 0,
+        operational_expenses: Number(editForm.operational_expenses) || 0,
+        rent_amount: Number(editForm.rent_amount) || 0,
+        outstanding_payments: editForm.outstanding_payments || '',
+        comment: editForm.comment || '',
+        account_number: editForm.account_number || '',
+        bank_branch_name: editForm.bank_branch_name || '',
+        code: editForm.code || '',
+        effective_from: editForm.effective_from || '',
+      };
+      const result = await api.finance.rent.proposeEdit(editModal.id, changes);
+      if (!result.success) throw new Error(result.error || 'Failed to submit');
+      setMsg('Edit submitted for GM approval.');
+      setEditModal(null);
+      load();
+    } catch (e) { setMsg('Error: ' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const submitAdd = async () => {
+    if (!addForm.branch_name) { setMsg('Error: Branch name is required'); return; }
+    setSaving(true); setMsg('');
+    try {
+      const result = await api.finance.rent.add({
+        ...addForm,
+        total_payable: Number(addForm.total_payable) || 0,
+        operational_expenses: Number(addForm.operational_expenses) || 0,
+        rent_amount: Number(addForm.rent_amount) || 0,
+      });
+      if (!result.success) throw new Error(result.error || 'Failed to add');
+      setMsg('New rent record added successfully.');
+      setAddModal(false);
+      setAddForm({ branch_name: '', lease_property_name: '', total_payable: '', operational_expenses: '0', rent_amount: '', outstanding_payments: '', comment: '', account_number: '', bank_branch_name: '', code: '', effective_from: '2026-04' });
+      load();
+    } catch (e) { setMsg('Error: ' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const totalRent = rents.reduce((s, r) => s + Number(r.rent_amount || 0), 0);
+  const totalPayable = rents.reduce((s, r) => s + Number(r.total_payable || 0), 0);
+  const pendingCount = rents.filter(r => r.pending_edit).length;
+
+  const FIELDS = [
+    { key: 'lease_property_name', label: 'Lease Property / Landlord', type: 'text' },
+    { key: 'total_payable', label: 'Total Payable (N$)', type: 'number' },
+    { key: 'operational_expenses', label: 'Operational Expenses (N$)', type: 'number' },
+    { key: 'rent_amount', label: 'Rent Amount (N$)', type: 'number' },
+    { key: 'outstanding_payments', label: 'Outstanding Payments / Ref', type: 'text' },
+    { key: 'comment', label: 'Comment', type: 'text' },
+    { key: 'account_number', label: 'Account Number', type: 'text' },
+    { key: 'bank_branch_name', label: 'Bank / Branch Name', type: 'text' },
+    { key: 'code', label: 'Branch Code', type: 'text' },
+    { key: 'effective_from', label: 'Effective From (YYYY-MM)', type: 'month' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {msg && <Alert type={msg.startsWith('Error') ? 'error' : 'success'}>{msg}</Alert>}
+
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardBody>
+          <div className="flex justify-between items-start flex-wrap gap-3">
+            <div>
+              <h3 className="font-bold text-blue-900 flex items-center gap-2">🏘️ Branch Rent &amp; Lease Payments</h3>
+              <p className="text-sm text-blue-700 mt-1">All edits require GM approval before taking effect.</p>
+            </div>
+            <Button onClick={() => { setAddModal(true); setMsg(''); }}>+ Add Branch</Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard title="Total Rent (Month)" value={formatCurrency(totalRent)} color="blue" icon={<Landmark size={24} />} />
+        <StatCard title="Total Payable" value={formatCurrency(totalPayable)} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="Pending GM Approval" value={pendingCount} color={pendingCount > 0 ? 'orange' : 'gray'} icon={<Receipt size={24} />} />
+      </div>
+
+      {loading ? <LoadingSpinner /> : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-indigo-50 text-indigo-800 text-xs font-semibold">
+                  <th className="p-2 text-left">Branch / DPC</th>
+                  <th className="p-2 text-left">Lease / Landlord</th>
+                  <th className="p-2 text-right">Total Payable</th>
+                  <th className="p-2 text-right">Op. Expenses</th>
+                  <th className="p-2 text-right">Rent Amount</th>
+                  <th className="p-2 text-left">Ref / Outstanding</th>
+                  <th className="p-2 text-left">Account #</th>
+                  <th className="p-2 text-left">Bank / Branch</th>
+                  <th className="p-2 text-left">Code</th>
+                  <th className="p-2 text-center">Status</th>
+                  <th className="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rents.map(r => (
+                  <tr key={r.id} className={`border-t border-gray-100 hover:bg-gray-50 ${r.pending_edit ? 'bg-amber-50' : ''}`}>
+                    <td className="p-2 font-semibold text-gray-800 text-xs">{r.branch_name}</td>
+                    <td className="p-2 text-xs text-gray-600">{r.lease_property_name || '—'}</td>
+                    <td className="p-2 text-right font-mono text-xs">{Number(r.total_payable) > 0 ? formatCurrency(r.total_payable) : '—'}</td>
+                    <td className="p-2 text-right font-mono text-xs">{Number(r.operational_expenses) > 0 ? formatCurrency(r.operational_expenses) : '—'}</td>
+                    <td className="p-2 text-right font-bold text-xs text-blue-700">{Number(r.rent_amount) > 0 ? formatCurrency(r.rent_amount) : '—'}</td>
+                    <td className="p-2 text-xs text-gray-500">{r.outstanding_payments || r.comment || '—'}</td>
+                    <td className="p-2 font-mono text-xs">{r.account_number || '—'}</td>
+                    <td className="p-2 text-xs">{r.bank_branch_name || '—'}</td>
+                    <td className="p-2 font-mono text-xs">{r.code || '—'}</td>
+                    <td className="p-2 text-center">
+                      {r.pending_edit
+                        ? <Badge variant="warning">Pending GM</Badge>
+                        : <Badge variant="success">Active</Badge>}
+                    </td>
+                    <td className="p-2">
+                      <button onClick={() => openEdit(r)} className="text-xs text-blue-600 hover:underline disabled:opacity-40"
+                        disabled={!!r.pending_edit} title={r.pending_edit ? 'Edit already pending GM approval' : 'Edit this record'}>
+                        ✏️ Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {rents.length === 0 && (
+                  <tr><td colSpan={11} className="p-6 text-center text-gray-400">No rent records found</td></tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="bg-indigo-50 font-bold text-sm border-t-2 border-indigo-200">
+                  <td className="p-2" colSpan={2}>TOTALS</td>
+                  <td className="p-2 text-right">{formatCurrency(totalPayable)}</td>
+                  <td className="p-2 text-right">{formatCurrency(rents.reduce((s,r)=>s+Number(r.operational_expenses||0),0))}</td>
+                  <td className="p-2 text-right text-blue-700">{formatCurrency(totalRent)}</td>
+                  <td colSpan={6}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Edit Modal */}
+      {editModal && (
+        <Modal title={`Edit Rent — ${editModal.branch_name}`} onClose={() => setEditModal(null)}>
+          <div className="space-y-3">
+            <Alert type="info">This edit will be sent to the GM for approval before it takes effect.</Alert>
+            {FIELDS.map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
+                <input type={f.type} value={editForm[f.key] ?? ''} onChange={e => setEditForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+            ))}
+            <div className="flex gap-2 pt-2">
+              <Button onClick={submitEdit} disabled={saving} variant="primary">
+                {saving ? 'Submitting…' : 'Submit for GM Approval'}
+              </Button>
+              <Button variant="secondary" onClick={() => setEditModal(null)}>Cancel</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Add Modal */}
+      {addModal && (
+        <Modal title="Add New Rent / Lease Record" onClose={() => setAddModal(false)}>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Branch / DPC Name *</label>
+              <input type="text" value={addForm.branch_name} onChange={e => setAddForm(p => ({ ...p, branch_name: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="e.g. RUNDU SHOP" />
+            </div>
+            {FIELDS.map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
+                <input type={f.type} value={addForm[f.key] ?? ''} onChange={e => setAddForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+            ))}
+            <div className="flex gap-2 pt-2">
+              <Button onClick={submitAdd} disabled={saving} variant="primary">
+                {saving ? 'Adding…' : 'Add Record'}
+              </Button>
+              <Button variant="secondary" onClick={() => setAddModal(false)}>Cancel</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
 }
 
 function PayrollTab() {

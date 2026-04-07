@@ -272,6 +272,13 @@ export const api = {
       spend: (data) => api.post('/finance/petty-cash/spend', data),
       transactions: (location) => api.get(`/finance/petty-cash/transactions${location ? '?location=' + location : ''}`),
     },
+    rent: {
+      list: () => api.get('/finance/rent-payments'),
+      add: (data) => api.post('/finance/rent-payments', data),
+      proposeEdit: (id, data) => api.put(`/finance/rent-payments/${id}`, data),
+      editRequests: (status = 'pending') => api.get(`/finance/rent-payments/edit-requests?status=${status}`),
+      reviewEdit: (id, action, review_notes = '') => api.patch(`/finance/rent-payments/edit-requests/${id}`, { action, review_notes }),
+    },
   },
 
   hr: {
