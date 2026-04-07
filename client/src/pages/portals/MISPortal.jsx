@@ -749,27 +749,44 @@ function CatalogsTab() {
 function printCSIDoc(entries, filters) {
   const win = window.open('', '_blank');
   if (!win) return;
-  const fmt = (v) => v != null && v !== '' ? v : '-';
+  const fmt = (v) => v != null && v !== '' ? String(v).replace(/</g,'&lt;').replace(/>/g,'&gt;') : '-';
   const fmtNum = (v) => Number(v || 0).toFixed(2);
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' }) : '-';
   const branchLabel = filters.branch && filters.branch !== 'all' ? filters.branch : 'All Branches';
   const dateRange = [filters.startDate, filters.endDate].filter(Boolean).join(' to ') || 'All Dates';
 
-  const rows = entries.map((e, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${fmt(e.branch_name)}</td>
-      <td>${fmt(e.nb_number)}</td>
-      <td>${fmt(e.name)}</td>
-      <td>${fmt(e.receipt_number)}</td>
-      <td>${fmt(e.date)}</td>
-      <td>${fmt(e.product_code)}</td>
-      <td>${fmt(e.product_description)}</td>
-      <td>${fmtNum(e.dp)}</td>
-      <td>${fmtNum(e.bv)}</td>
-      <td>${fmt(e.qty)}</td>
-      <td>${fmtNum(e.total_dp)}</td>
-      <td>${fmtNum(e.total_bv)}</td>
-    </tr>`).join('');
+  // Group by receipt number
+  const groups = [];
+  const seen = new Map();
+  for (const row of entries) {
+    const key = row.receipt_number || row.date + '|' + row.nb_number;
+    if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ header: row, items: [row] }); }
+    else { groups[seen.get(key)].items.push(row); }
+  }
+
+  let rowNum = 0;
+  const rows = groups.map(({ header, items }) => {
+    rowNum++;
+    const rs = items.length;
+    return items.map((item, ii) => `
+      <tr>
+        ${ii === 0 ? `
+          <td rowspan="${rs}">${rowNum}</td>
+          <td rowspan="${rs}">${fmt(header.branch_name)}</td>
+          <td rowspan="${rs}">${fmt(header.nb_number)}</td>
+          <td rowspan="${rs}">${fmt(header.name)}</td>
+          <td rowspan="${rs}" style="font-family:monospace">${fmt(header.receipt_number)}</td>
+          <td rowspan="${rs}">${fmtDate(header.date)}</td>
+        ` : ''}
+        <td>${fmt(item.product_code)}</td>
+        <td>${fmt(item.product_description)}</td>
+        <td style="text-align:right">${fmtNum(item.dp)}</td>
+        <td style="text-align:right">${fmtNum(item.bv)}</td>
+        <td style="text-align:right">${fmt(item.qty)}</td>
+        <td style="text-align:right">${fmtNum(item.total_dp)}</td>
+        <td style="text-align:right">${fmtNum(item.total_bv)}</td>
+      </tr>`).join('');
+  }).join('');
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CSI Entry Report</title>
   <style>
@@ -781,8 +798,9 @@ function printCSIDoc(entries, filters) {
     .meta { text-align:right; color:#64748b; font-size:9px; line-height:1.6; }
     table { width:100%; border-collapse:collapse; margin-top:4px; }
     th { background:#c41e3a; color:#fff; padding:5px 6px; text-align:left; font-size:8.5px; font-weight:700; white-space:nowrap; }
-    td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:8.5px; }
-    tr:nth-child(even) td { background:#fdf7f8; }
+    td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:8.5px; vertical-align:top; }
+    td[rowspan] { border-right:1px solid #e2e8f0; background:#fff; font-weight:600; }
+    tr td:not([rowspan]):not(:first-of-type) { border-left:1px dotted #e2e8f0; }
     .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; }
     .filter-row { font-size:9px; color:#64748b; margin-bottom:10px; }
     @media print { .print-btn { display:none; } body { padding:8px; } }
@@ -809,6 +827,86 @@ function printCSIDoc(entries, filters) {
 }
 
 const CSI_PAGE_SIZE = 100;
+
+function CSIGroupedTable({ entries }) {
+  const groups = [];
+  const seen = new Map();
+  for (const row of entries) {
+    const key = row.receipt_number || row.date + '|' + row.nb_number;
+    if (!seen.has(key)) {
+      seen.set(key, groups.length);
+      groups.push({ key, header: row, items: [row] });
+    } else {
+      groups[seen.get(key)].items.push(row);
+    }
+  }
+
+  const th = 'px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200 whitespace-nowrap';
+  const td = 'px-3 py-2 text-sm text-gray-700 align-top';
+  const tdNum = 'px-3 py-2 text-sm text-right align-top';
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr>
+            <th className={th}>Branch</th>
+            <th className={th}>NB Number</th>
+            <th className={th}>Name</th>
+            <th className={th}>Receipt No.</th>
+            <th className={th}>Date</th>
+            <th className={th}>Product Code</th>
+            <th className={th}>Product Description</th>
+            <th className={`${th} text-right`}>DP</th>
+            <th className={`${th} text-right`}>BV</th>
+            <th className={`${th} text-right`}>QTY</th>
+            <th className={`${th} text-right`}>Total DP</th>
+            <th className={`${th} text-right`}>Total BV</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group, gi) => {
+            const { header, items } = group;
+            const rowSpan = items.length;
+            const isEven = gi % 2 === 0;
+            const rowBg = isEven ? 'bg-white' : 'bg-gray-50/60';
+            const borderTop = 'border-t-2 border-gray-200';
+            return items.map((item, ii) => (
+              <tr key={`${group.key}-${ii}`} className={`${rowBg} hover:bg-blue-50/40 transition-colors`}>
+                {ii === 0 && (
+                  <>
+                    <td className={`${td} font-medium text-primary ${borderTop}`} rowSpan={rowSpan}>
+                      {header.branch_name || '-'}
+                    </td>
+                    <td className={`${td} font-semibold text-gray-800 ${borderTop}`} rowSpan={rowSpan}>
+                      {header.nb_number || '-'}
+                    </td>
+                    <td className={`${td} ${borderTop}`} rowSpan={rowSpan}>
+                      {header.name || '-'}
+                    </td>
+                    <td className={`${td} font-mono text-xs text-blue-700 ${borderTop}`} rowSpan={rowSpan}>
+                      {header.receipt_number || '-'}
+                    </td>
+                    <td className={`${td} whitespace-nowrap ${borderTop}`} rowSpan={rowSpan}>
+                      {header.date ? new Date(header.date).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
+                    </td>
+                  </>
+                )}
+                <td className={`${td} text-gray-500 ${ii === 0 ? borderTop : ''}`}>{item.product_code || '-'}</td>
+                <td className={`${td} font-medium ${ii === 0 ? borderTop : ''}`}>{item.product_description || '-'}</td>
+                <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.dp || 0).toFixed(2)}</td>
+                <td className={`${tdNum} ${ii === 0 ? borderTop : ''}`}>{Number(item.bv || 0).toFixed(2)}</td>
+                <td className={`${tdNum} font-semibold ${ii === 0 ? borderTop : ''}`}>{Number(item.qty || 0)}</td>
+                <td className={`${tdNum} font-semibold text-blue-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_dp || 0).toFixed(2)}</td>
+                <td className={`${tdNum} font-semibold text-green-700 ${ii === 0 ? borderTop : ''}`}>{Number(item.total_bv || 0).toFixed(2)}</td>
+              </tr>
+            ));
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function CSIEntryTab() {
   const [branch, setBranch] = useState('');
@@ -926,24 +1024,11 @@ function CSIEntryTab() {
           </CardHeader>
           {loading ? <LoadingSpinner /> : (
             <>
-              <Table
-                columns={[
-                  { header: 'Branch Name', render: r => r.branch_name || '-' },
-                  { header: 'NB Number', render: r => r.nb_number || '-' },
-                  { header: 'Name', render: r => r.name || '-' },
-                  { header: 'Receipt No.', render: r => r.receipt_number || '-' },
-                  { header: 'Date', render: r => r.date ? formatDate(r.date) : '-' },
-                  { header: 'Product Code', render: r => r.product_code || '-' },
-                  { header: 'Product Description', render: r => r.product_description || '-' },
-                  { header: 'DP', render: r => <span className="font-medium">{Number(r.dp || 0).toFixed(2)}</span> },
-                  { header: 'BV', render: r => Number(r.bv || 0).toFixed(2) },
-                  { header: 'QTY', render: r => Number(r.qty || 0) },
-                  { header: 'Total DP', render: r => <span className="font-semibold text-blue-700">{Number(r.total_dp || 0).toFixed(2)}</span> },
-                  { header: 'Total BV', render: r => <span className="font-semibold text-green-700">{Number(r.total_bv || 0).toFixed(2)}</span> },
-                ]}
-                data={pagedEntries}
-                emptyMessage="No CSI entries found for the selected filters"
-              />
+              {pagedEntries.length === 0 ? (
+                <div className="p-8 text-center text-gray-400 text-sm">No CSI entries found for the selected filters</div>
+              ) : (
+                <CSIGroupedTable entries={pagedEntries} />
+              )}
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-gray-100">
                   <Button size="sm" variant="secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</Button>
