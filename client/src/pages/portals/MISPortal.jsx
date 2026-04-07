@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import { api } from '../../lib/api';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle, Download, Printer } from 'lucide-react';
@@ -889,7 +889,7 @@ function CSIEntryTab() {
               <select value={branch} onChange={e => setBranch(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                 <option value="">All Branches / Country</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <Input label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />

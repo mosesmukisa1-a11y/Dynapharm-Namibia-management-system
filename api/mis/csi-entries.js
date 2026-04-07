@@ -25,9 +25,16 @@ export default async function handler(req, res) {
     const endParam = searchParams.get('endDate');
 
     const params = [];
-    const where = [
-      `(s.customer_type = 'member' OR (s.referral_nb IS NOT NULL AND s.referral_nb != ''))`
-    ];
+
+    // Include: own member purchases, referral sales, prescription/consultation referrals
+    // Covers: customer_type='member' (own NB), referral_nb set, or distributor_nb set
+    const baseCondition = `(
+      s.customer_type = 'member'
+      OR (s.referral_nb  IS NOT NULL AND TRIM(s.referral_nb)  != '')
+      OR (s.distributor_nb IS NOT NULL AND TRIM(s.distributor_nb) != '')
+    )`;
+
+    const where = [baseCondition];
 
     if (branchParam && branchParam !== 'all' && branchParam !== '') {
       params.push(branchParam);
@@ -49,46 +56,71 @@ export default async function handler(req, res) {
       where.push(`s.sale_date::date <= $${params.length}::date`);
     }
 
-    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const whereClause = `WHERE ${where.join(' AND ')}`;
 
     const sql = `
       SELECT
-        s.branch_id                                                         AS branch_name,
-        COALESCE(NULLIF(s.distributor_nb, ''), NULLIF(s.referral_nb, ''))  AS nb_number,
-        s.customer_name                                                     AS name,
-        s.sale_number                                                       AS receipt_number,
-        s.sale_date::date                                                   AS date,
+        s.branch_id                                                              AS branch_name,
+        COALESCE(NULLIF(TRIM(s.distributor_nb), ''), NULLIF(TRIM(s.referral_nb), '')) AS nb_number,
+        s.customer_name                                                          AS name,
+        s.sale_number                                                            AS receipt_number,
+        s.sale_date::date                                                        AS date,
+        -- Product code: from JSONB first, fall back to product_prices
         COALESCE(
           NULLIF(TRIM(item->>'sku'),  ''),
           NULLIF(TRIM(item->>'code'), ''),
           ''
-        )                                                                   AS product_code,
+        )                                                                        AS product_code,
+        -- Product description: prefer JSONB, fall back to product_prices description
         COALESCE(
           NULLIF(TRIM(item->>'product_name'), ''),
           NULLIF(TRIM(item->>'name'),         ''),
           NULLIF(TRIM(item->>'description'),  ''),
+          pp.description,
           'Unknown'
-        )                                                                   AS product_description,
+        )                                                                        AS product_description,
+        -- DP: use item dp if non-zero, otherwise look up from product_prices
         ROUND(COALESCE(
-          (item->>'dp')::numeric,
-          (item->>'dpPrice')::numeric,
-          (item->>'unit_price')::numeric,
+          CASE WHEN COALESCE((item->>'dp')::numeric,     0) > 0 THEN (item->>'dp')::numeric     END,
+          CASE WHEN COALESCE((item->>'dpPrice')::numeric,0) > 0 THEN (item->>'dpPrice')::numeric END,
+          CASE WHEN COALESCE((item->>'unit_price')::numeric, 0) > 0 AND s.customer_type = 'member'
+               THEN (item->>'unit_price')::numeric END,
+          pp.dp,
           0
-        ), 2)                                                               AS dp,
-        ROUND(COALESCE((item->>'bv')::numeric, 0), 2)                      AS bv,
+        ), 2)                                                                    AS dp,
+        -- BV
+        ROUND(COALESCE(
+          CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
+          pp.bv,
+          0
+        ), 2)                                                                    AS bv,
+        -- QTY
         COALESCE(
           (item->>'quantity')::integer,
           (item->>'qty')::integer,
           1
-        )                                                                   AS qty,
+        )                                                                        AS qty,
+        -- Total DP
         ROUND(
-          COALESCE((item->>'dp')::numeric, (item->>'dpPrice')::numeric, (item->>'unit_price')::numeric, 0)
+          COALESCE(
+            CASE WHEN COALESCE((item->>'dp')::numeric, 0) > 0 THEN (item->>'dp')::numeric END,
+            CASE WHEN COALESCE((item->>'dpPrice')::numeric, 0) > 0 THEN (item->>'dpPrice')::numeric END,
+            CASE WHEN COALESCE((item->>'unit_price')::numeric, 0) > 0 AND s.customer_type = 'member'
+                 THEN (item->>'unit_price')::numeric END,
+            pp.dp,
+            0
+          )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
-        2)                                                                  AS total_dp,
+        2)                                                                       AS total_dp,
+        -- Total BV
         ROUND(
-          COALESCE((item->>'bv')::numeric, 0)
+          COALESCE(
+            CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
+            pp.bv,
+            0
+          )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
-        2)                                                                  AS total_bv
+        2)                                                                       AS total_bv
       FROM branch_walkin_sales s,
         jsonb_array_elements(
           CASE
@@ -96,6 +128,14 @@ export default async function handler(req, res) {
             ELSE '[]'::jsonb
           END
         ) AS item
+      LEFT JOIN product_prices pp
+        ON LOWER(TRIM(pp.description)) = LOWER(TRIM(
+          COALESCE(
+            NULLIF(TRIM(item->>'product_name'), ''),
+            NULLIF(TRIM(item->>'name'),         ''),
+            NULLIF(TRIM(item->>'description'),  '')
+          )
+        ))
       ${whereClause}
       ORDER BY s.sale_date DESC, s.id DESC
       LIMIT 5000
