@@ -457,8 +457,27 @@ export default async function handler(req, res) {
         const referralName = meta.referralName || 'Dynapharm Namibia';
         const profitAmount = saleItems.reduce((s, i) => {
           const qty = Number(i.quantity || i.qty || 0);
-          const dp = Number(i.dpPrice || i.dp || 0);
-          const cp = Number(i.cpPrice || i.cp || 0);
+          const itemName = (i.product_name || i.name || i.description || '').toLowerCase();
+          const pkg = getPackageComponents(i.product_name || i.name || i.description || '');
+          if (pkg) {
+            const pkgProfit = pkg.products.reduce((ps, comp) => {
+              const livePrice = livePriceMap[comp.name.toLowerCase()];
+              const compDp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
+              const compCp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
+              const compQty = Math.round(Number(comp.quantity || 1) * qty);
+              return ps + Math.max(0, (compCp - compDp) * compQty);
+            }, 0);
+            return s + pkgProfit;
+          }
+          let dp = Number(i.dpPrice || i.dp || 0);
+          let cp = Number(i.cpPrice || i.cp || 0);
+          if (!cp || !dp) {
+            const livePrice = livePriceMap[itemName];
+            if (livePrice) {
+              if (!dp) dp = Number(livePrice.dp) || 0;
+              if (!cp) cp = Number(livePrice.cp) || 0;
+            }
+          }
           return s + Math.max(0, (cp - dp) * qty);
         }, 0);
         if (profitAmount > 0) {
