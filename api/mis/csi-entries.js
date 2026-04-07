@@ -26,14 +26,17 @@ export default async function handler(req, res) {
 
     const params = [];
 
-    // CSI tracks member/distributor purchases only.
-    // Show only sales where the CUSTOMER is a member with their own NB number.
-    // Referral sales (non-member clients referred by a distributor) are excluded
-    // because the displayed NB (referral_nb) would not match the customer's name.
+    // CSI tracks member/distributor activity:
+    //   1. Member's own purchase: customer_type='member', distributor_nb = their own NB
+    //   2. Non-member referral sale: referral_nb = the referring member's NB
+    //      → attributed to the referring member (show their NB + their name from distributors table)
+    // Exclude the default system referral NB (NB005676 = Dynapharm Namibia placeholder)
     const baseCondition = `(
-      s.customer_type = 'member'
-      AND s.distributor_nb IS NOT NULL
-      AND TRIM(s.distributor_nb) != ''
+      (s.customer_type = 'member' AND s.distributor_nb IS NOT NULL AND TRIM(s.distributor_nb) != '')
+      OR (
+        (s.referral_nb IS NOT NULL AND TRIM(s.referral_nb) != '' AND TRIM(s.referral_nb) != 'NB005676')
+        AND (s.customer_type IS DISTINCT FROM 'member')
+      )
     )`;
 
     const where = [baseCondition];
@@ -63,8 +66,18 @@ export default async function handler(req, res) {
     const sql = `
       SELECT
         s.branch_id                                                              AS branch_name,
-        TRIM(s.distributor_nb)                                                   AS nb_number,
-        s.customer_name                                                          AS name,
+        -- NB: for member's own purchase use their distributor_nb;
+        --     for referral sale use referral_nb (the referring member's NB)
+        CASE
+          WHEN s.customer_type = 'member' THEN TRIM(s.distributor_nb)
+          ELSE TRIM(s.referral_nb)
+        END                                                                      AS nb_number,
+        -- Name: for member purchases the customer IS the member;
+        --       for referral sales look up the referring member's name from distributors
+        CASE
+          WHEN s.customer_type = 'member' THEN s.customer_name
+          ELSE COALESCE(d.distributor_name, TRIM(s.referral_nb))
+        END                                                                      AS name,
         s.sale_number                                                            AS receipt_number,
         s.sale_date::date                                                        AS date,
         -- Product code: from JSONB first, fall back to product_prices
@@ -123,8 +136,8 @@ export default async function handler(req, res) {
           )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
         2)                                                                       AS total_bv
-      FROM branch_walkin_sales s,
-        jsonb_array_elements(
+      FROM branch_walkin_sales s
+      CROSS JOIN LATERAL jsonb_array_elements(
           CASE
             WHEN s.items IS NOT NULL AND jsonb_typeof(s.items) = 'array' THEN s.items
             ELSE '[]'::jsonb
@@ -138,6 +151,10 @@ export default async function handler(req, res) {
             NULLIF(TRIM(item->>'description'),  '')
           )
         ))
+      -- For referral sales, look up the referring member's name by their NB number
+      LEFT JOIN distributors d
+        ON s.customer_type IS DISTINCT FROM 'member'
+       AND TRIM(UPPER(d.distributor_code)) = TRIM(UPPER(s.referral_nb))
       ${whereClause}
       ORDER BY s.sale_date DESC, s.id DESC
       LIMIT 5000
