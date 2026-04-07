@@ -4945,107 +4945,421 @@ function BankingTab() {
 }
 
 function BranchPaymentsTab() {
+  const portalBranch = useContext(PortalBranchContext);
   const { user } = useAuth();
-  const [payments, setPayments] = useState([]);
+  const branchId = portalBranch || user?.branch || '';
+
+  const [allEntries, setAllEntries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [form, setForm] = useState({ client_name: '', amount: '', payment_method: 'Cash', reference: '', notes: '' });
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
-  useEffect(() => {
-    api.branch.payments()
-      .then(d => setPayments(Array.isArray(d) ? d : d.payments || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', category: 'General', payment_method: 'Cash', notes: '' });
+  const [paymentForm, setPaymentForm] = useState({ client_name: '', amount: '', payment_method: 'Cash', reference: '', notes: '' });
 
-  const handleSubmit = async () => {
-    if (!form.client_name.trim() || !form.amount || Number(form.amount) <= 0) return;
+  const EXPENSE_CATEGORIES = ['General', 'Stationery', 'Cleaning', 'Transport', 'Utilities', 'Maintenance', 'Staff Welfare', 'Other'];
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [salesRes, bonusRes, expensesRes, paymentsRes, depositsRes] = await Promise.allSettled([
+        api.branch.walkinSales(`branch=${encodeURIComponent(branchId)}&limit=300`),
+        api.branch.bonusPayments({ branch: branchId }),
+        api.branch.expenses(),
+        api.branch.payments({ branch: branchId }),
+        api.branch.deposits(`branch=${encodeURIComponent(branchId)}&limit=100`),
+      ]);
+
+      const entries = [];
+
+      if (salesRes.status === 'fulfilled') {
+        const sales = salesRes.value?.sales || [];
+        sales.forEach(s => entries.push({
+          id: s.id,
+          type: 'sale',
+          direction: 'in',
+          date: s.sale_date || s.created_at,
+          description: `Walk-in Sale — ${s.customer_name || s.customerName || 'Customer'}`,
+          subtext: `${s.payment_method || s.paymentMethod || 'Cash'} · ${(s.items || []).length || '?'} item(s)`,
+          amount: Number(s.total || s.totalAmount || 0),
+          by: s.created_by || s.soldBy || '',
+          reference: s.sale_number || s.saleNumber || '',
+          raw: s,
+        }));
+      }
+
+      if (bonusRes.status === 'fulfilled') {
+        const paid = bonusRes.value?.paidHistory || [];
+        paid.forEach(p => entries.push({
+          id: p.id,
+          type: 'bonus_payment',
+          direction: 'out',
+          date: p.paid_at,
+          description: `Bonus Payment — ${p.distributor_name || ''}`,
+          subtext: `NB: ${p.nb_number} · Period: ${p.period}`,
+          amount: Number(p.amount || 0),
+          by: p.recorded_by || '',
+          reference: p.id,
+          raw: p,
+        }));
+      }
+
+      if (expensesRes.status === 'fulfilled') {
+        const exps = expensesRes.value?.expenses || [];
+        exps.forEach(e => {
+          if (!branchId || e.branchId === branchId || e.branch_id === branchId) {
+            entries.push({
+              id: e.id,
+              type: 'expense',
+              direction: 'out',
+              date: e.date || e.createdAt,
+              description: e.description || 'Expense',
+              subtext: `${e.category || 'General'} · ${e.paymentMethod || e.payment_method || 'Cash'}`,
+              amount: Number(e.amount || 0),
+              by: e.createdBy || e.created_by || '',
+              reference: '',
+              raw: e,
+            });
+          }
+        });
+      }
+
+      if (paymentsRes.status === 'fulfilled') {
+        const pays = paymentsRes.value?.payments || [];
+        pays.forEach(p => entries.push({
+          id: p.id,
+          type: 'payment',
+          direction: 'in',
+          date: p.date || p.recordedAt,
+          description: `Payment — ${p.clientName || p.client_name || 'Client'}`,
+          subtext: `${p.method || p.payment_method || ''} · ${p.reference || ''}`.replace(/^ · | · $/, ''),
+          amount: Number(p.amount || 0),
+          by: p.recordedBy || p.recorded_by || '',
+          reference: p.invoiceNumber || p.invoice_number || p.reference || '',
+          raw: p,
+        }));
+      }
+
+      if (depositsRes.status === 'fulfilled') {
+        const deps = depositsRes.value?.deposits || [];
+        deps.forEach(d => {
+          if (!branchId || d.branch_id === branchId || d.branchId === branchId) {
+            entries.push({
+              id: d.id,
+              type: 'deposit',
+              direction: 'in',
+              date: d.date,
+              description: `Bank Deposit — ${d.bank_name || 'Bank'}`,
+              subtext: `Slip: ${d.slip_number || '—'} · ${d.status || 'pending'}`,
+              amount: Number(d.amount || 0),
+              by: d.deposited_by || d.created_by || '',
+              reference: d.slip_number || '',
+              raw: d,
+            });
+          }
+        });
+      }
+
+      entries.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      setAllEntries(entries);
+    } catch (err) {
+      setAlert({ type: 'error', message: 'Failed to load payment data' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [branchId]);
+
+  const handleRecordExpense = async () => {
+    if (!expenseForm.description.trim() || !expenseForm.amount || Number(expenseForm.amount) <= 0) return;
+    setSubmitting(true);
+    try {
+      await api.branch.createExpense({
+        branch_id: branchId,
+        description: expenseForm.description.trim(),
+        amount: Number(expenseForm.amount),
+        category: expenseForm.category,
+        payment_method: expenseForm.payment_method,
+        notes: expenseForm.notes.trim(),
+        date: new Date().toISOString().slice(0, 10),
+      });
+      setAlert({ type: 'success', message: 'Expense recorded successfully.' });
+      setExpenseForm({ description: '', amount: '', category: 'General', payment_method: 'Cash', notes: '' });
+      setShowExpenseForm(false);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to record expense' });
+    } finally { setSubmitting(false); }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!paymentForm.client_name.trim() || !paymentForm.amount || Number(paymentForm.amount) <= 0) return;
     setSubmitting(true);
     try {
       await api.branch.createPayment({
-        client_name: form.client_name.trim(),
-        amount: Number(form.amount),
-        payment_method: form.payment_method,
-        reference: form.reference.trim(),
-        notes: form.notes.trim(),
-        branch: user?.branch || '',
-        status: 'pending',
+        branchId,
+        clientName: paymentForm.client_name.trim(),
+        amount: Number(paymentForm.amount),
+        method: paymentForm.payment_method,
+        reference: paymentForm.reference.trim(),
+        notes: paymentForm.notes.trim(),
+        date: new Date().toISOString().slice(0, 10),
       });
-      setAlert({ type: 'success', message: 'Payment recorded. Sent to Finance for processing.' });
-      setForm({ client_name: '', amount: '', payment_method: 'Cash', reference: '', notes: '' });
-      setShowForm(false);
-      const res = await api.branch.payments().catch(() => ({ payments: [] }));
-      setPayments(Array.isArray(res) ? res : res.payments || []);
+      setAlert({ type: 'success', message: 'Payment recorded.' });
+      setPaymentForm({ client_name: '', amount: '', payment_method: 'Cash', reference: '', notes: '' });
+      setShowPaymentForm(false);
+      load();
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record payment' });
     } finally { setSubmitting(false); }
   };
 
-  const filteredPayments = payments.filter(p => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (p.client_name || '').toLowerCase().includes(q) || (p.reference || '').toLowerCase().includes(q) || (p.invoice_number || '').toLowerCase().includes(q);
+  const TYPE_CONFIG = {
+    sale:          { label: 'Walk-in Sale',     color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', icon: '🛒' },
+    bonus_payment: { label: 'Bonus Payment',    color: '#c41e3a', bg: '#fff0f0', border: '#fecaca', icon: '🎁' },
+    expense:       { label: 'Expense',          color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '📤' },
+    payment:       { label: 'Payment Received', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: '💳' },
+    deposit:       { label: 'Bank Deposit',     color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: '🏦' },
+  };
+
+  const TYPE_TABS = [
+    { key: 'all', label: 'All Transactions' },
+    { key: 'sale', label: '🛒 Sales' },
+    { key: 'bonus_payment', label: '🎁 Bonus Payments' },
+    { key: 'expense', label: '📤 Expenses' },
+    { key: 'payment', label: '💳 Payments' },
+    { key: 'deposit', label: '🏦 Deposits' },
+  ];
+
+  const filtered = allEntries.filter(e => {
+    if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (!(e.description || '').toLowerCase().includes(q) && !(e.subtext || '').toLowerCase().includes(q) && !(e.reference || '').toLowerCase().includes(q) && !(e.by || '').toLowerCase().includes(q)) return false;
+    }
+    if (dateFrom && e.date && e.date.slice(0, 10) < dateFrom) return false;
+    if (dateTo && e.date && e.date.slice(0, 10) > dateTo) return false;
+    return true;
   });
+
+  const totalIn = filtered.filter(e => e.direction === 'in').reduce((s, e) => s + e.amount, 0);
+  const totalOut = filtered.filter(e => e.direction === 'out').reduce((s, e) => s + e.amount, 0);
+
+  const countByType = (type) => allEntries.filter(e => e.type === type).length;
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div>
-      <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
-        <h3 className="text-white text-lg font-bold m-0">💳 Payment Management</h3>
-        <p className="text-white/75 text-sm mt-1 m-0">Record and track payments</p>
+    <div className="space-y-4">
+      <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
+        <h3 className="text-white text-lg font-bold m-0">💳 Branch Payments Ledger</h3>
+        <p className="text-white/75 text-sm mt-1 m-0">All money in and out — sales, bonus payouts, expenses, deposits</p>
       </div>
 
-      <div className="flex gap-3 items-center mb-4 flex-wrap" style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-        <input type="text" placeholder="Search by client name or invoice number..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-        <button onClick={() => setShowForm(true)} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>➕ Record Payment</button>
-        <button onClick={async () => { setLoading(true); const res = await api.branch.payments().catch(() => ({ payments: [] })); setPayments(Array.isArray(res) ? res : res.payments || []); setLoading(false); }} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #3498db, #2471a3)' }}>🔄 Refresh</button>
-      </div>
+      {alert && <Alert type={alert.type} className="mb-2" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
-      {alert && <Alert type={alert.type} className="mb-4">{alert.message}</Alert>}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment">
-        <div className="p-6 space-y-4">
-          <Input label="Client Name" value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} />
-          <Input label="Amount (N$)" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-            <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              <option value="Cash">Cash</option>
-              <option value="Card">Card</option>
-              <option value="Mobile">Mobile</option>
-              <option value="Bank Transfer">Bank Transfer</option>
-            </select>
-          </div>
-          <Input label="Reference" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} />
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl p-4 bg-green-50 border border-green-200 text-center">
+          <p className="text-xs text-green-600 uppercase font-semibold tracking-wide">Total In</p>
+          <p className="text-xl font-black text-green-700">{formatCurrency(totalIn)}</p>
+          <p className="text-xs text-green-500">{filtered.filter(e => e.direction === 'in').length} entries</p>
         </div>
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3">
-          <Button className="flex-1" variant="success" onClick={handleSubmit} disabled={submitting}>{submitting ? 'Recording...' : '💾 Save Payment'}</Button>
-          <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+        <div className="rounded-xl p-4 bg-red-50 border border-red-200 text-center">
+          <p className="text-xs text-red-600 uppercase font-semibold tracking-wide">Total Out</p>
+          <p className="text-xl font-black text-red-700">{formatCurrency(totalOut)}</p>
+          <p className="text-xs text-red-500">{filtered.filter(e => e.direction === 'out').length} entries</p>
+        </div>
+        <div className="rounded-xl p-4 border text-center" style={{ background: totalIn - totalOut >= 0 ? '#f0fdf4' : '#fff0f0', borderColor: totalIn - totalOut >= 0 ? '#bbf7d0' : '#fecaca' }}>
+          <p className="text-xs uppercase font-semibold tracking-wide" style={{ color: totalIn - totalOut >= 0 ? '#16a34a' : '#c41e3a' }}>Net</p>
+          <p className="text-xl font-black" style={{ color: totalIn - totalOut >= 0 ? '#15803d' : '#b91c1c' }}>{formatCurrency(Math.abs(totalIn - totalOut))}</p>
+          <p className="text-xs" style={{ color: totalIn - totalOut >= 0 ? '#16a34a' : '#c41e3a' }}>{totalIn - totalOut >= 0 ? '▲ surplus' : '▼ deficit'}</p>
+        </div>
+        <div className="rounded-xl p-4 bg-blue-50 border border-blue-200 text-center">
+          <p className="text-xs text-blue-600 uppercase font-semibold tracking-wide">Transactions</p>
+          <p className="text-xl font-black text-blue-700">{filtered.length}</p>
+          <p className="text-xs text-blue-500">of {allEntries.length} total</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {TYPE_TABS.map(tab => (
+          <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border-none cursor-pointer transition-all"
+            style={typeFilter === tab.key
+              ? { background: '#1e3a5f', color: '#fff' }
+              : { background: '#f1f5f9', color: '#374151' }}>
+            {tab.label} {tab.key !== 'all' && <span className="ml-1 opacity-70">({countByType(tab.key)})</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-3 items-center bg-gray-50 rounded-xl p-3 border border-gray-200">
+        <input type="text" placeholder="Search description, reference, by…" value={search} onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-[180px] px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none" />
+        <span className="text-gray-400 text-xs">to</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none" />
+        <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); setTypeFilter('all'); }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold border-none cursor-pointer bg-gray-200 text-gray-600">Clear</button>
+        <button onClick={load} className="px-3 py-2 rounded-lg text-xs font-semibold border-none cursor-pointer text-white" style={{ background: '#2980b9' }}>🔄 Refresh</button>
+        <button onClick={() => setShowExpenseForm(true)} className="px-3 py-2 rounded-lg text-xs font-semibold border-none cursor-pointer text-white" style={{ background: '#d97706' }}>📤 Record Expense</button>
+        <button onClick={() => setShowPaymentForm(true)} className="px-3 py-2 rounded-lg text-xs font-semibold border-none cursor-pointer text-white" style={{ background: '#16a34a' }}>➕ Record Payment</button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+          <h4 className="font-bold text-gray-800 text-sm">Transaction Ledger</h4>
+          <span className="text-xs text-gray-500">{filtered.length} records shown</span>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-3xl mb-2">💳</p>
+            <p className="text-gray-500 font-medium">No transactions found</p>
+            <p className="text-gray-400 text-xs mt-1">Try adjusting your filters or date range</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">By</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Flow</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(e => {
+                  const cfg = TYPE_CONFIG[e.type] || TYPE_CONFIG.payment;
+                  return (
+                    <tr key={`${e.type}-${e.id}`} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                        {e.date ? new Date(e.date).toLocaleDateString('en-NA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+                          {cfg.icon} {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-800 text-sm leading-tight">{e.description}</p>
+                        {e.subtext && <p className="text-xs text-gray-400 mt-0.5">{e.subtext}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.reference || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{e.by || '—'}</td>
+                      <td className="px-4 py-3 text-right font-black text-base" style={{ color: e.direction === 'in' ? '#15803d' : '#b91c1c' }}>
+                        {e.direction === 'in' ? '+' : '−'}{formatCurrency(e.amount)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold"
+                          style={e.direction === 'in' ? { background: '#dcfce7', color: '#166534' } : { background: '#fee2e2', color: '#991b1b' }}>
+                          {e.direction === 'in' ? '▲ IN' : '▼ OUT'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t-2 border-gray-300 bg-gray-50">
+                <tr>
+                  <td colSpan={5} className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Totals for current filter</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="text-xs font-semibold text-green-700">+{formatCurrency(totalIn)}</div>
+                    <div className="text-xs font-semibold text-red-700">−{formatCurrency(totalOut)}</div>
+                    <div className="text-sm font-black border-t border-gray-300 mt-1 pt-1" style={{ color: totalIn - totalOut >= 0 ? '#15803d' : '#b91c1c' }}>
+                      {totalIn - totalOut >= 0 ? '+' : '−'}{formatCurrency(Math.abs(totalIn - totalOut))}
+                    </div>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal open={showExpenseForm} onClose={() => setShowExpenseForm(false)} title="📤 Record Expense" size="md">
+        <div className="p-6 space-y-4">
+          <Input label="Description" placeholder="What was purchased or paid for?" value={expenseForm.description} onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))} />
+          <Input label="Amount (N$)" type="number" min="0.01" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select value={expenseForm.category} onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Paid By</label>
+              <select value={expenseForm.payment_method} onChange={e => setExpenseForm(f => ({ ...f, payment_method: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option>Cash</option>
+                <option>Card</option>
+                <option>Bank Transfer</option>
+                <option>Mobile</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+            <textarea value={expenseForm.notes} onChange={e => setExpenseForm(f => ({ ...f, notes: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
+              placeholder="Receipt number, supplier, reason…" />
+          </div>
+          <div className="flex gap-3">
+            <Button className="flex-1" variant="warning" onClick={handleRecordExpense} disabled={submitting}>
+              {submitting ? 'Saving…' : '📤 Save Expense'}
+            </Button>
+            <Button variant="secondary" onClick={() => setShowExpenseForm(false)}>Cancel</Button>
+          </div>
         </div>
       </Modal>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Payment Records</h3>
+
+      <Modal open={showPaymentForm} onClose={() => setShowPaymentForm(false)} title="💳 Record Payment Received" size="md">
+        <div className="p-6 space-y-4">
+          <Input label="Client / Payer Name" value={paymentForm.client_name} onChange={e => setPaymentForm(f => ({ ...f, client_name: e.target.value }))} />
+          <Input label="Amount (N$)" type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+              <select value={paymentForm.payment_method} onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
+                <option>Cash</option>
+                <option>Card</option>
+                <option>Mobile</option>
+                <option>Bank Transfer</option>
+              </select>
+            </div>
+            <Input label="Reference / Invoice #" value={paymentForm.reference} onChange={e => setPaymentForm(f => ({ ...f, reference: e.target.value }))} />
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Client', render: r => r.client_name || '-' },
-            { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount)}</span> },
-            { header: 'Method', render: r => r.payment_method || '-' },
-            { header: 'Reference', render: r => r.reference || '-' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'processed' ? 'success' : r.status === 'approved' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
-          ]}
-          data={filteredPayments}
-          emptyMessage="No payment records"
-        />
-      </Card>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+            <textarea value={paymentForm.notes} onChange={e => setPaymentForm(f => ({ ...f, notes: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none resize-none" rows={2}
+              placeholder="Invoice details, reason for payment…" />
+          </div>
+          <div className="flex gap-3">
+            <Button className="flex-1" variant="success" onClick={handleRecordPayment} disabled={submitting}>
+              {submitting ? 'Saving…' : '💳 Save Payment'}
+            </Button>
+            <Button variant="secondary" onClick={() => setShowPaymentForm(false)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
