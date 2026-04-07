@@ -1579,6 +1579,140 @@ function ClientEditForm({ form, setForm }) {
   );
 }
 
+function printReportFromDB(r) {
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const logo = window.location.origin + '/assets/dynapharm-logo.png';
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '';
+  const fmtDateTime = d => d ? new Date(d).toLocaleString('en-NA', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  const isMember = (r.membership_status || '') === 'member';
+  const symptoms = Array.isArray(r.symptoms) ? r.symptoms : [];
+  const prescriptions = Array.isArray(r.prescriptions) ? r.prescriptions : (Array.isArray(r.medicines) ? r.medicines.map(m => ({ product: m.name || m, quantity: m.quantity || 1 })) : []);
+  const reportReq = r.report_required !== false;
+
+  const sympHtml = symptoms.length > 0
+    ? symptoms.map(s => `
+        <div class="lifestyle-item">
+          <div class="lifestyle-sym">${esc(s.system)} — ${esc(s.symptom)}</div>
+          <div class="lifestyle-advice">${esc(s.recommendation)}</div>
+        </div>`).join('')
+    : '<p style="color:#7f8c8d;font-style:italic;margin:0">No specific body system findings recorded.</p>';
+
+  const rxHtml = prescriptions.length > 0
+    ? prescriptions.map(p => {
+        const name = typeof p === 'string' ? p : (p.product || p.name || '');
+        const qty = typeof p === 'object' ? (p.quantity || 1) : 1;
+        return `<span class="med">${esc(name)} ×${qty}</span>`;
+      }).join('')
+    : '<p style="color:#7f8c8d;font-style:italic;margin:0">No products prescribed.</p>';
+
+  const w = window.open('', '_blank', 'width=920,height=780');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Health Report — ${esc(r.client_name || '')}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;padding:22px;color:#222;font-size:12px;line-height:1.45;}
+  .header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:14px;}
+  .logo{height:54px;background:#fff;border-radius:8px;padding:3px;}
+  .company{font-size:1.2rem;font-weight:900;color:#c41e3a;}
+  .subtitle{font-size:0.82rem;color:#555;margin-top:2px;}
+  .report-title{font-size:0.95rem;font-weight:800;color:#7b0000;letter-spacing:1px;margin-top:3px;}
+  h3{color:#c41e3a;border-bottom:2px solid #fecaca;padding-bottom:4px;margin:12px 0 8px;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 14px;}
+  .field{font-size:0.82rem;padding:2px 0;border-bottom:1px dotted #eee;}
+  .section{margin:8px 0;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;background:#fafafa;page-break-inside:avoid;}
+  .med{padding:4px 10px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px 3px 3px 0;font-size:0.85rem;color:#166534;font-weight:700;border:1px solid #bbf7d0;}
+  .lifestyle-item{margin-bottom:6px;padding:6px 10px;background:#e3f2fd;border-left:4px solid #2196f3;border-radius:5px;}
+  .lifestyle-sym{font-weight:700;color:#1565c0;font-size:0.84rem;}
+  .lifestyle-advice{font-size:0.8rem;color:#333;margin-top:2px;line-height:1.4;}
+  .sig-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:6px;}
+  .sig-box{border-top:2px solid #333;padding-top:5px;}
+  .sig-label{font-size:0.76rem;color:#666;}
+  .sig-name{font-weight:700;font-size:0.9rem;color:#1e293b;margin-top:3px;}
+  .footer{margin-top:18px;border-top:2px solid #c41e3a;padding-top:8px;font-size:0.72rem;color:#888;display:flex;justify-content:space-between;}
+  .confidential{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;}
+  .req-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:0.8rem;font-weight:700;${reportReq ? 'background:#fef2f2;color:#c41e3a;border:2px solid #fecaca;' : 'background:#f0fdf4;color:#166534;border:2px solid #bbf7d0;'}}
+  .print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;}
+  @media print{.print-btn{display:none;} body{padding:10px;} @page{size:A4;margin:10mm;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Print</button>
+
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="subtitle">Health &amp; Wellness Division</div>
+    <div class="report-title">SUMMARY ANALYSIS HEALTH REPORT CARD</div>
+  </div>
+  <div style="margin-left:auto;text-align:right;font-size:0.78rem;color:#64748b;line-height:1.7;">
+    <div><b>Report ID:</b> ${esc(r.id)}</div>
+    <div><b>Date:</b> ${fmtDateTime(r.created_at)}</div>
+    <div><b>Branch:</b> ${esc(r.branch || 'N/A')}</div>
+    <div style="margin-top:4px"><span class="req-badge">${reportReq ? '⚠️ Report Required: YES' : '✓ Report Required: NO'}</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Patient Information</h3>
+  <div class="grid3">
+    <div class="field"><b>Full Name:</b> ${esc(r.client_name || 'N/A')}</div>
+    <div class="field"><b>NB Number:</b> ${esc(r.nb_number || 'N/A')}</div>
+    <div class="field"><b>Membership:</b> ${isMember ? '✓ Member' : 'Non-Member / Referred'}</div>
+    ${!isMember ? `
+    <div class="field"><b>Referral Name:</b> ${esc(r.referral_name || 'N/A')}</div>
+    <div class="field"><b>Referral NB:</b> ${esc(r.referral_nb || 'N/A')}</div>` : ''}
+    <div class="field"><b>Consultation Fee:</b> N$ ${esc(r.consultation_fee || 'N/A')}</div>
+  </div>
+</div>
+
+${symptoms.length > 0 ? `
+<div class="section">
+  <h3>Body System Findings &amp; Recommendations</h3>
+  ${sympHtml}
+</div>` : ''}
+
+<div class="section">
+  <h3>Consultant Notes &amp; Diagnosis</h3>
+  <p style="margin:0;white-space:pre-wrap;font-size:0.85rem;color:#1e293b">${esc(r.diagnosis || r.recommendations || 'No notes recorded.')}</p>
+</div>
+
+<div class="section">
+  <h3>Prescribed Products</h3>
+  ${rxHtml}
+</div>
+
+${r.follow_up_date ? `
+<div class="section">
+  <h3>Follow-up</h3>
+  <div class="grid2">
+    <div class="field"><b>Follow-up Date:</b> ${fmtDate(r.follow_up_date)}</div>
+    ${r.follow_up_notes ? `<div class="field"><b>Notes:</b> ${esc(r.follow_up_notes)}</div>` : ''}
+  </div>
+</div>` : ''}
+
+<div class="section" style="margin-top:16px;">
+  <div class="sig-row">
+    <div class="sig-box">
+      <div class="sig-label">Consultant Signature</div>
+      <div class="sig-name">${esc(r.consultant || 'Dynapharm Consultant')}</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-label">Patient / Guardian Signature</div>
+      <div class="sig-name">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span class="confidential">🔒 CONFIDENTIAL</span>
+  <span>This report is confidential and intended solely for the named patient.</span>
+  <span>Dynapharm International Namibia — Printed ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</span>
+</div>
+</body></html>`);
+  w.document.close();
+  setTimeout(() => { try { w.focus(); } catch {} }, 400);
+}
+
 function ReportsSection() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1598,105 +1732,250 @@ function ReportsSection() {
   const filtered = reports.filter(r => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (r.client_name || '').toLowerCase().includes(q) || (r.id || '').toString().includes(q);
+    return (r.client_name || '').toLowerCase().includes(q)
+      || (r.id || '').toString().toLowerCase().includes(q)
+      || (r.consultant || '').toLowerCase().includes(q)
+      || (r.nb_number || '').toLowerCase().includes(q);
   });
+
+  const isMember = r => (r.membership_status || '') === 'member';
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
-      <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>My Created Reports</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b' }}>My Created Reports</h3>
+        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>{filtered.length} report{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
         <input
           type="text"
-          placeholder="Search by client name or report ID..."
+          placeholder="Search by client name, NB number, report ID..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: '200px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
+          style={{ flex: 1, minWidth: '220px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
         />
-        <button onClick={() => {}} style={{ background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Search</button>
-        <button onClick={() => setSearch('')} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Show All</button>
-        <button onClick={loadReports} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}>Refresh</button>
+        <button onClick={() => setSearch('')} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontSize: '0.88rem' }}>Clear</button>
+        <button onClick={loadReports} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer', fontSize: '0.88rem' }}>↺ Refresh</button>
       </div>
+
       {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
-          <h3>🔍 No reports found</h3>
-          <p>Try a different search term.</p>
+          <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📋</div>
+          <h3 style={{ margin: '0 0 6px', color: '#475569' }}>No reports found</h3>
+          <p style={{ margin: 0, fontSize: '0.88rem' }}>Try a different search term or refresh the list.</p>
         </div>
       ) : (
-        <div>
-          {filtered.map(r => (
-            <div key={r.id} onClick={() => setSelectedReport(r)} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', cursor: 'pointer', transition: 'box-shadow 0.2s', marginBottom: '10px' }}
-              onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
-              onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}
-            >
-              <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between' }}>
-                <div>
-                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || r.title || 'Report'}</h4>
-                  <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{formatDateTime(r.created_at)}</p>
-                  {r.diagnosis && <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#475569' }}>{r.diagnosis}</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {filtered.map(r => {
+            const prx = Array.isArray(r.prescriptions) ? r.prescriptions : [];
+            const reportReq = r.report_required !== false;
+            return (
+              <div key={r.id} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '14px 18px', background: '#fafafa', transition: 'box-shadow 0.2s' }}
+                onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)'}
+                onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h4 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>{r.client_name || 'Unknown Patient'}</h4>
+                      {isMember(r)
+                        ? <span style={{ padding: '1px 8px', background: '#dbeafe', color: '#1d4ed8', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700 }}>Member</span>
+                        : <span style={{ padding: '1px 8px', background: '#fef3c7', color: '#92400e', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700 }}>Referred</span>}
+                      {reportReq && <span style={{ padding: '1px 8px', background: '#fef2f2', color: '#c41e3a', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #fecaca' }}>⚠ Report Required</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '5px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>📅 {r.created_at ? new Date(r.created_at).toLocaleString('en-NA', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'N/A'}</span>
+                      {r.nb_number && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>🪪 {r.nb_number}</span>}
+                      {r.consultant && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>👤 {r.consultant}</span>}
+                      {r.branch && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>🏥 {r.branch}</span>}
+                    </div>
+                    {r.diagnosis && (
+                      <p style={{ margin: '8px 0 0', fontSize: '0.83rem', color: '#475569', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {r.diagnosis}
+                      </p>
+                    )}
+                    {prx.length > 0 && (
+                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {prx.slice(0, 5).map((p, i) => (
+                          <span key={i} style={{ padding: '2px 10px', background: '#e8f5e9', color: '#166534', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, border: '1px solid #bbf7d0' }}>
+                            {typeof p === 'string' ? p : `${p.product} ×${p.quantity || 1}`}
+                          </span>
+                        ))}
+                        {prx.length > 5 && <span style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '2px 6px' }}>+{prx.length - 5} more</span>}
+                      </div>
+                    )}
+                    {r.follow_up_date && (
+                      <div style={{ marginTop: '8px', display: 'inline-block', padding: '3px 10px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600, border: '1px solid #bfdbfe' }}>
+                        📆 Follow-up: {new Date(r.follow_up_date).toLocaleDateString('en-NA', { day:'2-digit', month:'short', year:'numeric' })}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '110px' }}>
+                    <button
+                      onClick={() => setSelectedReport(r)}
+                      style={{ padding: '8px 14px', background: '#1e293b', color: '#fff', border: 'none', borderRadius: '7px', fontWeight: 600, cursor: 'pointer', fontSize: '0.83rem' }}
+                    >
+                      👁 View Report
+                    </button>
+                    <button
+                      onClick={() => printReportFromDB(r)}
+                      style={{ padding: '8px 14px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '7px', fontWeight: 600, cursor: 'pointer', fontSize: '0.83rem' }}
+                    >
+                      🖨️ Print / PDF
+                    </button>
+                  </div>
                 </div>
-                {r.follow_up_date && <Badge variant="info">Follow-up: {formatDate(r.follow_up_date)}</Badge>}
               </div>
-              {r.prescriptions && Array.isArray(r.prescriptions) && r.prescriptions.length > 0 && (
-                <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {r.prescriptions.map((p, i) => (
-                    <span key={i} style={{ display: 'inline-block', padding: '2px 10px', background: '#f1f5f9', borderRadius: '12px', fontSize: '0.8rem', color: '#475569' }}>
-                      {typeof p === 'string' ? p : `${p.product} x${p.quantity}`}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      <Modal open={!!selectedReport} onClose={() => setSelectedReport(null)} title="Report Details" size="lg">
-        {selectedReport && (
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-gray-500">Client</label>
-                <p className="text-sm font-semibold">{selectedReport.client_name || 'N/A'}</p>
+      {selectedReport && (
+        <div onClick={e => { if (e.target === e.currentTarget) setSelectedReport(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999999, overflowY: 'auto', padding: '30px 16px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+          <div style={{ background: '#fff', borderRadius: '14px', maxWidth: '780px', width: '100%', boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden', fontFamily: 'Arial, sans-serif', fontSize: '13px', color: '#222' }}>
+
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg,#7b0000,#c41e3a)', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <img src="/assets/dynapharm-logo.png" alt="logo" style={{ height: '44px', background: '#fff', borderRadius: '8px', padding: '3px' }} onError={e => e.target.style.display = 'none'} />
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 900, fontSize: '1rem', letterSpacing: '0.5px' }}>DYNAPHARM INTERNATIONAL NAMIBIA</div>
+                  <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', marginTop: '2px' }}>SUMMARY ANALYSIS HEALTH REPORT CARD</div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500">Date</label>
-                <p className="text-sm">{formatDateTime(selectedReport.created_at)}</p>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button onClick={() => printReportFromDB(selectedReport)}
+                  style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', backdropFilter: 'blur(4px)' }}>
+                  🖨️ Print / PDF
+                </button>
+                <button onClick={() => setSelectedReport(null)}
+                  style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>
+                  ×
+                </button>
               </div>
             </div>
-            {selectedReport.diagnosis && (
-              <div>
-                <label className="text-xs font-medium text-gray-500">Diagnosis</label>
-                <p className="text-sm mt-1">{selectedReport.diagnosis}</p>
+
+            {/* Body */}
+            <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* Report meta + required badge */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', background: '#f8fafc', borderRadius: '8px', padding: '10px 14px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  <b style={{ color: '#1e293b' }}>Report ID:</b> {selectedReport.id}
+                  &nbsp;&nbsp;|&nbsp;&nbsp;<b style={{ color: '#1e293b' }}>Date:</b> {selectedReport.created_at ? new Date(selectedReport.created_at).toLocaleString('en-NA', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'N/A'}
+                  &nbsp;&nbsp;|&nbsp;&nbsp;<b style={{ color: '#1e293b' }}>Branch:</b> {selectedReport.branch || 'N/A'}
+                </div>
+                {selectedReport.report_required !== false
+                  ? <span style={{ padding: '3px 12px', background: '#fef2f2', color: '#c41e3a', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 700, border: '1px solid #fecaca' }}>⚠️ Report Required: YES</span>
+                  : <span style={{ padding: '3px 12px', background: '#f0fdf4', color: '#166534', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 700, border: '1px solid #bbf7d0' }}>✓ Report Required: NO</span>}
               </div>
-            )}
-            {selectedReport.recommendations && (
-              <div>
-                <label className="text-xs font-medium text-gray-500">Recommendations</label>
-                <p className="text-sm mt-1">{selectedReport.recommendations}</p>
-              </div>
-            )}
-            {selectedReport.prescriptions && Array.isArray(selectedReport.prescriptions) && selectedReport.prescriptions.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-gray-500">Prescriptions</label>
-                <div className="mt-1 space-y-1">
-                  {selectedReport.prescriptions.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded text-sm">
-                      <span>{typeof p === 'string' ? p : p.product}</span>
-                      {typeof p === 'object' && <span className="text-gray-500">Qty: {p.quantity}</span>}
+
+              {/* Patient info */}
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: '9px', padding: '14px 18px', background: '#fafafa' }}>
+                <div style={{ fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '0.5px', borderBottom: '2px solid #fecaca', paddingBottom: '5px', marginBottom: '10px' }}>Patient Information</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '8px 20px' }}>
+                  {[
+                    ['Full Name', selectedReport.client_name],
+                    ['NB Number', selectedReport.nb_number],
+                    ['Membership', (selectedReport.membership_status || '') === 'member' ? '✓ Member' : 'Non-Member / Referred'],
+                    ['Consultant', selectedReport.consultant],
+                    ...((selectedReport.membership_status || '') !== 'member'
+                      ? [['Referral Name', selectedReport.referral_name], ['Referral NB', selectedReport.referral_nb]]
+                      : []),
+                    ['Consultation Fee', selectedReport.consultation_fee ? `N$ ${selectedReport.consultation_fee}` : null],
+                  ].filter(([, v]) => v).map(([label, val], i) => (
+                    <div key={i} style={{ borderBottom: '1px dotted #e5e7eb', paddingBottom: '4px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>{label}</div>
+                      <div style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: 600, marginTop: '1px' }}>{val}</div>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
-            {selectedReport.follow_up_date && (
-              <div>
-                <label className="text-xs font-medium text-gray-500">Follow-up Date</label>
-                <p className="text-sm mt-1">{formatDate(selectedReport.follow_up_date)}</p>
+
+              {/* Body system findings */}
+              {Array.isArray(selectedReport.symptoms) && selectedReport.symptoms.length > 0 && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: '9px', padding: '14px 18px', background: '#fafafa' }}>
+                  <div style={{ fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '0.5px', borderBottom: '2px solid #fecaca', paddingBottom: '5px', marginBottom: '10px' }}>Body System Findings &amp; Recommendations</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {selectedReport.symptoms.map((s, i) => (
+                      <div key={i} style={{ padding: '8px 12px', background: '#e3f2fd', borderLeft: '4px solid #2196f3', borderRadius: '6px' }}>
+                        <div style={{ fontWeight: 700, color: '#1565c0', fontSize: '0.85rem' }}>{s.system} — {s.symptom}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#333', marginTop: '3px', lineHeight: 1.45 }}>{s.recommendation}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Diagnosis / notes */}
+              {(selectedReport.diagnosis || selectedReport.recommendations) && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: '9px', padding: '14px 18px', background: '#fafafa' }}>
+                  <div style={{ fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '0.5px', borderBottom: '2px solid #fecaca', paddingBottom: '5px', marginBottom: '10px' }}>Consultant Notes &amp; Diagnosis</div>
+                  <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: '#1e293b', lineHeight: 1.55 }}>{selectedReport.diagnosis || selectedReport.recommendations}</p>
+                </div>
+              )}
+
+              {/* Prescribed products */}
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: '9px', padding: '14px 18px', background: '#fafafa' }}>
+                <div style={{ fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '0.5px', borderBottom: '2px solid #fecaca', paddingBottom: '5px', marginBottom: '10px' }}>Prescribed Products</div>
+                {(() => {
+                  const prx = Array.isArray(selectedReport.prescriptions) ? selectedReport.prescriptions
+                    : Array.isArray(selectedReport.medicines) ? selectedReport.medicines.map(m => ({ product: m.name || m, quantity: m.quantity || 1 }))
+                    : [];
+                  return prx.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {prx.map((p, i) => {
+                        const name = typeof p === 'string' ? p : (p.product || p.name || '');
+                        const qty = typeof p === 'object' ? (p.quantity || 1) : 1;
+                        return <span key={i} style={{ padding: '5px 12px', background: '#e8f5e9', color: '#166534', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 700, border: '1px solid #bbf7d0' }}>{name} ×{qty}</span>;
+                      })}
+                    </div>
+                  ) : <p style={{ margin: 0, color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No products prescribed.</p>;
+                })()}
               </div>
-            )}
+
+              {/* Follow-up */}
+              {selectedReport.follow_up_date && (
+                <div style={{ border: '1px solid #bfdbfe', borderRadius: '9px', padding: '14px 18px', background: '#eff6ff' }}>
+                  <div style={{ fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '0.5px', marginBottom: '8px' }}>Follow-up Appointment</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>Date</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e293b' }}>{new Date(selectedReport.follow_up_date).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' })}</div>
+                    </div>
+                    {selectedReport.follow_up_notes && (
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>Notes</div>
+                        <div style={{ fontSize: '0.85rem', color: '#1e293b' }}>{selectedReport.follow_up_notes}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Signature row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '4px' }}>
+                {[['Consultant Signature', selectedReport.consultant || 'Dynapharm Consultant'], ['Patient / Guardian Signature', '']].map(([label, name], i) => (
+                  <div key={i} style={{ borderTop: '2px solid #374151', paddingTop: '6px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{label}</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b', marginTop: '4px', minHeight: '22px' }}>{name}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div style={{ borderTop: '2px solid #c41e3a', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', fontSize: '0.72rem', color: '#94a3b8' }}>
+                <span style={{ padding: '2px 10px', background: '#fef2f2', color: '#991b1b', borderRadius: '20px', fontWeight: 700, border: '1px solid #fecaca' }}>🔒 CONFIDENTIAL</span>
+                <span>This report is confidential and intended solely for the named patient.</span>
+                <span>Dynapharm International Namibia</span>
+              </div>
+            </div>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }
