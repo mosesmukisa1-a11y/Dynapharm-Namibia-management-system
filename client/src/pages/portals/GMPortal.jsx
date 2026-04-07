@@ -562,6 +562,7 @@ function ApprovalsTab() {
   const [fieldRequests, setFieldRequests] = useState([]);
   const [pettyCashRequests, setPettyCashRequests] = useState([]);
   const [rentEditRequests, setRentEditRequests] = useState([]);
+  const [salaryEditRequests, setSalaryEditRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -573,6 +574,8 @@ function ApprovalsTab() {
   const [processing, setProcessing] = useState(false);
   const [rentReviewModal, setRentReviewModal] = useState(null);
   const [rentReviewNote, setRentReviewNote] = useState('');
+  const [salaryReviewModal, setSalaryReviewModal] = useState(null);
+  const [salaryReviewNote, setSalaryReviewNote] = useState('');
 
   const fmtLoc = (loc) => {
     if (!loc) return '—';
@@ -592,7 +595,8 @@ function ApprovalsTab() {
       api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
       api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
       api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs]) => {
+      api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -600,6 +604,7 @@ function ApprovalsTab() {
       setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
       setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
       setRentEditRequests(rentReqs);
+      setSalaryEditRequests(salaryReqs);
     }).finally(() => setLoading(false));
   };
 
@@ -774,12 +779,30 @@ function ApprovalsTab() {
     }
   };
 
+  const handleSalaryReview = async (action) => {
+    if (!salaryReviewModal) return;
+    setProcessing(true);
+    try {
+      const result = await api.hr.salaryLedger.reviewEdit(salaryReviewModal.id, action, salaryReviewNote);
+      if (!result.success) throw new Error(result.error || 'Failed');
+      setMessage(action === 'approve' ? '✅ Salary edit approved and applied.' : '❌ Salary edit request rejected.');
+      setSalaryEditRequests(prev => prev.filter(r => r.id !== salaryReviewModal.id));
+      setSalaryReviewModal(null);
+      setSalaryReviewNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const subTabs = [
     { id: 'transfers', label: `🚚 Transfers${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
     { id: 'fieldstock', label: `🌿 Field Stock${fieldRequests.length > 0 ? ` (${fieldRequests.length})` : ''}` },
     { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
     { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
     { id: 'rent_edits', label: `🏘️ Rent Edits${rentEditRequests.length > 0 ? ` (${rentEditRequests.length})` : ''}` },
+    { id: 'salary_edits', label: `💼 Salary Edits${salaryEditRequests.length > 0 ? ` (${salaryEditRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1207,8 +1230,119 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {approvalTab === 'salary_edits' && (
+        <div className="space-y-4">
+          {salaryEditRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-16 text-gray-400">
+              <CheckCircle size={48} className="mb-2 opacity-30" />
+              <p className="font-semibold text-gray-500">No Pending Salary Edit Requests</p>
+              <p className="text-sm text-gray-400 mt-1">Salary edits from HR and Finance will appear here for your approval.</p>
+            </div>
+          ) : (
+            <>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                <strong>{salaryEditRequests.length}</strong> salary ledger edit{salaryEditRequests.length !== 1 ? 's' : ''} awaiting your approval.
+              </div>
+              <div className="space-y-3">
+                {salaryEditRequests.map(r => {
+                  const changes = typeof r.proposed_changes === 'string' ? JSON.parse(r.proposed_changes) : (r.proposed_changes || {});
+                  const isRemoval = r.action_type === 'remove';
+                  const changedFields = Object.keys(changes).filter(k => changes[k] !== undefined && changes[k] !== null);
+                  const numFmt = (v) => isNaN(v) ? v : `N$ ${Number(v).toFixed(2)}`;
+                  const numKeys = ['basic_salary','overtime_amount','total_salary','ssc_deductions','other_deductions'];
+                  return (
+                    <div key={r.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+                        <div>
+                          <span className="font-bold text-slate-800">💼 {r.name || 'Employee'}</span>
+                          {isRemoval && <span className="ml-2 text-xs font-bold bg-red-100 text-red-700 rounded px-1">REMOVAL REQUEST</span>}
+                          {!isRemoval && <span className="ml-2 text-xs font-bold bg-blue-100 text-blue-700 rounded px-1">EDIT REQUEST</span>}
+                          <span className="ml-3 text-xs text-slate-500">By: {r.requested_by} ({r.requested_role}) · {fmtDate(r.requested_at)}</span>
+                        </div>
+                        <button onClick={() => { setSalaryReviewModal(r); setSalaryReviewNote(''); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 cursor-pointer">
+                          Review
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        {isRemoval ? (
+                          <p className="text-sm text-red-600 font-medium">Propose removing <strong>{r.name}</strong> from the salary ledger.
+                            Current total salary: <strong>{numFmt(r.total_salary)}</strong></p>
+                        ) : (
+                          <>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Proposed Changes</p>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                              {changedFields.map(k => (
+                                <div key={k} className="bg-amber-50 border border-amber-200 rounded p-2">
+                                  <div className="font-semibold text-slate-600">{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</div>
+                                  <div className="text-amber-900 font-bold">{numKeys.includes(k) ? numFmt(changes[k]) : String(changes[k])}</div>
+                                  {r[k] !== undefined && <div className="text-slate-400 text-xs">was: {numKeys.includes(k) ? numFmt(r[k]) : String(r[k] ?? '—')}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {salaryReviewModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 520, boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+                <div style={{ padding: '16px 24px', borderBottom: '2px solid #334155', background: '#f8fafc' }}>
+                  <h2 style={{ margin: 0, fontSize: 18, color: '#1e293b' }}>
+                    💼 {salaryReviewModal.action_type === 'remove' ? 'Review Salary Removal' : 'Review Salary Edit'} — {salaryReviewModal.name}
+                  </h2>
+                </div>
+                <div style={{ padding: 24 }}>
+                  {salaryReviewModal.action_type === 'remove' ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-4">
+                      This will permanently remove <strong>{salaryReviewModal.name}</strong> from the salary ledger.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 mb-4">
+                      {(() => {
+                        const ch = typeof salaryReviewModal.proposed_changes === 'string' ? JSON.parse(salaryReviewModal.proposed_changes) : (salaryReviewModal.proposed_changes || {});
+                        const numKeys = ['basic_salary','overtime_amount','total_salary','ssc_deductions','other_deductions'];
+                        return Object.entries(ch).map(([k, v]) => (
+                          <div key={k} className="flex justify-between text-sm border-b pb-1">
+                            <span className="text-gray-500">{k.replace(/_/g, ' ')}</span>
+                            <span className="font-bold text-slate-800">{numKeys.includes(k) ? `N$ ${Number(v).toFixed(2)}` : String(v)}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Review Notes (optional)</label>
+                  <textarea value={salaryReviewNote} onChange={e => setSalaryReviewNote(e.target.value)} rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3 focus:outline-none" placeholder="Add notes…" />
+                  <div className="flex gap-3">
+                    <button onClick={() => handleSalaryReview('approve')} disabled={processing}
+                      className="flex-1 py-2 rounded-lg bg-green-600 text-white font-bold text-sm hover:bg-green-700 disabled:opacity-50 cursor-pointer">
+                      ✓ Approve &amp; Apply
+                    </button>
+                    <button onClick={() => handleSalaryReview('reject')} disabled={processing}
+                      className="flex-1 py-2 rounded-lg bg-red-600 text-white font-bold text-sm hover:bg-red-700 disabled:opacity-50 cursor-pointer">
+                      ✕ Reject
+                    </button>
+                    <button onClick={() => setSalaryReviewModal(null)}
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-100 cursor-pointer">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 

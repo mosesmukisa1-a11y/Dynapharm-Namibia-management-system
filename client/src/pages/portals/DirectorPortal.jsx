@@ -18,6 +18,7 @@ import {
 
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
+import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 
 const BRANCH_NAME_MAP_D = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabelD = (id) => BRANCH_NAME_MAP_D[id] || (id === 'head_office' ? 'Head Office' : id || '—');
@@ -60,6 +61,7 @@ export default function DirectorPortal() {
     { id: 'distributors', label: 'Distributor Network', icon: '👥' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
+    { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'financeApprovals', label: 'Finance Approvals', icon: '💵' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
@@ -90,6 +92,7 @@ export default function DirectorPortal() {
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'accounts' && <AccountsTab role="director" />}
+        {activeTab === 'salary' && <SalaryLedgerTab role="director" />}
         {activeTab === 'financeApprovals' && <FinanceApprovalsTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>

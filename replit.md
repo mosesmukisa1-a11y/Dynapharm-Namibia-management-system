@@ -39,6 +39,8 @@ The backend operates on an Express.js server, providing robust API services. It 
 - **HR Portal Backend**: Fully integrated with backend APIs for managing leave requests, warnings, terminations, attendance, and performance reviews.
 - **Campaigns System**: Supports various campaign types (discount, buy_x_get_y, bv_achievement, elite_bingo, custom) with full CRUD API, participant management, and auto-winner generation.
 - **Finance Portal**: Enhanced with real API routes across all tabs, including a Deposit Inbox for managing branch deposits, Expense review, Bonus workflow, Reports, Notices, and Staff Services.
+- **Rent / Lease Payments**: `branch_rent_payments` table with 16 pre-seeded branches; Finance proposes edits → GM approves via "🏘️ Rent Edits" sub-tab in Approvals.
+- **Salary Ledger (True Source)**: `salary_ledger` table seeded with 32 employees from March 2026 CSV (N$204,603.73 total salary). Shared `SalaryLedgerTab` component with `role` prop shown in HR Portal (💼 Salary Ledger), Finance Portal (💼 Salary Ledger), and Director Portal (💼 Salary Ledger, read-only). All edits/removals require GM approval via `salary_edit_requests` table; GM reviews via "💼 Salary Edits" sub-tab in Approvals. Backend at `api/hr/salary-ledger.js`.
 - **Database Startup Migration**: Normalizes branch ID aliases and auto-seeds `inventory_balances` if empty on server boot.
 
 ### Database

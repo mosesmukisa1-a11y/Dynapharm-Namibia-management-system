@@ -287,6 +287,14 @@ export const api = {
     updateLeave: (id, data) => api.put(`/hr/leaves?id=${id}`, data),
     records: (type) => api.get(`/hr/records${type ? '?type=' + type : ''}`),
     createRecord: (data) => api.post('/hr/records', data),
+    salaryLedger: {
+      list: () => api.get('/hr/salary-ledger'),
+      add: (data) => api.post('/hr/salary-ledger', data),
+      proposeEdit: (id, data) => api.put(`/hr/salary-ledger/${id}`, data),
+      proposeRemove: (id) => api.delete(`/hr/salary-ledger/${id}`),
+      editRequests: (status = 'pending') => api.get(`/hr/salary-ledger/edit-requests?status=${status}`),
+      reviewEdit: (id, action, review_notes = '') => api.patch(`/hr/salary-ledger/edit-requests/${id}`, { action, review_notes }),
+    },
   },
 
   director: {

@@ -3,11 +3,13 @@ import { api } from '../../lib/api';
 import { formatDate, formatDateTime, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus } from 'lucide-react';
+import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 
 export default function HRPortal() {
   const [activeTab, setActiveTab] = useState('employees');
   const tabs = [
     { id: 'employees', label: 'Employees', icon: '👥' },
+    { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'leave', label: 'Leave', icon: '📅' },
     { id: 'warnings', label: 'Warnings', icon: '⚠️' },
     { id: 'terminations', label: 'Terminations', icon: '🚫' },
@@ -27,6 +29,7 @@ export default function HRPortal() {
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'employees' && <EmployeesTab />}
+        {activeTab === 'salary' && <SalaryLedgerTab role="hr" />}
         {activeTab === 'leave' && <LeaveTab />}
         {activeTab === 'warnings' && <WarningsTab />}
         {activeTab === 'terminations' && <TerminationsTab />}

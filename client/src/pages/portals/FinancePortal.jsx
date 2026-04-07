@@ -6,6 +6,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCH_DETAILS, BRANCHES } 
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2, Users, Printer } from 'lucide-react';
 import AccountsTab from '../../components/AccountsTab';
+import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
@@ -20,6 +21,7 @@ export default function FinancePortal() {
     { id: 'pettyCash', label: 'Petty Cash', icon: '💵' },
     { id: 'overheads', label: 'Overheads', icon: '🏢' },
     { id: 'rent', label: 'Rent / Lease', icon: '🏘️' },
+    { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'payroll', label: 'Payroll', icon: '👷' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
@@ -43,6 +45,7 @@ export default function FinancePortal() {
         {activeTab === 'pettyCash' && <PettyCashTab />}
         {activeTab === 'overheads' && <OverheadsTab />}
         {activeTab === 'rent' && <RentPaymentsTab />}
+        {activeTab === 'salary' && <SalaryLedgerTab role="finance" />}
         {activeTab === 'payroll' && <PayrollTab />}
         {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
