@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
+import StaffServicesTab from '../../components/StaffServicesTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES } from '../../lib/constants';
 import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
@@ -19,6 +20,7 @@ export default function MISPortal() {
     { id: 'catalogs', label: 'Catalogs', icon: '📖' },
     { id: 'drafts', label: 'Drafts', icon: '✏️' },
     { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
+    { id: 'staffServices', label: 'Staff Services', icon: '👤' },
   ];
 
   return (
@@ -40,6 +42,7 @@ export default function MISPortal() {
         {activeTab === 'catalogs' && <CatalogsTab />}
         {activeTab === 'drafts' && <DraftsTab />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Performance — MIS Overview" />}
+        {activeTab === 'staffServices' && <StaffServicesTab accentColor="#6d28d9" />}
       </div>
     </div>
   );

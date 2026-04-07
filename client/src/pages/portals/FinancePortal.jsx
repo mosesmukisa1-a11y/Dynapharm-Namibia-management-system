@@ -7,6 +7,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2, Users, Printer } from 'lucide-react';
 import AccountsTab from '../../components/AccountsTab';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
+import StaffServicesTab from '../../components/StaffServicesTab';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
@@ -27,6 +28,7 @@ export default function FinancePortal() {
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'communication', label: 'Notices', icon: '📢' },
+    { id: 'casReview', label: 'CAS Review', icon: '✅' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
   ];
 
@@ -51,6 +53,7 @@ export default function FinancePortal() {
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'communication' && <CommunicationTab />}
+        {activeTab === 'casReview' && <CASReviewTab />}
         {activeTab === 'staff' && <StaffTab />}
       </div>
     </div>
@@ -1317,95 +1320,153 @@ function CommunicationTab() {
 
 /* ─── STAFF SERVICES ─────────────────────────────────────── */
 function StaffTab() {
-  const [form, setForm] = useState({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-  const [leaveList, setLeaveList] = useState([]);
+  return <StaffServicesTab accentColor="#1e40af" />;
+}
+
+/* ─── CAS REVIEW ─────────────────────────────────────────── */
+function CASReviewTab() {
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [subTab, setSubTab] = useState('request');
+  const [reviewModal, setReviewModal] = useState(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('pending');
 
-  useEffect(() => {
-    api.hr.leaves('department=Finance')
-      .then(d => setLeaveList(Array.isArray(d) ? d : d.leaves || []))
-      .catch(() => {})
+  const load = () => {
+    setLoading(true);
+    api.get(`/cash-requests/admin${statusFilter ? `?status=${statusFilter}` : ''}`)
+      .then(d => setRequests(Array.isArray(d) ? d : []))
+      .catch(() => setRequests([]))
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.start_date || !form.end_date || !form.reason) { setMessage('Error: Please fill in all fields.'); return; }
-    setSubmitting(true);
+  useEffect(() => { load(); }, [statusFilter]);
+
+  const handleReview = async () => {
+    if (!reviewModal) return;
+    setProcessing(true);
     try {
-      const result = await api.hr.createLeave({ ...form, department: 'Finance' });
-      setLeaveList(prev => [result.leave || { id: Date.now(), ...form, status: 'pending', created_at: new Date().toISOString() }, ...prev]);
-      setMessage('Leave request submitted successfully!');
-      setForm({ leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
-      setSubTab('history');
-    } catch (err) { setMessage('Error: ' + err.message); }
-    finally { setSubmitting(false); }
+      await api.patch(`/cash-requests/${reviewModal.id}`, { status: 'finance_reviewed', note: reviewNote });
+      setMessage(`✅ Request ${reviewModal.request_number} marked as Finance Reviewed — sent to GM for approval.`);
+      setRequests(prev => prev.filter(r => r.id !== reviewModal.id));
+      setReviewModal(null);
+      setReviewNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally { setProcessing(false); }
+  };
+
+  const handleReject = async () => {
+    if (!reviewModal) return;
+    setProcessing(true);
+    try {
+      await api.patch(`/cash-requests/${reviewModal.id}`, { status: 'rejected', note: reviewNote });
+      setMessage(`❌ Request ${reviewModal.request_number} rejected.`);
+      setRequests(prev => prev.filter(r => r.id !== reviewModal.id));
+      setReviewModal(null);
+      setReviewNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally { setProcessing(false); }
+  };
+
+  const statusBadge = (s) => {
+    const map = { pending: { bg: '#fffbeb', c: '#92400e', label: 'Pending' }, finance_reviewed: { bg: '#eff6ff', c: '#1e40af', label: 'Finance Reviewed' }, approved: { bg: '#f0fdf4', c: '#166534', label: 'Approved' }, rejected: { bg: '#fef2f2', c: '#991b1b', label: 'Rejected' } };
+    const m = map[s] || map.pending;
+    return <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: m.bg, color: m.c, border: `1px solid ${m.c}33` }}>{m.label}</span>;
   };
 
   return (
-    <div className="space-y-4">
-      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-2">{message}</Alert>}
-      <div className="flex gap-2 mb-4">
-        {[{ id: 'request', label: '📝 Request Leave' }, { id: 'history', label: '📋 Leave History' }].map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)}
-            className={`px-5 py-2 rounded-full text-sm font-semibold border transition-colors ${subTab === t.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-            {t.label}
+    <div>
+      <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+        <div>
+          <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Finance Department</p>
+          <h3 className="text-white text-lg font-bold m-0">✅ CAS Review — Cash Advance Requests</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Review staff requests before GM final approval</p>
+        </div>
+        <button onClick={load} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer bg-white" style={{ color: '#1e40af', border: 'none', fontWeight: 700 }}>🔄 Refresh</button>
+      </div>
+
+      {message && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: message.startsWith('Error') ? '#fef2f2' : '#f0fdf4', color: message.startsWith('Error') ? '#991b1b' : '#166534', border: `1px solid ${message.startsWith('Error') ? '#fca5a5' : '#86efac'}` }}>{message}</div>}
+
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {[{ v: 'pending', l: '⏳ Pending Review' }, { v: 'finance_reviewed', l: '💼 Finance Reviewed' }, { v: 'approved', l: '✅ Approved' }, { v: 'rejected', l: '❌ Rejected' }, { v: '', l: '📋 All' }].map(t => (
+          <button key={t.v} onClick={() => setStatusFilter(t.v)}
+            style={{ padding: '7px 16px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: statusFilter === t.v ? '#1e40af' : '#f1f5f9', color: statusFilter === t.v ? '#fff' : '#64748b', transition: 'all 0.2s' }}>
+            {t.l}
           </button>
         ))}
       </div>
 
-      {subTab === 'request' && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Submit Leave Request</h3></CardHeader>
-          <CardBody>
-            <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Leave Type</label>
-                <select value={form.leave_type} onChange={e => setForm({ ...form, leave_type: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
-                  {['Annual', 'Sick', 'Personal', 'Maternity', 'Paternity', 'Study'].map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-                <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Reason</label>
-                <textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none min-h-[80px] resize-y"
-                  placeholder="Reason for leave request" />
-              </div>
-              <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Request'}</Button>
-            </form>
-          </CardBody>
-        </Card>
+      {loading ? <div className="py-10 text-center text-gray-400">Loading requests…</div> : requests.length === 0 ? (
+        <div className="py-12 text-center text-gray-400">
+          <div className="text-4xl mb-3">✅</div>
+          <p className="font-semibold text-gray-500">No {statusFilter || ''} requests</p>
+          <p className="text-sm">All cash advance requests have been processed</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {requests.map(r => (
+            <Card key={r.id}>
+              <CardBody>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <span className="font-bold text-gray-800">{r.request_number}</span>
+                      {statusBadge(r.status)}
+                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      <span className="font-bold text-lg" style={{ color: '#166534' }}>N$ {Number(r.amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Requested by:</span> {r.staff_name || r.requested_by} · <span className="font-semibold">Branch:</span> {r.branch}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
+                    {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
+                    {r.finance_note && <div className="text-xs mt-1 p-2 rounded" style={{ background: '#eff6ff' }}>Finance Note: {r.finance_note}</div>}
+                    <div className="text-xs text-gray-400 mt-1">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString('en-NA') : '—'}</div>
+                  </div>
+                  {r.status === 'pending' && (
+                    <button onClick={() => { setReviewModal(r); setReviewNote(''); }} style={{ padding: '8px 18px', borderRadius: 10, background: '#1e40af', color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      ✅ Review Request
+                    </button>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
       )}
 
-      {subTab === 'history' && (
-        <Card>
-          <CardHeader><h3 className="font-bold text-gray-800">Finance Department Leave History</h3></CardHeader>
-          {loading ? <LoadingSpinner /> : (
-            <Table
-              columns={[
-                { header: 'Type', render: r => <Badge variant="info">{r.leave_type || r.leaveType || '—'}</Badge> },
-                { header: 'Start', render: r => formatDate(r.start_date || r.startDate) },
-                { header: 'End', render: r => formatDate(r.end_date || r.endDate) },
-                { header: 'Reason', render: r => <span className="text-sm">{r.reason || '—'}</span> },
-                { header: 'Status', render: r => {
-                  const s = r.status || 'pending';
-                  return <Badge variant={s === 'approved' ? 'success' : s === 'rejected' ? 'danger' : 'warning'}>{s.charAt(0).toUpperCase() + s.slice(1)}</Badge>;
-                }},
-                { header: 'Submitted', render: r => formatDate(r.created_at) },
-              ]}
-              data={leaveList}
-              emptyMessage="No leave records found"
-            />
-          )}
-        </Card>
+      {reviewModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) { setReviewModal(null); setReviewNote(''); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', padding: '16px 24px' }}>
+              <p style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✅ Review Cash Advance Request</p>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.83rem', margin: '4px 0 0' }}>{reviewModal.request_number} · {reviewModal.staff_name || reviewModal.requested_by}</p>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 4 }}>Request Details</div>
+                <div style={{ fontWeight: 700, color: '#1e293b' }}>N$ {Number(reviewModal.amount || 0).toFixed(2)}</div>
+                <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{reviewModal.purpose}</div>
+                {reviewModal.needed_by && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>Needed by: {reviewModal.needed_by}</div>}
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Finance Note (optional)</label>
+                <textarea value={reviewNote} onChange={e => setReviewNote(e.target.value)} rows={3} placeholder="Add any notes for the GM…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '8px 12px' }}>
+                💡 Marking as reviewed sends this to the GM for final approval. You can also reject it if the request is invalid.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setReviewModal(null); setReviewNote(''); }} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                <button onClick={handleReject} disabled={processing} style={{ flex: 1, padding: '11px', border: 'none', borderRadius: 10, background: '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>❌ Reject</button>
+                <button onClick={handleReview} disabled={processing} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', color: '#fff', fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                  {processing ? '⏳ Processing…' : '✅ Mark as Reviewed → GM'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

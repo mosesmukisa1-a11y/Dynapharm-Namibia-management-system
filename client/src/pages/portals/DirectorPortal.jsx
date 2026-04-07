@@ -19,6 +19,7 @@ import {
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
+import StaffServicesTab from '../../components/StaffServicesTab';
 
 const BRANCH_NAME_MAP_D = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabelD = (id) => BRANCH_NAME_MAP_D[id] || (id === 'head_office' ? 'Head Office' : id || '—');
@@ -701,72 +702,7 @@ function ProfitAnalysisTab() {
 }
 
 function StaffTab() {
-  const [form, setForm] = useState({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.reason) { setMessage('Error: Please provide a reason.'); return; }
-    setSubmitting(true);
-    try {
-      if (form.request_type === 'leave') {
-        await api.post('/employees/leaves', { leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason, department: 'Executive' });
-      } else {
-        await api.branch.createCashMovement({ type: 'request', amount: Number(form.amount), reason: form.reason, department: 'Executive' });
-      }
-      setMessage('Request submitted successfully!');
-      setForm({ request_type: 'leave', leave_type: 'Annual', start_date: '', end_date: '', reason: '', amount: '' });
-    } catch (err) {
-      setMessage('Error: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Executive Services</h3></CardHeader>
-      <CardBody>
-        {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
-        <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Request Type</label>
-            <select value={form.request_type} onChange={e => setForm({ ...form, request_type: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              <option value="leave">Leave Request</option>
-              <option value="cash">Cash Request</option>
-            </select>
-          </div>
-          {form.request_type === 'leave' && (
-            <>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Leave Type</label>
-                <select value={form.leave_type} onChange={e => setForm({ ...form, leave_type: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                  <option>Annual</option><option>Sick</option><option>Personal</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-                <Input label="End Date" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
-              </div>
-            </>
-          )}
-          {form.request_type === 'cash' && (
-            <Input label="Amount" type="number" min="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="Enter amount" />
-          )}
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Reason</label>
-            <textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[80px] resize-y"
-              placeholder="Provide details..." />
-          </div>
-          <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Request'}</Button>
-        </form>
-      </CardBody>
-    </Card>
-  );
+  return <StaffServicesTab accentColor="#1e3a5f" />;
 }
 
 function FinanceApprovalsTab() {

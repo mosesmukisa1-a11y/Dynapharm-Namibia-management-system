@@ -17,6 +17,7 @@ import MISPortal from './pages/portals/MISPortal';
 import StockPortal from './pages/portals/StockPortal';
 import AdminPortal from './pages/portals/AdminPortal';
 import TrainingPortal from './pages/portals/TrainingPortal';
+import StaffPortal from './pages/portals/StaffPortal';
 import { api } from './lib/api';
 import { setLivePrices } from './lib/pricing';
 
@@ -69,6 +70,9 @@ export default function App() {
         } />
         <Route path="/training" element={
           <ProtectedRoute portalId="training"><TrainingPortal /></ProtectedRoute>
+        } />
+        <Route path="/staff" element={
+          <ProtectedRoute portalId="staff"><StaffPortal /></ProtectedRoute>
         } />
       </Route>
     </Routes>

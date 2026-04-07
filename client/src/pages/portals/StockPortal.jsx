@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
+import StaffServicesTab from '../../components/StaffServicesTab';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -633,6 +634,7 @@ export default function StockPortal() {
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
+    { id: 'staffServices', label: 'Staff Services', icon: '👤' },
   ];
 
   const branchOptions = [
@@ -701,6 +703,7 @@ export default function StockPortal() {
         {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
         {activeTab === 'campaigns' && <StockCampaignsTab />}
+        {activeTab === 'staffServices' && <StaffServicesTab accentColor="#92400e" />}
       </div>
     </div>
   );

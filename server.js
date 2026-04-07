@@ -269,7 +269,7 @@ app.post('/api/cash-requests', async (req, res) => {
     const { query } = await import('./api/db.js');
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
     const staffName = req.user?.name || req.user?.full_name || username;
-    const { amount, purpose, urgent } = req.body;
+    const { amount, purpose, urgent, neededBy } = req.body;
     if (!amount || !purpose) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
@@ -284,13 +284,84 @@ app.post('/api/cash-requests', async (req, res) => {
         parseFloat(amount),
         purpose,
         username,
-        JSON.stringify({ staffName, urgent: !!urgent }),
+        JSON.stringify({ staffName, urgent: !!urgent, neededBy: neededBy || null }),
       ]
     );
     res.json({ success: true });
   } catch (err) {
     console.error('cash-requests POST:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Finance/GM: get all cash requests for review/approval
+app.get('/api/cash-requests/admin', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { status, branch } = req.query;
+    let sql = `SELECT id, request_number, branch, amount, purpose, status,
+                      requested_by, data->>'staffName' AS staff_name,
+                      (data->>'urgent')::boolean AS urgent,
+                      data->>'neededBy' AS needed_by,
+                      data->>'financeNote' AS finance_note,
+                      data->>'gmNote' AS gm_note,
+                      data->>'reviewedBy' AS reviewed_by,
+                      data->>'gmApprovedBy' AS gm_approved_by,
+                      created_at, updated_at
+               FROM finance_cash_requests`;
+    const params = [];
+    const conds = [];
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    if (branch) { params.push(branch); conds.push(`branch = $${params.length}`); }
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+    sql += ' ORDER BY created_at DESC';
+    const { rows } = await query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('cash-requests/admin GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Finance marks as reviewed; GM approves/rejects
+app.patch('/api/cash-requests/:id', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const allowed = ['admin', 'finance', 'gm', 'director'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { id } = req.params;
+    const { status, note } = req.body;
+    const actorName = req.user?.full_name || req.user?.username || role;
+    const existing = await getOne('SELECT * FROM finance_cash_requests WHERE id = $1', [id]);
+    if (!existing) return res.status(404).json({ error: 'Request not found' });
+    // Merge additional tracking into JSONB data
+    const currentData = existing.data || {};
+    const dataUpdates = { ...currentData };
+    if (status === 'finance_reviewed') {
+      dataUpdates.reviewedBy = actorName;
+      dataUpdates.financeNote = note || null;
+      dataUpdates.reviewedAt = new Date().toISOString();
+    } else if (status === 'approved') {
+      dataUpdates.gmApprovedBy = actorName;
+      dataUpdates.gmNote = note || null;
+      dataUpdates.approvedAt = new Date().toISOString();
+    } else if (status === 'rejected') {
+      dataUpdates.rejectedBy = actorName;
+      dataUpdates.gmNote = note || null;
+      dataUpdates.rejectedAt = new Date().toISOString();
+    }
+    await query(
+      `UPDATE finance_cash_requests SET status = $1, data = $2::jsonb, updated_at = NOW() WHERE id = $3`,
+      [status, JSON.stringify(dataUpdates), id]
+    );
+    res.json({ success: true, status });
+  } catch (err) {
+    console.error('cash-requests PATCH:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
