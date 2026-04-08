@@ -20,6 +20,7 @@ export default function DistributorPortal() {
     { id: 'network', label: 'My Network', icon: '🌐' },
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
+    { id: 'training', label: 'Training', icon: '🎓' },
     { id: 'media', label: 'Media & News', icon: '📰' },
     { id: 'testimonials', label: 'Testimonials', icon: '💬' },
   ];
@@ -36,6 +37,7 @@ export default function DistributorPortal() {
         {activeTab === 'network' && <MyNetworkTab />}
         {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
+        {activeTab === 'training' && <TrainingTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
@@ -1231,18 +1233,129 @@ function CommunicationsTab() {
 }
 
 function CheckupTab() {
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const referralNB = (user?.username || user?.distributor_code || user?.nb_number || '').toUpperCase();
+  const referralName = user?.full_name || user?.name || '';
+
+  const BRANCHES = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal', 'Walvis Bay', 'Swakopmund', 'Oshakati', 'Ondangwa', 'Eenhana', 'Okahao', 'Outapi', 'Rundu', 'Katima Mulilo', 'Gobabis', 'Otjiwarongo', 'Tsumeb'];
+
+  const [form, setForm] = useState({ full_name: '', phone: '', email: '', branch: BRANCHES[0], notes: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [booked, setBooked] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleBook = async () => {
+    if (!form.full_name.trim() || !form.phone.trim()) { setError('Full name and phone number are required.'); return; }
+    setSubmitting(true); setError('');
+    try {
+      const today = new Date(); today.setDate(today.getDate() + 1);
+      const dateStr = today.toISOString().slice(0, 10);
+      const result = await api.appointments.create({
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        date: dateStr,
+        time: 'TBD',
+        branch: form.branch,
+        type: 'checkup',
+        status: 'pending',
+        notes: [form.notes.trim(), `Booked by distributor ${referralNB}${referralName ? ' (' + referralName + ')' : ''}. Client to complete full health form.`].filter(Boolean).join(' — '),
+        data: JSON.stringify({ referral_nb: referralNB, referral_name: referralName, booking_source: 'distributor_portal' }),
+      });
+      setBooked(result);
+    } catch (err) { setError(err.message || 'Booking failed. Please try again.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const appUrl = typeof window !== 'undefined' ? `${window.location.origin}/checkup` : '/checkup';
+  const waMsg = booked ? encodeURIComponent(`Hi! I've booked you for a Full Body Health Check Up at Dynapharm ${booked.branch || form.branch}.\n\nPlease complete your health form here:\n${appUrl}\n\nYour appointment reference: ${booked.id}\n\nSee you soon! 💊`) : '';
+
+  if (booked) {
+    return (
+      <div className="max-w-lg mx-auto space-y-4">
+        <Card>
+          <CardBody>
+            <div className="text-center py-4">
+              <div style={{ fontSize: '3rem', marginBottom: 8 }}>✅</div>
+              <h3 className="text-xl font-bold text-gray-800 mb-1">Booking Confirmed!</h3>
+              <p className="text-gray-500 text-sm mb-4">The client has been pre-booked. They need to complete their health form to finalize the appointment.</p>
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-left mb-4">
+                <div className="text-xs text-gray-500 mb-1">Booking Reference</div>
+                <div className="font-mono font-bold text-green-700 text-sm">{booked.id}</div>
+                <div className="mt-2 text-sm text-gray-700"><strong>{booked.full_name}</strong> · {booked.phone}</div>
+                <div className="text-sm text-gray-600">{booked.branch} · {booked.date}</div>
+              </div>
+              <p className="text-sm text-gray-600 mb-4 font-medium">Send the client their health form link via WhatsApp, email, or hand them the card at the branch:</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-xs font-mono text-gray-700 break-all">{appUrl}</div>
+              <div className="flex flex-col gap-2">
+                <a href={`https://wa.me/${booked.phone?.replace(/\D/g, '')}?text=${waMsg}`} target="_blank" rel="noreferrer"
+                  className="block w-full py-3 rounded-xl font-bold text-white text-center" style={{ background: '#25D366', textDecoration: 'none' }}>
+                  📱 Share via WhatsApp
+                </a>
+                <button onClick={() => { setBooked(null); setForm({ full_name: '', phone: '', email: '', branch: BRANCHES[0], notes: '' }); }}
+                  className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold bg-white cursor-pointer">
+                  + Book Another Client
+                </button>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
+
+  const inp = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', background: '#fff' };
+  const lbl = { display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#374151', marginBottom: 4 };
+
   return (
-    <Card>
-      <CardBody>
-        <div className="text-center py-8">
-          <Heart size={48} className="text-primary mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Full Body Check Up</h3>
-          <p className="text-gray-500 mb-6">Get a comprehensive health assessment at any Dynapharm branch.</p>
-          <Button onClick={() => navigate('/checkup')}>Book a Check Up</Button>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="max-w-lg mx-auto">
+      <Card>
+        <CardBody>
+          <div className="flex items-center gap-3 mb-5">
+            <Heart size={32} className="text-primary flex-shrink-0" />
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">Book a Full Body Check Up</h3>
+              <p className="text-sm text-gray-500">Fill in the client's basic details. They will complete the full health form from the link you share with them.</p>
+            </div>
+          </div>
+
+          {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">{error}</div>}
+
+          <div className="space-y-4">
+            <div>
+              <label style={lbl}>Client Full Name *</label>
+              <input style={inp} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="e.g. Ndapandula Shikulo" />
+            </div>
+            <div>
+              <label style={lbl}>WhatsApp / Phone Number *</label>
+              <input style={inp} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+264 81 234 5678" />
+            </div>
+            <div>
+              <label style={lbl}>Email Address (optional)</label>
+              <input style={{ ...inp }} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="client@example.com" type="email" />
+            </div>
+            <div>
+              <label style={lbl}>Preferred Branch</label>
+              <select style={inp} value={form.branch} onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div style={{ padding: 12, borderRadius: 10, background: '#f0fdf4', border: '1px solid #86efac' }}>
+              <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 700, marginBottom: 2 }}>Your Referral Details (pre-filled)</div>
+              <div style={{ fontSize: '0.85rem', color: '#15803d' }}>{referralNB}{referralName ? ` · ${referralName}` : ''}</div>
+            </div>
+            <div>
+              <label style={lbl}>Additional Notes (optional)</label>
+              <textarea style={{ ...inp, resize: 'none' }} rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any relevant info about the client…" />
+            </div>
+            <Button onClick={handleBook} disabled={submitting} className="w-full">
+              <Heart size={16} /> {submitting ? 'Booking…' : 'Book Health Check Up'}
+            </Button>
+            <p className="text-xs text-gray-400 text-center">After booking, you'll get a WhatsApp link to send to your client so they can fill in their full health history.</p>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 
@@ -1330,6 +1443,138 @@ function TestimonialsTab() {
             </Card>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function TrainingTab() {
+  const [tab, setTab] = useState('materials');
+  const [media, setMedia] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get('/media').catch(() => []),
+      api.get('/training-schedules').catch(() => []),
+    ]).then(([m, s]) => {
+      setMedia(Array.isArray(m) ? m : []);
+      setSchedules(Array.isArray(s) ? s : (s?.schedules || []));
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const videos = media.filter(f => (f.mime_type || f.file_type || '').startsWith('video/'));
+  const docs = media.filter(f => (f.mime_type || f.file_type || '').startsWith('application/') || (f.upload_type || '') === 'document');
+  const photos = media.filter(f => (f.mime_type || f.file_type || '').startsWith('image/'));
+
+  const subTabs = [
+    { id: 'materials', label: 'Materials', count: docs.length },
+    { id: 'videos', label: 'Videos', count: videos.length },
+    { id: 'photos', label: 'Photos', count: photos.length },
+    { id: 'schedule', label: 'Schedule', count: schedules.length },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardBody>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {subTabs.map(st => (
+              <button key={st.id} onClick={() => setTab(st.id)}
+                style={{ padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+                  background: tab === st.id ? '#c41e3a' : '#f1f5f9', color: tab === st.id ? '#fff' : '#475569' }}>
+                {st.label} {st.count > 0 && <span style={{ marginLeft: 4, opacity: 0.75 }}>({st.count})</span>}
+              </button>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
+      {loading && <LoadingSpinner />}
+
+      {!loading && tab === 'materials' && (
+        docs.length === 0
+          ? <EmptyState icon={<span style={{ fontSize: 40 }}>📄</span>} title="No materials yet" description="Training documents and guides will appear here when uploaded by your training team." />
+          : <div className="space-y-3">
+              {docs.map((d, i) => (
+                <Card key={d.id || i}>
+                  <CardBody>
+                    <div className="flex items-center gap-3">
+                      <span style={{ fontSize: 28 }}>📄</span>
+                      <div style={{ flex: 1 }}>
+                        <div className="font-semibold text-gray-800">{d.entity_name || d.filename || 'Document'}</div>
+                        <div className="text-xs text-gray-400">{d.created_at ? new Date(d.created_at).toLocaleDateString() : ''}</div>
+                      </div>
+                      {d.file_url && (
+                        <a href={d.file_url} target="_blank" rel="noreferrer" download
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#c41e3a', textDecoration: 'none' }}>
+                          Download
+                        </a>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+      )}
+
+      {!loading && tab === 'videos' && (
+        videos.length === 0
+          ? <EmptyState icon={<span style={{ fontSize: 40 }}>🎥</span>} title="No videos yet" description="Training videos will appear here when uploaded by your training team." />
+          : <div className="grid grid-cols-1 gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+              {videos.map((v, i) => (
+                <Card key={v.id || i}>
+                  <CardBody>
+                    <div className="font-semibold text-gray-800 mb-2">{v.entity_name || v.filename || 'Video'}</div>
+                    {v.file_url && (
+                      <video controls style={{ width: '100%', borderRadius: 8, maxHeight: 200, background: '#000' }} src={v.file_url}>
+                        Your browser does not support video playback.
+                      </video>
+                    )}
+                    <div className="text-xs text-gray-400 mt-1">{v.created_at ? new Date(v.created_at).toLocaleDateString() : ''}</div>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+      )}
+
+      {!loading && tab === 'photos' && (
+        photos.length === 0
+          ? <EmptyState icon={<span style={{ fontSize: 40 }}>🖼️</span>} title="No photos yet" description="Training photos will appear here when uploaded by your training team." />
+          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+              {photos.map((p, i) => (
+                <div key={p.id || i} style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <img src={p.file_url} alt={p.entity_name || 'Photo'} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+                  <div style={{ padding: '6px 8px', fontSize: '0.72rem', color: '#64748b' }}>{p.entity_name || ''}</div>
+                </div>
+              ))}
+            </div>
+      )}
+
+      {!loading && tab === 'schedule' && (
+        schedules.length === 0
+          ? <EmptyState icon={<span style={{ fontSize: 40 }}>📅</span>} title="No upcoming sessions" description="Scheduled training sessions will appear here. Check back soon!" />
+          : <div className="space-y-3">
+              {schedules.map((s, i) => (
+                <Card key={s.id || i}>
+                  <CardBody>
+                    <div className="flex items-start gap-4">
+                      <div style={{ minWidth: 52, textAlign: 'center', background: '#fef2f2', borderRadius: 10, padding: '8px 4px' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#c41e3a', fontWeight: 700, textTransform: 'uppercase' }}>{s.date ? new Date(s.date).toLocaleDateString('en-NA', { month: 'short' }) : '—'}</div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#c41e3a', lineHeight: 1 }}>{s.date ? new Date(s.date).getDate() : '—'}</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div className="font-bold text-gray-800">{s.title}</div>
+                        <div className="text-sm text-gray-500">{[s.time, s.location].filter(Boolean).join(' · ')}</div>
+                        {s.trainer && <div className="text-xs text-gray-400 mt-1">Trainer: {s.trainer}</div>}
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
       )}
     </div>
   );

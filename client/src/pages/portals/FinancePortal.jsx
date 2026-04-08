@@ -813,9 +813,26 @@ function BonusUploadSubTab() {
         <CardBody>
           <div className="flex flex-wrap gap-4 items-end">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bonus Period (Month)</label>
-              <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bonus Period — Year &amp; Month <span className="text-xs text-gray-400 font-normal">(past or current)</span></label>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={period.slice(0, 4)}
+                  onChange={e => setPeriod(`${e.target.value}-${period.slice(5, 7)}`)}
+                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+                  {Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  value={period.slice(5, 7)}
+                  onChange={e => setPeriod(`${period.slice(0, 4)}-${e.target.value}`)}
+                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+                  {[['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']].map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+                <span className="text-xs font-mono bg-gray-100 px-2 py-1.5 rounded text-gray-600">{period}</span>
+              </div>
             </div>
             <div>
               <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleUpload} className="hidden" />
