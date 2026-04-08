@@ -8024,6 +8024,17 @@ function CheckUpBookingTab() {
   );
 }
 
+// ── Shared distributor normalizer (used in WalkInSalesTab, BranchCampaignsTab, etc.) ─
+function normalizeDistributor(d) {
+  return {
+    ...d,
+    id: d.id || d.distributorId || d.distributor_id || '',
+    name: d.name || d.fullName || d.distributor_name || d.full_name || '',
+    nb_number: d.nb_number || d.nbNumber || d.distributor_code || '',
+    phone: d.phone || d.mobile_no || '',
+  };
+}
+
 // ── Branch Campaigns Tab ───────────────────────────────────────────────────────
 const BRANCH_CAMP_TYPE_LABELS = {
   discount: '🏷️ Discount',
