@@ -299,7 +299,8 @@ app.get('/api/cash-requests', async (req, res) => {
     const { query } = await import('./api/db.js');
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
     const { rows } = await query(
-      `SELECT id, requested_by AS staff, data->>'staffName' AS "staffName",
+      `SELECT id, request_number AS "requestNumber", requested_by AS staff,
+              data->>'staffName' AS "staffName",
               CAST(amount AS TEXT) AS amount, purpose,
               INITCAP(status) AS status,
               (data->>'urgent')::boolean AS urgent,
@@ -354,22 +355,29 @@ app.get('/api/cash-requests/admin', async (req, res) => {
     const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { status, branch } = req.query;
-    let sql = `SELECT id, request_number, branch, amount, purpose, status,
-                      requested_by, data->>'staffName' AS staff_name,
-                      (data->>'urgent')::boolean AS urgent,
-                      data->>'neededBy' AS needed_by,
-                      data->>'financeNote' AS finance_note,
-                      data->>'gmNote' AS gm_note,
-                      data->>'reviewedBy' AS reviewed_by,
-                      data->>'gmApprovedBy' AS gm_approved_by,
-                      created_at, updated_at
-               FROM finance_cash_requests`;
+    // JOIN users to resolve requester full name, role, and branch
+    let sql = `SELECT r.id, r.request_number, r.branch, r.amount, r.purpose, r.status,
+                      r.requested_by,
+                      COALESCE(u.full_name, r.data->>'staffName', r.requested_by) AS staff_name,
+                      COALESCE(u.role, '')   AS staff_role,
+                      COALESCE(u.branch, r.branch, '') AS staff_branch,
+                      u.email                AS staff_email,
+                      u.phone                AS staff_phone,
+                      (r.data->>'urgent')::boolean AS urgent,
+                      r.data->>'neededBy'    AS needed_by,
+                      r.data->>'financeNote' AS finance_note,
+                      r.data->>'gmNote'      AS gm_note,
+                      r.data->>'reviewedBy'  AS reviewed_by,
+                      r.data->>'gmApprovedBy' AS gm_approved_by,
+                      r.created_at, r.updated_at
+               FROM finance_cash_requests r
+               LEFT JOIN users u ON LOWER(TRIM(u.username)) = LOWER(TRIM(r.requested_by))`;
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-    if (branch) { params.push(branch); conds.push(`branch = $${params.length}`); }
+    if (status) { params.push(status); conds.push(`r.status = $${params.length}`); }
+    if (branch) { params.push(branch); conds.push(`r.branch = $${params.length}`); }
     if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY r.created_at DESC';
     const { rows } = await query(sql, params);
     res.json(rows);
   } catch (err) {

@@ -1419,7 +1419,12 @@ function ApprovalsTab() {
                     </button>
                   </div>
                   <div className="p-4">
-                    <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Requested by:</span> {r.staff_name || r.requested_by} · <span className="font-semibold">Branch:</span> {r.branch}</div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
+                      <span className="text-sm font-bold text-gray-800">{r.staff_name || r.requested_by}</span>
+                      {r.staff_role && <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{r.staff_role.toUpperCase()}</span>}
+                      {(r.staff_branch || r.branch) && <span className="text-xs text-gray-500">📍 {r.staff_branch || r.branch}</span>}
+                      {r.staff_email && <span className="text-xs text-gray-400">✉ {r.staff_email}</span>}
+                    </div>
                     <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
                     {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
                     {r.finance_note && <div className="text-xs mt-2 p-2 rounded bg-blue-50 border border-blue-100 text-blue-800">Finance Note: {r.finance_note}</div>}
@@ -1441,11 +1446,14 @@ function ApprovalsTab() {
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Staff</span>
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: 2 }}>Staff Member</span>
                   <span style={{ fontWeight: 700, color: '#1e293b' }}>{casModal.staff_name || casModal.requested_by}</span>
+                  {casModal.staff_role && <span style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{casModal.staff_role.toUpperCase()}</span>}
+                  {(casModal.staff_branch || casModal.branch) && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>📍 {casModal.staff_branch || casModal.branch}</div>}
+                  {casModal.staff_email && <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 1 }}>✉ {casModal.staff_email}</div>}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
                   <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Amount</span>
                   <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.05rem' }}>N$ {Number(casModal.amount || 0).toFixed(2)}</span>
                 </div>

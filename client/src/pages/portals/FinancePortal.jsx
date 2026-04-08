@@ -1412,7 +1412,12 @@ function CASReviewTab() {
                       {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
                       <span className="font-bold text-lg" style={{ color: '#166534' }}>N$ {Number(r.amount || 0).toFixed(2)}</span>
                     </div>
-                    <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Requested by:</span> {r.staff_name || r.requested_by} · <span className="font-semibold">Branch:</span> {r.branch}</div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
+                      <span className="text-sm font-bold text-gray-800">{r.staff_name || r.requested_by}</span>
+                      {r.staff_role && <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{r.staff_role.toUpperCase()}</span>}
+                      {(r.staff_branch || r.branch) && <span className="text-xs text-gray-500">📍 {r.staff_branch || r.branch}</span>}
+                      {r.staff_email && <span className="text-xs text-gray-400">✉ {r.staff_email}</span>}
+                    </div>
                     <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
                     {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
                     {r.finance_note && <div className="text-xs mt-1 p-2 rounded" style={{ background: '#eff6ff' }}>Finance Note: {r.finance_note}</div>}
@@ -1435,7 +1440,7 @@ function CASReviewTab() {
           <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', padding: '16px 24px' }}>
               <p style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✅ Review Cash Advance Request</p>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.83rem', margin: '4px 0 0' }}>{reviewModal.request_number} · {reviewModal.staff_name || reviewModal.requested_by}</p>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.83rem', margin: '4px 0 0' }}>{reviewModal.request_number} · {reviewModal.staff_name || reviewModal.requested_by}{reviewModal.staff_role ? ` · ${reviewModal.staff_role}` : ''}{reviewModal.staff_branch || reviewModal.branch ? ` · ${reviewModal.staff_branch || reviewModal.branch}` : ''}</p>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
