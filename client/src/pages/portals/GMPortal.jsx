@@ -566,6 +566,9 @@ function ApprovalsTab() {
   const [casRequests, setCasRequests] = useState([]);
   const [casModal, setCasModal] = useState(null);
   const [casNote, setCasNote] = useState('');
+  const [adminLeaveRequests, setAdminLeaveRequests] = useState([]);
+  const [leaveApprovalModal, setLeaveApprovalModal] = useState(null);
+  const [leaveApprovalNote, setLeaveApprovalNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -600,7 +603,8 @@ function ApprovalsTab() {
       api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs]) => {
+      api.get('/leave-requests/admin?status=pending').then(d => Array.isArray(d) ? d : []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -610,6 +614,7 @@ function ApprovalsTab() {
       setRentEditRequests(rentReqs);
       setSalaryEditRequests(salaryReqs);
       setCasRequests(casReqs);
+      setAdminLeaveRequests(adminLeaves);
     }).finally(() => setLoading(false));
   };
 
@@ -803,6 +808,25 @@ function ApprovalsTab() {
     }
   };
 
+  const handleLeaveApproval = async (action) => {
+    if (!leaveApprovalModal) return;
+    setProcessing(true);
+    try {
+      await api.patch(`/leave-requests/${leaveApprovalModal.id}`, { status: action, note: leaveApprovalNote });
+      const msg = action === 'approved'
+        ? `✅ Leave request approved for ${leaveApprovalModal.staffName || leaveApprovalModal.staff}.`
+        : `❌ Leave request rejected.`;
+      setMessage(msg);
+      setAdminLeaveRequests(prev => prev.filter(r => r.id !== leaveApprovalModal.id));
+      setLeaveApprovalModal(null);
+      setLeaveApprovalNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleSalaryReview = async (action) => {
     if (!salaryReviewModal) return;
     setProcessing(true);
@@ -828,6 +852,7 @@ function ApprovalsTab() {
     { id: 'rent_edits', label: `🏘️ Rent Edits${rentEditRequests.length > 0 ? ` (${rentEditRequests.length})` : ''}` },
     { id: 'salary_edits', label: `💼 Salary Edits${salaryEditRequests.length > 0 ? ` (${salaryEditRequests.length})` : ''}` },
     { id: 'cas_approvals', label: `💵 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
+    { id: 'leave_approvals', label: `📅 Leave Approvals${adminLeaveRequests.length > 0 ? ` (${adminLeaveRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1443,8 +1468,82 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {/* Leave Approvals sub-tab */}
+      {approvalTab === 'leave_approvals' && (
+        <div className="space-y-4">
+          {adminLeaveRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-16 text-gray-400">
+              <CheckCircle size={48} className="mb-2 opacity-30" />
+              <p className="font-semibold text-gray-500">No Pending Leave Requests</p>
+              <p className="text-sm text-gray-400 mt-1">Leave requests from staff will appear here for your approval.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <strong>{adminLeaveRequests.length}</strong> leave request{adminLeaveRequests.length !== 1 ? 's' : ''} pending your approval.
+              </div>
+              {adminLeaveRequests.map(r => (
+                <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-bold text-gray-800">{r.staffName || r.staff}</span>
+                      <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#fff0f3', color: '#c41e3a', border: '1px solid #fecaca' }}>{r.type || 'Annual'} Leave</span>
+                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                    </div>
+                    <button onClick={() => { setLeaveApprovalModal(r); setLeaveApprovalNote(''); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:bg-primary/90 cursor-pointer">
+                      Review &amp; Approve
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Period:</span> {r.startDate || r.start_date} → {r.endDate || r.end_date}</div>
+                    <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Reason:</span> {r.reason}</div>
+                    <div className="text-xs text-gray-400 mt-1">Submitted: {r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-NA') : '—'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {leaveApprovalModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) { setLeaveApprovalModal(null); setLeaveApprovalNote(''); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 25px 50px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 24px', background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800 }}>📅 Leave Request Approval</h3>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>{leaveApprovalModal.staffName || leaveApprovalModal.staff} · {leaveApprovalModal.type} Leave</p>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Staff</span>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{leaveApprovalModal.staffName || leaveApprovalModal.staff}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Period</span>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{leaveApprovalModal.startDate || leaveApprovalModal.start_date} → {leaveApprovalModal.endDate || leaveApprovalModal.end_date}</span>
+                </div>
+                <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{leaveApprovalModal.reason}</div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>GM Note (optional)</label>
+                <textarea value={leaveApprovalNote} onChange={e => setLeaveApprovalNote(e.target.value)} rows={2} placeholder="Add a note…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setLeaveApprovalModal(null); setLeaveApprovalNote(''); }} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                <button onClick={() => handleLeaveApproval('rejected')} disabled={processing} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 10, background: '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>❌ Reject</button>
+                <button onClick={() => handleLeaveApproval('approved')} disabled={processing} style={{ flex: 2, padding: '10px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                  {processing ? '⏳ Processing…' : '✅ Approve Leave'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 

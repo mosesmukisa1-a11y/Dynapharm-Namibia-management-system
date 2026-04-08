@@ -242,6 +242,58 @@ app.post('/api/leave-requests', async (req, res) => {
   }
 });
 
+// Admin: get all leave requests for review/approval
+app.get('/api/leave-requests/admin', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { status } = req.query;
+    let sql = `SELECT id, employee_id AS staff, employee_name AS "staffName",
+                      leave_type AS type, start_date AS "startDate", end_date AS "endDate",
+                      reason, INITCAP(status) AS status, COALESCE(urgent, false) AS urgent,
+                      created_at AS "submittedAt", approved_by AS "approvedBy", notes
+               FROM hr_leave_requests`;
+    const params = [];
+    const conds = [];
+    if (status) { params.push(status); conds.push(`LOWER(status) = LOWER($${params.length})`); }
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+    sql += ' ORDER BY created_at DESC';
+    const { rows } = await query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('leave-requests/admin GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin/GM/Finance: approve or reject a leave request
+app.patch('/api/leave-requests/:id', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const allowed = ['admin', 'finance', 'gm', 'director'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { id } = req.params;
+    const { status, note } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be approved or rejected' });
+    }
+    const existing = await getOne('SELECT * FROM hr_leave_requests WHERE id = $1', [id]);
+    if (!existing) return res.status(404).json({ error: 'Leave request not found' });
+    const actorName = req.user?.full_name || req.user?.username || role;
+    await query(
+      `UPDATE hr_leave_requests SET status = $1, approved_by = $2, notes = $3, approved_at = NOW(), updated_at = NOW() WHERE id = $4`,
+      [status, actorName, note || null, id]
+    );
+    res.json({ success: true, status });
+  } catch (err) {
+    console.error('leave-requests PATCH:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/cash-requests', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
@@ -1514,6 +1566,8 @@ server.on('error', (error) => {
       // Distributor referral tracking on branch walk-in sales
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS referral_nb VARCHAR(50)`,
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS distributor_nb VARCHAR(50)`,
+      // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
+      `ALTER TABLE finance_cash_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
@@ -1868,20 +1922,35 @@ server.on('error', (error) => {
       { id: 'USR1759829667953', username: 'moses', password: 'walker33', fullName: 'MOSES MUKISA', email: 'mosesmukisa1@gmail.com', phone: '0817317160', role: 'consultant', branch: 'townshop' },
       { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },
       { id: 'USR1759830625722', username: 'NAEM', password: 'PASSWORD', fullName: 'NAEM HANGULA', email: 'naemhangula4@gmail.com', phone: '0817499757', role: 'dispenser', branch: 'townshop' },
-      { id: 'USR1759928153488', username: 'GEINGOS', password: 'ALBERTO99', fullName: 'HILMA C', email: 'geingoshilma@gmail', phone: '0814137106', role: 'consultant', branch: 'townshop' }
+      { id: 'USR1759928153488', username: 'GEINGOS', password: 'ALBERTO99', fullName: 'HILMA C', email: 'geingoshilma@gmail', phone: '0814137106', role: 'consultant', branch: 'townshop' },
+      // Finance & GM portal access accounts — admin must change these passwords immediately after first login
+      { id: 'USR_FINANCE_001', username: 'finance', password: 'Finance@2025', fullName: 'Finance Officer', email: 'finance@dynapharm.com.na', phone: '', role: 'finance', branch: 'townshop', mustChangePassword: true },
+      { id: 'USR_GM_001', username: 'gm', password: 'GM@2025', fullName: 'General Manager', email: 'gm@dynapharm.com.na', phone: '', role: 'gm', branch: 'townshop', mustChangePassword: true },
     ];
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('DEFAULT PORTAL CREDENTIALS (change immediately via Admin panel)');
+    console.log('  Finance portal: username=finance  password=Finance@2025');
+    console.log('  GM portal:      username=gm       password=GM@2025');
+    console.log('  [must_change_password=true — staff will be prompted to reset]');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     const bcryptMod = await import('bcryptjs');
     for (const u of staffUsers) {
       const exists = await getOne("SELECT id FROM users WHERE LOWER(username) = LOWER($1)", [u.username]);
       if (!exists) {
         const pwHash = await bcryptMod.default.hash(u.password, 10);
+        const mustChange = u.mustChangePassword === true;
         await query(
           `INSERT INTO users (id, username, password_hash, role, full_name, email, phone, branch, is_active, must_change_password, metadata, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, FALSE, '{"seeded":true}'::jsonb, NOW(), NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, '{"seeded":true}'::jsonb, NOW(), NOW())
            ON CONFLICT (username) DO NOTHING`,
-          [u.id, u.username, pwHash, u.role, u.fullName, u.email, u.phone, u.branch]
+          [u.id, u.username, pwHash, u.role, u.fullName, u.email, u.phone, u.branch, mustChange]
         );
-        console.log('Seeded staff user:', u.username, '(' + u.role + ')');
+        if (mustChange) {
+          console.log(`Seeded privileged user: ${u.username} (${u.role}) — default password must be changed on first login`);
+        } else {
+          console.log('Seeded staff user:', u.username, '(' + u.role + ')');
+        }
       }
     }
   } catch (error) {
