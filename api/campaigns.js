@@ -135,8 +135,10 @@ export default async function handler(req, res) {
 
     // ── PATCH /api/campaigns/:id/review ────────────────────────────────────────
     if (req.method === 'PATCH' && path.match(/^\/[^/]+\/review$/)) {
-      if (req.user?.role !== 'gm') {
-        return res.status(403).json({ error: 'Only the GM can approve or reject campaigns' });
+      const reviewerRole = req.user?.role || '';
+      const allowedReviewerRoles = ['gm', 'admin', 'director'];
+      if (!allowedReviewerRoles.includes(reviewerRole)) {
+        return res.status(403).json({ error: 'Only the GM, admin, or director can approve or reject campaigns' });
       }
 
       const id = path.split('/')[1];
