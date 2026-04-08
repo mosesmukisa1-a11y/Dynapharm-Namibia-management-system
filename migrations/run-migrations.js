@@ -112,6 +112,7 @@ async function main() {
       '022_campaign_workflow_fields.sql',
       '023_create_mis_csi_entries.sql',
       '024_sync_runtime_schema.sql',
+      '025_nb_number_nullable.sql',
     ];
     
     for (const migration of migrations) {
