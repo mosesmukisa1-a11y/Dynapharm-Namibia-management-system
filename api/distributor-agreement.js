@@ -63,6 +63,84 @@ async function ensureAgreementsTable() {
 
 let tableReady = false;
 
+async function issueNBToAgreement(agreementId, paymentMethod, paymentReference, approvedBy) {
+  const existing = await getOne('SELECT * FROM distributor_agreements WHERE id = $1', [agreementId]);
+  if (!existing) throw new Error('Agreement not found');
+
+  const result = await withTransaction(async (client) => {
+    const nbNumber = await getNextNBNumber(client);
+
+    const dupCheck = await client.query(`SELECT id FROM distributors WHERE distributor_code = $1`, [nbNumber]);
+    if (dupCheck.rows.length > 0) throw new Error(`NB number ${nbNumber} already exists. Please try again.`);
+
+    await client.query(
+      `UPDATE distributor_agreements SET
+        nb_number = $1, status = 'approved', approved_by = $2, approved_at = NOW(),
+        payment_method = $3, payment_reference = $4, updated_at = NOW()
+       WHERE id = $5`,
+      [nbNumber, approvedBy, paymentMethod, paymentReference, agreementId]
+    );
+
+    const distributorName = `${existing.first_name.trim()} ${existing.last_name.trim()}`;
+    const distId = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const distData = {
+      id: distId,
+      distributor_code: nbNumber,
+      distributor_name: distributorName,
+      mobile_no: existing.contact_mobile,
+      email: existing.email || null,
+      status: 'active',
+      branch: existing.processing_branch,
+      location: existing.mailing_address_town || existing.mailing_address_street || null,
+      entity_type: 'distributor',
+      position: 'Distributor',
+      position_code: 'DI',
+      date_joined: today,
+      sponsor_code: existing.sponsor_id ? existing.sponsor_id.toUpperCase() : (existing.upline_id ? existing.upline_id.toUpperCase() : null),
+      sex: existing.sex || null,
+      agreement_data: JSON.stringify({
+        agreement_id: agreementId,
+        kit_type: existing.kit_type,
+        sponsor_id: existing.sponsor_id || null,
+        upline_id: existing.upline_id || null,
+        registration_date: new Date().toISOString(),
+        approved_by: approvedBy,
+        payment_method: paymentMethod,
+      }),
+    };
+    const distCols = Object.keys(distData);
+    const distVals = Object.values(distData);
+    const distPlaceholders = distCols.map((_, i) => `$${i + 1}`).join(', ');
+    await client.query(
+      `INSERT INTO distributors (${distCols.join(', ')}) VALUES (${distPlaceholders})
+       ON CONFLICT (distributor_code) DO NOTHING`,
+      distVals
+    );
+
+    try {
+      await client.query('SAVEPOINT stock_movement');
+      const kitProduct = existing.kit_type === 'fertilizers'
+        ? 'REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)'
+        : 'REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)';
+      const wimId = `WIM-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      await client.query(
+        `INSERT INTO warehouse_inventory_movements (id, product_id, product_name, movement_type, quantity, reference, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [wimId, kitProduct, kitProduct, 'sale', -1, agreementId,
+         `Registration kit (${existing.kit_type}) issued to ${nbNumber} — ${distributorName} at ${existing.processing_branch}`,
+         approvedBy]
+      );
+    } catch (stockErr) {
+      await client.query('ROLLBACK TO SAVEPOINT stock_movement');
+      console.error('Stock movement for registration kit (non-critical):', stockErr.message);
+    }
+
+    return { nbNumber, distributorName };
+  });
+
+  return result;
+}
+
 async function getNextNBNumber(client) {
   const qry = client ? client.query.bind(client) : async (sql, p) => { const r = await query(sql, p); return r; };
 
@@ -238,6 +316,26 @@ export default async function handler(req, res) {
         agrVals
       );
 
+      // ── Immediate NB issuance (branch-counter registration) ──────────────────
+      const branchStaffRoles = ['admin', 'branch_manager', 'stock_manager', 'director', 'gm',
+                                'consultant', 'dispenser', 'frontdesk'];
+      const canIssueImmediately = req.user && branchStaffRoles.includes(req.user.role || '');
+
+      if (body.immediate_issue === true && canIssueImmediately) {
+        const paymentMethod = body.payment_method || 'cash';
+        const paymentReference = body.payment_reference || null;
+        const approvedBy = req.user.username || req.user.full_name || 'branch';
+        const result = await issueNBToAgreement(agreementId, paymentMethod, paymentReference, approvedBy);
+        return res.status(201).json({
+          success: true,
+          agreement_id: agreementId,
+          nb_number: result.nbNumber,
+          distributor_name: result.distributorName,
+          status: 'approved',
+          message: `Registration complete. NB Number issued: ${result.nbNumber}`,
+        });
+      }
+
       return res.status(201).json({
         success: true,
         agreement_id: agreementId,
@@ -252,7 +350,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Authentication required' });
       }
       const userRole = req.user.role || '';
-      const isStaff = ['admin', 'branch_manager', 'stock_manager', 'director'].includes(userRole);
+      const isStaff = ['admin', 'branch_manager', 'stock_manager', 'director', 'gm'].includes(userRole);
       if (!isStaff) {
         return res.status(403).json({ error: 'Only branch staff can approve registrations' });
       }
@@ -271,81 +369,7 @@ export default async function handler(req, res) {
       const paymentReference = body.payment_reference || null;
       const approvedBy = req.user.username || req.user.full_name || 'branch';
 
-      const result = await withTransaction(async (client) => {
-        const nbNumber = await getNextNBNumber(client);
-
-        const dupCheck = await client.query(
-          `SELECT id FROM distributors WHERE distributor_code = $1`, [nbNumber]
-        );
-        if (dupCheck.rows.length > 0) {
-          throw new Error(`NB number ${nbNumber} already exists. Please try again.`);
-        }
-
-        // Update agreement with NB number and approval info
-        await client.query(
-          `UPDATE distributor_agreements SET 
-            nb_number = $1, status = 'approved', approved_by = $2, approved_at = NOW(),
-            payment_method = $3, payment_reference = $4, updated_at = NOW()
-           WHERE id = $5`,
-          [nbNumber, approvedBy, paymentMethod, paymentReference, id]
-        );
-
-        // Create distributor record
-        const distributorName = `${existing.first_name.trim()} ${existing.last_name.trim()}`;
-        const distId = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-        const today = new Date().toISOString().slice(0, 10);
-        const distData = {
-          id: distId,
-          distributor_code: nbNumber,
-          distributor_name: distributorName,
-          mobile_no: existing.contact_mobile,
-          email: existing.email || null,
-          status: 'active',
-          branch: existing.processing_branch,
-          location: existing.mailing_address_town || existing.mailing_address_street || null,
-          entity_type: 'distributor',
-          position: 'Distributor',
-          position_code: 'DI',
-          date_joined: today,
-          sponsor_code: existing.sponsor_id ? existing.sponsor_id.toUpperCase() : (existing.upline_id ? existing.upline_id.toUpperCase() : null),
-          sex: existing.sex || null,
-          agreement_data: JSON.stringify({
-            agreement_id: id,
-            kit_type: existing.kit_type,
-            sponsor_id: existing.sponsor_id || null,
-            upline_id: existing.upline_id || null,
-            registration_date: new Date().toISOString(),
-            approved_by: approvedBy,
-            payment_method: paymentMethod,
-          }),
-        };
-        const distCols = Object.keys(distData);
-        const distVals = Object.values(distData);
-        const distPlaceholders = distCols.map((_, i) => `$${i + 1}`).join(', ');
-        await client.query(
-          `INSERT INTO distributors (${distCols.join(', ')}) VALUES (${distPlaceholders})
-           ON CONFLICT (distributor_code) DO NOTHING`,
-          distVals
-        );
-
-        // Deduct registration kit from branch stock
-        try {
-          await client.query('SAVEPOINT stock_movement');
-          const kitProduct = existing.kit_type === 'fertilizers'
-            ? 'REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)'
-            : 'REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)';
-          const wimId = `WIM-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-          await client.query(
-            `INSERT INTO warehouse_inventory_movements (id, product_id, product_name, movement_type, quantity, reference, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [wimId, kitProduct, kitProduct, 'sale', -1, id, `Registration kit (${existing.kit_type}) issued to ${nbNumber} — ${distributorName} at ${existing.processing_branch}`, approvedBy]
-          );
-        } catch (stockErr) {
-          await client.query('ROLLBACK TO SAVEPOINT stock_movement');
-          console.error('Stock movement for registration kit (non-critical):', stockErr.message);
-        }
-
-        return { nbNumber, distributorName };
-      });
+      const result = await issueNBToAgreement(id, paymentMethod, paymentReference, approvedBy);
 
       return res.json({
         success: true,

@@ -305,6 +305,8 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentReference, setPaymentReference] = useState('');
 
   const set = (field, val) => setForm(f => ({ ...f, [field]: val }));
 
@@ -366,7 +368,13 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
 
     setSubmitting(true);
     try {
-      const res = await api.post('/distributor-agreement', form);
+      const payload = { ...form };
+      if (isBranchMode) {
+        payload.immediate_issue = true;
+        payload.payment_method = paymentMethod;
+        payload.payment_reference = paymentReference || null;
+      }
+      const res = await api.post('/distributor-agreement', payload);
       setResult(res);
       if (onComplete) onComplete(res);
     } catch (err) {
@@ -625,6 +633,34 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
             )}
           </div>
 
+          {isBranchMode && (
+            <div className="border-2 border-green-300 rounded-xl p-4 bg-green-50">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="bg-green-600 text-white text-xs font-bold px-3 py-1 rounded">💳 Payment Collection (N$ 1,200.00)</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-green-800 mb-1">Payment Method</label>
+                  <div className="flex gap-2">
+                    {['cash', 'card', 'eft'].map(m => (
+                      <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                        className={`flex-1 py-2 text-sm rounded-lg border-2 cursor-pointer font-semibold transition-all capitalize ${paymentMethod === m ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'}`}>
+                        {m === 'cash' ? '💵 Cash' : m === 'card' ? '💳 Card' : '🏦 EFT'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-green-800 mb-1">Reference / Receipt No. <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input type="text" value={paymentReference} onChange={e => setPaymentReference(e.target.value)}
+                    placeholder="e.g. receipt or EFT reference"
+                    className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white" />
+                </div>
+              </div>
+              <p className="text-xs text-green-700 mt-2 font-medium">✅ NB number will be generated immediately upon submission</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-6">
             <div className="border border-[#c41e3a]/30 rounded-lg p-4">
               <p className="text-xs font-bold text-[#8b0000] mb-2">Declaration</p>
@@ -662,9 +698,15 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
       <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '2px solid #f0e8ea', padding: '14px 0', zIndex: 20 }}>
         <div className="max-w-4xl mx-auto px-1">
           <Button type="submit" className="w-full py-3 text-base" disabled={submitting}>
-            {submitting ? 'Submitting Registration...' : 'Submit Distributor Agreement (N$ 1,200.00)'}
+            {submitting
+              ? (isBranchMode ? 'Processing & Issuing NB...' : 'Submitting Registration...')
+              : (isBranchMode ? '✅ Register & Issue NB Number (N$ 1,200.00 collected)' : 'Submit Distributor Agreement (N$ 1,200.00)')}
           </Button>
-          <p className="text-center text-xs text-gray-400 mt-2">The NB number will be issued by the selected branch after payment of N$ 1,200.00 is received and verified.</p>
+          <p className="text-center text-xs text-gray-400 mt-2">
+            {isBranchMode
+              ? 'Payment is collected at counter. NB number is issued instantly upon submission.'
+              : 'The NB number will be issued by the selected branch after payment of N$ 1,200.00 is received and verified.'}
+          </p>
         </div>
       </div>
     </form>

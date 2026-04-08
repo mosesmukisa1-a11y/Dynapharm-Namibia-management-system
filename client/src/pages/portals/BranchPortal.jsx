@@ -197,6 +197,7 @@ export default function BranchPortal() {
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff', icon: '👤' },
     { id: 'registration', label: 'Distributor Registration', icon: '📝' },
+    { id: 'outsideReg', label: 'Outside Registrations', icon: '📋' },
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
     { id: 'distributorPerf', label: 'Distributor Performance', icon: '👥' },
     { id: 'salesReview', label: 'Sales Review', icon: '📈' },
@@ -282,6 +283,7 @@ export default function BranchPortal() {
           {activeTab === 'communication' && <CommunicationTab />}
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'registration' && <DistributorRegTab />}
+          {activeTab === 'outsideReg' && <OutsideRegistrationsTab />}
           {activeTab === 'fieldProgram' && <FieldProgramTab />}
           {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
           {activeTab === 'salesReview' && <SalesReviewTab />}
@@ -6890,6 +6892,158 @@ function StaffTab() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutsideRegistrationsTab() {
+  const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+  const [approving, setApproving] = useState(null);
+  const [approveForm, setApproveForm] = useState({ payment_method: 'cash', payment_reference: '' });
+  const [alert, setAlert] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/distributor-agreement?status=pending_payment${effectiveBranch ? `&branch=${encodeURIComponent(effectiveBranch)}` : ''}`);
+      setRegistrations(Array.isArray(res.agreements) ? res.agreements : []);
+    } catch { setRegistrations([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [effectiveBranch]);
+
+  const handleApprove = async (agr) => {
+    setAlert(null);
+    try {
+      const res = await api.patch('/distributor-agreement', {
+        id: agr.id,
+        payment_method: approveForm.payment_method,
+        payment_reference: approveForm.payment_reference || null,
+      });
+      setAlert({ type: 'success', message: `✅ NB Number issued: ${res.nb_number} — ${res.distributor_name}` });
+      setApproving(null);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Approval failed' });
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#2d6a9f)', borderRadius: 16, padding: '20px 24px', color: '#fff' }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>📋 Outside Registrations</h2>
+            <p style={{ fontSize: '0.85rem', opacity: 0.8, margin: '4px 0 0' }}>
+              Online pre-registrations waiting for payment & NB number issuance
+              {effectiveBranch ? ` — ${getBranchDisplayName(effectiveBranch) || effectiveBranch}` : ''}
+            </p>
+          </div>
+          <button onClick={load} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
+            🔄 Refresh
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#fbbf24' }}>{registrations.length}</div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Awaiting Processing</div>
+          </div>
+        </div>
+      </div>
+
+      {alert && <Alert type={alert.type} className="mb-3" onClose={() => setAlert(null)}>{alert.message}</Alert>}
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        <strong>How it works:</strong> When a new member fills out the online membership agreement form and selects this branch, their application appears here. Collect the <strong>N$ 1,200.00</strong> registration fee, select payment method, and click <strong>Issue NB Number</strong> to register them in the system.
+      </div>
+
+      {loading ? (
+        <div className="text-center py-10 text-gray-400">Loading outside registrations…</div>
+      ) : registrations.length === 0 ? (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-10 text-center">
+          <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
+          <p className="text-gray-500 font-semibold">No pending outside registrations</p>
+          <p className="text-xs text-gray-400 mt-1">All online pre-registrations for this branch have been processed.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {registrations.map(agr => {
+            const isExp = expanded === agr.id;
+            const isApp = approving === agr.id;
+            return (
+              <div key={agr.id} className="bg-white border-2 border-amber-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-4">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-bold text-gray-800 text-base">{agr.first_name} {agr.last_name}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold border border-amber-200">⏳ Awaiting Payment</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold capitalize">{agr.kit_type} Kit</span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                        <span>📅 {new Date(agr.created_at).toLocaleDateString('en-NA', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        <span>📞 {agr.contact_mobile}</span>
+                        {agr.sponsor_id && <span>👤 Sponsor: <strong>{agr.sponsor_id}</strong></span>}
+                        {agr.upline_id && <span>⬆ Upline: <strong>{agr.upline_id}</strong></span>}
+                        <span className="font-mono text-gray-300">{agr.id}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => setExpanded(isExp ? null : agr.id)}
+                        style={{ padding: '6px 12px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+                        {isExp ? 'Hide ▲' : 'View ▼'}
+                      </button>
+                      <button onClick={() => { setApproving(isApp ? null : agr.id); setApproveForm({ payment_method: 'cash', payment_reference: '' }); }}
+                        style={{ padding: '6px 14px', background: isApp ? '#fee2e2' : '#dcfce7', color: isApp ? '#991b1b' : '#166534', border: `1px solid ${isApp ? '#fca5a5' : '#86efac'}`, borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                        {isApp ? '✕ Cancel' : '💳 Process Payment'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExp && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                      {agr.mailing_address_street && <div><span className="text-gray-400">Address:</span> {agr.mailing_address_street}</div>}
+                      {agr.mailing_address_town && <div><span className="text-gray-400">Town:</span> {agr.mailing_address_town}</div>}
+                      {agr.nationality && <div><span className="text-gray-400">Nationality:</span> {agr.nationality}</div>}
+                      {agr.birthdate && <div><span className="text-gray-400">Birthdate:</span> {agr.birthdate}</div>}
+                      {agr.sex && <div><span className="text-gray-400">Sex:</span> {agr.sex}</div>}
+                    </div>
+                  )}
+
+                  {isApp && (
+                    <div className="mt-3 pt-3 border-t border-green-100 bg-green-50 rounded-lg p-3">
+                      <p className="text-xs font-bold text-green-800 mb-2">💳 Collect N$ 1,200.00 — Select Payment Method</p>
+                      <div className="flex gap-2 mb-2 flex-wrap">
+                        {['cash', 'card', 'eft'].map(m => (
+                          <button key={m} type="button"
+                            onClick={() => setApproveForm(f => ({ ...f, payment_method: m }))}
+                            style={{ padding: '5px 14px', background: approveForm.payment_method === m ? '#16a34a' : '#fff', color: approveForm.payment_method === m ? '#fff' : '#374151', border: `1px solid ${approveForm.payment_method === m ? '#16a34a' : '#d1d5db'}`, borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: '0.78rem', textTransform: 'capitalize' }}>
+                            {m === 'cash' ? '💵 Cash' : m === 'card' ? '💳 Card' : '🏦 EFT'}
+                          </button>
+                        ))}
+                      </div>
+                      <input type="text" placeholder="Receipt / EFT reference (optional)"
+                        value={approveForm.payment_reference}
+                        onChange={e => setApproveForm(f => ({ ...f, payment_reference: e.target.value }))}
+                        className="w-full px-3 py-1.5 border border-green-300 rounded-lg text-xs mb-2 focus:outline-none focus:ring-1 focus:ring-green-400" />
+                      <button onClick={() => handleApprove(agr)}
+                        style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                        ✅ Confirm Payment & Issue NB Number
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
