@@ -3,8 +3,8 @@ set -e
 
 echo "Running post-merge setup..."
 
-# Install root dependencies (backend + dev tools)
-npm install --no-fund --no-audit
+# Install all dependencies including dev tools (overrides .npmrc omit=dev)
+npm install --include=dev --no-fund --no-audit
 
 # Apply any pending database migrations (migrations only, no user seeding)
 echo "Running database migrations..."
