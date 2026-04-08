@@ -106,8 +106,12 @@ async function main() {
       '017_create_stock_adjustments_table.sql',
       '018_create_training_schedules_table.sql',
       '019_repair_branch_allocations.sql',
+      '019_gm_dispatch_approval_enhancement.sql',
+      '020_add_unit_cif_to_stock_movements.sql',
+      '021_distributor_bonuses.sql',
       '022_campaign_workflow_fields.sql',
       '023_create_mis_csi_entries.sql',
+      '024_sync_runtime_schema.sql',
     ];
     
     for (const migration of migrations) {
