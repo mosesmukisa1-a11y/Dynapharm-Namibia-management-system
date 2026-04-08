@@ -4,7 +4,7 @@
  * All imported stock lands at country_stock first — it must be
  * explicitly released to a warehouse before further distribution.
  */
-import { postStockMovement } from '../../services/stockEngine.js';
+import { postStockMovement, recomputeLocationBalances } from '../../services/stockEngine.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -67,6 +67,12 @@ export default async function handler(req, res) {
       status: 'posted',
     });
     posted.push({ productName, batchNo: item.batchNo, expiryDate: item.expiryDate, quantity: Number(item.quantity) });
+  }
+
+  try {
+    await recomputeLocationBalances('country', 'country_stock');
+  } catch (err) {
+    console.error('[receive] post-import recompute error:', err.message);
   }
 
   return res.status(201).json({

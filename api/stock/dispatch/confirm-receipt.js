@@ -7,6 +7,7 @@
  */
 import { recomputeLocationBalances } from '../../services/stockEngine.js';
 import { getOne, query, withTransaction } from '../../db.js';
+import { normalizeBranchSlug } from '../../_lib/branchUtils.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -34,7 +35,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   const body = await parseBody(req);
-  const { dispatchNoteId, branchId, receivedBy, signature, items } = body;
+  const { dispatchNoteId, receivedBy, signature, items } = body;
+  const branchId = normalizeBranchSlug(body.branchId);
 
   if (!dispatchNoteId) return res.status(400).json({ success: false, error: 'dispatchNoteId is required' });
   if (!branchId) return res.status(400).json({ success: false, error: 'branchId is required' });

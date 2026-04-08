@@ -95,6 +95,7 @@ const BRANCH_DISPLAY_MAP = {
   ondangwa: 'Ondangwa',
   rundu: 'Rundu',
   katima: 'Katima Mulilo',
+  katima_mulilo: 'Katima Mulilo',
   windhoek_warehouse: 'Windhoek Warehouse',
 };
 

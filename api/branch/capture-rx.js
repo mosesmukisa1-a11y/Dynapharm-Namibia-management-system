@@ -14,6 +14,7 @@ const BRANCH_NAMES = {
   'hochland-park': 'Hochlandpark',
   walvisbay: 'Walvis Bay',
   katima: 'Katima Mulilo',
+  katima_mulilo: 'Katima Mulilo',
   tsumeb: 'Tsumeb',
   gobabis: 'Gobabis',
   swakopmund: 'Swakopmund',

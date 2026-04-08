@@ -7,7 +7,7 @@ const BRANCH_ALIAS = {
   'Oshakati': 'oshakati_branch', 'oshakati': 'oshakati_branch',
   'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park', 'hochland park': 'hochland-park',
   'Walvis Bay': 'walvisbay', 'walvis_bay': 'walvisbay', 'walvis bay': 'walvisbay', 'Walvisbay': 'walvisbay',
-  'Katima Mulilo': 'katima', 'katima mulilo': 'katima', 'katima_mulilo': 'katima',
+  'Katima Mulilo': 'katima_mulilo', 'katima mulilo': 'katima_mulilo', 'katima': 'katima_mulilo',
   'Gobabis': 'gobabis', 'Khomasdal': 'khomasdal', 'Swakopmund': 'swakopmund',
   'Eenhana': 'eenhana', 'Ondangwa': 'ondangwa', 'Rundu': 'rundu',
   'Otjiwarongo': 'otjiwarongo', 'Tsumeb': 'tsumeb', 'Okahao': 'okahao', 'Outapi': 'outapi',

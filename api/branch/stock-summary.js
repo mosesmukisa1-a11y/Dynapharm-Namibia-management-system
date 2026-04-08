@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { syncInventoryBalances } from '../services/inventoryBalanceSync.js';
+import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -11,7 +12,8 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const dateFrom = url.searchParams.get('date_from') || null;
     const dateTo = url.searchParams.get('date_to') || null;
-    const branchFilter = url.searchParams.get('branch') || null;
+    const branchFilterRaw = url.searchParams.get('branch') || null;
+    const branchFilter = branchFilterRaw ? (normalizeBranchSlug(branchFilterRaw) || branchFilterRaw) : null;
 
     const branchInventory = await getMany(
       `SELECT * FROM branch_inventory_batches ORDER BY branch_id, product_name, expiry_date ASC NULLS LAST`
@@ -48,7 +50,9 @@ export default async function handler(req, res) {
 
     const branchMap = {};
 
-    const ensureBranch = (key) => {
+    const ensureBranch = (rawKey) => {
+      if (!rawKey) return null;
+      const key = normalizeBranchSlug(rawKey) || rawKey;
       if (!branchMap[key]) {
         branchMap[key] = {
           branch_id: key,
@@ -78,11 +82,15 @@ export default async function handler(req, res) {
       return branchMap[key];
     };
 
+    const seedBranches = branchFilter ? [branchFilter] : ALL_BRANCH_IDS;
+    for (const id of seedBranches) ensureBranch(id);
+
     const now = new Date();
     const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     for (const inv of branchInventory) {
-      if (branchFilter && inv.branch_id !== branchFilter) continue;
+      if (!inv.branch_id) continue;
+      if (branchFilter && (normalizeBranchSlug(inv.branch_id) || inv.branch_id) !== branchFilter) continue;
       const br = ensureBranch(inv.branch_id);
       const qty = Number(inv.quantity || 0);
       br.inventory.push({

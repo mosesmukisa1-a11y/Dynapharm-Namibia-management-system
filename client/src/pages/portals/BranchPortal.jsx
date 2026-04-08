@@ -7951,7 +7951,7 @@ function isLiveCampaign(c) {
 function printCampaignReceipt(receipt, branchDisplayName) {
   const BRANCH_NAMES = {
     windhoek: 'Windhoek', walvisbay: 'Walvis Bay', swakopmund: 'Swakopmund',
-    oshakati: 'Oshakati', rundu: 'Rundu', katima: 'Katima Mulilo',
+    oshakati: 'Oshakati', rundu: 'Rundu', katima: 'Katima Mulilo', katima_mulilo: 'Katima Mulilo',
     keetmanshoop: 'Keetmanshoop', otjiwarongo: 'Otjiwarongo', gobabis: 'Gobabis',
   };
   const branchName = BRANCH_NAMES[receipt.branch] || branchDisplayName || receipt.branch || '';

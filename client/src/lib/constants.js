@@ -16,11 +16,14 @@ export const PORTALS = [
 const WINDHOEK_CBD_ALIASES = ['windhoek_cbd', 'windhoek', 'cbd', 'cdb'];
 export const CANONICAL_WINDHOEK_CBD = 'townshop';
 
+const KATIMA_ALIASES = ['katima', 'katima mulilo', 'katima-mulilo', 'katima_branch', 'katima_mulilo_branch'];
+
 export function normalizeBranchSlug(slug) {
   if (!slug || typeof slug !== 'string') return null;
   const lower = slug.trim().toLowerCase();
   if (!lower) return null;
   if (WINDHOEK_CBD_ALIASES.includes(lower) || lower === 'townshop') return CANONICAL_WINDHOEK_CBD;
+  if (KATIMA_ALIASES.includes(lower)) return 'katima_mulilo';
   return lower;
 }
 
@@ -39,7 +42,7 @@ export const BRANCH_DETAILS = [
   { id: 'walvisbay',     name: 'Walvis Bay',      address: 'Shop No 6, Pelican Mall', phone: '+264 814685894', region: 'Erongo' },
   { id: 'hochland-park', name: 'Hochlandpark',    address: '21 Robin Road, Tauben Glen, Next to OK Minimarkt Store', phone: '+264 813207195', region: 'Khomas' },
   { id: 'khomasdal',     name: 'Khomasdal',       address: 'Shop No 2, Khomasdal Funky Town Mall', phone: '+264 814682991', region: 'Khomas' },
-  { id: 'katima',        name: 'Katima Mulilo',   address: 'Shop No 1, Hospital Road, Opposite Open Market next to former MVA Fund', phone: '+264 814682978', region: 'Zambezi' },
+  { id: 'katima_mulilo', name: 'Katima Mulilo',   address: 'Shop No 1, Hospital Road, Opposite Open Market next to former MVA Fund', phone: '+264 814682978', region: 'Zambezi' },
   { id: 'okongo',        name: 'Okongo',          address: 'Handongo Festus Erf 333 Okongo Village Council', phone: '+264 814684935', region: 'Kavango West' },
   { id: 'nkurenkuru',    name: 'Nkurenkuru',      address: 'Total Service Station, Next to Oluno Bar', phone: '+264 814684939', region: 'Kavango West' },
 ];
@@ -69,11 +72,13 @@ export function getBranchDisplayName(idOrName) {
 
 export function getBranchId(nameOrId) {
   if (!nameOrId) return '';
-  const byName = BRANCH_NAME_TO_ID[nameOrId.toLowerCase()];
+  const lower = nameOrId.toLowerCase();
+  const byName = BRANCH_NAME_TO_ID[lower];
   if (byName) return byName;
   const direct = BRANCH_ID_TO_NAME[nameOrId];
   if (direct) return nameOrId;
-  return nameOrId.toLowerCase().replace(/\s+/g, '_');
+  if (KATIMA_ALIASES.includes(lower)) return 'katima_mulilo';
+  return lower.replace(/\s+/g, '_');
 }
 
 export const WINDHOEK_BRANCHES = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal'];

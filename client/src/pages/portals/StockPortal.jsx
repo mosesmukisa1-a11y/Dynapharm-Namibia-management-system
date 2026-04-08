@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import DispatchNote from '../../components/DispatchNote';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -1969,6 +1970,7 @@ function WarehouseTab({ name }) {
   const [outboundSearch, setOutboundSearch] = useState('');
   const [outboundStatusFilter, setOutboundStatusFilter] = useState('');
   const [viewAuditTransfer, setViewAuditTransfer] = useState(null);
+  const [viewDispatchNoteTransfer, setViewDispatchNoteTransfer] = useState(null);
   const location = name.toLowerCase() + '_warehouse';
 
   const loadData = useCallback(() => {
@@ -2347,9 +2349,14 @@ function WarehouseTab({ name }) {
               }},
               { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
               { header: '', render: r => (
-                <button onClick={() => setViewAuditTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#6366f1' }}>
-                  Audit Trail
-                </button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => setViewAuditTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#6366f1' }}>
+                    Audit Trail
+                  </button>
+                  <button onClick={() => setViewDispatchNoteTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#c41e3a' }} title="View Dispatch Note">
+                    <Printer size={13} />
+                  </button>
+                </div>
               )},
             ]}
             data={filteredOutbound}
@@ -2619,6 +2626,8 @@ function WarehouseTab({ name }) {
           );
         })()}
       </Modal>
+
+      {viewDispatchNoteTransfer && <DispatchNote transfer={viewDispatchNoteTransfer} onClose={() => setViewDispatchNoteTransfer(null)} />}
     </div>
   );
 }
@@ -2986,6 +2995,7 @@ function TransfersTab({ branch }) {
   const [cart, setCart] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
+  const [viewDispatchNote, setViewDispatchNote] = useState(null);
 
   const loadTransfers = useCallback(() => {
     setLoading(true);
@@ -3096,7 +3106,7 @@ function TransfersTab({ branch }) {
                 {(r.status === 'dispatched' || r.status === 'in_transit') && (
                   <Button size="sm" variant="success" onClick={() => updateStatus(r.id, 'delivered')}>Delivered</Button>
                 )}
-                <Button size="sm" variant="ghost" title="Print dispatch note" onClick={() => printDocument(`Dispatch Note — ${r.product_name}`, `<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td><b>Transfer ID</b></td><td>${r.id||''}</td></tr><tr><td><b>Date</b></td><td>${formatDateTime(r.created_at)}</td></tr><tr><td><b>From</b></td><td>${fmtLocation(r.from_location)}</td></tr><tr><td><b>To</b></td><td>${fmtLocation(r.to_location)}</td></tr><tr><td><b>Product</b></td><td>${r.product_name||''}</td></tr><tr><td><b>Quantity</b></td><td>${r.quantity||''}</td></tr><tr><td><b>Status</b></td><td>${r.status||'Pending'}</td></tr><tr><td><b>Notes</b></td><td>${r.notes||'-'}</td></tr></tbody></table>`)}><Printer size={12} /></Button>
+                <Button size="sm" variant="ghost" title="View dispatch note" onClick={() => setViewDispatchNote(r)}><Printer size={12} /></Button>
               </div>
             )},
           ]}
@@ -3104,6 +3114,8 @@ function TransfersTab({ branch }) {
           emptyMessage={branch !== 'all' ? `No transfers for ${fmtLocation(branch)}` : 'No transfers recorded'}
         />
       </Card>
+
+      {viewDispatchNote && <DispatchNote transfer={viewDispatchNote} onClose={() => setViewDispatchNote(null)} />}
 
       <Modal open={showNew} onClose={() => { setShowNew(false); setCart([]); }} title="New Stock Transfer" size="xl">
         <form onSubmit={handleCreate} className="p-6 space-y-4">
@@ -3333,6 +3345,7 @@ function OrdersTab({ branch }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [viewRequest, setViewRequest] = useState(null);
+  const [viewOrderDispatchNote, setViewOrderDispatchNote] = useState(null);
   const [dispatchRequest, setDispatchRequest] = useState(null);
   const [dispatchWH, setDispatchWH] = useState('country_stock');
   const [cart, setCart] = useState([]);
@@ -3523,6 +3536,11 @@ function OrdersTab({ branch }) {
           )}
           {(r.status === 'received' || r.status === 'fulfilled') && (
             <span className="text-xs text-green-700 font-semibold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">✅ Received by branch</span>
+          )}
+          {(r.status === 'dispatched' || r.status === 'received' || r.status === 'fulfilled') && (
+            <button onClick={() => setViewOrderDispatchNote(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1" style={{ background: '#fff0f3', color: '#c41e3a', border: '1px solid #fecaca' }}>
+              <Printer size={11} /> Dispatch Note
+            </button>
           )}
         </div>
       </div>
@@ -3792,6 +3810,23 @@ function OrdersTab({ branch }) {
           </div>
         </form>
       </Modal>
+
+      {viewOrderDispatchNote && (() => {
+        const r = viewOrderDispatchNote;
+        const branchName = r.requestingBranch || r.requesting_branch || '';
+        const items = Array.isArray(r.items) ? r.items : [];
+        const transferView = {
+          id: r.requestNumber || r.id,
+          created_at: r.createdAt || r.created_at,
+          from_location: r.dispatch_warehouse || r.dispatchWarehouse || 'country_stock',
+          to_location: branchName.toLowerCase().replace(/\s+/g, '_'),
+          items: items.map(i => ({ productName: i.productName || i.productId, quantity: i.quantity, batch_no: i.batch_no })),
+          status: r.status,
+          dispatch_notes: r.notes,
+          created_by: r.createdBy || r.created_by,
+        };
+        return <DispatchNote transfer={transferView} onClose={() => setViewOrderDispatchNote(null)} />;
+      })()}
     </div>
   );
 }

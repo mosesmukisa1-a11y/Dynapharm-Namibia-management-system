@@ -100,6 +100,7 @@ function normalizeMovementRow(row) {
 function normalizeBranchId(raw) {
   if (!raw) return raw;
   const key = raw.toLowerCase().replace(/\s+/g, '_');
+  if (key === 'katima' || key === 'katima-mulilo') return 'katima_mulilo';
   return key;
 }
 
@@ -110,6 +111,8 @@ async function resolveBranchId(raw) {
   const candidates = [key];
   if (!key.endsWith('_branch')) candidates.push(key + '_branch');
   if (stripped !== key) candidates.push(stripped);
+  if (key === 'katima_mulilo') candidates.push('katima');
+  if (key === 'katima') candidates.push('katima_mulilo');
   // Exact match first
   const result = await getOne(
     `SELECT branch_id FROM branch_inventory_batches WHERE branch_id = ANY($1) LIMIT 1`,

@@ -582,7 +582,7 @@ function ApprovalsTab() {
 
   const fmtLoc = (loc) => {
     if (!loc) return '—';
-    const map = { country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse', windhoek_branch: 'Windhoek Branch', ondangwa_branch: 'Ondangwa Branch', oshakati_branch: 'Oshakati Branch', rundu_branch: 'Rundu Branch', tsumeb_branch: 'Tsumeb Branch', katima_branch: 'Katima Mulilo Branch', walvis_branch: 'Walvis Bay Branch', gobabis_branch: 'Gobabis Branch', otjiwarongo_branch: 'Otjiwarongo Branch', keetmanshoop_branch: 'Keetmanshoop Branch' };
+    const map = { country_stock: 'Country Stock', windhoek_warehouse: 'Windhoek Warehouse', ondangwa_warehouse: 'Ondangwa Warehouse', windhoek_branch: 'Windhoek Branch', ondangwa_branch: 'Ondangwa Branch', oshakati_branch: 'Oshakati Branch', rundu_branch: 'Rundu Branch', tsumeb_branch: 'Tsumeb Branch', katima_branch: 'Katima Mulilo Branch', katima_mulilo_branch: 'Katima Mulilo Branch', katima: 'Katima Mulilo', katima_mulilo: 'Katima Mulilo', walvis_branch: 'Walvis Bay Branch', gobabis_branch: 'Gobabis Branch', otjiwarongo_branch: 'Otjiwarongo Branch', keetmanshoop_branch: 'Keetmanshoop Branch' };
     return map[loc.toLowerCase().replace(/\s+/g, '_')] || loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
