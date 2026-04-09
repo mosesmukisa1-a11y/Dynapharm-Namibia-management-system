@@ -12,6 +12,7 @@
     "preview": "npx vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "install:dev": "npm install --save-dev @tailwindcss/oxide @tailwindcss/oxide-linux-x64-gnu @tailwindcss/vite tailwindcss@latest",
     "auto-commit": "node tools/auto-commit.js",
     "guard": "node tools/guard-inline-events.js",
     "seed:users": "node scripts/seed-users.js",
@@ -29,7 +30,7 @@
   "author": "Moses Mukisa",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=18.0.0",
     "python": ">=3.9.0"
   },
   "repository": {
@@ -52,9 +53,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.12.0",
-    "@tailwindcss/oxide": "^4.2.1",
-    "@tailwindcss/oxide-linux-x64-gnu": "^4.2.1",
-    "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^4.7.0",
     "chokidar": "^3.6.0",
     "clsx": "^2.1.1",
@@ -63,7 +61,7 @@
     "eslint-plugin-html": "^8.1.2",
     "eslint-plugin-import": "^2.29.1",
     "globals": "^15.9.0",
-    "jsdom": "^27.2.0",
+    "jsdom": "^24.1.3",
     "lucide-react": "^0.577.0",
     "minimatch": "^3.1.4",
     "playwright": "^1.56.1",
@@ -73,9 +71,8 @@
     "react-router-dom": "^6.30.3",
     "recharts": "^3.8.0",
     "rollup": "^4.59.0",
-    "tailwindcss": "^4.2.1",
     "vite": "^6.4.1",
-    "vitest": "^4.0.10",
+    "vitest": "^1.6.0",
     "wouter": "^3.9.0"
   }
 }

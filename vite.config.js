@@ -1,9 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+function loadTailwindPlugin() {
+  try {
+    const mod = require('@tailwindcss/vite');
+    return (mod.default || mod)();
+  } catch {
+    return null;
+  }
+}
+
+const tailwindPlugin = loadTailwindPlugin();
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindPlugin].filter(Boolean),
   root: './client',
   build: {
     outDir: '../dist',
