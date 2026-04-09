@@ -1239,7 +1239,16 @@ function CheckupTab() {
 
   const BRANCHES = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal', 'Walvis Bay', 'Swakopmund', 'Oshakati', 'Ondangwa', 'Eenhana', 'Okahao', 'Outapi', 'Rundu', 'Katima Mulilo', 'Gobabis', 'Otjiwarongo', 'Tsumeb'];
 
-  const [form, setForm] = useState({ full_name: '', phone: '', email: '', branch: BRANCHES[0], notes: '' });
+  const toLocalDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const getTomorrowStr = () => { const d = new Date(); d.setDate(d.getDate() + 1); return toLocalDateStr(d); };
+  const getTodayStr = () => toLocalDateStr(new Date());
+
+  const [form, setForm] = useState({ full_name: '', phone: '', email: '', branch: BRANCHES[0], preferred_date: getTomorrowStr(), notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [booked, setBooked] = useState(null);
   const [error, setError] = useState('');
@@ -1248,13 +1257,11 @@ function CheckupTab() {
     if (!form.full_name.trim() || !form.phone.trim()) { setError('Full name and phone number are required.'); return; }
     setSubmitting(true); setError('');
     try {
-      const today = new Date(); today.setDate(today.getDate() + 1);
-      const dateStr = today.toISOString().slice(0, 10);
       const result = await api.appointments.create({
         full_name: form.full_name.trim(),
         phone: form.phone.trim(),
         email: form.email.trim() || null,
-        date: dateStr,
+        date: form.preferred_date || getTomorrowStr(),
         time: 'TBD',
         branch: form.branch,
         type: 'checkup',
@@ -1263,7 +1270,7 @@ function CheckupTab() {
         data: JSON.stringify({ referral_nb: referralNB, referral_name: referralName, booking_source: 'distributor_portal' }),
       });
       setBooked(result);
-    } catch (err) { setError(err.message || 'Booking failed. Please try again.'); }
+    } catch (err) { console.error('Booking error:', err); setError(err.message || 'Booking failed. Please try again.'); }
     finally { setSubmitting(false); }
   };
 
@@ -1292,7 +1299,7 @@ function CheckupTab() {
                   className="block w-full py-3 rounded-xl font-bold text-white text-center" style={{ background: '#25D366', textDecoration: 'none' }}>
                   📱 Share via WhatsApp
                 </a>
-                <button onClick={() => { setBooked(null); setForm({ full_name: '', phone: '', email: '', branch: BRANCHES[0], notes: '' }); }}
+                <button onClick={() => { setBooked(null); setForm({ full_name: '', phone: '', email: '', branch: BRANCHES[0], preferred_date: getTomorrowStr(), notes: '' }); }}
                   className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold bg-white cursor-pointer">
                   + Book Another Client
                 </button>
@@ -1339,6 +1346,10 @@ function CheckupTab() {
               <select style={inp} value={form.branch} onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}>
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
+            </div>
+            <div>
+              <label style={lbl}>Preferred Date</label>
+              <input type="date" style={inp} value={form.preferred_date} min={getTodayStr()} onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
             </div>
             <div style={{ padding: 12, borderRadius: 10, background: '#f0fdf4', border: '1px solid #86efac' }}>
               <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 700, marginBottom: 2 }}>Your Referral Details (pre-filled)</div>

@@ -93,8 +93,9 @@ export default async function handler(req, res) {
         const fullName = sanitizeStr(apt.full_name || apt.fullName, 200);
         const phone = sanitizeStr(apt.phone, 30);
         const date = sanitizeStr(apt.date, 20);
-        const time = sanitizeStr(apt.time, 10);
-        if (!fullName || !phone || !date || !time) return null;
+        const rawTime = sanitizeStr(apt.time, 10);
+        const time = (rawTime && rawTime.toUpperCase() !== 'TBD') ? rawTime : '00:00';
+        if (!fullName || !phone || !date) return null;
 
         const data = {
           id: `APT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -142,12 +143,17 @@ export default async function handler(req, res) {
       } else {
         const appointmentData = buildAppointmentData(body, isAuthenticated);
         if (!appointmentData) {
-          return res.status(400).json({ error: 'Missing required fields: full_name, phone, date, time' });
+          return res.status(400).json({ error: 'Missing required fields: full_name, phone, date' });
         }
         
-        const appointment = await insert('appointments', appointmentData);
-        await publishRealtimeEvent('appointments', 'create', appointment);
-        return res.json(appointment);
+        try {
+          const appointment = await insert('appointments', appointmentData);
+          await publishRealtimeEvent('appointments', 'create', appointment);
+          return res.json(appointment);
+        } catch (dbErr) {
+          console.error('Error inserting appointment:', dbErr);
+          return res.status(500).json({ error: dbErr.message || 'Failed to save appointment. Please try again.' });
+        }
       }
     }
 
