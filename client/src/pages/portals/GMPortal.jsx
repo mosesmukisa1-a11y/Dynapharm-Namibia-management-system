@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
+import DailySalesCard from '../../components/DailySalesCard';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -407,6 +408,8 @@ function DashboardTab() {
           </div>
         </CardBody>
       </Card>
+
+      <DailySalesCard className="mb-6" />
 
       {gmSummary && (
         <Card className="mb-6 border-primary/30 bg-gradient-to-r from-red-50 to-rose-50">

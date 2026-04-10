@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
+import DailySalesCard from '../../components/DailySalesCard';
 import { api } from '../../lib/api';
 import { getLiveProductList, findProductPrice } from '../../lib/pricing';
 import { formatCurrency, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -128,6 +129,8 @@ function DashboardTab({ start, end }) {
 
   return (
     <div>
+      <DailySalesCard className="mb-6" />
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Sales Revenue" value={formatCurrency(sales.totalSalesRevenue || 0)} subtitle={`${sales.totalOrders || 0} transactions`} color="blue" icon={<TrendingUp size={24} />} />
         <StatCard title="Monthly Revenue" value={formatCurrency(sales.monthlyRevenue || 0)} subtitle={`${start} → ${end}`} color="green" icon={<DollarSign size={24} />} />

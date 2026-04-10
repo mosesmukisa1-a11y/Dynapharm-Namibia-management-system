@@ -13,20 +13,21 @@ export default async function handler(req, res) {
   const [salesRevenue] = await Promise.all([getAllBranchesSalesRevenue(start, end)]);
   const totalRevenueDP = salesRevenue.totalSales;
 
-  const cifRows = await getMany(
-    `SELECT sm.product_name, SUM(sm.quantity) as total_qty, pp.cif
+  // Use LOWER(TRIM()) for name matching to avoid missing products due to casing/whitespace,
+  // and prefer unit_cif stored on the movement (actual batch cost) with pp.cif as fallback.
+  const cifRow = await getOne(
+    `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) AS cif_cost
      FROM stock_movements sm
-     LEFT JOIN product_prices pp ON sm.product_name = pp.description
+     LEFT JOIN product_prices pp
+       ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
      WHERE sm.status = 'posted'
        AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',
          'walk_in_member_sale','walk_in_non_member_sale','sale','online_order_fulfilment','prescription_dispense')
        AND sm.created_at >= $1::date
-       AND sm.created_at <= ($2 || 'T23:59:59')::timestamp
-     GROUP BY sm.product_name, pp.cif`,
+       AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
     [start, end]
   );
-  let cifCost = 0;
-  for (const r of cifRows) cifCost += Number(r.total_qty || 0) * Number(r.cif || 0);
+  let cifCost = Number(cifRow?.cif_cost || 0);
   const grossProfit = totalRevenueDP - cifCost;
 
   const depositSum = await getOne(

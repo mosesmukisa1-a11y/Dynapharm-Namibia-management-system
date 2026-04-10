@@ -250,6 +250,7 @@ export const api = {
     branchesPerformance: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/branches/performance${qs ? '?' + qs : ''}`); },
     warehousesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/warehouses/summary${qs ? '?' + qs : ''}`); },
     stockAlerts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/alerts/stock${qs ? '?' + qs : ''}`); },
+    dailySales: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/gm/daily-sales${qs ? '?' + qs : ''}`); },
   },
 
   finance: {
