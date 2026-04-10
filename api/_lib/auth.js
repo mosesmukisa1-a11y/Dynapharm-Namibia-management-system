@@ -112,7 +112,7 @@ function sanitizeUser(user) {
   };
 }
 
-const BRANCH_SCOPED_ROLES = new Set(['dispenser', 'branch_manager']);
+const BRANCH_SCOPED_ROLES = new Set(['dispenser', 'branch_manager', 'stock_manager', 'consultant', 'frontdesk']);
 const FULL_ACCESS_ROLES = new Set(['admin', 'gm', 'director']);
 
 function getBranchScope(user) {

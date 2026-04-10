@@ -17,6 +17,17 @@ function normBranch(val) {
   return BRANCH_ALIAS[val] || BRANCH_ALIAS[val.toLowerCase()] || val;
 }
 
+// Returns all stored branch name variants that map to the same canonical branch.
+// Appointments are stored with display names (e.g. 'Windhoek CBD') while users
+// have canonical branch IDs (e.g. 'townshop'). This ensures the filter matches both.
+function getBranchAliases(canonical) {
+  const aliases = new Set([canonical]);
+  for (const [key, value] of Object.entries(BRANCH_ALIAS)) {
+    if (value === canonical || key === canonical) aliases.add(key);
+  }
+  return [...aliases];
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -42,8 +53,10 @@ export default async function handler(req, res) {
       const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
       if (req.user && !FULL_ACCESS.has(userRole) && userBranch && !branch) {
-        conditions.push('branch = $' + (params.length + 1));
-        params.push(userBranch);
+        // Match all stored name variants for this branch (e.g. 'townshop' matches 'Windhoek CBD')
+        const aliases = getBranchAliases(userBranch);
+        conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
+        params.push(aliases);
       }
       
       if (id) {
@@ -51,11 +64,18 @@ export default async function handler(req, res) {
         params.push(id);
       }
       if (branch) {
-        if (req.user && !FULL_ACCESS.has(userRole) && userBranch && branch !== userBranch) {
-          return res.status(403).json({ error: 'Access denied to this branch' });
+        if (req.user && !FULL_ACCESS.has(userRole) && userBranch) {
+          // Allow if the requested branch is an alias of the user's own branch
+          const userAliases = getBranchAliases(userBranch);
+          const requestedAliases = getBranchAliases(branch);
+          const overlaps = userAliases.some(a => requestedAliases.includes(a));
+          if (!overlaps) {
+            return res.status(403).json({ error: 'Access denied to this branch' });
+          }
         }
-        conditions.push('branch = $' + (params.length + 1));
-        params.push(branch);
+        const branchAliases = getBranchAliases(branch);
+        conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
+        params.push(branchAliases);
       }
       if (date) {
         conditions.push('date = $' + (params.length + 1));
