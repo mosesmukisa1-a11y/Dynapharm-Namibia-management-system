@@ -332,6 +332,9 @@ function CheckupsSection() {
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [detailCheckup, setDetailCheckup] = useState(null);
+  const [showEditCheckup, setShowEditCheckup] = useState(false);
+  const [editCheckupData, setEditCheckupData] = useState({});
+  const [editCheckupSaving, setEditCheckupSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [consultantNotes, setConsultantNotes] = useState('');
@@ -697,6 +700,74 @@ ${consultantNotes ? `
   const viewDetail = (apt) => {
     setDetailCheckup(apt);
     setShowDetail(true);
+    setShowEditCheckup(false);
+  };
+
+  const openEditCheckup = (apt) => {
+    const d = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+    setEditCheckupData({
+      full_name: apt.full_name || '',
+      phone: apt.phone || '',
+      email: apt.email || '',
+      gender: d.gender || '',
+      dob: d.dob || '',
+      height: d.height || '',
+      weight: d.weight || '',
+      primary_reason: d.primary_reason || d.primaryReason || '',
+      water_intake: d.water_intake || d.waterIntake || '',
+      exercise_freq: d.exercise_freq || d.exerciseFreq || '',
+      sleep_hours: d.sleep_hours || d.sleepHours || '',
+      stress_level: d.stress_level || d.stressLevel || '',
+      current_medications: d.current_medications || d.currentMedications || d.medications || '',
+      allergies: d.allergies || '',
+      medical_history: Array.isArray(d.medical_history) ? d.medical_history.join(', ') : (d.medical_history || (Array.isArray(d.medicalHistory) ? d.medicalHistory.join(', ') : (d.medicalHistory || ''))),
+    });
+    setShowEditCheckup(true);
+  };
+
+  const saveEditCheckup = async () => {
+    if (!detailCheckup) return;
+    setEditCheckupSaving(true);
+    try {
+      const currentData = (() => { try { return typeof detailCheckup.data === 'string' ? JSON.parse(detailCheckup.data) : (detailCheckup.data || {}); } catch { return {}; } })();
+      const mergedData = {
+        ...currentData,
+        gender: editCheckupData.gender,
+        dob: editCheckupData.dob,
+        height: editCheckupData.height,
+        weight: editCheckupData.weight,
+        primary_reason: editCheckupData.primary_reason,
+        primaryReason: editCheckupData.primary_reason,
+        water_intake: editCheckupData.water_intake,
+        waterIntake: editCheckupData.water_intake,
+        exercise_freq: editCheckupData.exercise_freq,
+        exerciseFreq: editCheckupData.exercise_freq,
+        sleep_hours: editCheckupData.sleep_hours,
+        sleepHours: editCheckupData.sleep_hours,
+        stress_level: editCheckupData.stress_level,
+        stressLevel: editCheckupData.stress_level,
+        current_medications: editCheckupData.current_medications,
+        currentMedications: editCheckupData.current_medications,
+        allergies: editCheckupData.allergies,
+        medical_history: editCheckupData.medical_history,
+        medicalHistory: editCheckupData.medical_history,
+      };
+      const updatedApt = {
+        ...detailCheckup,
+        full_name: editCheckupData.full_name,
+        phone: editCheckupData.phone,
+        email: editCheckupData.email,
+        data: mergedData,
+      };
+      await api.appointments.update(detailCheckup.id, updatedApt);
+      setAppointments(prev => prev.map(a => a.id === detailCheckup.id ? updatedApt : a));
+      setDetailCheckup(updatedApt);
+      setShowEditCheckup(false);
+    } catch (err) {
+      alert('Failed to save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setEditCheckupSaving(false);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -792,20 +863,34 @@ ${consultantNotes ? `
       )}
 
       {showDetail && detailCheckup && (
-        <div onClick={e => { if (e.target === e.currentTarget) setShowDetail(false); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+        <div onClick={e => { if (e.target === e.currentTarget) { setShowDetail(false); setShowEditCheckup(false); } }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
           <div style={{ maxWidth: '700px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>Checkup Form Details</h3>
-              <button onClick={() => setShowDetail(false)} style={{ padding: '8px 16px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>Close</button>
+              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>{showEditCheckup ? 'Edit Checkup Form' : 'Checkup Form Details'}</h3>
+              <button onClick={() => { setShowDetail(false); setShowEditCheckup(false); }} style={{ padding: '8px 16px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>Close</button>
             </div>
             <div style={{ padding: '24px' }}>
-              <CheckupDetailContent apt={detailCheckup} />
+              {showEditCheckup ? (
+                <CheckupEditForm form={editCheckupData} setForm={setEditCheckupData} />
+              ) : (
+                <CheckupDetailContent apt={detailCheckup} />
+              )}
             </div>
-            {(detailCheckup.status || '').toLowerCase() !== 'completed' && (detailCheckup.status || '').toLowerCase() !== 'cancelled' && (
-              <div style={{ padding: '16px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => { setShowDetail(false); openReportModal(detailCheckup); }} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Create Report & Prescription</button>
-              </div>
-            )}
+            <div style={{ padding: '16px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {showEditCheckup ? (
+                <>
+                  <button onClick={saveEditCheckup} disabled={editCheckupSaving} style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: editCheckupSaving ? 0.6 : 1 }}>{editCheckupSaving ? 'Saving…' : '💾 Save Changes'}</button>
+                  <button onClick={() => setShowEditCheckup(false)} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => openEditCheckup(detailCheckup)} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>✏️ Edit Form</button>
+                  {(detailCheckup.status || '').toLowerCase() !== 'completed' && (detailCheckup.status || '').toLowerCase() !== 'cancelled' && (
+                    <button onClick={() => { setShowDetail(false); setShowEditCheckup(false); openReportModal(detailCheckup); }} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Create Report & Prescription</button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1079,6 +1164,64 @@ ${consultantNotes ? `
   );
 }
 
+function CheckupEditForm({ form, setForm }) {
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const inp = { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' };
+  const lbl = { display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: '3px' };
+  const grp = { marginBottom: '10px' };
+  return (
+    <div>
+      <h4 style={{ color: '#c41e3a', marginBottom: '12px', fontSize: '0.95rem' }}>Personal Details</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+        <div style={grp}><label style={lbl}>Full Name</label><input style={inp} value={form.full_name || ''} onChange={e => upd('full_name', e.target.value)} /></div>
+        <div style={grp}><label style={lbl}>Phone</label><input style={inp} value={form.phone || ''} onChange={e => upd('phone', e.target.value)} /></div>
+        <div style={grp}><label style={lbl}>Email</label><input style={inp} value={form.email || ''} onChange={e => upd('email', e.target.value)} /></div>
+        <div style={grp}><label style={lbl}>Date of Birth</label><input type="date" style={inp} value={form.dob || ''} onChange={e => upd('dob', e.target.value)} /></div>
+        <div style={grp}>
+          <label style={lbl}>Gender</label>
+          <select style={inp} value={form.gender || ''} onChange={e => upd('gender', e.target.value)}>
+            <option value="">Select</option><option value="male">Male</option><option value="female">Female</option>
+          </select>
+        </div>
+        <div style={grp}><label style={lbl}>Height (cm)</label><input type="number" style={inp} value={form.height || ''} onChange={e => upd('height', e.target.value)} /></div>
+        <div style={grp}><label style={lbl}>Weight (kg)</label><input type="number" style={inp} value={form.weight || ''} onChange={e => upd('weight', e.target.value)} /></div>
+      </div>
+      <h4 style={{ color: '#c41e3a', marginBottom: '12px', fontSize: '0.95rem', borderTop: '1px solid #e5e7eb', paddingTop: '14px' }}>Health Assessment</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div style={{ ...grp, gridColumn: '1 / -1' }}><label style={lbl}>Primary Reason for Visit</label><input style={inp} placeholder="e.g. Weight management, Joint pain..." value={form.primary_reason || ''} onChange={e => upd('primary_reason', e.target.value)} /></div>
+        <div style={grp}>
+          <label style={lbl}>Water Intake</label>
+          <select style={inp} value={form.water_intake || ''} onChange={e => upd('water_intake', e.target.value)}>
+            <option value="">Select</option><option value="less1">Less than 1L/day</option><option value="1-2">1–2 L/day</option><option value="2-3">2–3 L/day</option><option value="3+">3+ L/day</option>
+          </select>
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Exercise Frequency</label>
+          <select style={inp} value={form.exercise_freq || ''} onChange={e => upd('exercise_freq', e.target.value)}>
+            <option value="">Select</option><option value="never">Never</option><option value="1-2">1–2×/week</option><option value="3-4">3–4×/week</option><option value="5+">5+×/week</option>
+          </select>
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Sleep (hours/night)</label>
+          <select style={inp} value={form.sleep_hours || ''} onChange={e => upd('sleep_hours', e.target.value)}>
+            <option value="">Select</option><option value="<5">&lt;5 hrs</option><option value="5-6">5–6 hrs</option><option value="7-8">7–8 hrs</option><option value="8+">8+ hrs</option>
+          </select>
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Stress Level (1–10)</label>
+          <select style={inp} value={form.stress_level || ''} onChange={e => upd('stress_level', e.target.value)}>
+            <option value="">Select</option>
+            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div style={{ ...grp, gridColumn: '1 / -1' }}><label style={lbl}>Current Medications</label><input style={inp} placeholder="List any medications..." value={form.current_medications || ''} onChange={e => upd('current_medications', e.target.value)} /></div>
+        <div style={{ ...grp, gridColumn: '1 / -1' }}><label style={lbl}>Allergies</label><input style={inp} placeholder="Known allergies..." value={form.allergies || ''} onChange={e => upd('allergies', e.target.value)} /></div>
+        <div style={{ ...grp, gridColumn: '1 / -1' }}><label style={lbl}>Medical History (comma-separated)</label><input style={inp} placeholder="e.g. Diabetes, Hypertension..." value={form.medical_history || ''} onChange={e => upd('medical_history', e.target.value)} /></div>
+      </div>
+    </div>
+  );
+}
+
 function CheckupDetailContent({ apt }) {
   const data = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
   const visitType = (apt.status || '').toLowerCase() === 'walk-in' ? 'Walk-in' : 'Book Appointment';
@@ -1086,6 +1229,25 @@ function CheckupDetailContent({ apt }) {
   const timeStr = apt.time ? apt.time.slice(0, 5) : '';
   const rawType = data.membershipStatus || data.membership_status || data.customer_type || data.clientType || 'referred';
   const clientType = rawType === 'member' ? '🏅 Registered Member (Distributor)' : '👤 Non-Member (Referred)';
+
+  const bmi = data.bmi || (() => {
+    const h = parseFloat(data.height); const w = parseFloat(data.weight);
+    return h && w ? (w / ((h / 100) ** 2)).toFixed(1) : null;
+  })();
+  const bmiCat = data.bmi_category || (bmi ? (parseFloat(bmi) < 18.5 ? 'Underweight' : parseFloat(bmi) < 25 ? 'Normal' : parseFloat(bmi) < 30 ? 'Overweight' : 'Obese') : '');
+
+  const primaryReason = data.primary_reason || data.primaryReason || data.concern || '';
+  const waterIntake = data.water_intake || data.waterIntake || '';
+  const exerciseFreq = data.exercise_freq || data.exerciseFreq || '';
+  const sleepHours = data.sleep_hours || data.sleepHours || '';
+  const stressLevel = data.stress_level || data.stressLevel || '';
+  const medications = data.current_medications || data.currentMedications || data.medications || '';
+  const allergies = data.allergies || '';
+  const medicalHistory = Array.isArray(data.medical_history) ? data.medical_history.join(', ') : (data.medical_history || (Array.isArray(data.medicalHistory) ? data.medicalHistory.join(', ') : (data.medicalHistory || '')));
+
+  const rawSym = data.symptoms;
+  const symptomsObj = rawSym && typeof rawSym === 'object' && !Array.isArray(rawSym) ? rawSym : {};
+  const symptomsList = Array.isArray(rawSym) ? rawSym : Object.values(symptomsObj).flat();
 
   const fieldStyle = { marginBottom: '8px', fontSize: '0.9rem', color: '#374151' };
   const labelStyle = { fontWeight: 600, color: '#1e293b' };
@@ -1111,6 +1273,16 @@ function CheckupDetailContent({ apt }) {
           <div style={fieldStyle}><span style={labelStyle}>Email:</span> {apt.email || 'N/A'}</div>
           <div style={fieldStyle}><span style={labelStyle}>Gender:</span> {data.gender || 'N/A'}</div>
           <div style={fieldStyle}><span style={labelStyle}>Date of Birth:</span> {data.dob || 'N/A'}</div>
+          {data.height && <div style={fieldStyle}><span style={labelStyle}>Height:</span> {data.height} cm</div>}
+          {data.weight && <div style={fieldStyle}><span style={labelStyle}>Weight:</span> {data.weight} kg</div>}
+          {bmi && (
+            <div style={{ ...fieldStyle, gridColumn: '1 / -1' }}>
+              <span style={labelStyle}>BMI:</span>{' '}
+              <span style={{ fontWeight: 700, color: parseFloat(bmi) < 18.5 ? '#2563eb' : parseFloat(bmi) < 25 ? '#16a34a' : parseFloat(bmi) < 30 ? '#d97706' : '#dc2626' }}>
+                {bmi} — {bmiCat}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <div style={sectionStyle}>
@@ -1124,12 +1296,37 @@ function CheckupDetailContent({ apt }) {
         )}
       </div>
       <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Health Information</h4>
-        <div style={fieldStyle}><span style={labelStyle}>Health Concern:</span> {data.concern || 'N/A'}</div>
-        <div style={fieldStyle}><span style={labelStyle}>Medical Conditions:</span> {data.conditions || 'None'}</div>
-        <div style={fieldStyle}><span style={labelStyle}>Current Medications:</span> {data.medications || 'None'}</div>
-        {data.additionalNotes && <div style={fieldStyle}><span style={labelStyle}>Additional Notes:</span> {data.additionalNotes}</div>}
+        <h4 style={sectionTitleStyle}>Health Assessment</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ ...fieldStyle, gridColumn: '1 / -1' }}><span style={labelStyle}>Primary Reason:</span> {primaryReason || <em style={{ color: '#9ca3af' }}>Not provided</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Water Intake:</span> {waterIntake || <em style={{ color: '#9ca3af' }}>Not specified</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Exercise:</span> {exerciseFreq || <em style={{ color: '#9ca3af' }}>Not specified</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Sleep:</span> {sleepHours ? `${sleepHours} hrs/night` : <em style={{ color: '#9ca3af' }}>Not specified</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Stress Level:</span> {stressLevel ? `${stressLevel}/10` : <em style={{ color: '#9ca3af' }}>Not specified</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Medications:</span> {medications || <em style={{ color: '#9ca3af' }}>None</em>}</div>
+          <div style={fieldStyle}><span style={labelStyle}>Allergies:</span> {allergies || <em style={{ color: '#9ca3af' }}>None</em>}</div>
+          <div style={{ ...fieldStyle, gridColumn: '1 / -1' }}><span style={labelStyle}>Medical History:</span> {medicalHistory || <em style={{ color: '#9ca3af' }}>None</em>}</div>
+        </div>
       </div>
+      {symptomsList.length > 0 && (
+        <div style={sectionStyle}>
+          <h4 style={sectionTitleStyle}>Reported Symptoms</h4>
+          {Object.keys(symptomsObj).length > 0 ? (
+            Object.entries(symptomsObj).map(([sys, syms]) => Array.isArray(syms) && syms.length > 0 ? (
+              <div key={sys} style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>{sys}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                  {syms.map((s, i) => <span key={i} style={{ background: '#fee2e2', color: '#c41e3a', padding: '3px 10px', borderRadius: '12px', fontSize: '0.82rem' }}>{s}</span>)}
+                </div>
+              </div>
+            ) : null)
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {symptomsList.map((s, i) => <span key={i} style={{ background: '#fee2e2', color: '#c41e3a', padding: '3px 10px', borderRadius: '12px', fontSize: '0.82rem' }}>{s}</span>)}
+            </div>
+          )}
+        </div>
+      )}
       {data.acknowledgedBy && (
         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', marginTop: '12px' }}>
           <div style={{ fontSize: '0.85rem', color: '#059669' }}>
