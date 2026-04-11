@@ -1067,9 +1067,9 @@ function OverviewTab({ branch }) {
 
   const countryBatches = data.batches.filter(b => (b.location || '') === 'country_stock');
   const countryQty = countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const whkBatches = data.batches.filter(b => (b.location || '').toLowerCase().includes('windhoek'));
+  const whkBatches = data.batches.filter(b => b.location === 'windhoek_warehouse');
   const whkQty = whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const ondBatches = data.batches.filter(b => (b.location || '').toLowerCase().includes('ondangwa'));
+  const ondBatches = data.batches.filter(b => b.location === 'ondangwa_warehouse');
   const ondQty = ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
   const fieldQty = data.fieldStock.reduce((s, f) => s + Number(f.balance || 0), 0);
 
@@ -4093,7 +4093,7 @@ function ValuationTab({ branch }) {
   const locationGroups = {};
   filteredBatches.forEach(b => {
     const l = (b.location || 'unknown').toLowerCase();
-    const loc = l.includes('windhoek') ? 'Windhoek' : l.includes('ondangwa') ? 'Ondangwa' : 'Branches & Other';
+    const loc = l === 'windhoek_warehouse' ? 'Windhoek' : l === 'ondangwa_warehouse' ? 'Ondangwa' : 'Branches & Other';
     if (!locationGroups[loc]) locationGroups[loc] = { items: 0, value: 0 };
     const qty = Number(b.quantity || 0);
     const dp = getDP(b.product_name) || Number(b.unit_price || 0);

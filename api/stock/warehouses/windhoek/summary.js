@@ -7,9 +7,9 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
   try {
     const [batches, inbound, outbound] = await Promise.all([
-      getWarehouseBatches('windhoek'),
-      getWarehouseTransfers('windhoek', 'incoming'),
-      getWarehouseTransfers('windhoek', 'outbound'),
+      getWarehouseBatches('windhoek_warehouse'),
+      getWarehouseTransfers('windhoek_warehouse', 'incoming'),
+      getWarehouseTransfers('windhoek_warehouse', 'outbound'),
     ]);
     const summary = buildWarehouseSummary('Windhoek', batches, inbound, outbound);
     res.status(200).json({ success: true, warehouse: summary });

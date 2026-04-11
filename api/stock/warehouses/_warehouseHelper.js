@@ -5,36 +5,35 @@ export async function getWarehouseBatches(warehouseKey) {
     `SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity,
             cif_unit_cost, dpc_unit_value, unit_price, expiry_date, dispatched_quantity, import_date as created_at
      FROM stock_batches
-     WHERE location ILIKE $1
+     WHERE location = $1
      ORDER BY description ASC, expiry_date ASC NULLS LAST`,
-    [`%${warehouseKey}%`]
+    [warehouseKey]
   );
 }
 
 export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
-  const locationFilter = `%${warehouseKey}%`;
   if (direction === 'incoming') {
     return getMany(
-      `SELECT * FROM stock_transfers WHERE to_branch ILIKE $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-      [locationFilter]
+      `SELECT * FROM stock_transfers WHERE to_branch = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
+      [warehouseKey]
     ).catch(() => []);
   }
   if (direction === 'outbound') {
     return getMany(
-      `SELECT * FROM stock_transfers WHERE from_warehouse ILIKE $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-      [locationFilter]
+      `SELECT * FROM stock_transfers WHERE from_warehouse = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
+      [warehouseKey]
     ).catch(() => []);
   }
   return getMany(
-    `SELECT * FROM stock_transfers WHERE (from_warehouse ILIKE $1 OR to_branch ILIKE $1) AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-    [locationFilter]
+    `SELECT * FROM stock_transfers WHERE (from_warehouse = $1 OR to_branch = $1) AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
+    [warehouseKey]
   ).catch(() => []);
 }
 
 export async function getWarehouseMovements(warehouseKey) {
   return getMany(
-    `SELECT * FROM stock_movements WHERE (source_location ILIKE $1 OR destination_location ILIKE $1) ORDER BY created_at DESC LIMIT 500`,
-    [`%${warehouseKey}%`]
+    `SELECT * FROM stock_movements WHERE (source_location = $1 OR destination_location = $1) ORDER BY created_at DESC LIMIT 500`,
+    [warehouseKey]
   ).catch(() => []);
 }
 

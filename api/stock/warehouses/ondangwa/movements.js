@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
   try {
-    const movements = await getWarehouseMovements('ondangwa');
+    const movements = await getWarehouseMovements('ondangwa_warehouse');
     res.status(200).json({ success: true, movements, total: movements.length });
   } catch (err) {
     console.error('Ondangwa movements error:', err);

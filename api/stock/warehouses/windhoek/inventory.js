@@ -11,9 +11,9 @@ export default async function handler(req, res) {
     const batchNo = url.searchParams.get('batchNo') || '';
 
     const [batches, inbound, outbound] = await Promise.all([
-      getWarehouseBatches('windhoek'),
-      getWarehouseTransfers('windhoek', 'incoming'),
-      getWarehouseTransfers('windhoek', 'outbound'),
+      getWarehouseBatches('windhoek_warehouse'),
+      getWarehouseTransfers('windhoek_warehouse', 'incoming'),
+      getWarehouseTransfers('windhoek_warehouse', 'outbound'),
     ]);
 
     let items = formatBatchItems(batches);

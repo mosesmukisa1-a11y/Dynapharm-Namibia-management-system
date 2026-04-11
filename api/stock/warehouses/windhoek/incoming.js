@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
   try {
-    const transfers = await getWarehouseTransfers('windhoek', 'incoming');
+    const transfers = await getWarehouseTransfers('windhoek_warehouse', 'incoming');
     res.status(200).json({ success: true, transfers, total: transfers.length });
   } catch (err) {
     console.error('Windhoek incoming error:', err);

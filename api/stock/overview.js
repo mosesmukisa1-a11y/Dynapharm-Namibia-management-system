@@ -28,8 +28,8 @@ export default async function handler(req, res) {
     const inTransitCount = transfers.filter(t => ['in_transit', 'dispatched'].includes(t.status)).length;
 
     const countryBatches = batches.filter(b => b.location === 'country_stock');
-    const windhoekBatches = batches.filter(b => (b.location || '').toLowerCase().includes('windhoek'));
-    const ondangwaBatches = batches.filter(b => (b.location || '').toLowerCase().includes('ondangwa'));
+    const windhoekBatches = batches.filter(b => b.location === 'windhoek_warehouse');
+    const ondangwaBatches = batches.filter(b => b.location === 'ondangwa_warehouse');
 
     const branchGroups = {};
     branchInv.forEach(b => {
