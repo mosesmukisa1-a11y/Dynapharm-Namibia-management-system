@@ -482,6 +482,11 @@ function CheckupsSection() {
         report_required: reportRequired,
         branch: getBranchId(apt.branch || data.branch || user?.branch || ''),
       });
+      try {
+        await api.appointments.update(apt.id, { status: 'completed' });
+      } catch (statusErr) {
+        console.error('Failed to mark appointment as completed:', statusErr);
+      }
       setShowReport(false);
       setSelectedCheckup(null);
       setSelectedMedicines(new Set());

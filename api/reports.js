@@ -129,6 +129,14 @@ export default async function handler(req, res) {
       const report = normalizeReportRow(result);
       await publishRealtimeEvent('reports', 'create', report);
 
+      if (body.appointment_id) {
+        try {
+          await update('appointments', body.appointment_id, { status: 'completed', updated_at: new Date().toISOString() }, 'id');
+        } catch (e) {
+          console.error('[reports POST] failed to auto-complete appointment:', e.message);
+        }
+      }
+
       const consultFee = Number(body.consultation_fee || 0);
       const pendingMedicines = Array.isArray(body.medicines)
         ? body.medicines.filter(m => !m.dispensed)
