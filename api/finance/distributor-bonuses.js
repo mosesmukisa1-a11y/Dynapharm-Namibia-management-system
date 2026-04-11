@@ -41,6 +41,21 @@ async function ensureTables() {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_bonus_id ON distributor_bonus_payments (bonus_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_branch ON distributor_bonus_payments (branch_id)`);
+  await query(`
+    CREATE TABLE IF NOT EXISTS bonus_period_delete_requests (
+      id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      record_count INTEGER NOT NULL DEFAULT 0,
+      total_earned NUMERIC(14,2) NOT NULL DEFAULT 0,
+      reason TEXT,
+      requested_by TEXT NOT NULL,
+      requested_at TIMESTAMPTZ DEFAULT NOW(),
+      status TEXT NOT NULL DEFAULT 'pending_gm',
+      gm_actioned_by TEXT,
+      gm_actioned_at TIMESTAMPTZ,
+      gm_notes TEXT
+    )
+  `);
 }
 
 function parseExcelFile(buffer) {
@@ -158,6 +173,101 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST' && req.url.includes('/upload')) {
       return handleUpload(req, res);
+    }
+
+    /* ── DELETE REQUEST: Finance submits a period-deletion request ── */
+    if (req.method === 'POST' && req.url.includes('/delete-request')) {
+      const { period, reason } = req.body || {};
+      if (!period) return res.status(400).json({ success: false, error: 'period is required' });
+
+      const existing = await getOne(
+        `SELECT id FROM bonus_period_delete_requests WHERE period = $1 AND status = 'pending_gm'`,
+        [period]
+      );
+      if (existing) {
+        return res.status(409).json({ success: false, error: `A deletion request for period ${period} is already pending GM approval.` });
+      }
+
+      const agg = await getOne(
+        `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_earned), 0) AS total FROM distributor_bonuses WHERE period = $1`,
+        [period]
+      );
+      const recordCount = parseInt(agg?.cnt || 0);
+      if (recordCount === 0) {
+        return res.status(404).json({ success: false, error: `No bonus records found for period ${period}.` });
+      }
+
+      const id = `bdr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await query(
+        `INSERT INTO bonus_period_delete_requests (id, period, record_count, total_earned, reason, requested_by, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending_gm')`,
+        [id, period, recordCount, parseFloat(agg.total || 0), reason || null,
+         req.user.full_name || req.user.username || req.user.id]
+      );
+
+      return res.json({
+        success: true,
+        message: `Deletion request for period ${period} submitted. Awaiting GM approval.`,
+        requestId: id,
+        recordCount,
+        totalEarned: parseFloat(agg.total || 0),
+      });
+    }
+
+    /* ── DELETE REQUEST LIST: Get pending/all delete requests ── */
+    if (req.method === 'GET' && req.url.includes('/delete-requests')) {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const statusFilter = url.searchParams.get('status') || 'pending_gm';
+      const rows = await getMany(
+        `SELECT * FROM bonus_period_delete_requests WHERE status = $1 ORDER BY requested_at DESC`,
+        [statusFilter]
+      );
+      return res.json({ success: true, requests: rows });
+    }
+
+    /* ── DELETE REQUEST ACTION: GM approves or rejects ── */
+    if (req.method === 'PUT' && req.url.includes('/delete-request/')) {
+      const gmRoles = new Set(['admin', 'gm', 'director']);
+      if (!gmRoles.has(req.user.role || '')) {
+        return res.status(403).json({ success: false, error: 'GM access required to action delete requests.' });
+      }
+
+      const urlParts = req.url.split('/');
+      const reqId = urlParts[urlParts.length - 1].split('?')[0];
+      const { action, gm_notes } = req.body || {};
+
+      if (!['approve', 'reject'].includes(action)) {
+        return res.status(400).json({ success: false, error: "action must be 'approve' or 'reject'" });
+      }
+
+      const deleteReq = await getOne(`SELECT * FROM bonus_period_delete_requests WHERE id = $1`, [reqId]);
+      if (!deleteReq) return res.status(404).json({ success: false, error: 'Delete request not found.' });
+      if (deleteReq.status !== 'pending_gm') {
+        return res.status(409).json({ success: false, error: `Request is already ${deleteReq.status}.` });
+      }
+
+      const gmName = req.user.full_name || req.user.username || req.user.id;
+      const newStatus = action === 'approve' ? 'approved' : 'rejected';
+
+      await query(
+        `UPDATE bonus_period_delete_requests
+         SET status = $1, gm_actioned_by = $2, gm_actioned_at = NOW(), gm_notes = $3
+         WHERE id = $4`,
+        [newStatus, gmName, gm_notes || null, reqId]
+      );
+
+      if (action === 'approve') {
+        await query(`DELETE FROM distributor_bonuses WHERE period = $1`, [deleteReq.period]);
+      }
+
+      return res.json({
+        success: true,
+        message: action === 'approve'
+          ? `Period ${deleteReq.period} bonus records deleted (${deleteReq.record_count} records removed).`
+          : `Deletion request for period ${deleteReq.period} rejected.`,
+        action,
+        period: deleteReq.period,
+      });
     }
 
     if (req.method === 'GET') {

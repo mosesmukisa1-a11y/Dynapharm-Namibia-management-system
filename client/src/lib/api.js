@@ -269,6 +269,9 @@ export const api = {
     uploadDistributorBonuses: (formData) => request('/finance/distributor-bonuses/upload', { method: 'POST', body: formData }),
     commitDistributorBonuses: (data) => api.post('/finance/distributor-bonus-commit', data),
     distributorBonusHistory: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/finance/distributor-bonus-history${qs ? '?' + qs : ''}`); },
+    requestBonusPeriodDelete: (data) => api.post('/finance/distributor-bonuses/delete-request', data),
+    getBonusPeriodDeleteRequests: (status = 'pending_gm') => api.get(`/finance/distributor-bonuses/delete-requests?status=${status}`),
+    actionBonusPeriodDeleteRequest: (id, data) => api.put(`/finance/distributor-bonuses/delete-request/${id}`, data),
     pettyCash: {
       accounts: () => api.get('/finance/petty-cash/balance'),
       requests: () => api.get('/finance/petty-cash/requests'),

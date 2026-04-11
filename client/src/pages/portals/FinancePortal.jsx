@@ -1017,6 +1017,11 @@ function BonusCommittedSubTab() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('');
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteMsg, setDeleteMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingDeletes, setPendingDeletes] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -1024,8 +1029,12 @@ function BonusCommittedSubTab() {
       const params = {};
       if (filterStatus) params.status = filterStatus;
       if (filterPeriod) params.period = filterPeriod;
-      const result = await api.finance.distributorBonuses({ ...params, include_payments: true });
+      const [result, delReqs] = await Promise.all([
+        api.finance.distributorBonuses({ ...params, include_payments: true }),
+        api.finance.getBonusPeriodDeleteRequests('pending_gm').catch(() => ({ requests: [] })),
+      ]);
       setBonuses(result.bonuses || []);
+      setPendingDeletes(delReqs.requests || []);
     } catch (err) { setBonuses([]); }
     finally { setLoading(false); }
   };
@@ -1034,12 +1043,83 @@ function BonusCommittedSubTab() {
 
   const totalEarned = bonuses.reduce((s, b) => s + Number(b.amount_earned || 0), 0);
   const totalPaid = bonuses.reduce((s, b) => s + Number(b.amount_paid || 0), 0);
-  const pendingCount = bonuses.filter(b => b.status !== 'paid').length;
 
   const periods = [...new Set(bonuses.map(b => b.period).filter(Boolean))].sort().reverse();
 
+  const periodStats = periods.map(p => {
+    const rows = bonuses.filter(b => b.period === p);
+    return {
+      period: p,
+      count: rows.length,
+      earned: rows.reduce((s, b) => s + Number(b.amount_earned || 0), 0),
+      paid: rows.reduce((s, b) => s + Number(b.amount_paid || 0), 0),
+      hasPending: pendingDeletes.some(d => d.period === p),
+    };
+  });
+
+  const handleRequestDelete = async () => {
+    if (!deleteModal) return;
+    setSubmitting(true);
+    setDeleteMsg('');
+    try {
+      const result = await api.finance.requestBonusPeriodDelete({ period: deleteModal.period, reason: deleteReason });
+      setDeleteMsg(`✅ ${result.message}`);
+      setPendingDeletes(prev => [...prev, { period: deleteModal.period, status: 'pending_gm' }]);
+      setTimeout(() => { setDeleteModal(null); setDeleteReason(''); setDeleteMsg(''); }, 2500);
+    } catch (err) {
+      setDeleteMsg(`❌ ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={20} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Request Period Deletion</h3>
+                <p className="text-sm text-gray-500">This will require GM approval before records are deleted.</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
+              <div className="text-sm font-semibold text-red-800">Period: {deleteModal.period}</div>
+              <div className="text-sm text-red-700">{deleteModal.count} bonus records — Total Earned: {formatCurrency(deleteModal.earned)}</div>
+              {deleteModal.paid > 0 && (
+                <div className="text-xs text-red-600 font-medium">⚠️ {formatCurrency(deleteModal.paid)} has already been paid out — deletion will not reverse payments.</div>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Deletion <span className="text-red-500">*</span></label>
+              <textarea
+                value={deleteReason}
+                onChange={e => setDeleteReason(e.target.value)}
+                rows={3}
+                placeholder="Explain why this entire period should be deleted (e.g. uploaded wrong file, duplicate period)..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              />
+            </div>
+            {deleteMsg && <div className={`text-sm font-medium ${deleteMsg.startsWith('✅') ? 'text-green-700' : 'text-red-600'}`}>{deleteMsg}</div>}
+            <div className="flex gap-3 pt-1">
+              <Button variant="secondary" onClick={() => { setDeleteModal(null); setDeleteReason(''); setDeleteMsg(''); }} className="flex-1">Cancel</Button>
+              <Button
+                variant="danger"
+                onClick={handleRequestDelete}
+                disabled={submitting || !deleteReason.trim()}
+                className="flex-1"
+              >
+                {submitting ? 'Submitting…' : 'Submit for GM Approval'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? <LoadingSpinner /> : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1064,6 +1144,37 @@ function BonusCommittedSubTab() {
             </select>
             <Button size="sm" variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button>
           </div>
+
+          {periodStats.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800">Periods — Delete Management</h3>
+                <p className="text-sm text-gray-500">Request GM approval to delete an entire bonus period upload.</p>
+              </CardHeader>
+              <div className="divide-y divide-gray-100">
+                {periodStats.map(ps => (
+                  <div key={ps.period} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                    <div className="space-y-0.5">
+                      <div className="font-semibold text-gray-900">{ps.period}</div>
+                      <div className="text-xs text-gray-500">{ps.count} records · Earned {formatCurrency(ps.earned)} · Paid {formatCurrency(ps.paid)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {ps.hasPending ? (
+                        <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-3 py-1 rounded-full">Pending GM Approval</span>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteModal(ps)}
+                          className="flex items-center gap-1 text-xs font-medium text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={12} /> Request Deletion
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><h3 className="font-bold text-gray-800">All Committed Bonuses</h3></CardHeader>

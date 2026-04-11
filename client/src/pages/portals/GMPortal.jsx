@@ -572,6 +572,9 @@ function ApprovalsTab() {
   const [adminLeaveRequests, setAdminLeaveRequests] = useState([]);
   const [leaveApprovalModal, setLeaveApprovalModal] = useState(null);
   const [leaveApprovalNote, setLeaveApprovalNote] = useState('');
+  const [bonusDeleteRequests, setBonusDeleteRequests] = useState([]);
+  const [bonusDeleteModal, setBonusDeleteModal] = useState(null);
+  const [bonusDeleteNote, setBonusDeleteNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -607,7 +610,8 @@ function ApprovalsTab() {
       api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
       api.get('/leave-requests/admin?status=pending').then(d => Array.isArray(d) ? d : []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves]) => {
+      api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -618,6 +622,7 @@ function ApprovalsTab() {
       setSalaryEditRequests(salaryReqs);
       setCasRequests(casReqs);
       setAdminLeaveRequests(adminLeaves);
+      setBonusDeleteRequests(bonusDelReqs);
     }).finally(() => setLoading(false));
   };
 
@@ -856,6 +861,7 @@ function ApprovalsTab() {
     { id: 'salary_edits', label: `💼 Salary Edits${salaryEditRequests.length > 0 ? ` (${salaryEditRequests.length})` : ''}` },
     { id: 'cas_approvals', label: `💵 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
     { id: 'leave_approvals', label: `📅 Leave Approvals${adminLeaveRequests.length > 0 ? ` (${adminLeaveRequests.length})` : ''}` },
+    { id: 'bonus_delete', label: `🗑️ Bonus Deletions${bonusDeleteRequests.length > 0 ? ` (${bonusDeleteRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1553,8 +1559,120 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {/* Bonus Period Delete Approvals */}
+      {approvalTab === 'bonus_delete' && (
+        <div className="space-y-4">
+          {bonusDeleteModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 25px 50px rgba(0,0,0,0.25)', padding: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: bonusDeleteModal.action === 'approve' ? '#fef2f2' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 22 }}>{bonusDeleteModal.action === 'approve' ? '🗑️' : '↩️'}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 17, color: '#111827' }}>
+                      {bonusDeleteModal.action === 'approve' ? 'Approve Period Deletion' : 'Reject Period Deletion'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#6b7280' }}>Period: {bonusDeleteModal.req.period}</div>
+                  </div>
+                </div>
+                {bonusDeleteModal.action === 'approve' && (
+                  <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, color: '#991b1b', fontSize: 13 }}>⚠️ This will permanently delete {bonusDeleteModal.req.record_count} bonus records for {bonusDeleteModal.req.period}.</div>
+                    <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 4 }}>Total value: N$ {Number(bonusDeleteModal.req.total_earned || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })} — This action cannot be undone.</div>
+                  </div>
+                )}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 5 }}>Requested by: <span style={{ fontWeight: 400 }}>{bonusDeleteModal.req.requested_by}</span></div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Reason: <span style={{ fontWeight: 400 }}>{bonusDeleteModal.req.reason || '—'}</span></div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>GM Note (optional)</label>
+                  <textarea value={bonusDeleteNote} onChange={e => setBonusDeleteNote(e.target.value)} rows={2} placeholder="Add a note…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setBonusDeleteModal(null); setBonusDeleteNote(''); }} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                  <button
+                    disabled={processing}
+                    onClick={async () => {
+                      setProcessing(true);
+                      try {
+                        const result = await api.finance.actionBonusPeriodDeleteRequest(bonusDeleteModal.req.id, {
+                          action: bonusDeleteModal.action,
+                          gm_notes: bonusDeleteNote || null,
+                        });
+                        setMessage(bonusDeleteModal.action === 'approve'
+                          ? `✅ ${result.message}`
+                          : `↩️ Deletion request for ${bonusDeleteModal.req.period} rejected.`);
+                        setBonusDeleteRequests(prev => prev.filter(r => r.id !== bonusDeleteModal.req.id));
+                        setBonusDeleteModal(null);
+                        setBonusDeleteNote('');
+                      } catch (err) {
+                        setMessage('Error: ' + err.message);
+                      } finally {
+                        setProcessing(false);
+                      }
+                    }}
+                    style={{
+                      flex: 2, padding: '10px', border: 'none', borderRadius: 10, fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1,
+                      background: bonusDeleteModal.action === 'approve' ? 'linear-gradient(135deg,#dc2626,#991b1b)' : 'linear-gradient(135deg,#16a34a,#15803d)',
+                      color: '#fff',
+                    }}>
+                    {processing ? '⏳ Processing…' : bonusDeleteModal.action === 'approve' ? '🗑️ Confirm Delete' : '↩️ Confirm Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {bonusDeleteRequests.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🗑️</div>
+              <div className="font-semibold text-gray-500 text-lg">No Pending Bonus Deletion Requests</div>
+              <div className="text-sm text-gray-400 mt-1">Finance team can request period deletions from the Bonus Committed tab.</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-gray-600 px-1">{bonusDeleteRequests.length} request{bonusDeleteRequests.length !== 1 ? 's' : ''} pending your review.</div>
+              {bonusDeleteRequests.map(r => (
+                <div key={r.id} style={{ background: 'white', borderRadius: 14, border: '2px solid #fca5a5', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '18px 22px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: '#111827', marginBottom: 4 }}>Period: {r.period}</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 2 }}>
+                        <span style={{ fontWeight: 600, color: '#374151' }}>{r.record_count}</span> bonus records ·{' '}
+                        Total Earned: <span style={{ fontWeight: 600, color: '#dc2626' }}>N$ {Number(r.total_earned || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                        Requested by <span style={{ fontWeight: 600, color: '#374151' }}>{r.requested_by}</span>{' '}
+                        · {r.requested_at ? new Date(r.requested_at).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </div>
+                      {r.reason && (
+                        <div style={{ fontSize: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 10px', color: '#374151' }}>
+                          <span style={{ fontWeight: 700 }}>Reason:</span> {r.reason}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setBonusDeleteModal({ req: r, action: 'reject' })}
+                        style={{ padding: '8px 16px', border: '1.5px solid #d1d5db', borderRadius: 9, background: '#f9fafb', color: '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        ↩️ Reject
+                      </button>
+                      <button
+                        onClick={() => setBonusDeleteModal({ req: r, action: 'approve' })}
+                        style={{ padding: '8px 16px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        🗑️ Approve Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && approvalTab !== 'bonus_delete' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 
