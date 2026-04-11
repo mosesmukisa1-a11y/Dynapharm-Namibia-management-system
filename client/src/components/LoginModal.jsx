@@ -53,7 +53,8 @@ export function LoginModal({ open, onClose }) {
         user.role === 'director' ? 'director' :
         user.role === 'mis' ? 'mis' :
         user.role === 'stock' || user.role === 'warehouse' ? 'stock' :
-        user.role === 'finance' ? 'finance' : 'distributor';
+        user.role === 'finance' ? 'finance' :
+        user.role === 'training' || user.role === 'trainer' ? 'training' : 'distributor';
       navigate(`/${firstPortal}`);
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -84,9 +85,10 @@ export function LoginModal({ open, onClose }) {
     e.preventDefault();
     setError('');
     if (!regForm.position.trim()) { setError('Position/Job title is required'); return; }
+    const isTrainerRole = regForm.role === 'training' || regForm.role === 'trainer';
     if (isWarehouseRole(regForm.role)) {
       if (!regForm.warehouseLocation) { setError('Please select your warehouse location'); return; }
-    } else {
+    } else if (!isTrainerRole) {
       if (!regForm.branch) { setError('Please select your branch'); return; }
     }
     setLoading(true);
@@ -202,6 +204,7 @@ export function LoginModal({ open, onClose }) {
                   <option value="gm">General Manager</option>
                   <option value="director">Director</option>
                   <option value="mis">MIS</option>
+                  <option value="training">Trainer</option>
                   <option value="stock_warehouse" disabled style={{color:'#999'}}>── Stock / Warehouse ──</option>
                   <option value="stock">Stock Manager</option>
                   <option value="warehouse">Warehouse Manager</option>

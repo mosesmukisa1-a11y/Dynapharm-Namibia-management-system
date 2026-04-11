@@ -124,6 +124,7 @@ export default async function handler(req, res) {
         file_url: dataUrl,
         file_size: file.size,
         mime_type: mimeType,
+        uploaded_by: req.user?.fullName || req.user?.username || req.user?.id || null,
       });
     }
 

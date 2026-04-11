@@ -9,7 +9,7 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 export default function TrainingPortal() {
   const [activeTab, setActiveTab] = useState('materials');
   const { user } = useAuth();
-  const isTrainer = user?.role === 'admin' || user?.role === 'training' || user?.role === 'gm';
+  const isTrainer = user?.role === 'admin' || user?.role === 'training' || user?.role === 'trainer' || user?.role === 'gm';
 
   const tabs = [
     { id: 'materials', label: 'Training Materials', icon: '📚' },
@@ -202,11 +202,12 @@ function UploadTab() {
       formData.append('type', uploadType === 'photo' ? 'image' : uploadType);
       formData.append('entityName', form.title);
       formData.append('uploadType', uploadType === 'photo' ? 'image' : uploadType);
+      if (form.description) formData.append('description', form.description);
+      if (form.category) formData.append('category', form.category);
 
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
         body: formData,
       });
 

@@ -167,7 +167,7 @@ function UsersTab() {
   const [roleFilter, setRoleFilter] = useState('');
   const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [] });
 
-  const ALL_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'distributor'];
+  const ALL_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer', 'distributor'];
 
   const loadUsers = () => {
     setLoading(true);

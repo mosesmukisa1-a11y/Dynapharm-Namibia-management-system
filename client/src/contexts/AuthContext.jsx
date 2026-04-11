@@ -18,6 +18,7 @@ const ROLE_PORTAL_ACCESS = {
   stock: ['stock'],
   warehouse: ['stock'],
   training: ['training', 'distributor'],
+  trainer: ['training', 'distributor'],
 };
 
 const SESSION_ALIVE_KEY = 'dyna_session_alive';

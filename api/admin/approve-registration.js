@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    const ALLOWED_ROLES = ['frontdesk', 'consultant', 'dispenser', 'branch_manager', 'finance', 'hr_manager', 'gm', 'director', 'mis', 'stock', 'warehouse', 'distributor', 'training'];
+    const ALLOWED_ROLES = ['frontdesk', 'consultant', 'dispenser', 'branch_manager', 'finance', 'hr_manager', 'gm', 'director', 'mis', 'stock', 'warehouse', 'distributor', 'training', 'trainer'];
     const BRANCH_REQUIRED_ROLES = new Set(['frontdesk', 'consultant', 'dispenser', 'branch_manager']);
 
     const user = await getOne('SELECT id, is_active, role, branch, metadata FROM users WHERE id = $1', [userId]);

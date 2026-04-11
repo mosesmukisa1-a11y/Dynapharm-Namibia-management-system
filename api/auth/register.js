@@ -16,6 +16,8 @@ const VALID_ROLES = [
   'mis',
   'stock',
   'warehouse',
+  'training',
+  'trainer',
 ];
 
 function generateUsername(fullName) {
