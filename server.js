@@ -16,11 +16,25 @@ try {
   console.warn('Could not write version.json:', e.message);
 }
 
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
 const app = express();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files (videos, images, documents) — no auth required to stream
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '7d',
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    if (['.mp4', '.webm', '.ogg', '.mov'].includes(ext)) {
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
+  },
+}));
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1576,6 +1590,9 @@ server.on('error', (error) => {
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS distributor_nb VARCHAR(50)`,
       // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
       `ALTER TABLE finance_cash_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
+      // file_uploads: description and category for training content
+      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS description TEXT`,
+      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS category VARCHAR(100)`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

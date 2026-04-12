@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { upload_type } = req.query || {};
-      let query = 'SELECT id, upload_type, entity_id, entity_name, filename, file_url, file_size, mime_type, uploaded_by, uploaded_at FROM file_uploads';
+      let query = 'SELECT id, upload_type, entity_id, entity_name, filename, file_url, file_size, mime_type, uploaded_by, uploaded_at, description, category FROM file_uploads';
       const params = [];
       if (upload_type) {
         query += ' WHERE upload_type = $1';

@@ -117,20 +117,29 @@ function VideosTab() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {videos.map(vid => (
-        <Card key={vid.id} className="hover:shadow-md transition-shadow">
-          <div className="h-40 bg-gray-100 flex items-center justify-center rounded-t-xl">
+        <Card key={vid.id} className="hover:shadow-md transition-shadow overflow-hidden">
+          <div className="bg-black rounded-t-xl overflow-hidden">
             {vid.file_url ? (
-              <video src={vid.file_url} className="h-full w-full object-cover rounded-t-xl" />
+              <video
+                src={vid.file_url}
+                controls
+                preload="metadata"
+                className="w-full max-h-52 object-contain"
+              />
             ) : (
-              <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
-                <Play size={24} className="text-primary ml-1" />
+              <div className="h-40 flex items-center justify-center bg-gray-800">
+                <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
+                  <Play size={24} className="text-primary ml-1" />
+                </div>
               </div>
             )}
           </div>
           <CardBody>
             <h3 className="font-semibold text-gray-900 text-sm">{vid.entity_name || vid.filename || 'Untitled Video'}</h3>
-            <div className="flex items-center gap-2 mt-2">
-              <Badge variant="info">{vid.upload_type || 'video'}</Badge>
+            {vid.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{vid.description}</p>}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {vid.category && <Badge variant="info">{vid.category}</Badge>}
+              {vid.uploaded_by && <span className="text-xs text-gray-400">by {vid.uploaded_by}</span>}
               {vid.file_size && <span className="text-xs text-gray-400">{(vid.file_size / 1024 / 1024).toFixed(1)} MB</span>}
             </div>
           </CardBody>
@@ -187,6 +196,7 @@ function UploadTab() {
   const [form, setForm] = useState({ title: '', description: '', category: 'Products', file: null });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -194,6 +204,7 @@ function UploadTab() {
     if (!form.file) { setMessage('Error: Please select a file'); return; }
 
     setLoading(true);
+    setProgress(0);
     setMessage('');
 
     try {
@@ -205,21 +216,39 @@ function UploadTab() {
       if (form.description) formData.append('description', form.description);
       if (form.category) formData.append('category', form.category);
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
+      // Use XHR for upload progress tracking (fetch doesn't support it)
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable) {
+            setProgress(Math.round((evt.loaded / evt.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.success) resolve(data);
+            else reject(new Error(data.error || 'Upload failed'));
+          } catch {
+            reject(new Error('Server error'));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Network error — check your connection'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out — file may be too large'));
+        xhr.timeout = 10 * 60 * 1000; // 10 minutes for large video files
+        xhr.send(formData);
       });
 
-      const uploadData = await uploadRes.json();
-      if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
-
+      setProgress(100);
       setMessage('Content uploaded successfully! It will be available to staff and distributors.');
       setForm({ title: '', description: '', category: 'Products', file: null });
     } catch (err) {
       setMessage('Error: ' + (err.message || 'Upload failed'));
     } finally {
       setLoading(false);
+      setProgress(0);
     }
   };
 
@@ -266,8 +295,23 @@ function UploadTab() {
               onChange={e => setForm({ ...form, file: e.target.files?.[0] || null })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary/10 file:text-primary" />
           </div>
+          {loading && progress > 0 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>Uploading{uploadType === 'video' ? ' video' : ''}…</span>
+                <span className="font-semibold">{progress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-200"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400">Please keep this tab open until the upload completes.</p>
+            </div>
+          )}
           <Button type="submit" disabled={loading}>
-            <Upload size={14} /> {loading ? 'Uploading...' : `Upload ${uploadType}`}
+            <Upload size={14} /> {loading ? (progress > 0 ? `Uploading… ${progress}%` : 'Preparing…') : `Upload ${uploadType}`}
           </Button>
         </form>
       </CardBody>

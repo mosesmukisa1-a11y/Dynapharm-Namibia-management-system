@@ -1,11 +1,32 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { getOne, insert, update, publishRealtimeEvent } from './db.js';
 import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-const storage = multer.memoryStorage();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Resolve uploads dir relative to the project root (one level up from api/)
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+    cb(null, `upload_${timestamp}_${random}${ext}`);
+  },
+});
+
 const upload = multer({
   storage,
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB — handles full HD videos
 });
 
 function runMulter(req, res) {
@@ -45,14 +66,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'No file provided' });
     }
 
-    const base64 = file.buffer.toString('base64');
     const mimeType = file.mimetype || 'application/octet-stream';
-    const dataUrl = `data:${mimeType};base64,${base64}`;
-
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 10);
-    const ext = (file.originalname || 'file').split('.').pop() || 'bin';
-    const filename = `${uploadType}_${timestamp}_${randomStr}.${ext}`;
+    const filename = file.filename; // assigned by diskStorage
+    const fileUrl = `/uploads/${filename}`; // public URL path served as static
 
     let result = null;
 
@@ -72,8 +88,8 @@ export default async function handler(req, res) {
 
       result = await insert('product_images', {
         product_id: productId,
-        image_url: dataUrl,
-        thumbnail_url: dataUrl,
+        image_url: fileUrl,
+        thumbnail_url: fileUrl,
         filename,
         file_size: file.size,
         mime_type: mimeType,
@@ -93,12 +109,12 @@ export default async function handler(req, res) {
 
         if (distributor) {
           await update('distributors', distributor.id, {
-            photo_url: dataUrl,
+            photo_url: fileUrl,
             photo_filename: filename,
             photo_updated_at: new Date().toISOString(),
           }, 'id').catch(() => {});
 
-          result = { id: distributor.id, distributor_code: distributorCode, photo_url: dataUrl, filename };
+          result = { id: distributor.id, distributor_code: distributorCode, photo_url: fileUrl, filename };
         }
       }
 
@@ -107,7 +123,7 @@ export default async function handler(req, res) {
           upload_type: 'distributor',
           entity_id: distributorCode || null,
           filename,
-          file_url: dataUrl,
+          file_url: fileUrl,
           file_size: file.size,
           mime_type: mimeType,
         });
@@ -121,10 +137,12 @@ export default async function handler(req, res) {
         entity_id: entityId || null,
         entity_name: entityName || null,
         filename,
-        file_url: dataUrl,
+        file_url: fileUrl,
         file_size: file.size,
         mime_type: mimeType,
         uploaded_by: req.user?.fullName || req.user?.username || req.user?.id || null,
+        description: req.body?.description || null,
+        category: req.body?.category || null,
       });
     }
 
@@ -133,7 +151,7 @@ export default async function handler(req, res) {
       file: {
         id: result?.id || null,
         filename,
-        url: dataUrl,
+        url: fileUrl,
         size: file.size,
         type: mimeType,
       },
@@ -142,6 +160,16 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('File upload error:', error);
+
+    // Multer file size error
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        error: 'File too large. Maximum size is 500 MB.',
+        code: 'FILE_TOO_LARGE',
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: error.message || 'Upload failed',
