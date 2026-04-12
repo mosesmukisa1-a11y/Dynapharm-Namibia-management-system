@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { query, getMany, getOne } from './db.js';
 import { applyAuthCors, sanitizeUser } from './_lib/auth.js';
 import { normalizeBranchSlug, normalizeBranchArray } from './_lib/branchUtils.js';
+import { ensureDistributorsTable } from './distributors.js';
 
 function parseBranches(value) {
   if (!value) return [];
@@ -51,12 +52,17 @@ async function parseRequestBody(req) {
 function buildUserResponse(user) {
   const sanitized = sanitizeUser(user);
   if (!sanitized) return null;
+  const isActive = user.is_active ?? true;
   return {
     ...sanitized,
-    isActive: user.is_active ?? true,
+    full_name: user.full_name || user.fullName || sanitized.fullName || null,
+    is_active: isActive,
+    isActive,
     mustChangePassword: user.must_change_password ?? false,
     hasPassword: Boolean(user.password_hash),
-    metadata: user.metadata || null
+    metadata: user.metadata || null,
+    distributor_id: user.distributor_id || null,
+    distributor_branch: user.distributor_branch || null,
   };
 }
 
@@ -85,7 +91,22 @@ async function handleGet(req, res) {
     return res.status(200).json(buildUserResponse(user));
   }
 
-  const rows = await getMany('SELECT * FROM users ORDER BY created_at DESC', []);
+  let rows;
+  try {
+    await ensureDistributorsTable();
+    rows = await getMany(
+      `SELECT u.*,
+              COALESCE(u.full_name, d.distributor_name) AS full_name,
+              d.id AS distributor_id,
+              d.branch AS distributor_branch
+       FROM users u
+       LEFT JOIN distributors d ON LOWER(d.distributor_code) = LOWER(u.username) AND u.role = 'distributor'
+       ORDER BY u.created_at DESC`,
+      []
+    );
+  } catch (_) {
+    rows = await getMany('SELECT * FROM users ORDER BY created_at DESC', []);
+  }
   return res.status(200).json(rows.map(buildUserResponse).filter(Boolean));
 }
 
@@ -191,6 +212,9 @@ async function handlePut(req, res) {
     if (normalizedBranch) {
       updates.push(`branch = $${updates.length + 1}`);
       params.push(normalizedBranch);
+    } else if (body.branch === '' || body.branch === null) {
+      updates.push(`branch = $${updates.length + 1}`);
+      params.push(null);
     }
   }
 
@@ -240,7 +264,26 @@ async function handlePut(req, res) {
     params
   );
 
-  return res.status(200).json(buildUserResponse(result.rows[0]));
+  const updatedUser = result.rows[0];
+
+  // If this is a distributor user and the branch is being updated, sync to distributors table
+  if (body.branch !== undefined && (updatedUser?.role === 'distributor' || existing?.role === 'distributor')) {
+    const normalizedBranch = normalizeBranchSlug(body.branch);
+    const branchValue = normalizedBranch || (body.branch === '' || body.branch === null ? null : undefined);
+    if (branchValue !== undefined) {
+      try {
+        await query(
+          `UPDATE distributors SET branch = $1, updated_at = NOW()
+           WHERE LOWER(distributor_code) = LOWER($2)`,
+          [branchValue, updatedUser.username || existing.username]
+        );
+      } catch (syncErr) {
+        console.warn('[users] Failed to sync branch to distributors table:', syncErr?.message);
+      }
+    }
+  }
+
+  return res.status(200).json(buildUserResponse(updatedUser));
 }
 
 async function handleDelete(req, res) {

@@ -73,6 +73,7 @@ export const api = {
     list: () => api.get('/distributors'),
     get: (id) => api.get(`/distributors/${id}`),
     create: (data) => api.post('/distributors', data),
+    update: (id, data) => api.put('/distributors', { ...data, id }),
     search: (q, activeOnly = false) => api.get(`/distributors/search?q=${encodeURIComponent(q)}&activeOnly=${activeOnly}`),
     byNb: (nb) => api.get(`/distributors/by-nb/${encodeURIComponent(nb)}`),
     bonuses: (nb) => nb ? api.get(`/distributor/bonus?nb=${encodeURIComponent(nb)}`) : api.get('/distributor/bonus'),

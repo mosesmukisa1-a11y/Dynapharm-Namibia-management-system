@@ -165,9 +165,11 @@ function UsersTab() {
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [section, setSection] = useState('staff');
   const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [] });
 
-  const ALL_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer', 'distributor'];
+  const STAFF_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer'];
+  const ALL_ROLES = [...STAFF_ROLES, 'distributor'];
 
   const loadUsers = () => {
     setLoading(true);
@@ -182,7 +184,10 @@ function UsersTab() {
   const handleEdit = (user) => {
     setEditUser(user);
     const additionalRoles = Array.isArray(user.additional_roles) ? user.additional_roles : [];
-    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch: user.branch || '', additional_roles: additionalRoles });
+    const branch = user.role === 'distributor'
+      ? (user.distributor_branch || user.branch || '')
+      : (user.branch || '');
+    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch, additional_roles: additionalRoles });
   };
 
   const toggleAdditionalRole = (role) => {
@@ -227,7 +232,7 @@ function UsersTab() {
     }
     try {
       await api.users.update(resetPwUser.id, { password: newPassword });
-      setMessage(`Password reset successfully for ${resetPwUser.full_name}`);
+      setMessage(`Password reset successfully for ${resetPwUser.full_name || resetPwUser.fullName || resetPwUser.username}`);
       setResetPwUser(null);
       setNewPassword('');
     } catch (err) {
@@ -237,62 +242,113 @@ function UsersTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const roles = [...new Set(users.map(u => u.role).filter(Boolean))];
-  const filtered = roleFilter ? users.filter(u => u.role === roleFilter) : users;
+  const staffUsers = users.filter(u => u.role !== 'distributor');
+  const distributorUsers = users.filter(u => u.role === 'distributor');
+
+  const activeUsers = section === 'staff' ? staffUsers : distributorUsers;
+  const availableRoles = section === 'staff'
+    ? [...new Set(staffUsers.map(u => u.role).filter(Boolean))]
+    : ['distributor'];
+
+  const filtered = roleFilter ? activeUsers.filter(u => u.role === roleFilter) : activeUsers;
+
+  const displayName = (u) => u.full_name || u.fullName || u.username || '-';
 
   return (
     <div>
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => { setSection('staff'); setRoleFilter(''); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${section === 'staff' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <Users size={15} /> Staff
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${section === 'staff' ? 'bg-white/20' : 'bg-gray-200'}`}>{staffUsers.length}</span>
+        </button>
+        <button
+          onClick={() => { setSection('distributors'); setRoleFilter(''); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${section === 'distributors' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <GitBranch size={15} /> Distributors
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${section === 'distributors' ? 'bg-white/20' : 'bg-gray-200'}`}>{distributorUsers.length}</span>
+        </button>
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">User Management</h3>
+            <h3 className="font-bold text-gray-800">{section === 'staff' ? 'Staff Users' : 'Distributor Users'}</h3>
             <div className="flex gap-2 items-center">
-              <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm">
-                <option value="">All Roles</option>
-                {roles.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
+              {section === 'staff' && (
+                <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm">
+                  <option value="">All Roles</option>
+                  {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
               <Badge variant="info">{filtered.length} users</Badge>
             </div>
           </div>
         </CardHeader>
-        <Table
-          columns={[
-            { header: 'Username', key: 'username' },
-            { header: 'Full Name', key: 'full_name' },
-            { header: 'Role', render: r => <Badge variant="info">{r.role}</Badge> },
-            { header: 'Branch', render: r => r.branch || '-' },
-            { header: 'Status', render: r => <Badge variant={r.is_active !== false ? 'success' : 'danger'}>{r.is_active !== false ? 'Active' : 'Inactive'}</Badge> },
-            { header: 'Actions', render: r => (
-              <div className="flex gap-1">
-                <Button size="sm" variant="secondary" onClick={() => handleEdit(r)} title="Edit"><Edit size={14} /></Button>
-                <Button size="sm" variant="secondary" onClick={() => { setResetPwUser(r); setNewPassword(''); }} title="Reset Password"><Key size={14} /></Button>
-                <Button size="sm" variant="danger" onClick={() => setDeleteConfirm(r)} title="Delete"><Trash2 size={14} /></Button>
-              </div>
-            )},
-          ]}
-          data={filtered}
-          emptyMessage="No users found"
-        />
+        {section === 'staff' ? (
+          <Table
+            columns={[
+              { header: 'Username', key: 'username' },
+              { header: 'Full Name', render: r => displayName(r) },
+              { header: 'Role', render: r => <Badge variant="info">{r.role}</Badge> },
+              { header: 'Branch', render: r => r.branch || '-' },
+              { header: 'Status', render: r => <Badge variant={r.is_active !== false ? 'success' : 'danger'}>{r.is_active !== false ? 'Active' : 'Inactive'}</Badge> },
+              { header: 'Actions', render: r => (
+                <div className="flex gap-1">
+                  <Button size="sm" variant="secondary" onClick={() => handleEdit(r)} title="Edit"><Edit size={14} /></Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setResetPwUser(r); setNewPassword(''); }} title="Reset Password"><Key size={14} /></Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleteConfirm(r)} title="Delete"><Trash2 size={14} /></Button>
+                </div>
+              )},
+            ]}
+            data={filtered}
+            emptyMessage="No staff users found"
+          />
+        ) : (
+          <Table
+            columns={[
+              { header: 'NB / Code', key: 'username' },
+              { header: 'Name', render: r => displayName(r) },
+              { header: 'Branch', render: r => r.distributor_branch || r.branch || '-' },
+              { header: 'Status', render: r => <Badge variant={r.is_active !== false ? 'success' : 'danger'}>{r.is_active !== false ? 'Active' : 'Inactive'}</Badge> },
+              { header: 'Actions', render: r => (
+                <div className="flex gap-1">
+                  <Button size="sm" variant="secondary" onClick={() => handleEdit(r)} title="Edit"><Edit size={14} /></Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setResetPwUser(r); setNewPassword(''); }} title="Reset Password"><Key size={14} /></Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleteConfirm(r)} title="Delete"><Trash2 size={14} /></Button>
+                </div>
+              )},
+            ]}
+            data={filtered}
+            emptyMessage="No distributor users found"
+          />
+        )}
       </Card>
 
       <Modal open={!!editUser} onClose={() => setEditUser(null)} title="Edit User" size="md">
         <div className="p-6 space-y-5">
-          <p className="text-sm text-gray-500">Editing: <strong>{editUser?.full_name}</strong> ({editUser?.username})</p>
+          <p className="text-sm text-gray-500">Editing: <strong>{editUser ? displayName(editUser) : ''}</strong> ({editUser?.username})</p>
 
           <div className="grid grid-cols-2 gap-4">
+            {editUser?.role !== 'distributor' && (
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Primary Role</label>
+                <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  {ALL_ROLES.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Primary Role</label>
-              <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                {ALL_ROLES.map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Branch / Location Assignment</label>
+              <label className="block text-sm font-medium text-gray-700">
+                {editUser?.role === 'distributor' ? 'Primary Branch' : 'Branch / Location Assignment'}
+              </label>
               <select value={editForm.branch} onChange={e => setEditForm({ ...editForm, branch: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                 <option value="">No Branch</option>
@@ -303,33 +359,35 @@ function UsersTab() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Additional Roles
-              <span className="ml-2 text-xs text-gray-400 font-normal">Grant access to extra portals alongside the primary role</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              {ALL_ROLES.filter(r => r !== editForm.role).map(r => {
-                const checked = (editForm.additional_roles || []).includes(r);
-                return (
-                  <label key={r} className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${checked ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleAdditionalRole(r)}
-                      className="w-3.5 h-3.5 accent-primary cursor-pointer"
-                    />
-                    {r}
-                  </label>
-                );
-              })}
+          {editUser?.role !== 'distributor' && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Additional Roles
+                <span className="ml-2 text-xs text-gray-400 font-normal">Grant access to extra portals alongside the primary role</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                {ALL_ROLES.filter(r => r !== editForm.role).map(r => {
+                  const checked = (editForm.additional_roles || []).includes(r);
+                  return (
+                    <label key={r} className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${checked ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAdditionalRole(r)}
+                        className="w-3.5 h-3.5 accent-primary cursor-pointer"
+                      />
+                      {r}
+                    </label>
+                  );
+                })}
+              </div>
+              {(editForm.additional_roles || []).length > 0 && (
+                <p className="text-xs text-primary">
+                  Extra access: {editForm.additional_roles.join(', ')}
+                </p>
+              )}
             </div>
-            {(editForm.additional_roles || []).length > 0 && (
-              <p className="text-xs text-primary">
-                Extra access: {editForm.additional_roles.join(', ')}
-              </p>
-            )}
-          </div>
+          )}
 
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700">Active</label>
@@ -349,7 +407,7 @@ function UsersTab() {
 
       <Modal open={!!resetPwUser} onClose={() => setResetPwUser(null)} title="Reset Password">
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600">Resetting password for: <strong>{resetPwUser?.full_name}</strong> ({resetPwUser?.username})</p>
+          <p className="text-sm text-gray-600">Resetting password for: <strong>{resetPwUser ? displayName(resetPwUser) : ''}</strong> ({resetPwUser?.username})</p>
           <Input label="New Password *" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password (min 6 chars)" />
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setResetPwUser(null)}>Cancel</Button>
@@ -361,7 +419,7 @@ function UsersTab() {
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Confirm Delete">
         <div className="p-6">
           <p className="text-sm text-gray-600 mb-4">
-            Are you sure you want to delete user <strong>{deleteConfirm?.full_name}</strong>? This action cannot be undone.
+            Are you sure you want to delete user <strong>{deleteConfirm ? displayName(deleteConfirm) : ''}</strong>? This action cannot be undone.
           </p>
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
