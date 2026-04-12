@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { Modal, Input, Button, Alert } from './ui';
+import { BRANCH_DETAILS } from '../lib/constants';
+import { MapPin } from 'lucide-react';
 
 export function DistributorLoginModal({ open, onClose }) {
   const [tab, setTab] = useState('login');
@@ -14,7 +16,7 @@ export function DistributorLoginModal({ open, onClose }) {
   const [password, setPassword] = useState('');
 
   const [regForm, setRegForm] = useState({
-    nb_number: '', password: '', confirmPassword: '', phone: '', email: '',
+    nb_number: '', password: '', confirmPassword: '', phone: '', email: '', branch: '',
   });
   const [distributorInfo, setDistributorInfo] = useState(null);
   const [lookupDone, setLookupDone] = useState(false);
@@ -32,7 +34,7 @@ export function DistributorLoginModal({ open, onClose }) {
     setError('');
     setLoading(true);
     try {
-      const user = await login(nbNumber.trim().toLowerCase(), password);
+      await login(nbNumber.trim().toLowerCase(), password);
       onClose();
       setNbNumber('');
       setPassword('');
@@ -58,6 +60,7 @@ export function DistributorLoginModal({ open, onClose }) {
       setRegForm(f => ({
         ...f,
         nb_number: data.distributor_code || code,
+        branch: data.branch || '',
       }));
       setLookupDone(true);
     } catch (err) {
@@ -72,6 +75,10 @@ export function DistributorLoginModal({ open, onClose }) {
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
+    if (!regForm.branch) {
+      setError('Please select your primary branch');
+      return;
+    }
     if (!regForm.password || regForm.password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
@@ -87,9 +94,10 @@ export function DistributorLoginModal({ open, onClose }) {
         password: regForm.password,
         phone: regForm.phone,
         email: regForm.email,
+        branch: regForm.branch,
       });
       setSuccess(result.message || 'Account created! Pending admin approval.');
-      setRegForm({ nb_number: '', password: '', confirmPassword: '', phone: '', email: '' });
+      setRegForm({ nb_number: '', password: '', confirmPassword: '', phone: '', email: '', branch: '' });
       setDistributorInfo(null);
       setLookupDone(false);
     } catch (err) {
@@ -163,7 +171,7 @@ export function DistributorLoginModal({ open, onClose }) {
               {error && <Alert type="error">{error}</Alert>}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800 font-medium">Step 1: Verify your NB Number</p>
-                <p className="text-xs text-blue-600 mt-1">Enter your distributor NB number to auto-fill your details.</p>
+                <p className="text-xs text-blue-600 mt-1">Enter the NB number you received when you joined Dynapharm.</p>
               </div>
               <Input
                 label="NB Number"
@@ -181,10 +189,11 @@ export function DistributorLoginModal({ open, onClose }) {
             <form onSubmit={handleRegister} className="space-y-4">
               {error && <Alert type="error">{error}</Alert>}
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-sm text-green-800 font-medium">Step 2: Create your password</p>
-                <p className="text-xs text-green-600 mt-1">Your details have been verified. Set a password to complete registration.</p>
+                <p className="text-sm text-green-800 font-medium">Step 2: Confirm your details &amp; set a password</p>
+                <p className="text-xs text-green-600 mt-1">Your NB number has been verified. Confirm your branch and create a password.</p>
               </div>
 
+              {/* Verified identity card */}
               <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">NB Number:</span>
@@ -194,12 +203,28 @@ export function DistributorLoginModal({ open, onClose }) {
                   <span className="text-gray-500">Name:</span>
                   <span className="font-bold text-gray-800">{distributorInfo?.distributor_name}</span>
                 </div>
-                {distributorInfo?.branch && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Branch:</span>
-                    <span className="text-gray-700">{distributorInfo.branch}</span>
-                  </div>
-                )}
+              </div>
+
+              {/* Branch selector — pre-filled, required */}
+              <div className="space-y-1">
+                <label className="block text-sm font-semibold text-gray-700">
+                  <MapPin size={14} className="inline mr-1 text-primary" />
+                  Primary Branch <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={regForm.branch}
+                  onChange={e => setRegForm(f => ({ ...f, branch: e.target.value }))}
+                  required
+                  className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white appearance-none ${regForm.branch ? 'border-green-400 text-gray-800' : 'border-amber-400 text-gray-400'}`}
+                >
+                  <option value="">— Select your branch —</option>
+                  {BRANCH_DETAILS.map(b => (
+                    <option key={b.id} value={b.name}>{b.name} ({b.region})</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400">
+                  This is the Dynapharm branch where you registered. You can buy products and collect orders here.
+                </p>
               </div>
 
               <Input

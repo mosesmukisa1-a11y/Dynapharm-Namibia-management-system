@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { getOne, getMany, insert } from '../db.js';
+import { getOne, getMany, insert, query } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
 
 export default async function handler(req, res) {
@@ -65,12 +65,16 @@ export default async function handler(req, res) {
     const password = body.password || '';
     const phone = (body.phone || '').trim();
     const email = (body.email || '').trim() || null;
+    const branch = (body.branch || '').trim() || null;
 
     if (!nbNumber) {
       return res.status(400).json({ error: 'NB number is required' });
     }
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    if (!branch) {
+      return res.status(400).json({ error: 'Please select your primary branch' });
     }
 
     const distributor = await getOne(
@@ -102,6 +106,9 @@ export default async function handler(req, res) {
     const passwordHash = await bcrypt.hash(password, salt);
     const id = crypto.randomUUID();
 
+    // Use the distributor's confirmed branch (from the sign-up form)
+    const effectiveBranch = branch || distributor.branch || null;
+
     await insert('users', {
       id,
       username,
@@ -110,7 +117,7 @@ export default async function handler(req, res) {
       full_name: distributor.distributor_name || nbNumber,
       email: email || distributor.email || null,
       phone: phone || distributor.mobile_no || null,
-      branch: distributor.branch || null,
+      branch: effectiveBranch,
       is_active: false,
       metadata: JSON.stringify({
         distributor_code: nbNumber,
@@ -119,11 +126,20 @@ export default async function handler(req, res) {
       }),
     });
 
+    // Sync the confirmed branch back to the distributors table so the list stays accurate
+    if (effectiveBranch) {
+      await query(
+        `UPDATE distributors SET branch = $1 WHERE UPPER(distributor_code) = $2`,
+        [effectiveBranch, nbNumber]
+      ).catch(err => console.warn('Branch sync to distributors table failed (non-critical):', err.message));
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Account created! Your account is pending admin approval. You will be able to login once approved.',
       nb_number: nbNumber,
       name: distributor.distributor_name,
+      branch: effectiveBranch,
     });
   } catch (error) {
     console.error('Distributor registration error:', error);
