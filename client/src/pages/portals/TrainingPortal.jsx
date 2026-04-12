@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Alert, Modal } from '../../components/ui';
@@ -197,6 +197,15 @@ function UploadTab() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const fileInputRef = useRef(null);
+
+  const resetForm = () => {
+    setForm({ title: '', description: '', category: 'Products', file: null });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const fileSizeMB = form.file ? (form.file.size / 1024 / 1024).toFixed(1) : null;
+  const isLargeFile = form.file && form.file.size > 100 * 1024 * 1024;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -227,23 +236,31 @@ function UploadTab() {
           }
         };
         xhr.onload = () => {
+          if (xhr.status === 413) {
+            reject(new Error('File too large for the server to accept. Please compress the video to under 200 MB and try again.'));
+            return;
+          }
+          if (xhr.status === 0 || xhr.status >= 500) {
+            reject(new Error(`Server error (${xhr.status || 'no response'}) — please try again or contact support.`));
+            return;
+          }
           try {
             const data = JSON.parse(xhr.responseText);
             if (data.success) resolve(data);
             else reject(new Error(data.error || 'Upload failed'));
           } catch {
-            reject(new Error('Server error'));
+            reject(new Error(`Server returned an unexpected response (status ${xhr.status})`));
           }
         };
-        xhr.onerror = () => reject(new Error('Network error — check your connection'));
-        xhr.ontimeout = () => reject(new Error('Upload timed out — file may be too large'));
-        xhr.timeout = 10 * 60 * 1000; // 10 minutes for large video files
+        xhr.onerror = () => reject(new Error('Network error — check your connection and try again'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out — the file may be too large. Try compressing the video first.'));
+        xhr.timeout = 15 * 60 * 1000; // 15 minutes for large video files
         xhr.send(formData);
       });
 
       setProgress(100);
       setMessage('Content uploaded successfully! It will be available to staff and distributors.');
-      setForm({ title: '', description: '', category: 'Products', file: null });
+      resetForm();
     } catch (err) {
       setMessage('Error: ' + (err.message || 'Upload failed'));
     } finally {
@@ -291,9 +308,18 @@ function UploadTab() {
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Upload File</label>
-            <input type="file" accept={uploadType === 'video' ? 'video/*' : uploadType === 'photo' ? 'image/*' : '.pdf,.doc,.docx'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={uploadType === 'video' ? 'video/*' : uploadType === 'photo' ? 'image/*' : '.pdf,.doc,.docx'}
               onChange={e => setForm({ ...form, file: e.target.files?.[0] || null })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary/10 file:text-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary/10 file:text-primary"
+            />
+            {fileSizeMB && (
+              <p className={`text-xs mt-1 ${isLargeFile ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                {isLargeFile ? `⚠ Large file (${fileSizeMB} MB) — upload may take several minutes on a slow connection.` : `File size: ${fileSizeMB} MB`}
+              </p>
+            )}
           </div>
           {loading && progress > 0 && (
             <div className="space-y-1">
