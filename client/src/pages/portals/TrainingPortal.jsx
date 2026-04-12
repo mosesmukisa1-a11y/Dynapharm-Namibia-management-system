@@ -93,7 +93,7 @@ function VideosTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/media')
+    api.get('/media?upload_type=training')
       .then(data => {
         const rows = Array.isArray(data) ? data : [];
         setVideos(rows.filter(r => r.mime_type?.startsWith('video/')));
@@ -145,7 +145,7 @@ function PhotosTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/media')
+    api.get('/media?upload_type=training')
       .then(data => {
         const rows = Array.isArray(data) ? data : [];
         setPhotos(rows.filter(r => r.mime_type?.startsWith('image/')));
@@ -199,9 +199,9 @@ function UploadTab() {
     try {
       const formData = new FormData();
       formData.append('file', form.file);
-      formData.append('type', uploadType === 'photo' ? 'image' : uploadType);
+      formData.append('type', 'training');
       formData.append('entityName', form.title);
-      formData.append('uploadType', uploadType === 'photo' ? 'image' : uploadType);
+      formData.append('uploadType', 'training');
       if (form.description) formData.append('description', form.description);
       if (form.category) formData.append('category', form.category);
 

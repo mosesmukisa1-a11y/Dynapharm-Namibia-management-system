@@ -1561,7 +1561,7 @@ function TrainingTab() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      api.get('/media').catch(() => []),
+      api.get('/media?upload_type=training').catch(() => []),
       api.get('/training-schedules').catch(() => []),
     ]).then(([m, s]) => {
       setMedia(Array.isArray(m) ? m : []);
