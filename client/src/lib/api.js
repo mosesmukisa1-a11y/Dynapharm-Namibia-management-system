@@ -54,6 +54,12 @@ export const api = {
     update: (id, data) => api.put(`/branches/${id}`, data),
   },
 
+  campaigns: {
+    list: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/campaigns${qs ? '?' + qs : ''}`); },
+    get: (id) => api.get(`/campaigns/${id}`),
+    enroll: (id, data) => api.post(`/campaigns/${id}/participants`, data),
+  },
+
   orders: {
     list: (params) => {
       const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v != null))).toString() : '';

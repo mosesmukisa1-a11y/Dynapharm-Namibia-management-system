@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import NetworkReportTab from '../../components/NetworkReportTab';
@@ -21,6 +21,7 @@ export default function DistributorPortal() {
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'training', label: 'Training', icon: '🎓' },
+    { id: 'campaigns', label: 'Campaigns', icon: '🎯' },
     { id: 'media', label: 'Media & News', icon: '📰' },
     { id: 'testimonials', label: 'Testimonials', icon: '💬' },
   ];
@@ -38,6 +39,7 @@ export default function DistributorPortal() {
         {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'training' && <TrainingTab />}
+        {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
       </div>
@@ -1549,6 +1551,491 @@ function TestimonialsTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function CampaignsTab() {
+  const { user } = useAuth();
+  const [campaigns, setCampaigns] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState('active');
+  const [purchaseCampaign, setPurchaseCampaign] = useState(null);
+  const nb = (user?.username || '').toUpperCase();
+
+  useEffect(() => {
+    Promise.all([
+      api.campaigns.list().catch(() => ({ campaigns: [] })),
+      api.products.list().catch(() => []),
+      api.branches.list().catch(() => []),
+    ]).then(([campData, prodData, branchData]) => {
+      const camps = Array.isArray(campData) ? campData : campData.campaigns || [];
+      setCampaigns(camps);
+      const raw = Array.isArray(prodData) ? prodData : prodData.products || [];
+      setProducts(enrichProductsWithPricing(raw));
+      const blist = Array.isArray(branchData) ? branchData : branchData.branches || [];
+      setBranches(blist.filter(b => b.status === 'active' || !b.status));
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const safeJson = (val) => {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+  };
+
+  const now = new Date();
+  const activeCampaigns = campaigns.filter(c =>
+    (c.status === 'active' || c.status === 'upcoming') &&
+    c.status !== 'pending_approval' && c.status !== 'rejected'
+  );
+  const completedCampaigns = campaigns.filter(c => c.status === 'completed' || c.status === 'ended');
+
+  const campaignTypeLabel = (type) => ({
+    bv_achievement: { label: 'BV Achievement', color: 'bg-blue-100 text-blue-800', icon: <Trophy size={12} /> },
+    elite_bingo: { label: 'Elite Bingo', color: 'bg-purple-100 text-purple-800', icon: <Zap size={12} /> },
+    buy_x_get_y: { label: 'Buy & Get Free', color: 'bg-green-100 text-green-800', icon: <Gift size={12} /> },
+    discount: { label: 'Discount Sale', color: 'bg-orange-100 text-orange-800', icon: <Tag size={12} /> },
+    custom: { label: 'Special Campaign', color: 'bg-gray-100 text-gray-700', icon: <Megaphone size={12} /> },
+  }[type] || { label: type || 'Campaign', color: 'bg-gray-100 text-gray-700', icon: <Megaphone size={12} /> });
+
+  const isSaleCampaign = (c) => c.campaign_type === 'buy_x_get_y' || c.campaign_type === 'discount';
+
+  const isActive = (c) => {
+    const start = new Date(c.start_date);
+    const end = new Date(c.end_date);
+    return c.status !== 'pending_approval' && c.status !== 'rejected' && now >= start && now <= end;
+  };
+
+  const daysRemaining = (c) => {
+    const end = new Date(c.end_date);
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+    return diff;
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const displayed = subTab === 'active' ? activeCampaigns : completedCampaigns;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-[#c41e3a] to-[#9b1a30] text-white">
+        <div className="flex items-center gap-3 mb-1">
+          <Megaphone size={22} />
+          <h2 className="text-lg font-bold">Campaigns</h2>
+        </div>
+        <p className="text-white/80 text-sm">Participate in promotions, earn prizes, and place campaign orders directly.</p>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-5">
+        {[
+          { id: 'active', label: 'Upcoming & Active', count: activeCampaigns.length },
+          { id: 'completed', label: 'Completed', count: completedCampaigns.length },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+              subTab === t.id
+                ? 'bg-primary text-white border-primary shadow'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-primary/40'
+            }`}>
+            {t.label}
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${subTab === t.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Campaign list */}
+      {displayed.length === 0 ? (
+        <EmptyState
+          icon={<Megaphone size={48} />}
+          title={subTab === 'active' ? 'No Active Campaigns' : 'No Completed Campaigns'}
+          description={subTab === 'active' ? 'Check back soon — new promotions will appear here.' : 'Completed campaigns will be shown here for reference.'}
+        />
+      ) : (
+        <div className="space-y-4">
+          {displayed.map(camp => {
+            const type = campaignTypeLabel(camp.campaign_type);
+            const conditions = safeJson(camp.conditions);
+            const prize = safeJson(camp.prize);
+            const active = isActive(camp);
+            const days = daysRemaining(camp);
+            const canOrder = isSaleCampaign(camp) && active;
+            const isUpcoming = !active && camp.status === 'upcoming';
+
+            return (
+              <Card key={camp.id} className={`overflow-hidden border-2 transition-all ${active ? 'border-green-200' : isUpcoming ? 'border-amber-200' : 'border-gray-100'}`}>
+                {/* Campaign header strip */}
+                <div className={`px-4 py-3 flex items-center justify-between ${active ? 'bg-green-50' : isUpcoming ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${type.color}`}>
+                      {type.icon} {type.label}
+                    </span>
+                    {active && <span className="inline-flex items-center gap-1 text-xs font-bold bg-green-600 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Active</span>}
+                    {isUpcoming && <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full"><Clock size={10} /> Upcoming</span>}
+                    {camp.status === 'completed' && <span className="inline-flex items-center gap-1 text-xs font-bold bg-gray-400 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Completed</span>}
+                    {camp.scope && camp.scope !== 'countrywide' && camp.scope !== 'nationwide' && (
+                      <span className="text-xs text-gray-500 font-medium">{camp.scope}</span>
+                    )}
+                    {(camp.scope === 'countrywide' || camp.scope === 'nationwide') && (
+                      <span className="text-xs text-blue-600 font-semibold">Countrywide</span>
+                    )}
+                  </div>
+                  {active && days > 0 && (
+                    <span className={`text-xs font-bold ${days <= 3 ? 'text-red-600' : 'text-green-700'}`}>
+                      {days} day{days !== 1 ? 's' : ''} left
+                    </span>
+                  )}
+                </div>
+
+                <CardBody>
+                  <h3 className="font-bold text-gray-900 text-base mb-1">{camp.name}</h3>
+                  {camp.description && <p className="text-sm text-gray-500 mb-3">{camp.description}</p>}
+
+                  {/* Dates */}
+                  <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+                    <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <ChevronRight size={12} />
+                    <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(camp.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </div>
+
+                  {/* Campaign-type specific details */}
+                  {camp.campaign_type === 'buy_x_get_y' && (
+                    <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
+                      <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={14} /> Buy & Get Free Deal</p>
+                      <p className="text-green-700">Buy <strong>{conditions.buy_qty || 1}</strong> unit{(conditions.buy_qty || 1) > 1 ? 's' : ''}, get <strong>{conditions.get_qty || 1}</strong> free</p>
+                      {conditions.products_text && (
+                        <p className="text-xs text-gray-600">Eligible products: <strong>{conditions.products_text}</strong></p>
+                      )}
+                      {prize.free_product && (
+                        <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>
+                      )}
+                    </div>
+                  )}
+
+                  {camp.campaign_type === 'discount' && (
+                    <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm">
+                      <p className="font-bold text-orange-800 flex items-center gap-1"><Tag size={14} /> Discount Offer</p>
+                      <p className="text-2xl font-black text-orange-600">{camp.discount_percentage}% OFF</p>
+                      <p className="text-xs text-gray-500 mt-1">On distributor price (DP) at participating branches</p>
+                    </div>
+                  )}
+
+                  {camp.campaign_type === 'bv_achievement' && prize.tiers && (
+                    <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm space-y-2">
+                      <p className="font-bold text-blue-800 flex items-center gap-1"><Trophy size={14} /> Prize Tiers</p>
+                      {(Array.isArray(prize.tiers) ? prize.tiers : []).sort((a, b) => Number(a.bv_required) - Number(b.bv_required)).map((tier, i) => (
+                        <div key={i} className="flex justify-between items-center py-1 border-b border-blue-100 last:border-0">
+                          <span className="text-blue-700 font-medium">{tier.prize || tier.label}</span>
+                          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">{Number(tier.bv_required).toLocaleString()} BV</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {camp.campaign_type === 'elite_bingo' && (
+                    <div className="mb-3 p-3 bg-purple-50 rounded-lg border border-purple-200 text-sm">
+                      <p className="font-bold text-purple-800 flex items-center gap-1"><Zap size={14} /> Elite Bingo Requirements</p>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-purple-700">Min BV: <strong>{Number(conditions.min_bv || 3000).toLocaleString()}</strong></p>
+                        <p className="text-purple-700">Min Recruits: <strong>{conditions.min_recruits || 2}</strong></p>
+                        {(prize.cash_reward || prize.description) && (
+                          <p className="text-green-700 font-semibold">Reward: {prize.cash_reward || prize.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action button */}
+                  {canOrder ? (
+                    <Button variant="success" onClick={() => setPurchaseCampaign(camp)} className="w-full mt-2">
+                      <ShoppingCart size={15} /> Place Campaign Order
+                    </Button>
+                  ) : active && !isSaleCampaign(camp) ? (
+                    <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-700 text-center font-medium">
+                      Accumulate BV through your regular sales to qualify for this campaign's prize.
+                    </div>
+                  ) : isUpcoming ? (
+                    <div className="mt-2 p-2 bg-amber-50 rounded-lg text-xs text-amber-700 text-center font-medium flex items-center justify-center gap-1">
+                      <Clock size={12} /> Starts {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </div>
+                  ) : null}
+                </CardBody>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Campaign Purchase Modal */}
+      {purchaseCampaign && (
+        <CampaignPurchaseModal
+          campaign={purchaseCampaign}
+          products={products}
+          branches={branches}
+          nb={nb}
+          onClose={() => setPurchaseCampaign(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
+  const safeJson = (val) => {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+  };
+
+  const conditions = safeJson(campaign.conditions);
+  const prize = safeJson(campaign.prize);
+  const discountPct = Number(campaign.discount_percentage || 0);
+  const isBuyXGetY = campaign.campaign_type === 'buy_x_get_y';
+  const isDiscount = campaign.campaign_type === 'discount';
+
+  // For buy_x_get_y: eligible products from conditions
+  const eligibleProductNames = conditions.products_text
+    ? conditions.products_text.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const buyQty = Number(conditions.buy_qty || 1);
+  const getQty = Number(conditions.get_qty || 1);
+  const freeProductName = prize.free_product || '';
+
+  // For discount: any product
+  const allProducts = products;
+  const eligibleProducts = isBuyXGetY && eligibleProductNames.length > 0
+    ? products.filter(p => eligibleProductNames.some(n => (p.name || p.description || '').toLowerCase().includes(n)))
+    : products;
+
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [qty, setQty] = useState(isBuyXGetY ? buyQty : 1);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const [done, setDone] = useState(false);
+
+  const selectedBranch = branches.find(b => b.id === selectedBranchId) || null;
+  const selectedProduct = products.find(p => (p.id || p.description) === selectedProductId) || null;
+
+  // First eligible product as default
+  useEffect(() => {
+    if (eligibleProducts.length > 0 && !selectedProductId) {
+      setSelectedProductId(eligibleProducts[0].id || eligibleProducts[0].description);
+    }
+  }, [eligibleProducts.length]);
+
+  // Calculations
+  const baseDp = selectedProduct?.dp || 0;
+  const bvPerUnit = selectedProduct?.bv || 0;
+  const unitPrice = isDiscount ? Math.round(baseDp * (1 - discountPct / 100) * 100) / 100 : baseDp;
+  const totalCost = unitPrice * qty;
+  const totalBV = bvPerUnit * qty;
+  const freeItems = isBuyXGetY ? Math.floor(qty / buyQty) * getQty : 0;
+
+  const handleSubmit = async () => {
+    if (!selectedBranchId) { setMessage('Error: Please select a branch.'); return; }
+    if (!selectedProduct) { setMessage('Error: Please select a product.'); return; }
+    if (qty <= 0) { setMessage('Error: Quantity must be at least 1.'); return; }
+    if (isBuyXGetY && qty < buyQty) {
+      setMessage(`Error: You must buy at least ${buyQty} unit(s) to qualify for this campaign.`);
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage('');
+    try {
+      const productName = selectedProduct.name || selectedProduct.description;
+      const branchName = selectedBranch?.name || selectedBranchId;
+      const items = [
+        {
+          product_id: selectedProduct.id,
+          product_name: productName,
+          quantity: qty,
+          unit_price: unitPrice,
+          bv: bvPerUnit,
+        },
+      ];
+
+      if (isBuyXGetY && freeItems > 0 && freeProductName) {
+        const freeProd = products.find(p =>
+          (p.name || p.description || '').toLowerCase().includes(freeProductName.toLowerCase())
+        );
+        items.push({
+          product_id: freeProd?.id || null,
+          product_name: freeProductName,
+          quantity: freeItems,
+          unit_price: 0,
+          bv: 0,
+          is_free: true,
+        });
+      }
+
+      const campaignNote = isBuyXGetY
+        ? `CAMPAIGN ORDER: ${campaign.name} | Buy ${qty} × ${productName}${freeItems > 0 ? `, get ${freeItems} × ${freeProductName} FREE` : ''} | BV: ${totalBV.toFixed(1)} | Branch: ${branchName} | NB: ${nb}`
+        : `CAMPAIGN ORDER: ${campaign.name} | ${discountPct}% Discount | ${qty} × ${productName} | Cost: N$${totalCost.toFixed(2)} (DP: N$${baseDp.toFixed(2)}) | BV: ${totalBV.toFixed(1)} | Branch: ${branchName} | NB: ${nb}`;
+
+      await api.orders.create({
+        customer_name: nb || 'Distributor',
+        delivery_method: 'pickup',
+        branch_id: selectedBranchId,
+        subtotal: totalCost,
+        items,
+        customer_type: 'member',
+        distributor_code: nb || undefined,
+        payment_method: 'cash',
+        notes: campaignNote,
+      });
+
+      setDone(true);
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Campaign Order — ${campaign.name}`} size="lg">
+      <div className="p-6">
+        {done ? (
+          <div className="text-center py-8 space-y-4">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+              <CheckCircle size={36} className="text-green-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800">Order Submitted!</h3>
+            <p className="text-gray-500 text-sm max-w-sm mx-auto">
+              Your campaign order has been sent to <strong>{selectedBranch?.name}</strong>. Visit the branch to complete payment and collect your products.
+            </p>
+            {isBuyXGetY && freeItems > 0 && (
+              <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-sm text-green-700 font-semibold">
+                Remember to claim your <strong>{freeItems} × {freeProductName}</strong> free item{freeItems > 1 ? 's' : ''} at the branch!
+              </div>
+            )}
+            <Button onClick={onClose} className="mt-2">Done</Button>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'}>{message}</Alert>}
+
+            {/* Campaign info pill */}
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+              {isBuyXGetY && (
+                <p className="text-primary font-semibold flex items-center gap-1">
+                  <Gift size={14} /> Buy {buyQty}, get {getQty} {freeProductName ? `× ${freeProductName}` : 'free'}
+                </p>
+              )}
+              {isDiscount && (
+                <p className="text-orange-700 font-semibold flex items-center gap-1">
+                  <Tag size={14} /> {discountPct}% discount applied on all products
+                </p>
+              )}
+            </div>
+
+            {/* Branch selector */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Processing Branch <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+                  <option value="">— Select a branch —</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Product selector */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                {isBuyXGetY && eligibleProductNames.length > 0 ? 'Eligible Products' : 'Select Product'} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+                  <option value="">— Select a product —</option>
+                  {(isBuyXGetY && eligibleProductNames.length > 0 ? eligibleProducts : allProducts).map(p => (
+                    <option key={p.id || p.description} value={p.id || p.description}>
+                      {p.name || p.description} — DP: N${(p.dp || 0).toFixed(2)} | {p.bv || 0} BV
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Quantity */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Quantity {isBuyXGetY ? <span className="font-normal text-gray-400">(min {buyQty})</span> : ''}
+              </label>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setQty(q => Math.max(isBuyXGetY ? buyQty : 1, q - 1))}
+                  className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 cursor-pointer">
+                  <Minus size={15} />
+                </button>
+                <span className="text-xl font-bold w-10 text-center">{qty}</span>
+                <button onClick={() => setQty(q => q + 1)}
+                  className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 cursor-pointer">
+                  <Plus size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Order summary */}
+            {selectedProduct && (
+              <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Order Summary</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">{selectedProduct.name || selectedProduct.description}</span>
+                  <span className="font-semibold">{qty} unit{qty > 1 ? 's' : ''}</span>
+                </div>
+                {isDiscount && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Original DP</span>
+                    <span className="line-through text-gray-400">{formatCurrency(baseDp)} × {qty}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Unit Price {isDiscount ? `(after ${discountPct}% off)` : '(DP)'}</span>
+                  <span className="font-semibold text-primary">{formatCurrency(unitPrice)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t pt-2 mt-1">
+                  <span className="font-bold text-gray-800">Total Cost</span>
+                  <span className="font-bold text-primary text-lg">{formatCurrency(totalCost)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-blue-700 font-semibold">
+                  <span className="flex items-center gap-1"><Star size={12} /> BV Earned</span>
+                  <span>{totalBV.toFixed(1)} BV</span>
+                </div>
+                {isBuyXGetY && freeItems > 0 && freeProductName && (
+                  <div className="flex justify-between text-sm text-green-700 font-semibold bg-green-50 -mx-1 px-2 py-1.5 rounded-lg mt-1">
+                    <span className="flex items-center gap-1"><Gift size={12} /> Free Items</span>
+                    <span>{freeItems} × {freeProductName}</span>
+                  </div>
+                )}
+                {isBuyXGetY && qty < buyQty && (
+                  <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1.5 rounded-lg">
+                    <AlertCircle size={12} /> Add {buyQty - qty} more to unlock free items
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
+              <Button variant="success" onClick={handleSubmit} disabled={submitting || !selectedBranchId || !selectedProductId} className="flex-1">
+                <Send size={14} /> {submitting ? 'Submitting...' : 'Submit Campaign Order'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
