@@ -3,6 +3,75 @@ import { query } from '../db.js';
 
 const VALID_TYPES = ['warning', 'termination', 'attendance', 'performance'];
 
+const NAMIBIAN_PUBLIC_HOLIDAYS = new Set([
+  '2025-01-01',
+  '2025-03-21',
+  '2025-04-18',
+  '2025-04-19',
+  '2025-04-21',
+  '2025-05-01',
+  '2025-05-04',
+  '2025-05-25',
+  '2025-08-26',
+  '2025-09-10',
+  '2025-10-07',
+  '2025-12-10',
+  '2025-12-25',
+  '2025-12-26',
+  '2026-01-01',
+  '2026-03-21',
+  '2026-04-03',
+  '2026-04-04',
+  '2026-04-06',
+  '2026-05-01',
+  '2026-05-24',
+  '2026-05-25',
+  '2026-08-26',
+  '2026-09-10',
+  '2026-10-07',
+  '2026-12-10',
+  '2026-12-25',
+  '2026-12-26',
+]);
+
+function isNamibianPublicHoliday(dateStr) {
+  return NAMIBIAN_PUBLIC_HOLIDAYS.has(dateStr);
+}
+
+function getDayOfWeek(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getDay();
+}
+
+function isLateArrival(dateStr, clockInTime) {
+  if (!clockInTime) return false;
+  const dayOfWeek = getDayOfWeek(dateStr);
+  const isHoliday = isNamibianPublicHoliday(dateStr);
+  const isSaturday = dayOfWeek === 6;
+  const isSunday = dayOfWeek === 0;
+
+  if (isSunday) return false;
+
+  let [hours, minutes] = clockInTime.split(':').map(Number);
+  const clockInMinutes = hours * 60 + minutes;
+
+  if (isHoliday || isSaturday) {
+    return clockInMinutes > 8 * 60 + 10;
+  }
+  return clockInMinutes > 8 * 60 + 30;
+}
+
+async function isFirstClockInOfDay(employeeName, dateStr, excludeId) {
+  let sql = `SELECT id FROM hr_records WHERE type = 'attendance' AND employee_name = $1 AND date = $2 AND clock_in IS NOT NULL`;
+  const params = [employeeName, dateStr];
+  if (excludeId) {
+    params.push(excludeId);
+    sql += ` AND id != $${params.length}`;
+  }
+  const result = await query(sql, params);
+  return result.rows.length === 0;
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -40,6 +109,21 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'employee_name is required' });
       }
 
+      let finalStatus = status || 'active';
+      let finalSubtype = subtype || null;
+
+      if (type === 'attendance' && clock_in) {
+        const recordDate = date || new Date().toISOString().slice(0, 10);
+        const firstClockIn = await isFirstClockInOfDay(employee_name, recordDate, null);
+        if (firstClockIn && isLateArrival(recordDate, clock_in)) {
+          finalSubtype = 'Late';
+          finalStatus = 'Late';
+        } else if (!finalSubtype) {
+          finalSubtype = 'Present';
+          finalStatus = 'Present';
+        }
+      }
+
       const result = await query(
         `INSERT INTO hr_records
            (type, employee_name, employee_id, subtype, notes, reason, effective_date, date,
@@ -51,7 +135,7 @@ export default async function handler(req, res) {
           type,
           employee_name,
           employee_id || null,
-          subtype || null,
+          finalSubtype,
           notes || null,
           reason || null,
           effective_date || null,
@@ -63,7 +147,7 @@ export default async function handler(req, res) {
           improvements || null,
           goals || null,
           severance ? Number(severance) : null,
-          status || 'active',
+          finalStatus,
           metadata ? JSON.stringify(metadata) : null,
           req.user?.full_name || req.user?.username || null,
         ]

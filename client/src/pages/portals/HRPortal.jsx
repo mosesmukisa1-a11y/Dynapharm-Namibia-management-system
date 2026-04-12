@@ -493,9 +493,14 @@ function AttendanceTab() {
   const [records, setRecords] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '', status: 'Present' });
+  const [form, setForm] = useState({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const getNow = () => {
+    const now = new Date();
+    return now.toTimeString().slice(0, 5);
+  };
 
   const loadData = () => {
     Promise.all([
@@ -518,8 +523,8 @@ function AttendanceTab() {
     setError('');
     setSubmitting(true);
     try {
-      await api.hr.createRecord({ type: 'attendance', employee_name: form.employee_name, date: form.date, clock_in: form.clock_in, clock_out: form.clock_out, subtype: form.status });
-      setForm({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '', status: 'Present' });
+      await api.hr.createRecord({ type: 'attendance', employee_name: form.employee_name, date: form.date, clock_in: form.clock_in, clock_out: form.clock_out });
+      setForm({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '' });
       loadData();
     } catch (err) {
       setError(err.message || 'Failed to log attendance');
@@ -536,31 +541,35 @@ function AttendanceTab() {
         <CardHeader><h3 className="font-bold text-gray-800">Log Attendance</h3></CardHeader>
         <CardBody>
           {error && <Alert type="error" className="mb-4">{error}</Alert>}
-          <form onSubmit={handleSubmit} className="grid md:grid-cols-3 gap-4">
-            <Select
-              label="Employee"
-              value={form.employee_name}
-              onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))}
-              options={[
-                { value: '', label: 'Select Employee' },
-                ...employees.map(emp => ({ value: emp.full_name, label: emp.full_name })),
-              ]}
-            />
-            <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
-            <Select
-              label="Status"
-              value={form.status}
-              onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-              options={[
-                { value: 'Present', label: 'Present' },
-                { value: 'Absent', label: 'Absent' },
-                { value: 'Late', label: 'Late' },
-              ]}
-            />
-            <Input label="Clock In" type="time" value={form.clock_in} onChange={e => setForm(f => ({ ...f, clock_in: e.target.value }))} />
-            <Input label="Clock Out" type="time" value={form.clock_out} onChange={e => setForm(f => ({ ...f, clock_out: e.target.value }))} />
-            <div className="flex items-end">
-              <Button type="submit">Log Attendance</Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <Select
+                label="Employee"
+                value={form.employee_name}
+                onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))}
+                options={[
+                  { value: '', label: 'Select Employee' },
+                  ...employees.map(emp => ({ value: emp.full_name, label: emp.full_name })),
+                ]}
+              />
+              <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Input label="Clock In" type="time" value={form.clock_in} onChange={e => setForm(f => ({ ...f, clock_in: e.target.value }))} />
+                <Button type="button" size="sm" variant="secondary" className="mt-1" onClick={() => setForm(f => ({ ...f, clock_in: getNow() }))}>
+                  <Clock size={13} /> Clock In Now
+                </Button>
+              </div>
+              <div>
+                <Input label="Clock Out" type="time" value={form.clock_out} onChange={e => setForm(f => ({ ...f, clock_out: e.target.value }))} />
+                <Button type="button" size="sm" variant="secondary" className="mt-1" onClick={() => setForm(f => ({ ...f, clock_out: getNow() }))}>
+                  <Clock size={13} /> Clock Out Now
+                </Button>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Log Attendance'}</Button>
             </div>
           </form>
         </CardBody>
@@ -576,7 +585,7 @@ function AttendanceTab() {
             { header: 'Clock Out', key: 'clock_out' },
             { header: 'Status', render: r => {
               const s = r.subtype || r.status || 'Present';
-              return <Badge variant={s === 'Present' ? 'success' : s === 'Late' ? 'warning' : 'danger'}>{s}</Badge>;
+              return <Badge variant={s === 'Late' ? 'warning' : s === 'Present' ? 'success' : s === 'Absent' ? 'danger' : 'info'}>{s}</Badge>;
             }},
           ]}
           data={records}

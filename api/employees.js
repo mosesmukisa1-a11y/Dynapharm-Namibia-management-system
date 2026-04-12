@@ -76,10 +76,12 @@ function normalizeEmployeeRow(row) {
         : []
       : [];
 
+  const fullName = row.full_name || data.full_name || data.name || row.name || 'Team Member';
   return {
     id: row.id,
     employeeId: row.employee_id || row.user_id || data.employeeId || row.id,
-    name: data.name || row.full_name || row.name || 'Team Member',
+    full_name: fullName,
+    name: fullName,
     role: data.role || row.role || '',
     branch: data.branch || row.branch || '',
     branches,
@@ -142,7 +144,7 @@ function buildEmployeeRecord(body, existing = {}) {
     id,
     employee_id: employeeId,
     user_id: employeeId,
-    full_name: body.name || body.fullName || existing.full_name || 'Team Member',
+    full_name: body.full_name || body.name || body.fullName || existing.full_name || 'Team Member',
     role: body.role || existing.role || null,
     branch: body.branch || existing.branch || null,
     branches: Array.isArray(body.branches)
