@@ -1798,19 +1798,27 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const isBuyXGetY = campaign.campaign_type === 'buy_x_get_y';
   const isDiscount = campaign.campaign_type === 'discount';
 
-  // For buy_x_get_y: eligible products from conditions
-  const eligibleProductNames = conditions.products_text
-    ? conditions.products_text.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-    : [];
   const buyQty = Number(conditions.buy_qty || 1);
   const getQty = Number(conditions.get_qty || 1);
   const freeProductName = prize.free_product || '';
 
+  // For buy_x_get_y: eligible products come from conditions.products_text first,
+  // then fall back to prize.free_product (paid item is the same product you get free),
+  // then fall back to the campaign name itself for partial matches.
+  const rawEligibleNames = conditions.products_text
+    ? conditions.products_text.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+    : freeProductName
+      ? [freeProductName.toLowerCase()]
+      : [];
+
+  const eligibleProducts = isBuyXGetY && rawEligibleNames.length > 0
+    ? products.filter(p =>
+        rawEligibleNames.some(n => (p.name || p.description || '').toLowerCase().includes(n))
+      )
+    : products;
+
   // For discount: any product
   const allProducts = products;
-  const eligibleProducts = isBuyXGetY && eligibleProductNames.length > 0
-    ? products.filter(p => eligibleProductNames.some(n => (p.name || p.description || '').toLowerCase().includes(n)))
-    : products;
 
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -1822,12 +1830,13 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const selectedBranch = branches.find(b => b.id === selectedBranchId) || null;
   const selectedProduct = products.find(p => (p.id || p.description) === selectedProductId) || null;
 
-  // First eligible product as default
+  // Auto-select when only one eligible product (or any first match)
   useEffect(() => {
-    if (eligibleProducts.length > 0 && !selectedProductId) {
-      setSelectedProductId(eligibleProducts[0].id || eligibleProducts[0].description);
+    const pool = isBuyXGetY && rawEligibleNames.length > 0 ? eligibleProducts : allProducts;
+    if (pool.length > 0 && !selectedProductId) {
+      setSelectedProductId(pool[0].id || pool[0].description);
     }
-  }, [eligibleProducts.length]);
+  }, [eligibleProducts.length, allProducts.length]);
 
   // Calculations
   const baseDp = selectedProduct?.dp || 0;
@@ -1950,23 +1959,38 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
             </div>
 
             {/* Product selector */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                {isBuyXGetY && eligibleProductNames.length > 0 ? 'Eligible Products' : 'Select Product'} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
-                  <option value="">— Select a product —</option>
-                  {(isBuyXGetY && eligibleProductNames.length > 0 ? eligibleProducts : allProducts).map(p => (
-                    <option key={p.id || p.description} value={p.id || p.description}>
-                      {p.name || p.description} — DP: N${(p.dp || 0).toFixed(2)} | {p.bv || 0} BV
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            {isBuyXGetY && eligibleProducts.length === 1 ? (
+              /* Single campaign product — show as read-only pill, no dropdown needed */
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Campaign Product</label>
+                <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+                  <Package size={18} className="text-green-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">{eligibleProducts[0].name || eligibleProducts[0].description}</p>
+                    <p className="text-xs text-gray-500">DP: {formatCurrency(eligibleProducts[0].dp || 0)} &nbsp;|&nbsp; {eligibleProducts[0].bv || 0} BV per unit</p>
+                  </div>
+                  <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full shrink-0">Campaign Product</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  {isBuyXGetY && eligibleProducts.length > 0 ? `Eligible Products (${eligibleProducts.length})` : 'Select Product'} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+                    <option value="">— Select a product —</option>
+                    {(isBuyXGetY && rawEligibleNames.length > 0 ? eligibleProducts : allProducts).map(p => (
+                      <option key={p.id || p.description} value={p.id || p.description}>
+                        {p.name || p.description} — DP: N${(p.dp || 0).toFixed(2)} | {p.bv || 0} BV
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
 
             {/* Quantity */}
             <div>
