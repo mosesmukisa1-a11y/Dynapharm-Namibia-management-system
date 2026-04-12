@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import NetworkReportTab from '../../components/NetworkReportTab';
@@ -607,27 +607,33 @@ function DashboardTab() {
 function ShopTab() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [orderMode, setOrderMode] = useState('own'); // 'own' | 'client'
+  const [orderMode, setOrderMode] = useState('own');
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState('');
 
   const nb = (user?.username || '').toUpperCase();
 
   useEffect(() => {
-    api.products.list()
-      .then(data => {
-        const raw = Array.isArray(data) ? data : data.products || [];
-        setProducts(enrichProductsWithPricing(raw));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.products.list().catch(() => []),
+      api.branches.list().catch(() => []),
+    ]).then(([prodData, branchData]) => {
+      const raw = Array.isArray(prodData) ? prodData : prodData.products || [];
+      setProducts(enrichProductsWithPricing(raw));
+      const blist = Array.isArray(branchData) ? branchData : branchData.branches || [];
+      setBranches(blist.filter(b => b.status === 'active' || !b.status));
+    }).finally(() => setLoading(false));
   }, []);
+
+  const selectedBranch = branches.find(b => b.id === selectedBranchId) || null;
 
   const filtered = products.filter(p => !search || (p.name || p.description || '').toLowerCase().includes(search.toLowerCase()));
 
@@ -653,30 +659,32 @@ function ShopTab() {
     setCart(prev => prev.filter(c => (c.id || c.description) !== productId));
   };
 
-  // For own stock: DP pricing. For client stock: show DP (distributor cost) + CP (retail to client) for reference
   const cartTotals = calculateCartTotals(cart, true);
 
-  // For client orders compute potential retail profit (CP - DP per item)
   const clientCartProfit = cart.reduce((sum, item) => {
     const product = products.find(p => (p.id || p.description) === (item.id || item.description));
     if (!product) return sum;
-    const cp = product.cp || 0;
-    const dp = product.dp || 0;
-    return sum + (cp - dp) * item.qty;
+    return sum + ((product.cp || 0) - (product.dp || 0)) * item.qty;
   }, 0);
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    if (!selectedBranchId) {
+      setMessage('Error: Please select a branch where this order will be processed.');
+      return;
+    }
     if (orderMode === 'client' && !clientName.trim()) {
       setMessage('Error: Please enter the client name for a Client Stock order.');
       return;
     }
     setSubmitting(true);
     try {
+      const branchNote = selectedBranch ? `Branch: ${selectedBranch.name}` : `Branch ID: ${selectedBranchId}`;
       if (orderMode === 'own') {
         await api.orders.create({
           customer_name: nb || 'Distributor Order',
           delivery_method: 'pickup',
+          branch_id: selectedBranchId,
           subtotal: cartTotals.totalAmount,
           items: cartTotals.items.map(item => ({
             product_id: item.id,
@@ -688,15 +696,15 @@ function ShopTab() {
           customer_type: 'member',
           distributor_code: nb || undefined,
           payment_method: 'cash',
-          notes: `Own Stock — Distributor purchase | Pricing: DP | Total BV: ${cartTotals.totalBV.toFixed(1)} | NB: ${nb}`,
+          notes: `Own Stock — Distributor purchase | ${branchNote} | Pricing: DP | Total BV: ${cartTotals.totalBV.toFixed(1)} | NB: ${nb}`,
         });
-        setMessage('Own stock order submitted! Branch will process your order.');
+        setMessage(`Own stock order submitted to ${selectedBranch?.name || 'branch'}! They will process your order.`);
       } else {
-        // Client stock — referral order, branch records profit for this distributor
         await api.orders.create({
           customer_name: clientName.trim(),
           customer_phone: clientPhone.trim() || undefined,
           delivery_method: 'pickup',
+          branch_id: selectedBranchId,
           subtotal: cartTotals.totalAmount,
           items: cartTotals.items.map(item => ({
             product_id: item.id,
@@ -709,9 +717,9 @@ function ShopTab() {
           distributor_code: nb || undefined,
           payment_method: 'cash',
           order_type: 'client_referral',
-          notes: `Client Stock — Referred by ${nb} | Client: ${clientName.trim()}${clientPhone.trim() ? ' (' + clientPhone.trim() + ')' : ''} | Potential Profit: N$${clientCartProfit.toFixed(2)} | Pricing: DP (distributor cost)`,
+          notes: `Client Stock — Referred by ${nb} | ${branchNote} | Client: ${clientName.trim()}${clientPhone.trim() ? ' (' + clientPhone.trim() + ')' : ''} | Potential Profit: N$${clientCartProfit.toFixed(2)} | Total BV: ${cartTotals.totalBV.toFixed(1)} | Pricing: DP`,
         });
-        setMessage(`Client stock order for ${clientName.trim()} submitted! Branch will process and credit your retail profit.`);
+        setMessage(`Client order for ${clientName.trim()} submitted to ${selectedBranch?.name || 'branch'}! Your retail profit will appear in your BV & Profit tab after processing.`);
         setClientName('');
         setClientPhone('');
       }
@@ -730,37 +738,54 @@ function ShopTab() {
     <div>
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
 
+      {/* Branch selector — required */}
+      <div className="mb-5 p-4 rounded-xl border-2 bg-gray-50" style={{ borderColor: selectedBranchId ? '#16a34a' : '#f59e0b' }}>
+        <div className="flex items-center gap-2 mb-2">
+          <MapPin size={18} style={{ color: selectedBranchId ? '#16a34a' : '#d97706' }} />
+          <span className="font-bold text-sm text-gray-800">Processing Branch <span className="text-red-500">*</span></span>
+          {selectedBranch && <span className="ml-auto text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ {selectedBranch.name}</span>}
+        </div>
+        <p className="text-xs text-gray-500 mb-3">Select the Dynapharm branch where you will collect and pay for this order.</p>
+        <div className="relative">
+          <select
+            value={selectedBranchId}
+            onChange={e => setSelectedBranchId(e.target.value)}
+            className="w-full text-sm border rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+            style={{ borderColor: selectedBranchId ? '#16a34a' : '#d1d5db' }}>
+            <option value="">— Select a branch —</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>{b.name}{b.location && b.location !== b.name ? ` (${b.location})` : ''}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        </div>
+      </div>
+
       {/* Order mode selector */}
       <div className="mb-4 grid grid-cols-2 gap-3">
         <button onClick={() => { setOrderMode('own'); setCart([]); }}
           className="p-3 rounded-xl border-2 text-left cursor-pointer transition-all"
-          style={{
-            borderColor: orderMode === 'own' ? '#c41e3a' : '#e2e8f0',
-            background: orderMode === 'own' ? '#fff5f5' : '#fff',
-          }}>
+          style={{ borderColor: orderMode === 'own' ? '#c41e3a' : '#e2e8f0', background: orderMode === 'own' ? '#fff5f5' : '#fff' }}>
           <div className="flex items-center gap-2 mb-1">
             <ShoppingBag size={18} style={{ color: orderMode === 'own' ? '#c41e3a' : '#94a3b8' }} />
             <span className={`font-bold text-sm ${orderMode === 'own' ? 'text-[#c41e3a]' : 'text-gray-600'}`}>Own Stock</span>
-            {orderMode === 'own' && <span className="ml-auto text-[#c41e3a] text-xs font-bold">✓ Selected</span>}
+            {orderMode === 'own' && <span className="ml-auto text-[#c41e3a] text-xs font-bold">✓</span>}
           </div>
-          <p className="text-xs text-gray-500">Buy for yourself at Distributor Price (DP). BV points credited to your account.</p>
+          <p className="text-xs text-gray-500">Buy at Distributor Price (DP). BV credited to your account.</p>
         </button>
         <button onClick={() => { setOrderMode('client'); setCart([]); }}
           className="p-3 rounded-xl border-2 text-left cursor-pointer transition-all"
-          style={{
-            borderColor: orderMode === 'client' ? '#1e40af' : '#e2e8f0',
-            background: orderMode === 'client' ? '#eff6ff' : '#fff',
-          }}>
+          style={{ borderColor: orderMode === 'client' ? '#1e40af' : '#e2e8f0', background: orderMode === 'client' ? '#eff6ff' : '#fff' }}>
           <div className="flex items-center gap-2 mb-1">
             <User size={18} style={{ color: orderMode === 'client' ? '#1e40af' : '#94a3b8' }} />
-            <span className={`font-bold text-sm ${orderMode === 'client' ? 'text-blue-700' : 'text-gray-600'}`}>Client Stock</span>
-            {orderMode === 'client' && <span className="ml-auto text-blue-700 text-xs font-bold">✓ Selected</span>}
+            <span className={`font-bold text-sm ${orderMode === 'client' ? 'text-blue-700' : 'text-gray-600'}`}>Client Order</span>
+            {orderMode === 'client' && <span className="ml-auto text-blue-700 text-xs font-bold">✓</span>}
           </div>
-          <p className="text-xs text-gray-500">Order for a client. Branch records a referral sale — you earn the retail profit (CP − DP).</p>
+          <p className="text-xs text-gray-500">Order for a client at DP. You earn the retail profit (CP − DP).</p>
         </button>
       </div>
 
-      {/* Client details for client stock */}
+      {/* Client details */}
       {orderMode === 'client' && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
           <p className="text-sm font-semibold text-blue-800">Client Details</p>
@@ -778,12 +803,11 @@ function ShopTab() {
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
           </div>
-          <p className="text-xs text-blue-600">
-            You will be tagged as the referral distributor. After the branch processes this order, your retail profit will appear in your BV & Profit tab.
-          </p>
+          <p className="text-xs text-blue-600">After the branch processes this order, your retail profit will appear in your BV & Profit tab.</p>
         </div>
       )}
 
+      {/* Search + cart button */}
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -800,25 +824,34 @@ function ShopTab() {
         </Button>
       </div>
 
+      {/* Pricing mode label */}
       <div className={`mb-3 px-3 py-2 rounded-lg text-sm font-medium border ${orderMode === 'own' ? 'bg-primary/5 border-primary/20 text-primary' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
         {orderMode === 'own'
-          ? 'Own Stock — Distributor Price (DP) with BV tracking'
-          : 'Client Stock — Ordered at DP cost; client pays CP at branch. You earn the margin.'}
+          ? 'Ordering at Distributor Price (DP) — BV earned on every product'
+          : 'Ordering at DP cost for a client — you earn the CP − DP margin as retail profit'}
       </div>
 
+      {/* Cart mini summary */}
       {cart.length > 0 && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center">
-          <span className="text-sm text-green-700">
-            <strong>{cart.reduce((s, c) => s + c.qty, 0)}</strong> items | Total (DP): <strong>{formatCurrency(cartTotals.totalAmount)}</strong> | BV: <strong>{cartTotals.totalBV.toFixed(1)}</strong>
-            {orderMode === 'client' && clientCartProfit > 0 && <span className="ml-2 text-blue-700"> | Est. Profit: <strong>{formatCurrency(clientCartProfit)}</strong></span>}
-          </span>
-          <Button size="sm" variant="success" onClick={() => setShowCart(true)}>View Cart</Button>
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-green-800 space-y-0.5">
+              <div><strong>{cart.reduce((s, c) => s + c.qty, 0)}</strong> items &nbsp;|&nbsp; Total (DP): <strong>{formatCurrency(cartTotals.totalAmount)}</strong> &nbsp;|&nbsp; Total BV: <strong className="text-blue-700">{cartTotals.totalBV.toFixed(1)}</strong></div>
+              {orderMode === 'client' && clientCartProfit > 0 && (
+                <div className="text-green-700 font-semibold flex items-center gap-1"><TrendingUp size={13} /> Est. Retail Profit: {formatCurrency(clientCartProfit)}</div>
+              )}
+            </div>
+            <Button size="sm" variant="success" onClick={() => setShowCart(true)}>View Cart</Button>
+          </div>
         </div>
       )}
 
+      {/* Product grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((product, idx) => {
           const imgSrc = (product.images && product.images.length > 0) ? (product.images[0].image_data || product.images[0].image_url || '') : '';
+          const margin = (product.cp || 0) - (product.dp || 0);
+          const inCart = cart.find(c => (c.id || c.description) === (product.id || product.description));
           return (
             <Card key={product.id || idx} className="hover:shadow-md transition-shadow overflow-hidden">
               {imgSrc ? (
@@ -829,64 +862,119 @@ function ShopTab() {
                 </div>
               )}
               <CardBody>
-                <h3 className="font-semibold text-gray-900 text-sm mb-1">{product.name || product.description}</h3>
-                <div className="flex items-center justify-between mt-2">
+                <h3 className="font-semibold text-gray-900 text-sm mb-2 leading-snug">{product.name || product.description}</h3>
+
+                {/* Price row */}
+                <div className="flex items-center justify-between mb-1">
                   <div>
-                    <span className="text-lg font-bold text-primary">{formatCurrency(product.dp)}</span>
+                    <span className="text-base font-bold text-primary">{formatCurrency(product.dp)}</span>
                     <span className="text-xs text-gray-400 ml-1">DP</span>
-                    {product.bv > 0 && <span className="text-xs text-blue-600 ml-2">{product.bv} BV</span>}
+                    {product.cp > product.dp && (
+                      <span className="text-xs text-gray-400 ml-2">CP: {formatCurrency(product.cp)}</span>
+                    )}
                   </div>
-                  <Button size="sm" onClick={() => addToCart(product)}><Plus size={14} /> Add</Button>
                 </div>
-                {product.cp > product.dp && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Retail (CP): {formatCurrency(product.cp)}
-                    {orderMode === 'client' && <span className="text-green-600 font-semibold ml-1">+{formatCurrency(product.cp - product.dp)} profit</span>}
-                  </p>
-                )}
+
+                {/* BV + profit row */}
+                <div className="flex items-center gap-2 mb-2">
+                  {product.bv > 0 && (
+                    <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{product.bv} BV</span>
+                  )}
+                  {orderMode === 'client' && margin > 0 && (
+                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <TrendingUp size={10} /> +{formatCurrency(margin)} profit
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  {inCart ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <button onClick={() => updateQty(product.id || product.description, -1)}
+                        className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-300">
+                        <Minus size={13} />
+                      </button>
+                      <span className="text-sm font-bold w-5 text-center">{inCart.qty}</span>
+                      <button onClick={() => updateQty(product.id || product.description, 1)}
+                        className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-300">
+                        <Plus size={13} />
+                      </button>
+                      <span className="text-xs text-gray-500 ml-1">{formatCurrency(product.dp * inCart.qty)}</span>
+                    </div>
+                  ) : (
+                    <Button size="sm" onClick={() => addToCart(product)} className="flex-1">
+                      <Plus size={14} /> Add to Cart
+                    </Button>
+                  )}
+                </div>
               </CardBody>
             </Card>
           );
         })}
       </div>
 
-      <Modal open={showCart} onClose={() => setShowCart(false)} title={orderMode === 'own' ? 'Cart — Own Stock' : `Cart — Client Stock${clientName ? ': ' + clientName : ''}`} size="lg">
+      {/* Cart modal */}
+      <Modal open={showCart} onClose={() => setShowCart(false)}
+        title={orderMode === 'own' ? 'Cart — Own Stock' : `Cart — Client Order${clientName ? ': ' + clientName : ''}`} size="lg">
         <div className="p-6">
           {cart.length === 0 ? (
             <EmptyState icon={<ShoppingCart size={48} />} title="Cart is Empty" description="Add products to your cart to place an order." />
           ) : (
             <div>
-              {orderMode === 'client' && (
-                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm">
-                  <span className="font-semibold text-blue-800">Client:</span> {clientName || <span className="text-red-500 italic">Not entered — please go back and fill in client name</span>}
-                  {clientPhone && <span className="text-gray-500 ml-2">({clientPhone})</span>}
-                </div>
-              )}
-              <div className="space-y-3 mb-6">
+              {/* Branch & client info */}
+              <div className="mb-4 space-y-2">
+                {selectedBranch ? (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-200 text-sm">
+                    <MapPin size={15} className="text-green-600" />
+                    <span className="font-semibold text-green-800">Processing at:</span>
+                    <span className="text-green-700">{selectedBranch.name}</span>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-700 font-medium">
+                    No branch selected — please select a branch before submitting.
+                  </div>
+                )}
+                {orderMode === 'client' && (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm">
+                    <span className="font-semibold text-blue-800">Client:</span>{' '}
+                    {clientName || <span className="text-red-500 italic">Not entered — go back and fill in client name</span>}
+                    {clientPhone && <span className="text-gray-500 ml-2">({clientPhone})</span>}
+                  </div>
+                )}
+              </div>
+
+              {/* Line items */}
+              <div className="space-y-2 mb-5">
                 {cartTotals.items.map((item, idx) => {
                   const product = products.find(p => (p.id || p.description) === (item.id || item.description));
                   const profit = product ? ((product.cp || 0) - (product.dp || 0)) * item.qty : 0;
                   return (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-800">{item.name || item.description}</p>
-                        <p className="text-xs text-gray-500">{formatCurrency(item.unitPrice)} x {item.qty} = {formatCurrency(item.lineTotal)}</p>
-                        {item.lineBV > 0 && <p className="text-xs text-blue-500">{item.lineBV.toFixed(1)} BV</p>}
-                        {orderMode === 'client' && profit > 0 && <p className="text-xs text-green-600 font-semibold">Est. profit: {formatCurrency(profit)}</p>}
+                    <div key={idx} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 leading-snug">{item.name || item.description}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{formatCurrency(item.unitPrice)} × {item.qty} = <strong>{formatCurrency(item.lineTotal)}</strong></p>
+                        <div className="flex gap-2 mt-1">
+                          {item.lineBV > 0 && (
+                            <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-1.5 py-0.5 rounded">{item.lineBV.toFixed(1)} BV</span>
+                          )}
+                          {orderMode === 'client' && profit > 0 && (
+                            <span className="text-xs bg-green-100 text-green-700 font-semibold px-1.5 py-0.5 rounded">+{formatCurrency(profit)} profit</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button onClick={() => updateQty(item.id || item.description, -1)}
                           className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-300">
-                          <Minus size={14} />
+                          <Minus size={13} />
                         </button>
-                        <span className="text-sm font-bold w-6 text-center">{item.qty}</span>
+                        <span className="text-sm font-bold w-5 text-center">{item.qty}</span>
                         <button onClick={() => updateQty(item.id || item.description, 1)}
                           className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-300">
-                          <Plus size={14} />
+                          <Plus size={13} />
                         </button>
                         <button onClick={() => removeFromCart(item.id || item.description)}
-                          className="ml-2 text-red-400 hover:text-red-600 cursor-pointer">
-                          <Trash2 size={16} />
+                          className="ml-1 text-red-400 hover:text-red-600 cursor-pointer">
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </div>
@@ -894,30 +982,35 @@ function ShopTab() {
                 })}
               </div>
 
-              <div className="border-t pt-4 space-y-2">
+              {/* Order summary panel */}
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-2 mb-5">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Order Summary</p>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Total (DP cost)</span>
+                  <span className="text-gray-600">Subtotal (DP price)</span>
                   <span className="font-bold">{formatCurrency(cartTotals.totalAmount)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Total BV</span>
-                  <span className="font-bold text-primary">{cartTotals.totalBV.toFixed(1)}</span>
+                  <span className="text-gray-600">Total Items</span>
+                  <span className="font-semibold">{cart.reduce((s, c) => s + c.qty, 0)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t pt-2 mt-1">
+                  <span className="text-blue-700 font-semibold flex items-center gap-1"><Star size={13} /> Total BV Earned</span>
+                  <span className="font-bold text-blue-700">{cartTotals.totalBV.toFixed(1)} BV</span>
                 </div>
                 {orderMode === 'client' && clientCartProfit > 0 && (
-                  <div className="flex justify-between text-sm text-green-700 font-semibold">
-                    <span>Estimated Retail Profit</span>
-                    <span>{formatCurrency(clientCartProfit)}</span>
+                  <div className="flex justify-between text-sm border-t pt-2 mt-1">
+                    <span className="text-green-700 font-semibold flex items-center gap-1"><TrendingUp size={13} /> Est. Retail Profit</span>
+                    <span className="font-bold text-green-700">{formatCurrency(clientCartProfit)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-lg font-bold mt-2 pt-2 border-t">
-                  <span>Total</span>
-                  <span className="text-primary">{formatCurrency(cartTotals.totalAmount)}</span>
-                </div>
+                {orderMode === 'client' && clientCartProfit > 0 && (
+                  <p className="text-xs text-gray-400 pt-1">Profit = Consumer Price (CP) − Distributor Price (DP) × quantity. Paid out by the branch after processing.</p>
+                )}
               </div>
 
-              <div className="mt-6 flex gap-3 justify-end">
+              <div className="flex gap-3 justify-end">
                 <Button variant="secondary" onClick={() => setShowCart(false)}>Continue Shopping</Button>
-                <Button variant="success" onClick={handleCheckout} disabled={submitting}>
+                <Button variant="success" onClick={handleCheckout} disabled={submitting || !selectedBranchId}>
                   <Send size={14} /> {submitting ? 'Placing Order...' : orderMode === 'own' ? 'Place Own Stock Order' : 'Submit Client Order'}
                 </Button>
               </div>
