@@ -190,7 +190,8 @@ export default async function handler(req, res) {
 
       if (search) {
         params.push(`%${search}%`);
-        whereParts.push(`(distributor_name ILIKE $${params.length} OR distributor_code ILIKE $${params.length})`);
+        whereParts.push(`(distributor_name ILIKE $${params.length} OR distributor_code ILIKE $${params.length} OR mobile_no ILIKE $${params.length})`);
+        params.push(`${search}%`);
       }
 
       if (status) {
@@ -210,7 +211,12 @@ export default async function handler(req, res) {
         queryText += ` WHERE ${whereParts.join(' AND ')}`;
       }
       if (search) {
-        queryText += " ORDER BY CASE WHEN entity_type = 'individual' THEN 0 ELSE 1 END, distributor_name";
+        const swIdx = params.length; // index of the starts-with param
+        queryText += ` ORDER BY
+          CASE WHEN distributor_code ILIKE $${swIdx} THEN 0
+               WHEN distributor_name ILIKE $${swIdx} THEN 1
+               ELSE 2 END,
+          distributor_name`;
       } else {
         queryText += ' ORDER BY distributor_name';
       }
@@ -230,7 +236,7 @@ export default async function handler(req, res) {
       try {
         const userQuery = search
           ? `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
-             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1) LIMIT 20`
+             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1 OR phone ILIKE $1) LIMIT 50`
           : `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
              FROM users WHERE role = 'distributor' AND is_active = true ORDER BY full_name LIMIT 500`;
         const userParams = search ? [`%${search}%`] : [];

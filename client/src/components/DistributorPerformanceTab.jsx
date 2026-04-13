@@ -243,7 +243,7 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
 
   const filtered = useMemo(() => {
     let list = perf;
-    if (branchSel) list = list.filter(d => d.branch === branchSel);
+    if (branchSel) list = list.filter(d => !d.branch || d.branch === branchSel);
     if (statusFilter) list = list.filter(d => (d.status || 'active') === statusFilter);
     const sortKey = sortBy === 'bv' ? '_totalBV' : sortBy === 'sales' ? '_totalSales' : sortBy === 'referrals' ? '_referrals' : 'distributor_name';
     if (sortBy === 'name') return [...list].sort((a, b) => (a.distributor_name || '').localeCompare(b.distributor_name || ''));
