@@ -8422,10 +8422,29 @@ function BranchCampaignsTab() {
     }).catch(() => {});
   };
 
+  // Derive campaign products directly from campaign setup (not from user selection)
+  const getCampProducts = (c) => {
+    if (!c) return { paidProduct: '', freeProduct: '', buyQty: 1, getQty: 1 };
+    const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
+    const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
+    const paidProduct = (cond.products_text || '').split(',')[0]?.trim() || '';
+    const freeProduct = prize.free_product || '';
+    const buyQty = Number(cond.buy_qty || 1);
+    const getQty = Number(cond.get_qty || 1);
+    return { paidProduct, freeProduct, buyQty, getQty };
+  };
+
   const handleSale = async (e) => {
     e.preventDefault();
     const isMember = campMemberType === 'member';
-    const needsFreeItem = saleModal?.campaign_type === 'buy_x_get_y';
+    const isBuyXGetY = saleModal?.campaign_type === 'buy_x_get_y';
+    const { paidProduct: campPaidProduct, freeProduct: campFreeProduct, buyQty, getQty } = getCampProducts(saleModal);
+
+    // For buy_x_get_y: products come from campaign setup, not from user selection
+    const finalPaidProduct = isBuyXGetY ? campPaidProduct : saleForm.paid_product;
+    const finalFreeProduct = isBuyXGetY ? campFreeProduct : saleForm.free_product;
+    const finalPaidQty = Number(saleForm.paid_qty);
+    const finalFreeQty = isBuyXGetY ? Math.floor(finalPaidQty / buyQty) * getQty : Number(saleForm.free_qty);
 
     if (isMember && !campSelected) {
       setAlertMsg({ type: 'error', msg: 'Please search and select the member by NB number.' });
@@ -8435,12 +8454,16 @@ function BranchCampaignsTab() {
       setAlertMsg({ type: 'error', msg: 'Please enter the non-member customer name.' });
       return;
     }
-    if (!saleForm.paid_product) {
-      setAlertMsg({ type: 'error', msg: 'Please select the paid product.' });
+    if (!finalPaidProduct) {
+      setAlertMsg({ type: 'error', msg: 'No paid product defined for this campaign. Contact the GM to update the campaign setup.' });
       return;
     }
-    if (needsFreeItem && !saleForm.free_product) {
-      setAlertMsg({ type: 'error', msg: 'This campaign requires a free product selection.' });
+    if (isBuyXGetY && !finalFreeProduct) {
+      setAlertMsg({ type: 'error', msg: 'No free product defined for this campaign. Contact the GM to update the campaign prize settings.' });
+      return;
+    }
+    if (!isBuyXGetY && !saleForm.paid_product) {
+      setAlertMsg({ type: 'error', msg: 'Please select the paid product.' });
       return;
     }
 
@@ -8454,10 +8477,10 @@ function BranchCampaignsTab() {
         customer_name: isMember ? (campSelected?.name || '') : nonMemberName.trim(),
         nb_number:     isMember ? (campSelected?.nb_number || '') : '',
         referral_nb:   !isMember ? (campRefSelected?.nb_number || '') : '',
-        paid_product:  saleForm.paid_product,
-        paid_qty:      Number(saleForm.paid_qty),
-        free_product:  saleForm.free_product,
-        free_qty:      Number(saleForm.free_qty),
+        paid_product:  finalPaidProduct,
+        paid_qty:      finalPaidQty,
+        free_product:  finalFreeProduct,
+        free_qty:      finalFreeQty,
         notes:         saleForm.notes,
         processed_by:  user?.username || user?.full_name || 'branch',
       });
@@ -8686,51 +8709,85 @@ function BranchCampaignsTab() {
                   </div>
                 </div>
               )}
-              <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-3">
-                <div className="text-sm font-semibold text-blue-800">Paid Item (deducted as sale)</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
-                    <select value={saleForm.paid_product} onChange={e => setSaleForm(f => ({ ...f, paid_product: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
-                      <option value="">-- Select product --</option>
-                      {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <Input label="Qty" type="number" min="1" value={saleForm.paid_qty} onChange={e => setSaleForm(f => ({ ...f, paid_qty: e.target.value }))} />
-                </div>
-              </div>
-              {saleModal?.campaign_type === 'buy_x_get_y' ? (
-                <div className="p-3 rounded-lg border-2 border-green-200 bg-green-50 space-y-3">
-                  <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(required — deducted as campaign free item)</span></div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
-                      <select value={saleForm.free_product} onChange={e => setSaleForm(f => ({ ...f, free_product: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-200">
-                        <option value="">-- Select product --</option>
-                        {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                      </select>
+              {/* ── Product section — for buy_x_get_y campaigns products are locked to campaign setup ── */}
+              {(() => {
+                const isBXGY = saleModal?.campaign_type === 'buy_x_get_y';
+                const { paidProduct, freeProduct, buyQty, getQty } = getCampProducts(saleModal);
+                const paidQty = Number(saleForm.paid_qty) || buyQty;
+                const derivedFreeQty = Math.floor(paidQty / buyQty) * getQty;
+                if (isBXGY) {
+                  return (
+                    <>
+                      {/* Locked paid product pill */}
+                      <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-2">
+                        <div className="text-sm font-semibold text-blue-800">Paid Item <span className="text-blue-600 font-normal text-xs">(set by campaign — deducted as sale)</span></div>
+                        <div className="flex items-center gap-3 p-2 bg-white border border-blue-300 rounded-lg">
+                          <span style={{ fontSize: 20 }}>📦</span>
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-800 text-sm">{paidProduct || <span className="text-red-500 italic">Not configured — update campaign</span>}</div>
+                            <div className="text-xs text-gray-500">Buy {buyQty} unit(s) to qualify</div>
+                          </div>
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Auto-selected</span>
+                        </div>
+                        <div className="flex items-end gap-3">
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Quantity purchased</label>
+                            <input type="number" min={buyQty} value={saleForm.paid_qty}
+                              onChange={e => setSaleForm(f => ({ ...f, paid_qty: e.target.value }))}
+                              style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #93c5fd', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff' }} />
+                          </div>
+                          <div className="text-xs text-blue-600 pb-2">Min: {buyQty}</div>
+                        </div>
+                      </div>
+                      {/* Locked free product pill */}
+                      <div className="p-3 rounded-lg border-2 border-green-200 bg-green-50 space-y-2">
+                        <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(set by campaign — deducted as campaign free item)</span></div>
+                        <div className="flex items-center gap-3 p-2 bg-white border border-green-300 rounded-lg">
+                          <span style={{ fontSize: 20 }}>🎁</span>
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-800 text-sm">{freeProduct || <span className="text-red-500 italic">Not configured — update campaign prize</span>}</div>
+                            <div className="text-xs text-gray-500">{derivedFreeQty} free unit(s) for buying {paidQty} × {paidProduct}</div>
+                          </div>
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{derivedFreeQty} FREE</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                }
+                // Non-buy_x_get_y: manual product selection from inventory
+                return (
+                  <>
+                    <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-3">
+                      <div className="text-sm font-semibold text-blue-800">Paid Item (deducted as sale)</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
+                          <select value={saleForm.paid_product} onChange={e => setSaleForm(f => ({ ...f, paid_product: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+                            <option value="">-- Select product --</option>
+                            {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                          </select>
+                        </div>
+                        <Input label="Qty" type="number" min="1" value={saleForm.paid_qty} onChange={e => setSaleForm(f => ({ ...f, paid_qty: e.target.value }))} />
+                      </div>
                     </div>
-                    <Input label="Qty" type="number" min="1" value={saleForm.free_qty} onChange={e => setSaleForm(f => ({ ...f, free_qty: e.target.value }))} />
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 rounded-lg border border-green-200 bg-green-50 space-y-2">
-                  <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(optional)</span></div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Product (if any)</label>
-                      <select value={saleForm.free_product} onChange={e => setSaleForm(f => ({ ...f, free_product: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-200">
-                        <option value="">-- None --</option>
-                        {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                      </select>
+                    <div className="p-3 rounded-lg border border-green-200 bg-green-50 space-y-2">
+                      <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(optional)</span></div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Product (if any)</label>
+                          <select value={saleForm.free_product} onChange={e => setSaleForm(f => ({ ...f, free_product: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-200">
+                            <option value="">-- None --</option>
+                            {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                          </select>
+                        </div>
+                        {saleForm.free_product && <Input label="Qty" type="number" min="1" value={saleForm.free_qty} onChange={e => setSaleForm(f => ({ ...f, free_qty: e.target.value }))} />}
+                      </div>
                     </div>
-                    {saleForm.free_product && <Input label="Qty" type="number" min="1" value={saleForm.free_qty} onChange={e => setSaleForm(f => ({ ...f, free_qty: e.target.value }))} />}
-                  </div>
-                </div>
-              )}
+                  </>
+                );
+              })()}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea value={saleForm.notes} onChange={e => setSaleForm(f => ({ ...f, notes: e.target.value }))}

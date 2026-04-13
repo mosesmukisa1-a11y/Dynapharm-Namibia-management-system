@@ -2097,6 +2097,70 @@ function CampaignsTab() {
   const [reviewModal, setReviewModal] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewing, setReviewing] = useState(false);
+  const [editCampaignModal, setEditCampaignModal] = useState(null);
+  const [editCampaignForm, setEditCampaignForm] = useState({});
+  const [editCampaignSubmitting, setEditCampaignSubmitting] = useState(false);
+
+  const safeJsonGm = (val) => {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+  };
+
+  const openEditCampaign = (c) => {
+    const cond = safeJsonGm(c.conditions);
+    const prize = safeJsonGm(c.prize);
+    setEditCampaignForm({
+      name: c.name || '',
+      description: c.description || '',
+      campaign_type: c.campaign_type || 'bv_achievement',
+      start_date: c.start_date ? c.start_date.slice(0, 10) : '',
+      end_date: c.end_date ? c.end_date.slice(0, 10) : '',
+      scope: c.scope || 'countrywide',
+      target_branches: Array.isArray(c.target_branches) ? c.target_branches : [],
+      status: c.status || 'upcoming',
+      conditions: { ...cond, stock_assignments: undefined },
+      prize,
+      discount_percentage: Number(c.discount_percentage || 0),
+    });
+    setEditCampaignModal(c);
+  };
+
+  const handleEditCampaign = async (e) => {
+    e.preventDefault();
+    if (!editCampaignForm.name || !editCampaignForm.start_date || !editCampaignForm.end_date) {
+      setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
+      return;
+    }
+    setEditCampaignSubmitting(true);
+    try {
+      await api.put(`/campaigns/${editCampaignModal.id}`, {
+        name: editCampaignForm.name,
+        description: editCampaignForm.description,
+        campaign_type: editCampaignForm.campaign_type,
+        start_date: editCampaignForm.start_date,
+        end_date: editCampaignForm.end_date,
+        scope: editCampaignForm.scope,
+        target_branches: editCampaignForm.target_branches,
+        status: editCampaignForm.status,
+        conditions: editCampaignForm.conditions,
+        prize: editCampaignForm.prize,
+        discount_percentage: editCampaignForm.campaign_type === 'discount'
+          ? Number(editCampaignForm.conditions?.discount_pct || editCampaignForm.discount_percentage || 0)
+          : 0,
+      });
+      setAlert({ type: 'success', msg: `Campaign "${editCampaignForm.name}" updated successfully.` });
+      setEditCampaignModal(null);
+      loadCampaigns();
+      if (selectedCampaign?.id === editCampaignModal.id) {
+        loadDetail(editCampaignModal.id);
+      }
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setEditCampaignSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -2599,6 +2663,10 @@ function CampaignsTab() {
 
                         {/* Actions */}
                         <div className="flex gap-2 pt-2 border-t border-gray-100">
+                          <button onClick={() => openEditCampaign(c)}
+                            style={{ padding: '5px 12px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd', borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                            ✏️ Edit Campaign
+                          </button>
                           <button onClick={() => handleDeleteCampaign(c.id)} className="text-xs text-red-500 hover:underline ml-auto">🗑️ Delete Campaign</button>
                         </div>
                       </>
@@ -2608,6 +2676,82 @@ function CampaignsTab() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Edit Campaign Modal */}
+      {editCampaignModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 28, maxWidth: 560, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', maxHeight: '93vh', overflowY: 'auto' }}>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <div className="font-bold text-lg text-gray-800">✏️ Edit Campaign</div>
+                <div className="text-sm text-gray-500">{editCampaignModal.name}</div>
+              </div>
+              <button onClick={() => setEditCampaignModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+            </div>
+            <form onSubmit={handleEditCampaign} className="space-y-4">
+              <Input label="Campaign Title *" value={editCampaignForm.name || ''} onChange={e => setEditCampaignForm(f => ({ ...f, name: e.target.value }))} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea value={editCampaignForm.description || ''} onChange={e => setEditCampaignForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[60px]" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Start Date *" type="date" value={editCampaignForm.start_date || ''} onChange={e => setEditCampaignForm(f => ({ ...f, start_date: e.target.value }))} />
+                <Input label="End Date *" type="date" value={editCampaignForm.end_date || ''} onChange={e => setEditCampaignForm(f => ({ ...f, end_date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select value={editCampaignForm.status || 'upcoming'} onChange={e => setEditCampaignForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none">
+                  <option value="upcoming">Upcoming</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="pending_approval">Pending Approval</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
+                <select value={editCampaignForm.scope || 'countrywide'} onChange={e => setEditCampaignForm(f => ({ ...f, scope: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none">
+                  <option value="countrywide">Countrywide (All Branches)</option>
+                  <option value="specific">Specific Branches</option>
+                </select>
+              </div>
+              {/* Conditions */}
+              <div className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50">
+                <div className="font-semibold text-sm text-gray-700 mb-3">📋 Conditions</div>
+                <CampaignTypeConditionsForm
+                  type={editCampaignForm.campaign_type || 'custom'}
+                  conditions={editCampaignForm.conditions || {}}
+                  onChange={c => setEditCampaignForm(f => ({ ...f, conditions: c }))}
+                  products={products}
+                />
+              </div>
+              {/* Prize */}
+              <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
+                <div className="font-semibold text-sm text-amber-800 mb-3">🏆 Prize / Reward</div>
+                <CampaignPrizeForm
+                  type={editCampaignForm.campaign_type || 'custom'}
+                  prize={editCampaignForm.prize || {}}
+                  onChange={p => setEditCampaignForm(f => ({ ...f, prize: p }))}
+                  products={products}
+                />
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="submit" disabled={editCampaignSubmitting}
+                  style={{ flex: 1, padding: '10px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {editCampaignSubmitting ? 'Saving…' : '✓ Save Changes'}
+                </button>
+                <button type="button" onClick={() => setEditCampaignModal(null)}
+                  style={{ padding: '10px 18px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

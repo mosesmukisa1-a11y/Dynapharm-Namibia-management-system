@@ -168,6 +168,10 @@ export default async function handler(req, res) {
 
     // ── PUT /api/campaigns/:id ─────────────────────────────────────────────────
     if (req.method === 'PUT' && path.match(/^\/[^/]+$/)) {
+      const editRole = req.user?.role || '';
+      if (!['gm', 'admin', 'director', 'stock'].includes(editRole)) {
+        return res.status(403).json({ error: 'Only GM, admin, or stock users can edit campaigns' });
+      }
       const id = path.slice(1);
       const body = await parseJsonBody(req);
       const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
@@ -193,6 +197,10 @@ export default async function handler(req, res) {
 
     // ── DELETE /api/campaigns/:id ──────────────────────────────────────────────
     if (req.method === 'DELETE' && path.match(/^\/[^/]+$/)) {
+      const delRole = req.user?.role || '';
+      if (!['gm', 'admin', 'director', 'stock'].includes(delRole)) {
+        return res.status(403).json({ error: 'Only GM, admin, or stock users can delete campaigns' });
+      }
       const id = path.slice(1);
       await query(`DELETE FROM campaign_winners WHERE campaign_id = $1`, [id]);
       await query(`DELETE FROM campaign_participants WHERE campaign_id = $1`, [id]);

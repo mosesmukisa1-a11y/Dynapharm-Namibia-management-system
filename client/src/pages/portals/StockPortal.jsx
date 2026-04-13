@@ -5897,6 +5897,8 @@ function StockCampaignsTab() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [editingCampaign, setEditingCampaign] = useState(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const defaultForm = {
     name: '', description: '', campaign_type: 'buy_x_get_y',
@@ -5907,6 +5909,13 @@ function StockCampaignsTab() {
     stock_assignments: [{ product: '', quantity: '', branch: 'all' }],
   };
   const [form, setForm] = useState(defaultForm);
+  const [editForm, setEditForm] = useState(defaultForm);
+
+  const safeJson = (val) => {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+  };
 
   const load = () => {
     setLoading(true);
@@ -5945,6 +5954,75 @@ function StockCampaignsTab() {
       setAlert({ type: 'error', msg: err.message });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openEdit = (c) => {
+    const cond = safeJson(c.conditions);
+    const prize = safeJson(c.prize);
+    const sa = Array.isArray(cond.stock_assignments) && cond.stock_assignments.length > 0
+      ? cond.stock_assignments
+      : [{ product: '', quantity: '', branch: 'all' }];
+    setEditForm({
+      name: c.name || '',
+      description: c.description || '',
+      campaign_type: c.campaign_type || 'buy_x_get_y',
+      start_date: c.start_date ? c.start_date.slice(0, 10) : '',
+      end_date: c.end_date ? c.end_date.slice(0, 10) : '',
+      scope: c.scope || 'countrywide',
+      target_branches: Array.isArray(c.target_branches) ? c.target_branches : [],
+      conditions: { ...cond, stock_assignments: undefined },
+      prize,
+      discount_percentage: Number(c.discount_percentage || 0),
+      stock_assignments: sa,
+    });
+    setEditingCampaign(c);
+    setShowForm(false);
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    if (!editForm.name || !editForm.start_date || !editForm.end_date) {
+      setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
+      return;
+    }
+    setEditSubmitting(true);
+    try {
+      const conditionsWithAssignments = {
+        ...editForm.conditions,
+        stock_assignments: Array.isArray(editForm.stock_assignments) ? editForm.stock_assignments.filter(a => a.product) : [],
+      };
+      await api.put(`/campaigns/${editingCampaign.id}`, {
+        name: editForm.name,
+        description: editForm.description,
+        campaign_type: editForm.campaign_type,
+        start_date: editForm.start_date,
+        end_date: editForm.end_date,
+        scope: editForm.scope,
+        target_branches: editForm.target_branches,
+        conditions: conditionsWithAssignments,
+        prize: editForm.prize,
+        discount_percentage: editForm.campaign_type === 'discount' ? Number(editForm.conditions?.discount_pct || 0) : 0,
+      });
+      setAlert({ type: 'success', msg: 'Campaign updated successfully.' });
+      setEditingCampaign(null);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (c) => {
+    if (!window.confirm(`Delete campaign "${c.name}" and all its participant records? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/campaigns/${c.id}`);
+      setAlert({ type: 'success', msg: `Campaign "${c.name}" deleted.` });
+      if (editingCampaign?.id === c.id) setEditingCampaign(null);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
     }
   };
 
@@ -6092,14 +6170,105 @@ function StockCampaignsTab() {
         </Card>
       )}
 
+      {/* Edit Campaign Panel */}
+      {editingCampaign && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">✏️ Edit Campaign — {editingCampaign.name}</h3>
+              <button onClick={() => setEditingCampaign(null)} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleEdit} className="space-y-5">
+              <div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">Campaign Type</div>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                  {CAMP_TYPES.map(t => (
+                    <button key={t.value} type="button" onClick={() => setEditForm(f => ({ ...f, campaign_type: t.value, conditions: {}, prize: {} }))}
+                      className="p-3 rounded-lg border-2 text-left transition-all"
+                      style={editForm.campaign_type === t.value
+                        ? { background: CAMP_COLORS[t.value].bg, borderColor: CAMP_COLORS[t.value].border }
+                        : { background: '#f8fafc', borderColor: '#e2e8f0' }}>
+                      <div className="font-semibold text-sm" style={{ color: editForm.campaign_type === t.value ? CAMP_COLORS[t.value].text : '#374151' }}>{t.label}</div>
+                      <div className="text-xs text-gray-500 mt-1">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Input label="Campaign Title *" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[60px]" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Start Date *" type="date" value={editForm.start_date} onChange={e => setEditForm(f => ({ ...f, start_date: e.target.value }))} />
+                <Input label="End Date *" type="date" value={editForm.end_date} onChange={e => setEditForm(f => ({ ...f, end_date: e.target.value }))} />
+              </div>
+              {(() => {
+                const tc2 = editForm.campaign_type ? (CAMP_COLORS[editForm.campaign_type] || CAMP_COLORS.custom) : CAMP_COLORS.custom;
+                return (
+                  <div className="p-4 rounded-xl border-2" style={{ background: tc2.bg, borderColor: tc2.border }}>
+                    <div className="font-semibold text-sm mb-3" style={{ color: tc2.text }}>📋 Conditions / Rules</div>
+                    <StockCampaignConditionsForm type={editForm.campaign_type} conditions={editForm.conditions} onChange={c => setEditForm(f => ({ ...f, conditions: c }))} products={products} />
+                  </div>
+                );
+              })()}
+              <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
+                <div className="font-semibold text-sm text-amber-800 mb-3">🏆 Prize / Reward</div>
+                <StockCampaignPrizeForm type={editForm.campaign_type} prize={editForm.prize} onChange={p => setEditForm(f => ({ ...f, prize: p }))} products={products} />
+              </div>
+              <div className="p-4 rounded-xl border-2 border-purple-200 bg-purple-50">
+                <div className="font-semibold text-sm text-purple-800 mb-1">📦 Stock Assignment</div>
+                <div className="text-xs text-purple-600 mb-3">Specify products and quantities allocated for this campaign across branches.</div>
+                {(editForm.stock_assignments || [{ product: '', quantity: '', branch: 'all' }]).map((a, i) => (
+                  <div key={i} className="grid grid-cols-3 gap-2 mb-2 items-end">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
+                      <select value={a.product} onChange={e => { const sa = [...editForm.stock_assignments]; sa[i] = { ...sa[i], product: e.target.value }; setEditForm(f => ({ ...f, stock_assignments: sa })); }}
+                        className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs">
+                        <option value="">-- Select --</option>
+                        {products.map(p => <option key={p.id || p.name} value={p.name || p.product_name}>{p.name || p.product_name}</option>)}
+                      </select>
+                    </div>
+                    <Input label="Qty Reserved" type="number" min="0" value={a.quantity}
+                      onChange={e => { const sa = [...editForm.stock_assignments]; sa[i] = { ...sa[i], quantity: e.target.value }; setEditForm(f => ({ ...f, stock_assignments: sa })); }} />
+                    <div className="flex gap-1 items-center">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                        <select value={a.branch} onChange={e => { const sa = [...editForm.stock_assignments]; sa[i] = { ...sa[i], branch: e.target.value }; setEditForm(f => ({ ...f, stock_assignments: sa })); }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs">
+                          <option value="all">All Branches</option>
+                          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      {i > 0 && <button type="button" onClick={() => { const sa = [...editForm.stock_assignments]; sa.splice(i, 1); setEditForm(f => ({ ...f, stock_assignments: sa })); }}
+                        className="text-red-400 hover:text-red-600 mt-4 shrink-0">✕</button>}
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setEditForm(f => ({ ...f, stock_assignments: [...(f.stock_assignments || []), { product: '', quantity: '', branch: 'all' }] }))}
+                  className="text-xs text-purple-700 hover:underline mt-1">+ Add Product</button>
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <Button type="submit" disabled={editSubmitting}>{editSubmitting ? 'Saving…' : '✓ Save Changes'}</Button>
+                <Button variant="ghost" type="button" onClick={() => setEditingCampaign(null)}>Cancel</Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
       {loading ? <LoadingSpinner /> : (
         <div className="space-y-3">
           {filtered.length === 0 ? (
             <div className="text-center py-10 text-gray-400">No campaigns found. Submit a new campaign above.</div>
           ) : filtered.map(c => {
             const cColors = CAMP_COLORS[c.status === 'pending_approval' ? 'pending_approval' : c.status === 'rejected' ? 'rejected' : (c.campaign_type || 'custom')] || CAMP_COLORS.custom;
+            const isBeingEdited = editingCampaign?.id === c.id;
             return (
-              <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cColors.border, background: cColors.bg }}>
+              <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: isBeingEdited ? '#6366f1' : cColors.border, background: isBeingEdited ? '#eef2ff' : cColors.bg }}>
                 <div className="p-4">
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex-1">
@@ -6123,6 +6292,16 @@ function StockCampaignsTab() {
                           ⏳ Awaiting GM review
                         </div>
                       )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => isBeingEdited ? setEditingCampaign(null) : openEdit(c)}
+                        style={{ padding: '5px 12px', background: isBeingEdited ? '#e0e7ff' : '#f1f5f9', color: isBeingEdited ? '#4f46e5' : '#475569', border: `1px solid ${isBeingEdited ? '#a5b4fc' : '#e2e8f0'}`, borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                        {isBeingEdited ? '✕ Cancel Edit' : '✏️ Edit'}
+                      </button>
+                      <button onClick={() => handleDelete(c)}
+                        style={{ padding: '5px 12px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                        🗑️ Delete
+                      </button>
                     </div>
                   </div>
                 </div>

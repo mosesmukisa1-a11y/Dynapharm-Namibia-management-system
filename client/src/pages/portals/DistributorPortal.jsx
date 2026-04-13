@@ -2194,22 +2194,27 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const getQty = Number(conditions.get_qty || 1);
   const freeProductName = prize.free_product || '';
 
-  // For buy_x_get_y: eligible products come from conditions.products_text first,
-  // then fall back to prize.free_product (paid item is the same product you get free),
-  // then fall back to the campaign name itself for partial matches.
+  // Campaign-defined paid product name (from setup — does NOT require database match)
+  const campaignPaidProductName = (conditions.products_text || '').split(',')[0]?.trim() || '';
+
+  // Match the campaign product in the price list for DP/BV lookup (best-effort, case-insensitive)
+  const findProduct = (name) => {
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    return products.find(p => (p.name || p.description || '').toLowerCase() === lower)
+      || products.find(p => (p.name || p.description || '').toLowerCase().includes(lower));
+  };
+
+  // For buy_x_get_y: products are locked to campaign setup — no dropdown needed
+  // For discount/other: allow selection from all products
   const rawEligibleNames = conditions.products_text
     ? conditions.products_text.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-    : freeProductName
-      ? [freeProductName.toLowerCase()]
-      : [];
+    : [];
 
   const eligibleProducts = isBuyXGetY && rawEligibleNames.length > 0
-    ? products.filter(p =>
-        rawEligibleNames.some(n => (p.name || p.description || '').toLowerCase().includes(n))
-      )
+    ? products.filter(p => rawEligibleNames.some(n => (p.name || p.description || '').toLowerCase().includes(n)))
     : products;
 
-  // For discount: any product
   const allProducts = products;
 
   const [selectedBranchId, setSelectedBranchId] = useState('');
@@ -2220,15 +2225,19 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const [done, setDone] = useState(false);
 
   const selectedBranch = branches.find(b => b.id === selectedBranchId) || null;
-  const selectedProduct = products.find(p => (p.id || p.description) === selectedProductId) || null;
+  const selectedProduct = isBuyXGetY
+    ? (findProduct(campaignPaidProductName) || { name: campaignPaidProductName, description: campaignPaidProductName, dp: 0, bv: 0 })
+    : (products.find(p => (p.id || p.description) === selectedProductId) || null);
 
-  // Auto-select when only one eligible product (or any first match)
+  // Auto-select product for non-buy_x_get_y campaigns
   useEffect(() => {
-    const pool = isBuyXGetY && rawEligibleNames.length > 0 ? eligibleProducts : allProducts;
-    if (pool.length > 0 && !selectedProductId) {
-      setSelectedProductId(pool[0].id || pool[0].description);
+    if (!isBuyXGetY) {
+      const pool = allProducts;
+      if (pool.length > 0 && !selectedProductId) {
+        setSelectedProductId(pool[0].id || pool[0].description);
+      }
     }
-  }, [eligibleProducts.length, allProducts.length]);
+  }, [allProducts.length]);
 
   // Calculations
   const baseDp = selectedProduct?.dp || 0;
@@ -2240,7 +2249,11 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
 
   const handleSubmit = async () => {
     if (!selectedBranchId) { setMessage('Error: Please select a branch.'); return; }
-    if (!selectedProduct) { setMessage('Error: Please select a product.'); return; }
+    if (isBuyXGetY && !campaignPaidProductName) {
+      setMessage('Error: This campaign has no product configured. Please contact the GM to update the campaign setup.');
+      return;
+    }
+    if (!isBuyXGetY && !selectedProduct) { setMessage('Error: Please select a product.'); return; }
     if (qty <= 0) { setMessage('Error: Quantity must be at least 1.'); return; }
     if (isBuyXGetY && qty < buyQty) {
       setMessage(`Error: You must buy at least ${buyQty} unit(s) to qualify for this campaign.`);
@@ -2350,30 +2363,47 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
               </div>
             </div>
 
-            {/* Product selector */}
-            {isBuyXGetY && eligibleProducts.length === 1 ? (
-              /* Single campaign product — show as read-only pill, no dropdown needed */
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Campaign Product</label>
-                <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-300 rounded-lg">
-                  <Package size={18} className="text-green-600 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">{eligibleProducts[0].name || eligibleProducts[0].description}</p>
-                    <p className="text-xs text-gray-500">DP: {formatCurrency(eligibleProducts[0].dp || 0)} &nbsp;|&nbsp; {eligibleProducts[0].bv || 0} BV per unit</p>
+            {/* Product section — locked for buy_x_get_y, dropdown for others */}
+            {isBuyXGetY ? (
+              /* Paid product locked to campaign setup */
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Campaign Paid Product</label>
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Package size={18} className="text-blue-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-800 truncate">
+                        {campaignPaidProductName || <span className="text-red-500 italic">Not configured — contact GM</span>}
+                      </p>
+                      {selectedProduct && (selectedProduct.dp || selectedProduct.bv) ? (
+                        <p className="text-xs text-gray-500">DP: {formatCurrency(selectedProduct.dp || 0)} &nbsp;|&nbsp; {selectedProduct.bv || 0} BV per unit</p>
+                      ) : null}
+                    </div>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">Auto-selected</span>
                   </div>
-                  <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full shrink-0">Campaign Product</span>
                 </div>
+                {freeProductName ? (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Free Bonus Item</label>
+                    <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+                      <Gift size={18} className="text-green-600 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-800 truncate">{freeProductName}</p>
+                        <p className="text-xs text-gray-500">{freeItems} free unit(s) for buying {qty} × {campaignPaidProductName}</p>
+                      </div>
+                      <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full shrink-0">{freeItems} FREE</span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  {isBuyXGetY && eligibleProducts.length > 0 ? `Eligible Products (${eligibleProducts.length})` : 'Select Product'} <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Product <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
                     <option value="">— Select a product —</option>
-                    {(isBuyXGetY && rawEligibleNames.length > 0 ? eligibleProducts : allProducts).map(p => (
+                    {allProducts.map(p => (
                       <option key={p.id || p.description} value={p.id || p.description}>
                         {p.name || p.description} — DP: N${(p.dp || 0).toFixed(2)} | {p.bv || 0} BV
                       </option>
