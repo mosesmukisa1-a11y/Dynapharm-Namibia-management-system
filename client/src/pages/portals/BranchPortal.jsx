@@ -41,7 +41,7 @@ function SalesReviewTab() {
   const [salesPreviewLoading, setSalesPreviewLoading] = useState(false);
   const [salesPreviewError, setSalesPreviewError] = useState(null);
 
-  const fmtN = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
+  const fmtN = (n) => `N$ ${Math.round(Number(n || 0)).toLocaleString('en-ZA')}`;
   const branchLabel = (id) => getBranchDisplayName(id) || id || '—';
 
   useEffect(() => {
@@ -2133,7 +2133,7 @@ function PrescriptionsTab() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Grand Total</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#4ade80', lineHeight: 1.1 }}>N$ {dpGrandTotal.toFixed(2)}</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#4ade80', lineHeight: 1.1 }}>N$ {Math.round(dpGrandTotal).toLocaleString("en-ZA")}</div>
                 </div>
               </div>
             </div>
@@ -2174,8 +2174,8 @@ function PrescriptionsTab() {
                           )}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>{item.quantity}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>N$ {unitPrice.toFixed(2)}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {lineTotal.toFixed(2)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>N$ {Math.round(unitPrice).toLocaleString("en-ZA")}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {Math.round(lineTotal).toLocaleString("en-ZA")}</td>
                       </tr>
                     );
                   })}
@@ -2188,18 +2188,18 @@ function PrescriptionsTab() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem' }}>
                     <span style={{ color: 'rgba(255,255,255,0.7)' }}>Medicines subtotal</span>
-                    <span style={{ fontWeight: 700, color: '#fff' }}>N$ {dpMedSubtotal.toFixed(2)}</span>
+                    <span style={{ fontWeight: 700, color: '#fff' }}>N$ {Math.round(dpMedSubtotal).toLocaleString("en-ZA")}</span>
                   </div>
                   {dpModal.checkupOpt && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem', padding: '6px 8px', borderRadius: 8, background: 'rgba(13,148,136,0.2)', border: '1px solid rgba(94,234,212,0.25)' }}>
                       <span style={{ color: '#5eead4' }}>🩺 {dpModal.checkupOpt.label}</span>
-                      <span style={{ fontWeight: 700, color: '#5eead4' }}>N$ {dpModal.checkupOpt.fee.toFixed(2)}</span>
+                      <span style={{ fontWeight: 700, color: '#5eead4' }}>N$ {Math.round(dpModal.checkupOpt.fee).toLocaleString("en-ZA")}</span>
                     </div>
                   )}
                   {dpModal.consultMode === 'inclusive' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem', padding: '6px 8px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.25)' }}>
                       <span style={{ color: '#fbbf24' }}>💼 {dpModal.consultFee?.label} (included)</span>
-                      <span style={{ fontWeight: 700, color: '#fbbf24' }}>N$ {(dpModal.consultFee?.total || 0).toFixed(2)}</span>
+                      <span style={{ fontWeight: 700, color: '#fbbf24' }}>N$ {Math.round(dpModal.consultFee?.total || 0).toLocaleString("en-ZA")}</span>
                     </div>
                   )}
                   {dpModal.consultMode !== 'inclusive' && (
@@ -2209,7 +2209,7 @@ function PrescriptionsTab() {
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.15)', marginTop: 4 }}>
                     <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>GRAND TOTAL</span>
-                    <span style={{ fontWeight: 900, fontSize: '1.3rem', color: '#4ade80' }}>N$ {dpGrandTotal.toFixed(2)}</span>
+                    <span style={{ fontWeight: 900, fontSize: '1.3rem', color: '#4ade80' }}>N$ {Math.round(dpGrandTotal).toLocaleString("en-ZA")}</span>
                   </div>
                 </div>
               </div>
@@ -2311,12 +2311,12 @@ function printPhysicalStockReport(inventory, branch) {
     const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : 'OK';
     const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
     const qColor = q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
-    return `<tr><td>${pName}</td><td>${batchNo}</td><td style="font-weight:700;color:${qColor}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td><td style="font-weight:700">${dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td><td>${expLabel}</td></tr>`;
+    return `<tr><td>${pName}</td><td>${batchNo}</td><td style="font-weight:700;color:${qColor}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit > 0 ? `N$ ${Math.round(dpUnit).toLocaleString("en-ZA")}` : '—'}</td><td style="font-weight:700">${dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString("en-ZA")}` : '—'}</td><td>${expLabel}</td></tr>`;
   }).join('');
   const total = inventory.reduce((s, r) => s + Number(r.quantity||0), 0);
   printStockDocument('Physical Stock Report (DP Valued)', `
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
-    <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th><th>Expiry</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="2"><strong>TOTALS</strong></td><td><strong>${total}</strong></td><td></td><td></td><td style="font-weight:800;color:#c41e3a"><strong>N$ ${totalDP.toFixed(2)}</strong></td><td></td></tr></tbody></table>`, branch);
+    <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th><th>Expiry</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="2"><strong>TOTALS</strong></td><td><strong>${total}</strong></td><td></td><td></td><td style="font-weight:800;color:#c41e3a"><strong>N$ ${Math.round(totalDP).toLocaleString("en-ZA")}</strong></td><td></td></tr></tbody></table>`, branch);
 }
 
 function printStockMovementsReport(movements, branch) {
@@ -2345,13 +2345,13 @@ function printStockMovementsReport(movements, branch) {
     const batchNo = safeStr(r.batch_no || r.batchNo, '—');
     const fromLoc = safeStr(r.source_location || r.sourceLocation, '—');
     const toLoc = safeStr(r.destination_location || r.destinationLocation, '—');
-    return `<tr><td>${fmtDate(r.created_at || r.createdAt)}</td><td>${pName}</td><td>${batchNo}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700;color:${qColor}">${signedQty}</td><td style="text-align:right">${dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td><td>${fromLoc}</td><td>${toLoc}</td><td style="font-size:9px">${staff}</td></tr>`;
+    return `<tr><td>${fmtDate(r.created_at || r.createdAt)}</td><td>${pName}</td><td>${batchNo}</td><td><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:700;background:#f1f5f9;border:1px solid #e2e8f0">${mType}</span></td><td style="text-align:right;font-weight:700;color:${qColor}">${signedQty}</td><td style="text-align:right">${dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString("en-ZA")}` : '—'}</td><td>${fromLoc}</td><td>${toLoc}</td><td style="font-size:9px">${staff}</td></tr>`;
   }).join('');
   const totalQty = movements.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0);
   printStockDocument('Stock Movements Report (DP Valued)', `
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
     <table><thead><tr><th>Date</th><th>Product</th><th>Batch</th><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">DP Value</th><th>From</th><th>To</th><th>Staff</th></tr></thead><tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8">No movements recorded</td></tr>'}
-    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${totalQty}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${totalDPVal.toFixed(2)}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
+    <tr class="total-row"><td colspan="4"><strong>TOTAL</strong></td><td style="text-align:right"><strong>${totalQty}</strong></td><td style="text-align:right;font-weight:800;color:#c41e3a"><strong>N$ ${Math.round(totalDPVal).toLocaleString("en-ZA")}</strong></td><td colspan="3"></td></tr></tbody></table>`, branch);
 }
 
 function printReceivingStockReport(requests, branch) {
@@ -2418,7 +2418,7 @@ function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions)
   const rxConsultRevenue = rxMember.length * 150 + rxNonMember.length * 200;
   const grandTotal = walkinTotal + onlineTotal + rxConsultRevenue;
 
-  const fmtC = n => `N$ ${Number(n || 0).toFixed(2)}`;
+  const fmtC = n => `N$ ${Math.round(Number(n || 0)).toLocaleString('en-ZA')}`;
   const statCard = (label, value, sub, color) =>
     `<div style="background:#fff;border:1.5px solid #f0e8ea;border-radius:10px;padding:12px;text-align:center">
       <div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.06em">${label}</div>
@@ -2559,7 +2559,7 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
   const win = window.open('', '_blank');
   if (!win) return;
   const fmt = (n) => Number(n||0).toLocaleString();
-  const fmtC = (n) => `N$ ${Number(n||0).toFixed(2)}`;
+  const fmtC = (n) => `N$ ${Math.round(Number(n||0)).toLocaleString('en-ZA')}`;
   const fRow = (label, val, color, bg, borderTop) =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px;${bg?`background:${bg};`:''}${borderTop?`border-top:2px solid ${borderTop};`:''}border-bottom:1px solid #f1f5f9">
        <span style="font-size:12px;font-weight:700;color:#374151">${label}</span>
@@ -2871,7 +2871,7 @@ function BranchStockTab() {
     setSubmitting(true);
     try {
       const dp = findProductPrice(pName);
-      const dpVal = dp?.dp ? (Number(dp.dp) * Number(writeOffForm.quantity)).toFixed(2) : '0.00';
+      const dpVal = dp?.dp ? String(Math.round(Number(dp.dp) * Number(writeOffForm.quantity))) : '0';
       await api.stock.createMovement({
         product_name: pName,
         quantity: Number(writeOffForm.quantity),
@@ -3302,8 +3302,8 @@ function BranchStockTab() {
                       <td style={{ ...cellStyle, textAlign: 'center' }}>
                         <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, color: groupStatusColor, background: groupStatusBg, border: `1px solid ${groupStatusColor}22` }}>{groupStatusLabel}</span>
                       </td>
-                      <td style={{ ...cellStyle, textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
-                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: g.totalDpValue > 0 ? '#1e293b' : '#94a3b8' }}>{g.totalDpValue > 0 ? `N$ ${g.totalDpValue.toFixed(2)}` : '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${Math.round(dpUnit).toLocaleString("en-ZA")}` : '—'}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: g.totalDpValue > 0 ? '#1e293b' : '#94a3b8' }}>{g.totalDpValue > 0 ? `N$ ${Math.round(g.totalDpValue).toLocaleString("en-ZA")}` : '—'}</td>
                       <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
                       <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
                     </tr>
@@ -3342,8 +3342,8 @@ function BranchStockTab() {
                           <td style={{ ...batchCellStyle, textAlign: 'center' }}>
                             <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 20, fontSize: '0.62rem', fontWeight: 700, color: batchStatusColor, background: batchStatusBg, border: `1px solid ${batchStatusColor}22` }}>{batchStatusLabel}</span>
                           </td>
-                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 ? `N$ ${dpUnit.toFixed(2)}` : '—'}</td>
-                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 && q > 0 ? `N$ ${(dpUnit * q).toFixed(2)}` : '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 ? `N$ ${Math.round(dpUnit).toLocaleString("en-ZA")}` : '—'}</td>
+                          <td style={{ ...batchCellStyle, textAlign: 'right', color: '#6b7280' }}>{dpUnit > 0 && q > 0 ? `N$ ${Math.round(dpUnit * q).toLocaleString("en-ZA")}` : '—'}</td>
                           <td style={{ ...batchCellStyle, color: '#6b7280', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={srcWh}>{srcWh ? fmtLocation(srcWh) : '—'}</td>
                           <td style={{ ...batchCellStyle, color: '#6b7280', whiteSpace: 'nowrap' }}>{lastMov ? formatDateTime(lastMov) : '—'}</td>
                         </tr>
@@ -3369,7 +3369,7 @@ function BranchStockTab() {
                       {nearExpCount > 0 && <span style={{ color: '#c41e3a' }}>{nearExpCount} exp</span>}
                     </td>
                     <td style={{ padding: '10px 6px' }}></td>
-                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: '#c41e3a' }}>N$ {totalDP.toFixed(2)}</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: '#c41e3a' }}>N$ {Math.round(totalDP).toLocaleString("en-ZA")}</td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>
@@ -4009,7 +4009,7 @@ function BranchStockTab() {
               <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>Net</div>
             </div>
             <div style={{ background: '#fdf2f4', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a' }}>N$ {totalDPOut.toFixed(2)}</div>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a' }}>N$ {Math.round(totalDPOut).toLocaleString("en-ZA")}</div>
               <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase' }}>DP Out</div>
             </div>
           </div>
@@ -4039,7 +4039,7 @@ function BranchStockTab() {
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>{(m.expiry_date || m.expiryDate) ? new Date(m.expiry_date || m.expiryDate).toLocaleDateString('en-ZA') : '—'}</td>
                       <td style={{ padding: '7px 8px' }}>{typeBadge(mType)}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{Math.abs(Number(m.quantity || 0))}</td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${dpVal.toFixed(2)}` : '—'}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString("en-ZA")}` : '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.source_location || m.sourceLocation) || '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.destination_location || m.destinationLocation) || '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reference_id || m.referenceId || m.reference || '—'}</td>
@@ -4062,7 +4062,7 @@ function BranchStockTab() {
         const monthStr = new Date().toISOString().slice(0, 7);
         const monthLabel = new Date().toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
 
-        const fmtC = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
+        const fmtC = (n) => `N$ ${Math.round(Number(n || 0)).toLocaleString('en-ZA')}`;
         const fmt = (n) => Number(n || 0).toLocaleString();
 
         const buildPaymentBreakdownHTML = (paymentMethods) => {
@@ -4259,14 +4259,14 @@ function BranchStockTab() {
                   if (paidList.length === 0) { alert('No bonus payments recorded for this branch.'); return; }
                   const totalPaid = paidList.reduce((s, p) => s + Number(p.amount || 0), 0);
                   const rows = paidList.map(p =>
-                    `<tr><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.nb_number || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.distributor_name || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.period || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${Number(p.amount || 0).toFixed(2)}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-NA') : '-'}</td></tr>`
+                    `<tr><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.nb_number || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.distributor_name || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.period || '-'}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">N$ ${Math.round(Number(p.amount || 0)).toLocaleString("en-ZA")}</td><td style="padding:7px 10px;border-bottom:1px solid #f0e8ea">${p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-NA') : '-'}</td></tr>`
                   ).join('');
                   printStockDocument(`Bonus Payments Report — ${branchName}`, `
                     <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">DISTRIBUTOR BONUS PAYMENTS</h3>
                     <table style="width:100%;border-collapse:collapse;font-size:11px">
                       <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 10px">NB Number</th><th style="text-align:left;padding:8px 10px">Distributor</th><th style="text-align:left;padding:8px 10px">Period</th><th style="text-align:right;padding:8px 10px">Amount</th><th style="text-align:left;padding:8px 10px">Date Paid</th></tr></thead>
                       <tbody>${rows}</tbody>
-                      <tfoot><tr style="background:#f0fdf4;border-top:2px solid #86efac"><td colspan="3" style="padding:10px;font-weight:800">TOTAL PAID</td><td style="padding:10px;text-align:right;font-weight:900;color:#166534;font-size:13px">N$ ${totalPaid.toFixed(2)}</td><td></td></tr></tfoot>
+                      <tfoot><tr style="background:#f0fdf4;border-top:2px solid #86efac"><td colspan="3" style="padding:10px;font-weight:800">TOTAL PAID</td><td style="padding:10px;text-align:right;font-weight:900;color:#166534;font-size:13px">N$ ${Math.round(totalPaid).toLocaleString("en-ZA")}</td><td></td></tr></tfoot>
                     </table>`, branchName);
                 } catch (e) {
                   alert('Failed to load bonus payments: ' + (e.message || 'Unknown error'));
@@ -4688,8 +4688,8 @@ function BranchStockTab() {
                       <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Batch:</span> {sel.batch_no || sel.batchNo || 'N/A'}</div>
                       <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Expiry:</span> {(sel.expiry_date || sel.expiryDate) ? formatDate(sel.expiry_date || sel.expiryDate) : 'N/A'}</div>
                       <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Available:</span> <strong style={{ color: '#c41e3a' }}>{sel.quantity}</strong></div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>DP Unit:</span> N$ {dpUnit.toFixed(2)}</div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Write-off DP:</span> <strong style={{ color: '#c41e3a' }}>N$ {(dpUnit * woQty).toFixed(2)}</strong></div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>DP Unit:</span> N$ {Math.round(dpUnit).toLocaleString("en-ZA")}</div>
+                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Write-off DP:</span> <strong style={{ color: '#c41e3a' }}>N$ {Math.round(dpUnit * woQty).toLocaleString("en-ZA")}</strong></div>
                     </div>
                   </div>
                 );
@@ -4963,14 +4963,14 @@ function BankingTab() {
                     <option value="">— Select an approved CAS request —</option>
                     {approvedCAS.map(r => (
                       <option key={r.id || r.staffId} value={r.id || r.staffId}>
-                        {r.saleNumber || r.requestNumber || r.request_number || r.id} · N${Number(r.amount || 0).toFixed(2)} · {r.purpose}
+                        {r.saleNumber || r.requestNumber || r.request_number || r.id} · N${Math.round(Number(r.amount || 0)).toLocaleString("en-ZA")} · {r.purpose}
                       </option>
                     ))}
                   </select>
                 )}
                 {selectedCAS && (
                   <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#166534' }}>
-                    ✅ CAS: {selectedCAS.saleNumber || selectedCAS.requestNumber || selectedCAS.id} · N$ {Number(selectedCAS.amount || 0).toFixed(2)} · {selectedCAS.purpose}
+                    ✅ CAS: {selectedCAS.saleNumber || selectedCAS.requestNumber || selectedCAS.id} · N$ {Math.round(Number(selectedCAS.amount || 0)).toLocaleString("en-ZA")} · {selectedCAS.purpose}
                   </div>
                 )}
               </div>
@@ -5038,7 +5038,7 @@ function BankingTab() {
                   {drawerEntries.map((e, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: e.type === 'in' ? '#f0fdf4' : '#fef2f2', borderRadius: 9, border: `1px solid ${e.type === 'in' ? '#86efac' : '#fca5a5'}`, marginBottom: 6 }}>
                       <div>
-                        <span style={{ fontWeight: 700, color: e.type === 'in' ? '#166534' : '#c41e3a', fontSize: '0.85rem' }}>{e.type === 'in' ? '+' : '−'} N$ {Number(e.amount).toFixed(2)}</span>
+                        <span style={{ fontWeight: 700, color: e.type === 'in' ? '#166534' : '#c41e3a', fontSize: '0.85rem' }}>{e.type === 'in' ? '+' : '−'} N$ {Math.round(Number(e.amount)).toLocaleString("en-ZA")}</span>
                         <span style={{ marginLeft: 10, fontSize: '0.8rem', color: '#64748b' }}>{e.description || '—'}</span>
                       </div>
                       <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{e.time}</span>
@@ -5050,9 +5050,9 @@ function BankingTab() {
               {/* Balance summary */}
               <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', borderRadius: 12, padding: '16px 20px', color: '#fff' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, textAlign: 'center' }}>
-                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Opening</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4 }}>N$ {Number(drawerOpening || 0).toFixed(2)}</div></div>
-                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Movements</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4, color: drawerBalance - Number(drawerOpening || 0) >= 0 ? '#86efac' : '#fca5a5' }}>{drawerBalance - Number(drawerOpening || 0) >= 0 ? '+' : ''}N$ {(drawerBalance - Number(drawerOpening || 0)).toFixed(2)}</div></div>
-                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Closing Balance</div><div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4, color: '#fbbf24' }}>N$ {drawerBalance.toFixed(2)}</div></div>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Opening</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4 }}>N$ {Math.round(Number(drawerOpening || 0)).toLocaleString("en-ZA")}</div></div>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Movements</div><div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: 4, color: drawerBalance - Number(drawerOpening || 0) >= 0 ? '#86efac' : '#fca5a5' }}>{drawerBalance - Number(drawerOpening || 0) >= 0 ? '+' : ''}N$ {Math.round(drawerBalance - Number(drawerOpening || 0)).toLocaleString('en-ZA')}</div></div>
+                  <div><div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>Closing Balance</div><div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4, color: '#fbbf24' }}>N$ {Math.round(drawerBalance).toLocaleString("en-ZA")}</div></div>
                 </div>
               </div>
             </div>
@@ -6194,7 +6194,7 @@ function OnlineOrdersTab() {
 function printBonusPaymentReceipt({ payment_id, nb_number, distributor_name, period, amount, paid_at, branch_id, recorded_by, notes }) {
   const branchLabel = (branch_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const dateStr = paid_at ? new Date(paid_at).toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
-  const amtStr = `N$ ${Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  const amtStr = `N$ ${Math.round(Number(amount)).toLocaleString("en-ZA").replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   const win = window.open('', '_blank', 'width=420,height=620');
   if (!win) return;
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bonus Receipt</title><style>
@@ -6803,7 +6803,7 @@ function StaffTab() {
                 <div key={r.id || i} style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 800, color: '#166534', fontSize: '0.95rem' }}>N$ {Number(r.amount || 0).toFixed(2)}</span>
+                      <span style={{ fontWeight: 800, color: '#166534', fontSize: '0.95rem' }}>N$ {Math.round(Number(r.amount || 0)).toLocaleString("en-ZA")}</span>
                       {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
                       {statusBadge(r.status)}
                     </div>
@@ -8249,8 +8249,8 @@ function printCampaignReceipt(receipt, branchDisplayName) {
       <tr>
         <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${it.product_name}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${it.quantity}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Number(it.unit_price || it.dp || 0).toFixed(2)}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Number(it.total_dp || (it.unit_price || 0) * it.quantity).toFixed(2)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Math.round(Number(it.unit_price || it.dp || 0)).toLocaleString("en-ZA")}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Math.round(Number(it.total_dp || (it.unit_price || 0) * it.quantity)).toLocaleString('en-ZA')}</td>
       </tr>`;
   }).join('');
 
@@ -8287,10 +8287,10 @@ function printCampaignReceipt(receipt, branchDisplayName) {
     <tfoot>
       <tr class="total-row" style="border-top:2px solid #1a202c;">
         <td colspan="3" style="padding:8px 8px 4px;text-align:right;">Total Paid:</td>
-        <td style="padding:8px 8px 4px;text-align:right;">N$${Number(receipt.total_dp || 0).toFixed(2)}</td>
+        <td style="padding:8px 8px 4px;text-align:right;">N$${Math.round(Number(receipt.total_dp || 0)).toLocaleString("en-ZA")}</td>
       </tr>
       <tr><td colspan="3" style="padding:2px 8px 8px;text-align:right;color:#64748b;font-size:11px;">BV Earned:</td>
-        <td style="padding:2px 8px 8px;text-align:right;color:#064e3b;font-size:11px;">${Number(receipt.total_bv || 0).toFixed(2)} BV</td></tr>
+        <td style="padding:2px 8px 8px;text-align:right;color:#064e3b;font-size:11px;">${Math.round(Number(receipt.total_bv || 0)).toLocaleString("en-ZA")} BV</td></tr>
     </tfoot>
   </table>
   <hr class="divider">

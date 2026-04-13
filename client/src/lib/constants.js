@@ -106,7 +106,7 @@ export const DELIVERY_FEE_RULES = {
 export const CURRENCY = 'N$';
 
 export function formatCurrency(amount) {
-  return `${CURRENCY} ${Number(amount || 0).toFixed(2)}`;
+  return `${CURRENCY} ${Math.round(Number(amount || 0)).toLocaleString('en-ZA')}`;
 }
 
 export function formatDate(date) {

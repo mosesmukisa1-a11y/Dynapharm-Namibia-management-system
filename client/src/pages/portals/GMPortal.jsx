@@ -806,7 +806,7 @@ function ApprovalsTab() {
     try {
       await api.patch(`/cash-requests/${casModal.id}`, { status: action, note: casNote });
       const msg = action === 'approved'
-        ? `✅ Cash advance approved for ${casModal.staff_name || casModal.requested_by} — N$ ${Number(casModal.amount).toFixed(2)}.`
+        ? `✅ Cash advance approved for ${casModal.staff_name || casModal.requested_by} — N$ ${Math.round(Number(casModal.amount)).toLocaleString('en-ZA')}.`
         : `❌ Cash advance request rejected.`;
       setMessage(msg);
       setCasRequests(prev => prev.filter(r => r.id !== casModal.id));
@@ -1310,7 +1310,7 @@ function ApprovalsTab() {
                   const changes = typeof r.proposed_changes === 'string' ? JSON.parse(r.proposed_changes) : (r.proposed_changes || {});
                   const isRemoval = r.action_type === 'remove';
                   const changedFields = Object.keys(changes).filter(k => changes[k] !== undefined && changes[k] !== null);
-                  const numFmt = (v) => isNaN(v) ? v : `N$ ${Number(v).toFixed(2)}`;
+                  const numFmt = (v) => isNaN(v) ? v : `N$ ${Math.round(Number(v)).toLocaleString('en-ZA')}`;
                   const numKeys = ['basic_salary','overtime_amount','total_salary','ssc_deductions','other_deductions'];
                   return (
                     <div key={r.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -1373,7 +1373,7 @@ function ApprovalsTab() {
                         return Object.entries(ch).map(([k, v]) => (
                           <div key={k} className="flex justify-between text-sm border-b pb-1">
                             <span className="text-gray-500">{k.replace(/_/g, ' ')}</span>
-                            <span className="font-bold text-slate-800">{numKeys.includes(k) ? `N$ ${Number(v).toFixed(2)}` : String(v)}</span>
+                            <span className="font-bold text-slate-800">{numKeys.includes(k) ? `N$ ${Math.round(Number(v)).toLocaleString('en-ZA')}` : String(v)}</span>
                           </div>
                         ));
                       })()}
@@ -1421,7 +1421,7 @@ function ApprovalsTab() {
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-bold text-gray-800">{r.request_number}</span>
-                      <span className="font-bold text-lg text-green-700">N$ {Number(r.amount || 0).toFixed(2)}</span>
+                      <span className="font-bold text-lg text-green-700">N$ {Math.round(Number(r.amount || 0)).toLocaleString('en-ZA')}</span>
                       {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
                       <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>💼 Finance Reviewed</span>
                     </div>
@@ -1467,7 +1467,7 @@ function ApprovalsTab() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
                   <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Amount</span>
-                  <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.05rem' }}>N$ {Number(casModal.amount || 0).toFixed(2)}</span>
+                  <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.05rem' }}>N$ {Math.round(Number(casModal.amount || 0)).toLocaleString('en-ZA')}</span>
                 </div>
                 <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{casModal.purpose}</div>
                 {casModal.finance_note && <div style={{ marginTop: 8, fontSize: '0.8rem', padding: '6px 10px', background: '#eff6ff', borderRadius: 6, color: '#1e40af' }}>Finance Note: {casModal.finance_note}</div>}
@@ -3048,7 +3048,7 @@ function ProfitAnalysisTab() {
       <Modal open={!!editingCampaign} onClose={() => setEditingCampaign(null)} title={`Campaign Price: ${editingCampaign}`} size="sm">
         <div className="p-6 space-y-4">
           {editingCampaign && (() => { const prod = getLiveProductList().find(p => p.description === editingCampaign); return prod ? <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded"><p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p></div> : null; })()}
-          <Input label="Campaign Selling Price (N$)" type="number" min="0" step="0.01" value={campaignPrice} onChange={e => setCampaignPrice(e.target.value)} />
+          <Input label="Campaign Selling Price (N$)" type="number" min="0" step="1" value={campaignPrice} onChange={e => setCampaignPrice(String(Math.round(Number(e.target.value)) || e.target.value))} />
           <div className="flex gap-3">
             <Button onClick={saveCampaign}>Apply Campaign Price</Button>
             <Button variant="secondary" onClick={() => { setCampaignPrices(prev => { const n = { ...prev }; delete n[editingCampaign]; return n; }); setEditingCampaign(null); }}>Reset to DP</Button>
