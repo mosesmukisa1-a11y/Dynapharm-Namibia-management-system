@@ -3155,8 +3155,11 @@ function PriceListTab() {
     r.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const getVal = (row, field) =>
-    edits[row.id]?.[field] !== undefined ? edits[row.id][field] : row[field];
+  const getVal = (row, field) => {
+    if (edits[row.id]?.[field] !== undefined) return edits[row.id][field];
+    const v = row[field];
+    return (field !== 'description' && v !== null && v !== undefined) ? Math.round(Number(v)) : v;
+  };
 
   const fieldInput = (row, field, label) => (
     <input
