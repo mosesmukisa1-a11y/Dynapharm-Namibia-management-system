@@ -148,7 +148,12 @@ export default async function handler(req, res) {
         const productsText = (campConditions.products_text || '').trim();
         if (productsText) {
           const eligibleProducts = productsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
-          if (eligibleProducts.length > 0 && !eligibleProducts.includes(paid_product.toLowerCase())) {
+          // Only enforce eligibility if at least one entry in products_text matches a real product in the price list.
+          // This prevents blocking when products_text was accidentally set to a note/description rather than a product name.
+          const allPrices = await getMany(`SELECT LOWER(TRIM(description)) AS desc FROM product_prices`);
+          const knownProductNames = new Set(allPrices.map(r => r.desc));
+          const hasRealProducts = eligibleProducts.some(ep => knownProductNames.has(ep));
+          if (hasRealProducts && !eligibleProducts.includes(paid_product.trim().toLowerCase())) {
             return res.status(400).json({
               success: false,
               error: `Paid product "${paid_product}" does not qualify for this campaign. Eligible: ${eligibleProducts.join(', ')}`
@@ -163,11 +168,9 @@ export default async function handler(req, res) {
           });
         }
 
-        if (!campaignFreeProduct) {
-          return res.status(400).json({ success: false, error: 'buy_x_get_y campaign requires a free_product configured in campaign prize.' });
-        }
-
-        free_product = campaignFreeProduct;
+        // If no free_product is configured in the prize, default to the same product as paid
+        // (the most common "buy X get Y free" pattern — e.g. "Buy 2 DYNA-RH, get 1 DYNA-RH free")
+        free_product = campaignFreeProduct || paid_product;
         free_qty     = Math.floor(paid_qty / buyQty) * getQty;
       } else {
         free_qty = free_product ? Number(body.free_qty || 1) : 0;

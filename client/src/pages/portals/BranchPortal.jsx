@@ -8440,9 +8440,16 @@ function BranchCampaignsTab() {
     const isBuyXGetY = saleModal?.campaign_type === 'buy_x_get_y';
     const { paidProduct: campPaidProduct, freeProduct: campFreeProduct, buyQty, getQty } = getCampProducts(saleModal);
 
-    // For buy_x_get_y: products come from campaign setup, not from user selection
-    const finalPaidProduct = isBuyXGetY ? campPaidProduct : saleForm.paid_product;
-    const finalFreeProduct = isBuyXGetY ? campFreeProduct : saleForm.free_product;
+    // Check whether the campaign's locked product is actually in inventory
+    const campPaidValid = campPaidProduct && productOptions.some(
+      p => p.value.trim().toLowerCase() === campPaidProduct.trim().toLowerCase()
+    );
+
+    // For buy_x_get_y: use campaign product only when it's a real inventory match;
+    // otherwise fall back to whatever the branch staff manually selected.
+    const finalPaidProduct = isBuyXGetY && campPaidValid ? campPaidProduct : saleForm.paid_product;
+    // Free product: use campaign prize config → fall back to same item as paid (most common pattern)
+    const finalFreeProduct = isBuyXGetY ? (campFreeProduct || finalPaidProduct) : saleForm.free_product;
     const finalPaidQty = Number(saleForm.paid_qty);
     const finalFreeQty = isBuyXGetY ? Math.floor(finalPaidQty / buyQty) * getQty : Number(saleForm.free_qty);
 
@@ -8455,11 +8462,7 @@ function BranchCampaignsTab() {
       return;
     }
     if (!finalPaidProduct) {
-      setAlertMsg({ type: 'error', msg: 'No paid product defined for this campaign. Contact the GM to update the campaign setup.' });
-      return;
-    }
-    if (isBuyXGetY && !finalFreeProduct) {
-      setAlertMsg({ type: 'error', msg: 'No free product defined for this campaign. Contact the GM to update the campaign prize settings.' });
+      setAlertMsg({ type: 'error', msg: 'Please select the product being purchased.' });
       return;
     }
     if (!isBuyXGetY && !saleForm.paid_product) {
@@ -8715,20 +8718,43 @@ function BranchCampaignsTab() {
                 const { paidProduct, freeProduct, buyQty, getQty } = getCampProducts(saleModal);
                 const paidQty = Number(saleForm.paid_qty) || buyQty;
                 const derivedFreeQty = Math.floor(paidQty / buyQty) * getQty;
+
+                // Check if campaign's configured paid product matches something in branch inventory
+                const campPaidValid = paidProduct && productOptions.some(
+                  p => p.value.trim().toLowerCase() === paidProduct.trim().toLowerCase()
+                );
+                // Effective free product: from campaign prize, or same as paid item
+                const effectiveFreeProduct = freeProduct || (campPaidValid ? paidProduct : saleForm.paid_product) || '';
+
                 if (isBXGY) {
                   return (
                     <>
-                      {/* Locked paid product pill */}
+                      {/* Paid product — locked pill if valid, selector if campaign data is wrong */}
                       <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-2">
-                        <div className="text-sm font-semibold text-blue-800">Paid Item <span className="text-blue-600 font-normal text-xs">(set by campaign — deducted as sale)</span></div>
-                        <div className="flex items-center gap-3 p-2 bg-white border border-blue-300 rounded-lg">
-                          <span style={{ fontSize: 20 }}>📦</span>
-                          <div className="flex-1">
-                            <div className="font-bold text-gray-800 text-sm">{paidProduct || <span className="text-red-500 italic">Not configured — update campaign</span>}</div>
-                            <div className="text-xs text-gray-500">Buy {buyQty} unit(s) to qualify</div>
-                          </div>
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Auto-selected</span>
+                        <div className="text-sm font-semibold text-blue-800">
+                          Paid Item <span className="text-blue-600 font-normal text-xs">(deducted as sale)</span>
                         </div>
+                        {campPaidValid ? (
+                          <div className="flex items-center gap-3 p-2 bg-white border border-blue-300 rounded-lg">
+                            <span style={{ fontSize: 20 }}>📦</span>
+                            <div className="flex-1">
+                              <div className="font-bold text-gray-800 text-sm">{paidProduct}</div>
+                              <div className="text-xs text-gray-500">Buy {buyQty} unit(s) to qualify</div>
+                            </div>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Auto-selected</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                              ⚠️ Campaign product not configured — select from your inventory below
+                            </div>
+                            <select value={saleForm.paid_product} onChange={e => setSaleForm(f => ({ ...f, paid_product: e.target.value }))}
+                              className="w-full px-3 py-2 rounded-lg border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+                              <option value="">-- Select product --</option>
+                              {productOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                            </select>
+                          </div>
+                        )}
                         <div className="flex items-end gap-3">
                           <div className="flex-1">
                             <label className="block text-xs font-medium text-gray-700 mb-1">Quantity purchased</label>
@@ -8739,16 +8765,27 @@ function BranchCampaignsTab() {
                           <div className="text-xs text-blue-600 pb-2">Min: {buyQty}</div>
                         </div>
                       </div>
-                      {/* Locked free product pill */}
+                      {/* Free product pill — always shows something (falls back to paid item) */}
                       <div className="p-3 rounded-lg border-2 border-green-200 bg-green-50 space-y-2">
-                        <div className="text-sm font-semibold text-green-800">Free / Bonus Item <span className="text-green-600 font-normal text-xs">(set by campaign — deducted as campaign free item)</span></div>
+                        <div className="text-sm font-semibold text-green-800">
+                          Free / Bonus Item <span className="text-green-600 font-normal text-xs">(deducted as campaign free item)</span>
+                        </div>
                         <div className="flex items-center gap-3 p-2 bg-white border border-green-300 rounded-lg">
                           <span style={{ fontSize: 20 }}>🎁</span>
                           <div className="flex-1">
-                            <div className="font-bold text-gray-800 text-sm">{freeProduct || <span className="text-red-500 italic">Not configured — update campaign prize</span>}</div>
-                            <div className="text-xs text-gray-500">{derivedFreeQty} free unit(s) for buying {paidQty} × {paidProduct}</div>
+                            {effectiveFreeProduct ? (
+                              <>
+                                <div className="font-bold text-gray-800 text-sm">{effectiveFreeProduct}</div>
+                                <div className="text-xs text-gray-500">
+                                  {derivedFreeQty} free unit(s) for buying {paidQty} × {campPaidValid ? paidProduct : (saleForm.paid_product || '…')}
+                                  {!freeProduct && <span className="ml-1 text-amber-600">(same as paid item)</span>}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-400 italic">Select a paid product above to determine the free item</div>
+                            )}
                           </div>
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{derivedFreeQty} FREE</span>
+                          {effectiveFreeProduct && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{derivedFreeQty} FREE</span>}
                         </div>
                       </div>
                     </>
