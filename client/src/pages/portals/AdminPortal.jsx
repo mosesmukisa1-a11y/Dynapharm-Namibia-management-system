@@ -55,17 +55,18 @@ function RegistrationsTab() {
   const handleApprove = async (userId, username) => {
     try {
       await api.admin.approveRegistration({ userId, username });
-      setMessage('Registration approved!');
+      setMessage('✅ Account approved — the applicant has been notified and can now log in.');
       loadPending();
     } catch (err) {
       setMessage('Error: ' + err.message);
     }
   };
 
-  const handleReject = async (userId) => {
+  const handleReject = async (userId, name) => {
+    if (!window.confirm(`Reject and permanently delete this registration${name ? ` for ${name}` : ''}?\n\nThis will remove them completely from the system.`)) return;
     try {
       await api.admin.rejectRegistration({ userId });
-      setMessage('Registration rejected.');
+      setMessage('🗑️ Registration rejected — account fully removed from the system.');
       loadPending();
     } catch (err) {
       setMessage('Error: ' + err.message);
@@ -98,7 +99,7 @@ function RegistrationsTab() {
           <Button size="sm" variant="success" onClick={() => handleApprove(user.id, user.username || user.full_name.toLowerCase().replace(/\s+/g, '.'))}>
             <UserCheck size={14} /> Approve
           </Button>
-          <Button size="sm" variant="danger" onClick={() => handleReject(user.id)}>
+          <Button size="sm" variant="danger" onClick={() => handleReject(user.id, user.full_name)}>
             <UserX size={14} /> Reject
           </Button>
         </div>
@@ -126,7 +127,7 @@ function RegistrationsTab() {
           <Button size="sm" variant="success" onClick={() => handleApprove(user.id, user.username)}>
             <UserCheck size={14} /> Approve
           </Button>
-          <Button size="sm" variant="danger" onClick={() => handleReject(user.id)}>
+          <Button size="sm" variant="danger" onClick={() => handleReject(user.id, user.full_name)}>
             <UserX size={14} /> Reject
           </Button>
         </div>

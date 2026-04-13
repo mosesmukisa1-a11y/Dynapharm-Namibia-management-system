@@ -24,7 +24,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    const user = await getOne('SELECT id, role, is_active FROM users WHERE id = $1', [userId]);
+    const user = await getOne(
+      'SELECT id, role, username, full_name, is_active FROM users WHERE id = $1',
+      [userId]
+    );
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -33,9 +36,23 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Cannot reject an active account' });
     }
 
+    // Delete employee record if this was a staff registration
+    // (staff registrations auto-create an employees row with employment_status='pending')
+    if (user.role !== 'distributor') {
+      await query(
+        `DELETE FROM employees WHERE user_id = $1 AND employment_status = 'pending'`,
+        [userId]
+      ).catch(err => console.warn('Employee cleanup (non-critical):', err.message));
+    }
+
+    // Remove the pending portal account from users
     await query('DELETE FROM users WHERE id = $1 AND is_active = FALSE', [userId]);
 
-    return res.status(200).json({ success: true, message: 'Registration rejected' });
+    return res.status(200).json({
+      success: true,
+      message: 'Registration rejected and account removed from the system',
+      removed_user: user.full_name || user.username,
+    });
   } catch (error) {
     console.error('Reject registration error:', error);
     return res.status(500).json({ error: 'Internal server error' });

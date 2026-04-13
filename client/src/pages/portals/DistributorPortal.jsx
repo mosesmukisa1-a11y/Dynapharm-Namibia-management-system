@@ -1240,6 +1240,7 @@ function CommunicationsTab() {
   const [referralSales, setReferralSales] = useState([]);
   const [checkups, setCheckups] = useState([]);
   const [onlineOrders, setOnlineOrders] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -1257,7 +1258,9 @@ function CommunicationsTab() {
       api.get(`/appointments?client_reference=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
       // Online shop orders placed as this distributor
       api.orders.list({ distributor_code: nb }).then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
-    ]).then(([allSales, apts, orders]) => {
+      // Notifications/messages sent to this distributor (e.g. approval confirmation)
+      api.get(`/notifications?recipient_type=distributor&recipient_id=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.notifications || []).catch(() => []),
+    ]).then(([allSales, apts, orders, notifs]) => {
       // Split sales: member purchases vs referral sales
       const memberBuys = allSales.filter(s => (s.distributor_nb || '').toUpperCase() === nb);
       const referrals = allSales.filter(s => (s.referral_nb || '').toUpperCase() === nb && (s.distributor_nb || '').toUpperCase() !== nb);
@@ -1265,6 +1268,7 @@ function CommunicationsTab() {
       setReferralSales(referrals);
       setCheckups(apts);
       setOnlineOrders(orders);
+      setMessages(notifs);
     }).catch(() => setError('Could not load your activity data. Please try again.'))
     .finally(() => setLoading(false));
   }, [nb]);
@@ -1284,8 +1288,10 @@ function CommunicationsTab() {
   const totalOnlineSpend = onlineOrders.reduce((s, o) => s + Number(o.total_amount || o.subtotal || 0), 0);
   const completedCheckups = checkups.filter(c => c.status === 'completed').length;
 
+  const unreadMessages = messages.filter(m => !m.is_read).length;
   const sections = [
     { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'messages', label: `Messages${unreadMessages > 0 ? ` (${unreadMessages} new)` : messages.length > 0 ? ` (${messages.length})` : ''}`, icon: '📬' },
     { id: 'myPurchases', label: `My Purchases (${memberSales.length})`, icon: '🛍️' },
     { id: 'referrals', label: `Referred Clients (${referralSales.length})`, icon: '👥' },
     { id: 'checkups', label: `Checkups (${checkups.length})`, icon: '🏥' },
@@ -1363,8 +1369,52 @@ function CommunicationsTab() {
             </Card>
           )}
 
-          {memberSales.length === 0 && referralSales.length === 0 && checkups.length === 0 && onlineOrders.length === 0 && (
+          {memberSales.length === 0 && referralSales.length === 0 && checkups.length === 0 && onlineOrders.length === 0 && messages.length === 0 && (
             <EmptyState icon={<BarChart3 size={48} />} title="No Activity Yet" description="Your purchases, referrals, and checkup bookings will all appear here." />
+          )}
+        </div>
+      )}
+
+      {/* ── MESSAGES / INBOX ── */}
+      {activeSection === 'messages' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-gray-800">My Messages</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Notifications and messages from Dynapharm</p>
+            </div>
+            {unreadMessages > 0 && (
+              <Badge variant="warning">{unreadMessages} unread</Badge>
+            )}
+          </div>
+          {messages.length === 0 ? (
+            <EmptyState icon={<MessageSquare size={40} />} title="No messages yet" description="Account approval confirmations and company messages will appear here." />
+          ) : (
+            messages.map((msg, idx) => {
+              const isNew = !msg.is_read;
+              const isApproval = msg.type === 'account_approved';
+              return (
+                <Card key={msg.id || idx} className={isNew ? 'border-l-4 border-primary' : ''}>
+                  <CardBody>
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl mt-0.5 shrink-0">
+                        {isApproval ? '✅' : '📣'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h4 className="font-bold text-gray-800 text-sm">{msg.title || 'Message'}</h4>
+                          {isNew && <Badge variant="warning">New</Badge>}
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed">{msg.message}</p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          {msg.created_at ? new Date(msg.created_at).toLocaleDateString('en-NA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })
           )}
         </div>
       )}
