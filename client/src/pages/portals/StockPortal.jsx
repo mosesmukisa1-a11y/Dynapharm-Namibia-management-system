@@ -4,11 +4,18 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import DispatchNote from '../../components/DispatchNote';
-import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
+import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+
+// CIF helper: uses stored cif_unit_cost when > 0, otherwise looks up live GM price list
+const getBatchCIF = (b) => {
+  const stored = Number(b.cif_unit_cost);
+  if (stored > 0) return stored;
+  return getCIFPrice(b.product_name || b.description || '');
+};
 
 // ── Stock AI Engine ────────────────────────────────────────────────────────────
 const stockAI = {
@@ -326,6 +333,7 @@ function FieldStockTab() {
       setRecords(rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
       const namesSet = new Set(PRICE_LIST.map(p => p.description));
       const prices = Array.isArray(priceData) ? priceData : [];
+      if (prices.length > 0) setLivePrices(prices);
       prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
       setProductOptions([...namesSet].sort());
     }).finally(() => setLoading(false));
@@ -723,12 +731,14 @@ function AICommandCenter({ branch }) {
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
+      api.prices.list().catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
       api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
-    ]).then(([batches, movements, transfers, sales, branchData]) => {
+    ]).then(([priceData, batches, movements, transfers, sales, branchData]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       setData({ batches, movements, transfers, sales, branchData });
       setLastRefresh(new Date());
     }).finally(() => setLoading(false));
@@ -1013,13 +1023,15 @@ function OverviewTab({ branch }) {
 
   useEffect(() => {
     Promise.all([
+      api.prices.list().catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.stock.supplierImports().catch(() => []),
       api.stock.fieldStock().catch(() => []),
       api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
-    ]).then(([batches, movements, transfers, imports, fieldStock, branchData]) => {
+    ]).then(([priceData, batches, movements, transfers, imports, fieldStock, branchData]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       setData({
         batches,
         movements,
@@ -1051,7 +1063,7 @@ function OverviewTab({ branch }) {
   const totalItems = warehouseQty + branchTotalQty;
   const totalCIF = filteredBatches.reduce((sum, b) => {
     const qty = Number(b.remaining_quantity || b.quantity || 0);
-    const cif = Number(b.cif_unit_cost || b.unit_price || 0);
+    const cif = getBatchCIF(b);
     return sum + qty * cif;
   }, 0);
   const totalDPC = filteredBatches.reduce((sum, b) => {
@@ -1253,7 +1265,7 @@ function OverviewTab({ branch }) {
                 if (!byLoc[label]) byLoc[label] = { qty: 0, cifValue: 0, dpcValue: 0, batches: 0 };
                 const qty = Number(b.remaining_quantity || b.quantity || 0);
                 byLoc[label].qty += qty;
-                byLoc[label].cifValue += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+                byLoc[label].cifValue += qty * getBatchCIF(b);
                 byLoc[label].dpcValue += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
                 byLoc[label].batches++;
               });
@@ -1286,7 +1298,7 @@ function OverviewTab({ branch }) {
               { header: 'Product', key: 'product_name' },
               { header: 'Batch', render: r => r.batch_no || '-' },
               { header: 'Qty', key: 'quantity' },
-              { header: 'CIF Total', render: r => formatCurrency(Number(r.cif_total_value || 0)) },
+              { header: 'CIF Total', render: r => formatCurrency(Number(r.cif_total_value) > 0 ? Number(r.cif_total_value) : getBatchCIF(r) * Number(r.quantity || 0)) },
               { header: 'Destination', render: r => <span className="text-xs">{fmtLocation(r.destination_warehouse || 'country_stock')}</span> },
             ]}
             data={data.imports.slice(0, 10)}
@@ -1334,6 +1346,7 @@ function SupplierImportTab() {
         const namesSet = new Set(PRICE_LIST.map(p => p.description));
         if (priceData.status === 'fulfilled') {
           const prices = Array.isArray(priceData.value) ? priceData.value : [];
+          if (prices.length > 0) setLivePrices(prices);
           prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
         }
         if (prodData.status === 'fulfilled') {
@@ -1473,9 +1486,9 @@ function SupplierImportTab() {
             { header: 'Batch #', render: r => r.batch_no || r.batch_number || '-' },
             { header: 'Expiry', render: r => (r.expiry_date ? formatDate(r.expiry_date) : '-') },
             { header: 'Qty', key: 'quantity' },
-            { header: 'CIF/unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
+            { header: 'CIF/unit', render: r => formatCurrency(getBatchCIF(r)) },
             { header: 'CIF Total', render: r => {
-              const cif = Number(r.cif_total_value || 0) || (Number(r.quantity || 0) * Number(r.cif_unit_cost || r.unit_price || 0));
+              const cif = Number(r.cif_total_value || 0) || (Number(r.quantity || 0) * getBatchCIF(r));
               return formatCurrency(cif);
             }},
             { header: 'DPC/unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0)) },
@@ -2150,7 +2163,7 @@ function WarehouseTab({ name }) {
           <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>{name} Warehouse</div>
           <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: 4 }}>
             {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0).toLocaleString()} units
-            {' · CIF: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0))}
+            {' · CIF: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * getBatchCIF(b), 0))}
             {' · DPC: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '')), 0))}
           </div>
         </div>
@@ -2187,7 +2200,7 @@ function WarehouseTab({ name }) {
                 const days = Math.floor((new Date(r.expiry_date) - new Date()) / 86400000);
                 return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600' : ''}>{formatDate(r.expiry_date)}{days <= 90 ? ` (${days}d)` : ''}</span>;
               }},
-              { header: 'CIF/Unit', render: r => formatCurrency(Number(r.cif_unit_cost || r.unit_price || 0)) },
+              { header: 'CIF/Unit', render: r => formatCurrency(getBatchCIF(r)) },
               { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
               { header: '', render: r => (
                 <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
@@ -5658,12 +5671,12 @@ function StockReportsTab({ branch }) {
                 if (!locGroups[loc]) locGroups[loc] = { qty: 0, cif: 0, dpc: 0 };
                 const qty = Number(b.remaining_quantity || b.quantity || 0);
                 locGroups[loc].qty += qty;
-                locGroups[loc].cif += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+                locGroups[loc].cif += qty * getBatchCIF(b);
                 locGroups[loc].dpc += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
               });
-              const rows = Object.entries(locGroups).map(([loc, d]) => `<tr><td style="font-weight:700">${fmtLocation(loc)}</td><td>${d.qty.toLocaleString()}</td><td>N$ ${d.cif.toFixed(2)}</td><td>N$ ${d.dpc.toFixed(2)}</td><td>N$ ${(d.dpc - d.cif).toFixed(2)}</td></tr>`).join('');
+              const rows = Object.entries(locGroups).map(([loc, d]) => `<tr><td style="font-weight:700">${fmtLocation(loc)}</td><td>${d.qty.toLocaleString()}</td><td>N$ ${Math.round(d.cif).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(d.dpc).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(d.dpc - d.cif).toLocaleString('en-ZA')}</td></tr>`).join('');
               const totals = Object.values(locGroups).reduce((s,d) => ({ qty: s.qty+d.qty, cif: s.cif+d.cif, dpc: s.dpc+d.dpc }), { qty:0, cif:0, dpc:0 });
-              printDocument('Stock Valuation Report', `<table><thead><tr><th>Location</th><th>Total Qty</th><th>CIF Value</th><th>DPC Value</th><th>Margin</th></tr></thead><tbody>${rows}<tr class="total-row" style="font-weight:800;background:#fff0f3;border-top:2px solid #fecaca"><td>TOTAL</td><td>${totals.qty.toLocaleString()}</td><td>N$ ${totals.cif.toFixed(2)}</td><td>N$ ${totals.dpc.toFixed(2)}</td><td>N$ ${(totals.dpc-totals.cif).toFixed(2)}</td></tr></tbody></table>`);
+              printDocument('Stock Valuation Report', `<table><thead><tr><th>Location</th><th>Total Qty</th><th>CIF Value</th><th>DPC Value</th><th>Margin</th></tr></thead><tbody>${rows}<tr class="total-row" style="font-weight:800;background:#fff0f3;border-top:2px solid #fecaca"><td>TOTAL</td><td>${totals.qty.toLocaleString()}</td><td>N$ ${Math.round(totals.cif).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc-totals.cif).toLocaleString('en-ZA')}</td></tr></tbody></table>`);
             }}><Printer size={14} /> Print Valuation Report</Button>
           </div>
         </CardHeader>
@@ -5674,7 +5687,7 @@ function StockReportsTab({ branch }) {
             if (!locGroups[loc]) locGroups[loc] = { location: loc, qty: 0, cif: 0, dpc: 0 };
             const qty = Number(b.remaining_quantity || b.quantity || 0);
             locGroups[loc].qty += qty;
-            locGroups[loc].cif += qty * Number(b.cif_unit_cost || b.unit_price || 0);
+            locGroups[loc].cif += qty * getBatchCIF(b);
             locGroups[loc].dpc += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
           });
           const valData = Object.values(locGroups);
@@ -5684,9 +5697,9 @@ function StockReportsTab({ branch }) {
               columns={[
                 { header: 'Location', render: r => <span className="font-bold text-sm">{fmtLocation(r.location)}</span> },
                 { header: 'Total Qty', render: r => <span className="font-semibold">{r.qty.toLocaleString()}</span> },
-                { header: 'CIF Value', render: r => <span className="text-xs">N$ {r.cif.toFixed(2)}</span> },
-                { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {r.dpc.toFixed(2)}</span> },
-                { header: 'Margin', render: r => <span className="text-xs font-semibold" style={{ color: (r.dpc - r.cif) > 0 ? '#166534' : '#c41e3a' }}>N$ {(r.dpc - r.cif).toFixed(2)}</span> },
+                { header: 'CIF Value', render: r => <span className="text-xs">N$ {Math.round(r.cif).toLocaleString('en-ZA')}</span> },
+                { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {Math.round(r.dpc).toLocaleString('en-ZA')}</span> },
+                { header: 'Margin', render: r => <span className="text-xs font-semibold" style={{ color: (r.dpc - r.cif) > 0 ? '#166534' : '#c41e3a' }}>N$ {Math.round(r.dpc - r.cif).toLocaleString('en-ZA')}</span> },
               ]}
               data={valData}
               emptyMessage="No stock data"
@@ -5694,8 +5707,8 @@ function StockReportsTab({ branch }) {
             <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 24, fontSize: '0.82rem', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 800, color: '#c41e3a' }}>TOTAL</span>
               <span>Qty: <strong>{totals.qty.toLocaleString()}</strong></span>
-              <span>CIF: <strong>N$ {totals.cif.toFixed(2)}</strong></span>
-              <span>DPC: <strong style={{ color: '#c41e3a' }}>N$ {totals.dpc.toFixed(2)}</strong></span>
+              <span>CIF: <strong>N$ {Math.round(totals.cif).toLocaleString('en-ZA')}</strong></span>
+              <span>DPC: <strong style={{ color: '#c41e3a' }}>N$ {Math.round(totals.dpc).toLocaleString('en-ZA')}</strong></span>
               <span>Margin: <strong style={{ color: '#166534' }}>N$ {(totals.dpc - totals.cif).toFixed(2)}</strong></span>
             </div>
           </>);
