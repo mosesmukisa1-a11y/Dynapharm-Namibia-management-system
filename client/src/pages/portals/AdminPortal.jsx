@@ -711,8 +711,8 @@ function DistributorsTab() {
                 <h4 className="font-bold text-gray-800 mb-1">Bulk Import Distributors</h4>
                 <p className="text-xs text-gray-500 mb-3">
                   Upload a CSV or Excel file with distributor data. The system will automatically detect columns
-                  (DRN/NB Number, NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, etc.).
-                  Existing distributors (by NB number) will be skipped unless their position has changed, in which case it will be updated.
+                  (DRN/NB/DZ Number, NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, etc.).
+                  All code formats from the master list are accepted (NB, DZ, and others). Existing distributors will be skipped unless their position has changed.
                 </p>
               </div>
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary/50 transition-colors">
@@ -767,7 +767,7 @@ function DistributorsTab() {
           <CardBody>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <Input label="NB Number / Code *" value={form.distributor_code} onChange={e => setForm({ ...form, distributor_code: e.target.value })} placeholder="e.g. NB005676" />
+                <Input label="NB / DZ Number / Code *" value={form.distributor_code} onChange={e => setForm({ ...form, distributor_code: e.target.value })} placeholder="e.g. NB005676 or DZ001234" />
                 <Input label="Distributor Name *" value={form.distributor_name} onChange={e => setForm({ ...form, distributor_name: e.target.value })} placeholder="Full name" />
               </div>
               <div className="grid grid-cols-3 gap-4">

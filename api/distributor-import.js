@@ -20,8 +20,8 @@ function excelDateToISO(serial) {
 }
 
 function parseRow(row) {
-  const drn = (row.DRN || row.drn || row.nb_number || row.NB_NUMBER || '').toString().trim().toUpperCase();
-  if (!drn || !drn.startsWith('NB')) return null;
+  const drn = (row.DRN || row.drn || row.nb_number || row.NB_NUMBER || row.DZ || row.dz || '').toString().trim().toUpperCase();
+  if (!drn || drn.length < 2 || !/^[A-Z]{1,4}[0-9]/.test(drn)) return null;
 
   const name = (row.NAME || row.name || row.distributor_name || '').toString().trim();
   if (!name) return null;
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
 
     const parsed = rows.map(parseRow).filter(Boolean);
     if (parsed.length === 0) {
-      return res.status(400).json({ error: 'No valid distributor rows found. Each row must have at least DRN (NB number) and NAME.' });
+      return res.status(400).json({ error: 'No valid distributor rows found. Each row must have at least a DRN/NB/DZ code and NAME.' });
     }
 
     const existing = await getMany('SELECT distributor_code, position, position_code FROM distributors WHERE entity_type = $1', ['distributor']);
