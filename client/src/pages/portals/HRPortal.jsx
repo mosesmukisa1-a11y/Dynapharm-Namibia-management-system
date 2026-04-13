@@ -492,6 +492,38 @@ function TerminationsTab() {
   );
 }
 
+const NAMIBIAN_PUBLIC_HOLIDAYS = new Set([
+  '2025-01-01','2025-03-21','2025-04-18','2025-04-19','2025-04-21','2025-05-01','2025-05-04',
+  '2025-05-25','2025-08-26','2025-09-10','2025-10-07','2025-12-10','2025-12-25','2025-12-26',
+  '2026-01-01','2026-03-21','2026-04-03','2026-04-04','2026-04-06','2026-05-01','2026-05-24',
+  '2026-05-25','2026-08-26','2026-09-10','2026-10-07','2026-12-10','2026-12-25','2026-12-26',
+]);
+
+function calcAttendanceStatus(dateStr, clockInTime) {
+  if (!clockInTime || !dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = d.getDay();
+  if (dow === 0) return 'Present';
+  const isHoliday = NAMIBIAN_PUBLIC_HOLIDAYS.has(dateStr);
+  const isSat = dow === 6;
+  const [h, m] = clockInTime.split(':').map(Number);
+  const mins = h * 60 + m;
+  const threshold = (isHoliday || isSat) ? (8 * 60 + 10) : (8 * 60 + 30);
+  return mins > threshold ? 'Late' : 'Present';
+}
+
+function shiftLabel(dateStr) {
+  if (!dateStr) return 'Weekdays by 08:30 | Saturdays by 08:10';
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = d.getDay();
+  if (dow === 0) return 'Sunday — no attendance required';
+  const isHoliday = NAMIBIAN_PUBLIC_HOLIDAYS.has(dateStr);
+  const isSat = dow === 6;
+  if (isHoliday) return 'Public Holiday — shift starts by 08:10';
+  if (isSat) return 'Saturday — shift starts by 08:10';
+  return 'Weekday — shift starts by 08:30';
+}
+
 function AttendanceTab() {
   const [records, setRecords] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -499,18 +531,16 @@ function AttendanceTab() {
   const [form, setForm] = useState({ employee_name: '', date: new Date().toISOString().slice(0, 10), clock_in: '', clock_out: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const getNow = () => {
-    const now = new Date();
-    return now.toTimeString().slice(0, 5);
-  };
+  const getNow = () => new Date().toTimeString().slice(0, 5);
 
   const loadData = () => {
     Promise.all([
       api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
       api.hr.records('attendance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
     ]).then(([emps, recs]) => {
-      setEmployees(emps);
+      setEmployees(emps.filter(e => (e.employment_status || '').toLowerCase() === 'active' || !e.employment_status));
       setRecords(recs);
     }).finally(() => setLoading(false));
   };
@@ -519,10 +549,7 @@ function AttendanceTab() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.employee_name || !form.date) {
-      setError('Employee and date are required');
-      return;
-    }
+    if (!form.employee_name || !form.date) { setError('Employee and date are required'); return; }
     setError('');
     setSubmitting(true);
     try {
@@ -536,12 +563,41 @@ function AttendanceTab() {
     }
   };
 
+  const previewStatus = calcAttendanceStatus(form.date, form.clock_in);
+
+  const todayRecords = records.filter(r => r.date === filterDate || (r.date || '').startsWith(filterDate));
+  const lateCount = todayRecords.filter(r => (r.subtype || r.status) === 'Late').length;
+  const presentCount = todayRecords.filter(r => (r.subtype || r.status) === 'Present').length;
+  const absentCount = Math.max(0, employees.length - todayRecords.length);
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-4">
+        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#16a34a' }}>{presentCount}</div>
+          <div><div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#86efac', textTransform: 'uppercase', letterSpacing: '.06em' }}>Present</div><div style={{ fontSize: '0.83rem', color: '#15803d', fontWeight: 600 }}>On Time</div></div>
+        </div>
+        <div style={{ background: '#fefce8', border: '1.5px solid #fde047', borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ca8a04' }}>{lateCount}</div>
+          <div><div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fde047', textTransform: 'uppercase', letterSpacing: '.06em' }}>Late</div><div style={{ fontSize: '0.83rem', color: '#a16207', fontWeight: 600 }}>After shift start</div></div>
+        </div>
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#dc2626' }}>{absentCount}</div>
+          <div><div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fca5a5', textTransform: 'uppercase', letterSpacing: '.06em' }}>Not Logged</div><div style={{ fontSize: '0.83rem', color: '#b91c1c', fontWeight: 600 }}>No record yet</div></div>
+        </div>
+      </div>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Log Attendance</h3></CardHeader>
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3 className="font-bold text-gray-800">Log Attendance</h3>
+            <div style={{ fontSize: '0.8rem', color: '#6b7280', background: '#f3f4f6', padding: '5px 12px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock size={13} /> {shiftLabel(form.date)}
+            </div>
+          </div>
+        </CardHeader>
         <CardBody>
           {error && <Alert type="error" className="mb-4">{error}</Alert>}
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -560,9 +616,22 @@ function AttendanceTab() {
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Input label="Clock In" type="time" value={form.clock_in} onChange={e => setForm(f => ({ ...f, clock_in: e.target.value }))} />
-                <Button type="button" size="sm" variant="secondary" className="mt-1" onClick={() => setForm(f => ({ ...f, clock_in: getNow() }))}>
-                  <Clock size={13} /> Clock In Now
-                </Button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setForm(f => ({ ...f, clock_in: getNow() }))}>
+                    <Clock size={13} /> Clock In Now
+                  </Button>
+                  {previewStatus && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 12px',
+                      borderRadius: 20, fontWeight: 700, fontSize: '0.8rem',
+                      background: previewStatus === 'Late' ? '#fef3c7' : '#dcfce7',
+                      color: previewStatus === 'Late' ? '#b45309' : '#16a34a',
+                      border: `1.5px solid ${previewStatus === 'Late' ? '#fde68a' : '#86efac'}`
+                    }}>
+                      {previewStatus === 'Late' ? '⚠️ LATE' : '✅ ON TIME'} — will be logged as {previewStatus}
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
                 <Input label="Clock Out" type="time" value={form.clock_out} onChange={e => setForm(f => ({ ...f, clock_out: e.target.value }))} />
@@ -579,19 +648,29 @@ function AttendanceTab() {
       </Card>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Attendance Records</h3></CardHeader>
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3 className="font-bold text-gray-800">Attendance Records</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>Filter by date:</span>
+              <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+                style={{ padding: '4px 10px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: '0.85rem', color: '#374151' }} />
+              <button onClick={() => setFilterDate('')} style={{ fontSize: '0.78rem', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>Show all</button>
+            </div>
+          </div>
+        </CardHeader>
         <Table
           columns={[
             { header: 'Employee', key: 'employee_name' },
             { header: 'Date', render: r => formatDate(r.date) },
-            { header: 'Clock In', key: 'clock_in' },
-            { header: 'Clock Out', key: 'clock_out' },
+            { header: 'Clock In', render: r => r.clock_in || '—' },
+            { header: 'Clock Out', render: r => r.clock_out || '—' },
             { header: 'Status', render: r => {
               const s = r.subtype || r.status || 'Present';
               return <Badge variant={s === 'Late' ? 'warning' : s === 'Present' ? 'success' : s === 'Absent' ? 'danger' : 'info'}>{s}</Badge>;
             }},
           ]}
-          data={records}
+          data={filterDate ? records.filter(r => (r.date || '').startsWith(filterDate)) : records}
           emptyMessage="No attendance records"
         />
       </Card>
