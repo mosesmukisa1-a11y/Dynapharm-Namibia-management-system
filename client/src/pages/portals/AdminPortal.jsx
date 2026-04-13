@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatCurrency, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
-import { enrichProductsWithPricing } from '../../lib/pricing';
+import { enrichProductsWithPricing, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { Settings, Users, Shield, Database, GitBranch, UserCheck, UserX, Plus, Trash2, Edit, Activity, Upload, Image, Key, Package, DollarSign, List } from 'lucide-react';
 
@@ -473,13 +473,14 @@ function ProductsTab() {
 
   const loadProducts = () => {
     setLoading(true);
-    api.products.list()
-      .then(data => {
-        const raw = Array.isArray(data) ? data : data.products || [];
-        setProducts(enrichProductsWithPricing(raw));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.prices.list().catch(() => []),
+      api.products.list().catch(() => []),
+    ]).then(([priceData, data]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
+      const raw = Array.isArray(data) ? data : data.products || [];
+      setProducts(enrichProductsWithPricing(raw));
+    }).finally(() => setLoading(false));
   };
 
   useEffect(loadProducts, []);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency, BRANCHES, COMPANY_INFO, DELIVERY_FEE_RULES } from '../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals } from '../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, setLivePrices } from '../lib/pricing';
 import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert, Select } from '../components/ui';
 import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store, UserPlus } from 'lucide-react';
 import { MembershipAgreementForm } from '../components/MembershipAgreementForm';
@@ -40,6 +40,9 @@ export default function Shop() {
 
   useEffect(() => {
     Promise.all([
+      api.prices.list().then(prices => {
+        if (Array.isArray(prices) && prices.length > 0) setLivePrices(prices);
+      }).catch(() => {}),
       api.products.list().then(data => {
         const raw = Array.isArray(data) ? data : data.products || [];
         setProducts(enrichProductsWithPricing(raw));

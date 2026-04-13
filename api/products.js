@@ -35,6 +35,19 @@ export default async function handler(req, res) {
         if (!product) {
           return res.status(404).json({ error: 'Product not found' });
         }
+
+        // Enrich with GM price-list values
+        const pl = await getOne(
+          'SELECT * FROM product_prices WHERE UPPER(TRIM(description)) = UPPER(TRIM($1))',
+          [product.name || '']
+        );
+        if (pl) {
+          product.dp = pl.dp;
+          product.cp = pl.cp;
+          product.cif = pl.cif;
+          product.bv = pl.bv;
+          product.hasPricing = true;
+        }
         
         // Get product images
         const images = await getMany('SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at', [id]);
@@ -78,8 +91,31 @@ export default async function handler(req, res) {
           }));
         }
 
-        // Find price-list entries that have NO matching row in the products table
-        const dbNames = new Set(dbProducts.map(p => (p.name || '').toUpperCase().trim()));
+        // Build a lookup map from product_prices by normalised name
+        const priceMap = new Map();
+        for (const p of priceRows) {
+          priceMap.set((p.description || '').toUpperCase().trim(), p);
+        }
+
+        // Override dp/cp/cif/bv on every dbProduct with GM price-list values when a match exists
+        const enrichedDbProducts = dbProducts.map(prod => {
+          const key = (prod.name || '').toUpperCase().trim();
+          const pl = priceMap.get(key);
+          if (pl) {
+            return {
+              ...prod,
+              dp: pl.dp,
+              cp: pl.cp,
+              cif: pl.cif,
+              bv: pl.bv,
+              hasPricing: true,
+            };
+          }
+          return prod;
+        });
+
+        // Add price-list entries that have NO matching row in the products table
+        const dbNames = new Set(enrichedDbProducts.map(p => (p.name || '').toUpperCase().trim()));
         const priceOnlyProducts = priceRows
           .filter(p => !dbNames.has((p.description || '').toUpperCase().trim()))
           .map(p => ({
@@ -98,9 +134,10 @@ export default async function handler(req, res) {
             branch: null,
             images: [],
             from_price_list: true,
+            hasPricing: true,
           }));
 
-        return res.json([...dbProducts, ...priceOnlyProducts]);
+        return res.json([...enrichedDbProducts, ...priceOnlyProducts]);
       }
     }
 

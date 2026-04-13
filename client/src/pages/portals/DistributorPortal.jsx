@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
 import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -625,9 +625,11 @@ function ShopTab() {
 
   useEffect(() => {
     Promise.all([
+      api.prices.list().catch(() => []),
       api.products.list().catch(() => []),
       api.branches.list().catch(() => []),
-    ]).then(([prodData, branchData]) => {
+    ]).then(([priceData, prodData, branchData]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       const raw = Array.isArray(prodData) ? prodData : prodData.products || [];
       setProducts(enrichProductsWithPricing(raw));
       const blist = Array.isArray(branchData) ? branchData : branchData.branches || [];
@@ -1955,11 +1957,13 @@ function CampaignsTab() {
   useEffect(() => {
     Promise.all([
       api.campaigns.list().catch(() => ({ campaigns: [] })),
+      api.prices.list().catch(() => []),
       api.products.list().catch(() => []),
       api.branches.list().catch(() => []),
-    ]).then(([campData, prodData, branchData]) => {
+    ]).then(([campData, priceData, prodData, branchData]) => {
       const camps = Array.isArray(campData) ? campData : campData.campaigns || [];
       setCampaigns(camps);
+      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       const raw = Array.isArray(prodData) ? prodData : prodData.products || [];
       setProducts(enrichProductsWithPricing(raw));
       const blist = Array.isArray(branchData) ? branchData : branchData.branches || [];
