@@ -42,6 +42,7 @@ export default async function handler(req, res) {
   const date = searchParams.get('date');
   const status = searchParams.get('status');
   const type = searchParams.get('type');
+  const clientRef = searchParams.get('client_reference');
 
   try {
     if (method === 'GET') {
@@ -52,7 +53,9 @@ export default async function handler(req, res) {
       const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
       const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
-      if (req.user && !FULL_ACCESS.has(userRole) && userBranch && !branch) {
+      // Distributors querying their own checkups via client_reference skip branch restriction
+      const isDistributorSelfQuery = userRole === 'distributor' && clientRef;
+      if (req.user && !FULL_ACCESS.has(userRole) && userBranch && !branch && !isDistributorSelfQuery) {
         // Match all stored name variants for this branch (e.g. 'townshop' matches 'Windhoek CBD')
         const aliases = getBranchAliases(userBranch);
         conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
@@ -89,7 +92,11 @@ export default async function handler(req, res) {
         conditions.push('type ILIKE $' + (params.length + 1));
         params.push('%' + type + '%');
       }
-      
+      if (clientRef) {
+        conditions.push('UPPER(client_reference) = $' + (params.length + 1));
+        params.push(clientRef.toUpperCase().trim());
+      }
+
       if (conditions.length > 0) {
         queryText += ' WHERE ' + conditions.join(' AND ');
       }

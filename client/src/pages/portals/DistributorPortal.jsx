@@ -1233,96 +1233,291 @@ function BVProfitTab() {
 
 function CommunicationsTab() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState([]);
+  const nb = (user?.username || user?.distributor_code || '').toUpperCase();
+
+  const [activeSection, setActiveSection] = useState('overview');
+  const [memberSales, setMemberSales] = useState([]);
+  const [referralSales, setReferralSales] = useState([]);
+  const [checkups, setCheckups] = useState([]);
+  const [onlineOrders, setOnlineOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [composeForm, setComposeForm] = useState({ subject: '', message: '' });
-  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const fmtCur = (n) => `N$ ${Number(n || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   useEffect(() => {
-    const code = user?.distributor_code || user?.username || '';
-    api.get(`/notifications?recipient_id=${encodeURIComponent(code)}`)
-      .then(d => setNotifications(Array.isArray(d) ? d : d.notifications || []))
-      .catch(() => setNotifications([]))
-      .finally(() => setLoading(false));
-  }, [user]);
+    if (!nb) { setLoading(false); return; }
+    setLoading(true);
+    setError('');
+    Promise.all([
+      // All branch sales linked to this NB (member + referral)
+      api.branch.walkinSalesByDistributor(nb).then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
+      // Full body checkups booked under their NB as client_reference
+      api.get(`/appointments?client_reference=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
+      // Online shop orders placed as this distributor
+      api.orders.list({ distributor_code: nb }).then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+    ]).then(([allSales, apts, orders]) => {
+      // Split sales: member purchases vs referral sales
+      const memberBuys = allSales.filter(s => (s.distributor_nb || '').toUpperCase() === nb);
+      const referrals = allSales.filter(s => (s.referral_nb || '').toUpperCase() === nb && (s.distributor_nb || '').toUpperCase() !== nb);
+      setMemberSales(memberBuys);
+      setReferralSales(referrals);
+      setCheckups(apts);
+      setOnlineOrders(orders);
+    }).catch(() => setError('Could not load your activity data. Please try again.'))
+    .finally(() => setLoading(false));
+  }, [nb]);
 
-  const [sendError, setSendError] = useState('');
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!composeForm.subject || !composeForm.message) return;
-    setSendError('');
-    try {
-      await api.notifications.create({
-        title: composeForm.subject,
-        message: composeForm.message,
-        type: 'distributor_message',
-        recipient_type: 'admin',
-        recipient_id: 'ADMIN',
-        metadata: JSON.stringify({ sender: user?.full_name || user?.username || 'Distributor', sender_id: user?.distributor_code || user?.username }),
-      });
-      setSent(true);
-      setComposeForm({ subject: '', message: '' });
-      setComposeOpen(false);
-      setTimeout(() => setSent(false), 3000);
-    } catch (err) {
-      setSendError(err.message || 'Failed to send message. Please try again.');
-    }
-  };
+  if (!nb) return (
+    <div className="py-12 text-center text-gray-400">
+      <MessageSquare size={48} className="mx-auto mb-3 opacity-30" />
+      <p>Please log in to see your activity.</p>
+    </div>
+  );
 
   if (loading) return <LoadingSpinner />;
 
+  // Summary stats
+  const totalMemberSpend = memberSales.reduce((s, r) => s + Number(r.total || 0), 0);
+  const totalReferralValue = referralSales.reduce((s, r) => s + Number(r.total || 0), 0);
+  const totalOnlineSpend = onlineOrders.reduce((s, o) => s + Number(o.total_amount || o.subtotal || 0), 0);
+  const completedCheckups = checkups.filter(c => c.status === 'completed').length;
+
+  const sections = [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'myPurchases', label: `My Purchases (${memberSales.length})`, icon: '🛍️' },
+    { id: 'referrals', label: `Referred Clients (${referralSales.length})`, icon: '👥' },
+    { id: 'checkups', label: `Checkups (${checkups.length})`, icon: '🏥' },
+    { id: 'orders', label: `Online Orders (${onlineOrders.length})`, icon: '📦' },
+  ];
+
   return (
-    <div className="space-y-6">
-      {sent && <Alert type="success">Message sent successfully!</Alert>}
-      <div className="flex justify-between items-center">
-        <h3 className="font-semibold text-gray-800">Messages & Announcements</h3>
-        <Button size="sm" onClick={() => setComposeOpen(true)}><Send size={14} /> Compose</Button>
+    <div className="space-y-4">
+      {error && <Alert type="error">{error}</Alert>}
+
+      {/* Section nav */}
+      <div className="flex gap-2 flex-wrap">
+        {sections.map(s => (
+          <button key={s.id} onClick={() => setActiveSection(s.id)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all border ${activeSection === s.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-primary'}`}>
+            {s.icon} {s.label}
+          </button>
+        ))}
       </div>
 
-      {notifications.length === 0 ? (
-        <EmptyState icon={<MessageSquare size={48} />} title="No Messages" description="No announcements or messages at this time." />
-      ) : (
-        <div className="space-y-3">
-          {notifications.map((n, idx) => (
-            <Card key={n.id || idx}>
-              <CardBody>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-semibold text-gray-800">{n.title || 'Announcement'}</h4>
-                    <p className="text-sm text-gray-600 mt-1">{n.message || n.content}</p>
-                    {n.sender && <p className="text-xs text-gray-400 mt-2">From: {n.sender}</p>}
-                  </div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
-                    {n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}
-                  </span>
+      {/* ── OVERVIEW ── */}
+      {activeSection === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard title="My Branch Purchases" value={fmtCur(totalMemberSpend)} icon={<ShoppingBag size={20} />} color="red" subtitle={`${memberSales.length} transaction${memberSales.length !== 1 ? 's' : ''}`} />
+            <StatCard title="Referral Sales Value" value={fmtCur(totalReferralValue)} icon={<TrendingUp size={20} />} color="blue" subtitle={`${referralSales.length} client${referralSales.length !== 1 ? 's' : ''}`} />
+            <StatCard title="Checkups Booked" value={checkups.length} icon={<Calendar size={20} />} color="green" subtitle={`${completedCheckups} completed`} />
+            <StatCard title="Online Orders" value={onlineOrders.length} icon={<Package size={20} />} color="purple" subtitle={fmtCur(totalOnlineSpend)} />
+          </div>
+
+          {/* Quick activity feed — last 5 of each */}
+          {referralSales.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-gray-800 text-sm">Recent Referral Activity</h3>
+                  <button onClick={() => setActiveSection('referrals')} className="text-xs text-primary font-medium cursor-pointer hover:underline">View all</button>
                 </div>
-              </CardBody>
+              </CardHeader>
+              <div className="divide-y">
+                {referralSales.slice(0, 5).map((s, i) => (
+                  <div key={s.id || i} className="px-4 py-2.5 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{s.client_name || s.customerName || 'Walk-in Client'}</p>
+                      <p className="text-xs text-gray-400">{fmtDate(s.created_at)} · {s.branch || '—'}</p>
+                    </div>
+                    <span className="text-sm font-bold text-green-700">{fmtCur(s.total)}</span>
+                  </div>
+                ))}
+              </div>
             </Card>
-          ))}
+          )}
+
+          {checkups.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-gray-800 text-sm">Recent Checkup Bookings</h3>
+                  <button onClick={() => setActiveSection('checkups')} className="text-xs text-primary font-medium cursor-pointer hover:underline">View all</button>
+                </div>
+              </CardHeader>
+              <div className="divide-y">
+                {checkups.slice(0, 5).map((c, i) => (
+                  <div key={c.id || i} className="px-4 py-2.5 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{c.client_name || c.clientName || 'Client'}</p>
+                      <p className="text-xs text-gray-400">{fmtDate(c.date)} · {c.branch || '—'}</p>
+                    </div>
+                    <Badge variant={c.status === 'completed' ? 'success' : c.status === 'cancelled' ? 'danger' : 'warning'}>
+                      {c.status || 'Pending'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {memberSales.length === 0 && referralSales.length === 0 && checkups.length === 0 && onlineOrders.length === 0 && (
+            <EmptyState icon={<BarChart3 size={48} />} title="No Activity Yet" description="Your purchases, referrals, and checkup bookings will all appear here." />
+          )}
         </div>
       )}
 
-      <Modal open={composeOpen} onClose={() => setComposeOpen(false)} title="Compose Message">
-        <form onSubmit={handleSend} className="p-6 space-y-4">
-          {sendError && <Alert type="error">{sendError}</Alert>}
-          <Input label="Subject" value={composeForm.subject} onChange={e => setComposeForm(f => ({ ...f, subject: e.target.value }))} required />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
-            <textarea
-              value={composeForm.message}
-              onChange={e => setComposeForm(f => ({ ...f, message: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 min-h-[120px] resize-y"
-              required
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" type="button" onClick={() => setComposeOpen(false)}>Cancel</Button>
-            <Button type="submit"><Send size={14} /> Send</Button>
-          </div>
-        </form>
-      </Modal>
+      {/* ── MY BRANCH PURCHASES ── */}
+      {activeSection === 'myPurchases' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">My Branch Purchases</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Sales recorded under your NB number at Dynapharm branches</p>
+          </CardHeader>
+          {memberSales.length === 0 ? (
+            <CardBody><EmptyState icon={<ShoppingBag size={40} />} title="No branch purchases yet" description="Sales you make in person at any Dynapharm branch will appear here." /></CardBody>
+          ) : (
+            <div className="divide-y">
+              {memberSales.map((s, i) => {
+                const items = typeof s.items === 'string' ? (() => { try { return JSON.parse(s.items || '[]'); } catch { return []; } })() : (s.items || []);
+                return (
+                  <div key={s.id || i} className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{s.receipt_number || s.id?.slice(0, 8) || 'Sale'}</p>
+                        <p className="text-xs text-gray-400">{fmtDate(s.created_at)} · {s.branch || '—'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-800">{fmtCur(s.total)}</p>
+                        {s.total_bv > 0 && <p className="text-xs text-primary">{s.total_bv} BV</p>}
+                      </div>
+                    </div>
+                    {items.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {items.map(it => `${it.name || it.product_name || 'Item'} ×${it.quantity || 1}`).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── REFERRED CLIENTS ── */}
+      {activeSection === 'referrals' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Clients You Referred</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Walk-in customers who purchased at a branch using your NB as referral</p>
+          </CardHeader>
+          {referralSales.length === 0 ? (
+            <CardBody><EmptyState icon={<User size={40} />} title="No referrals yet" description="When a client names you as their referral at any branch, their sales will appear here." /></CardBody>
+          ) : (
+            <div className="divide-y">
+              {referralSales.map((s, i) => {
+                const items = typeof s.items === 'string' ? (() => { try { return JSON.parse(s.items || '[]'); } catch { return []; } })() : (s.items || []);
+                return (
+                  <div key={s.id || i} className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{s.client_name || s.customerName || 'Walk-in Client'}</p>
+                        <p className="text-xs text-gray-400">{fmtDate(s.created_at)} · {s.branch || '—'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-green-700">{fmtCur(s.total)}</p>
+                        {s.total_bv > 0 && <p className="text-xs text-primary">{s.total_bv} BV</p>}
+                      </div>
+                    </div>
+                    {items.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {items.map(it => `${it.name || it.product_name || 'Item'} ×${it.quantity || 1}`).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── CHECKUPS ── */}
+      {activeSection === 'checkups' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Full Body Checkups</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Checkup appointments booked for clients you introduced to Dynapharm</p>
+          </CardHeader>
+          {checkups.length === 0 ? (
+            <CardBody><EmptyState icon={<Calendar size={40} />} title="No checkups booked yet" description="Checkups that are linked to your NB number will appear here." /></CardBody>
+          ) : (
+            <div className="divide-y">
+              {checkups.map((c, i) => (
+                <div key={c.id || i} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">{c.client_name || c.clientName || 'Client'}</p>
+                    <p className="text-xs text-gray-500">{c.type || 'Full Body Checkup'}</p>
+                    <p className="text-xs text-gray-400">{fmtDate(c.date)} {c.time ? `· ${c.time}` : ''} · {c.branch || '—'}</p>
+                  </div>
+                  <Badge variant={c.status === 'completed' ? 'success' : c.status === 'cancelled' ? 'danger' : c.status === 'confirmed' ? 'info' : 'warning'}>
+                    {(c.status || 'Pending').charAt(0).toUpperCase() + (c.status || 'pending').slice(1)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+          {checkups.length > 0 && (
+            <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 flex gap-4 border-t">
+              <span>✅ Completed: <strong>{completedCheckups}</strong></span>
+              <span>⏳ Pending: <strong>{checkups.filter(c => !['completed','cancelled'].includes(c.status)).length}</strong></span>
+              <span>❌ Cancelled: <strong>{checkups.filter(c => c.status === 'cancelled').length}</strong></span>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── ONLINE ORDERS ── */}
+      {activeSection === 'orders' && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">My Online Orders</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Orders you placed through the Dynapharm online shop</p>
+          </CardHeader>
+          {onlineOrders.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={40} />} title="No online orders yet" description="Orders you place in the Shop tab will appear here." /></CardBody>
+          ) : (
+            <div className="divide-y">
+              {onlineOrders.map((o, i) => {
+                const items = typeof o.items === 'string' ? (() => { try { return JSON.parse(o.items || '[]'); } catch { return []; } })() : (o.items || []);
+                const statusColor = { delivered: 'success', processing: 'info', pending: 'warning', cancelled: 'danger' }[o.status] || 'warning';
+                return (
+                  <div key={o.id || i} className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{o.order_number || o.id?.slice(0, 10) || 'Order'}</p>
+                        <p className="text-xs text-gray-400">{fmtDate(o.created_at)} · {o.branch || o.delivery_branch || '—'}</p>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-1">
+                        <p className="font-bold text-gray-800">{fmtCur(o.total_amount || o.subtotal)}</p>
+                        <Badge variant={statusColor}>{o.status || 'Pending'}</Badge>
+                      </div>
+                    </div>
+                    {items.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {items.map(it => `${it.name || it.product_name || 'Item'} ×${it.quantity || 1}`).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -1466,33 +1661,176 @@ function CheckupTab() {
 }
 
 function MediaTab() {
-  const [news, setNews] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState('all');
 
   useEffect(() => {
-    api.notifications.list()
-      .then(d => setNews(Array.isArray(d) ? d : d.notifications || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setLoading(true);
+    Promise.all([
+      api.get('/campaigns?status=active').then(d => Array.isArray(d) ? d : d.campaigns || []).catch(() => []),
+      api.get('/media?upload_type=training').then(d => Array.isArray(d) ? d : []).catch(() => []),
+      api.get('/notifications?recipient_id=ALL&recipient_type=company').then(d => Array.isArray(d) ? d : d.notifications || []).catch(() => []),
+    ]).then(([c, m, a]) => {
+      setCampaigns(c);
+      setMaterials(m.slice(0, 10));
+      setAnnouncements(a);
+    }).finally(() => setLoading(false));
   }, []);
+
+  const isNew = (dateStr) => {
+    if (!dateStr) return false;
+    return (Date.now() - new Date(dateStr).getTime()) < 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-NA', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+  const campaignTypeLabel = (t) => ({
+    buy_x_get_y: 'Buy X Get Y', discount: 'Discount', bundle: 'Bundle', points: 'Points', flash: 'Flash Sale',
+  }[t] || t || 'Campaign');
+
+  const sections = [
+    { id: 'all', label: 'All' },
+    { id: 'campaigns', label: `Campaigns (${campaigns.length})` },
+    { id: 'training', label: `Training (${materials.length})` },
+    { id: 'announcements', label: `Announcements (${announcements.length})` },
+  ];
 
   if (loading) return <LoadingSpinner />;
 
-  if (news.length === 0) {
-    return <EmptyState icon={<Newspaper size={48} />} title="Media & News" description="Stay updated with the latest Dynapharm news, events, and product announcements." />;
-  }
+  const totalItems = campaigns.length + materials.length + announcements.length;
 
   return (
     <div className="space-y-4">
-      {news.map((item, idx) => (
-        <Card key={item.id || idx}>
-          <CardBody>
-            <h3 className="font-bold text-gray-800 mb-1">{item.title || 'Announcement'}</h3>
-            <p className="text-sm text-gray-600">{item.message || item.content || item.description}</p>
-            {item.created_at && <p className="text-xs text-gray-400 mt-2">{new Date(item.created_at).toLocaleDateString()}</p>}
-          </CardBody>
-        </Card>
-      ))}
+      {/* Section filter pills */}
+      <div className="flex gap-2 flex-wrap">
+        {sections.map(s => (
+          <button key={s.id} onClick={() => setActiveSection(s.id)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all border ${activeSection === s.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-primary'}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {totalItems === 0 && (
+        <EmptyState icon={<Newspaper size={48} />} title="Nothing yet" description="Company news, campaigns, and training updates will appear here." />
+      )}
+
+      {/* Active Campaigns */}
+      {(activeSection === 'all' || activeSection === 'campaigns') && campaigns.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide flex items-center gap-2">
+            <span>🎯</span> Active Campaigns
+          </h3>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {campaigns.map(c => {
+              let conditions = {};
+              try { conditions = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {}); } catch {}
+              return (
+                <Card key={c.id}>
+                  <CardBody>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h4 className="font-bold text-gray-800 text-sm leading-snug">{c.name}</h4>
+                      <Badge variant="success" className="shrink-0">{campaignTypeLabel(c.campaign_type)}</Badge>
+                    </div>
+                    {c.description && <p className="text-xs text-gray-600 mb-2 line-clamp-2">{c.description}</p>}
+                    {conditions.products_text && (
+                      <p className="text-xs text-primary font-medium mb-1">Products: {conditions.products_text}</p>
+                    )}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                      <span className="text-xs text-gray-400">
+                        {c.branch ? `📍 ${c.branch}` : '🌍 All Branches'}
+                      </span>
+                      {c.end_date && (
+                        <span className="text-xs font-medium text-amber-600">Ends {fmtDate(c.end_date)}</span>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Training Materials */}
+      {(activeSection === 'all' || activeSection === 'training') && materials.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide flex items-center gap-2">
+            <span>🎓</span> Latest Training Materials
+          </h3>
+          <div className="space-y-2">
+            {materials.map((m, i) => {
+              const isVideo = (m.mime_type || '').startsWith('video/');
+              const isImg = (m.mime_type || '').startsWith('image/');
+              const icon = isVideo ? '🎬' : isImg ? '🖼️' : '📄';
+              const newItem = isNew(m.created_at);
+              return (
+                <Card key={m.id || i}>
+                  <CardBody>
+                    <div className="flex items-center gap-3">
+                      <span style={{ fontSize: 26 }}>{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-gray-800 text-sm">{m.entity_name || m.filename || 'Training Material'}</span>
+                          {newItem && <Badge variant="success">NEW</Badge>}
+                          {m.category && <Badge variant="info">{m.category}</Badge>}
+                        </div>
+                        {m.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{m.description}</p>}
+                        <p className="text-xs text-gray-400 mt-0.5">{fmtDate(m.created_at)}</p>
+                      </div>
+                      {m.file_url && (
+                        <a href={m.file_url} target="_blank" rel="noreferrer"
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0"
+                          style={{ background: '#c41e3a', textDecoration: 'none' }}>
+                          {isVideo ? 'Watch' : 'Open'}
+                        </a>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Company Announcements */}
+      {(activeSection === 'all' || activeSection === 'announcements') && announcements.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide flex items-center gap-2">
+            <span>📢</span> Company Announcements
+          </h3>
+          {announcements.map((a, idx) => (
+            <Card key={a.id || idx}>
+              <CardBody>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">📣</span>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-800 text-sm">{a.title || 'Announcement'}</h4>
+                    <p className="text-sm text-gray-600 mt-1">{a.message || a.content}</p>
+                    <p className="text-xs text-gray-400 mt-2">{fmtDate(a.created_at)}</p>
+                  </div>
+                  {isNew(a.created_at) && <Badge variant="success">NEW</Badge>}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Empty states for specific sections */}
+      {activeSection === 'campaigns' && campaigns.length === 0 && (
+        <EmptyState icon={<span style={{ fontSize: 48 }}>🎯</span>} title="No Active Campaigns" description="New promotions and offers will appear here when launched." />
+      )}
+      {activeSection === 'training' && materials.length === 0 && (
+        <EmptyState icon={<span style={{ fontSize: 48 }}>🎓</span>} title="No Training Materials Yet" description="Training documents and videos will appear here when uploaded." />
+      )}
+      {activeSection === 'announcements' && announcements.length === 0 && (
+        <EmptyState icon={<span style={{ fontSize: 48 }}>📢</span>} title="No Announcements" description="Company news and updates will appear here." />
+      )}
     </div>
   );
 }
