@@ -3100,10 +3100,10 @@ function PriceListTab() {
         return {
           id: Number(id),
           description: fields.description ?? row.description,
-          dp: Number(fields.dp ?? row.dp) || 0,
-          cp: Number(fields.cp ?? row.cp) || 0,
-          cif: Number(fields.cif ?? row.cif) || 0,
-          bv: Number(fields.bv ?? row.bv) || 0,
+          dp: Math.round(Number(fields.dp ?? row.dp)) || 0,
+          cp: Math.round(Number(fields.cp ?? row.cp)) || 0,
+          cif: Math.round(Number(fields.cif ?? row.cif)) || 0,
+          bv: Math.round(Number(fields.bv ?? row.bv)) || 0,
         };
       });
       await api.prices.bulkUpdate(updates);
@@ -3124,10 +3124,10 @@ function PriceListTab() {
     try {
       await api.prices.create({
         description: newProd.description.trim(),
-        dp: Number(newProd.dp) || 0,
-        cp: Number(newProd.cp) || 0,
-        cif: Number(newProd.cif) || 0,
-        bv: Number(newProd.bv) || 0,
+        dp: Math.round(Number(newProd.dp)) || 0,
+        cp: Math.round(Number(newProd.cp)) || 0,
+        cif: Math.round(Number(newProd.cif)) || 0,
+        bv: Math.round(Number(newProd.bv)) || 0,
       });
       setShowAdd(false);
       setNewProd({ description: '', dp: '', cp: '', cif: '', bv: '' });
@@ -3162,9 +3162,10 @@ function PriceListTab() {
     <input
       type="number"
       min="0"
-      step="0.01"
+      step="1"
       value={getVal(row, field)}
       onChange={e => setEdit(row.id, field, e.target.value)}
+      onBlur={e => { const v = Math.round(Number(e.target.value)); setEdit(row.id, field, isNaN(v) ? 0 : v); }}
       className={`w-24 text-right border rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-red-400 ${edits[row.id]?.[field] !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
       title={label}
     />
@@ -3297,9 +3298,10 @@ function PriceListTab() {
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="1"
                     value={newProd[f]}
                     onChange={e => setNewProd(p => ({ ...p, [f]: e.target.value }))}
+                    onBlur={e => { const v = Math.round(Number(e.target.value)); setNewProd(p => ({ ...p, [f]: isNaN(v) ? '' : v })); }}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
                   />
                 </div>
