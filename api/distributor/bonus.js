@@ -27,13 +27,13 @@ export default async function handler(req, res) {
     if (isDistributor) {
       const nbFromToken = req.user.username;
       if (!nbFromToken) {
-        return res.status(400).json({ success: false, error: 'Distributor NB number not found on account. Contact admin.' });
+        return res.status(400).json({ success: false, error: 'Distributor NB/DZ number not found on account. Contact admin.' });
       }
       nbUpper = nbFromToken.toUpperCase();
     } else {
       const nb = url.searchParams.get('nb') || url.searchParams.get('nb_number') || '';
       if (!nb) {
-        return res.status(400).json({ success: false, error: 'NB number is required' });
+        return res.status(400).json({ success: false, error: 'NB/DZ number is required' });
       }
       nbUpper = nb.toUpperCase();
     }

@@ -562,7 +562,7 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6">
                 <DistributorSearch label="Direct Upline's ID No." value={form.upline_id} onChange={v => set('upline_id', v)}
-                  onSelect={handleUplineSelect} placeholder="Search by NB number or name" />
+                  onSelect={handleUplineSelect} placeholder="Search by NB/DZ number or name" />
               </div>
               <FormInput label="Name (auto-filled)" value={form.upline_name} onChange={v => set('upline_name', v)} className="col-span-6" />
             </div>
@@ -589,7 +589,7 @@ export function MembershipAgreementForm({ mode = 'standalone', userBranch, onCom
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6">
                 <DistributorSearch label="Sponsor's ID No." value={form.sponsor_id} onChange={v => set('sponsor_id', v)}
-                  onSelect={handleSponsorSelect} placeholder="Search by NB number or name" />
+                  onSelect={handleSponsorSelect} placeholder="Search by NB/DZ number or name" />
               </div>
               <FormInput label="Name (auto-filled)" value={form.sponsor_name} onChange={v => set('sponsor_name', v)} className="col-span-6" />
             </div>

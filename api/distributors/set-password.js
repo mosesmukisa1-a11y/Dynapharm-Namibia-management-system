@@ -101,7 +101,7 @@ export default async function handler(req, res) {
     const existingUser = await getOne('SELECT * FROM users WHERE username = $1 AND role = $2', [username, 'distributor']);
 
     if (existingUser) {
-      return res.status(409).json({ error: 'An account already exists for this NB number. Please use Forgot Password to reset your credentials.' });
+      return res.status(409).json({ error: 'An account already exists for this number. Please use Forgot Password to reset your credentials.' });
     }
 
     const passwordHash = await bcrypt.hash(normalizedPassword, 10);

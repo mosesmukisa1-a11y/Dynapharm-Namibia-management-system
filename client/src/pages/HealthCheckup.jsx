@@ -125,7 +125,7 @@ export default function HealthCheckup() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!customerType) { setError('Please select customer type'); return; }
-    if (isMember && !selectedDistributor) { setError('Please select your NB number from the distributor list'); return; }
+    if (isMember && !selectedDistributor) { setError('Please select your NB/DZ number from the distributor list'); return; }
     if (!form.fullName) { setError('Please enter your full name'); return; }
     if (!form.phone) { setError('Please enter your phone number'); return; }
     if (!form.declaration) { setError('Please accept the declaration'); return; }
@@ -262,7 +262,7 @@ export default function HealthCheckup() {
                   <div className="relative mb-2">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input value={distributorSearch} onChange={e => setDistributorSearch(e.target.value)}
-                      placeholder="Search by NB number or distributor name..."
+                      placeholder="Search by NB/DZ number or distributor name..."
                       className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
                   </div>
                   <div className="max-h-40 overflow-y-auto bg-white rounded-lg border border-gray-200">

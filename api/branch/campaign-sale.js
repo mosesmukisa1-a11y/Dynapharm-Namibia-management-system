@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       }
 
       if (isMember && !distributor_nb) {
-        return res.status(400).json({ success: false, error: 'Member NB number is required for member campaign sales' });
+        return res.status(400).json({ success: false, error: 'Member NB/DZ number is required for member campaign sales' });
       }
 
       if (branchScope.enforced && !branchScope.branches.includes(branch)) {

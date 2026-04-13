@@ -642,7 +642,7 @@ function WalkInSalesTab() {
             <span className="font-bold text-base" style={{ color: '#1e40af' }}>Registered Member</span>
           </div>
           <ul className="m-0 pl-4 space-y-1 text-sm" style={{ color: '#1e3a8a' }}>
-            <li>Has an NB number in the system</li>
+            <li>Has an NB or DZ number in the system</li>
             <li>Pays at <strong>DP price</strong> (distributor price)</li>
             <li>Earns <strong>BV points</strong> on their account</li>
           </ul>
@@ -668,7 +668,7 @@ function WalkInSalesTab() {
         <div className="px-4 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
           <input
             type="text"
-            placeholder="Search receipt #, customer name, NB#, payment…"
+            placeholder="Search receipt #, customer name, NB/DZ#, payment…"
             value={salesSearch}
             onChange={e => setSalesSearch(e.target.value)}
             className="flex-1 text-sm rounded-lg px-3 py-2"
@@ -2437,7 +2437,7 @@ function printSalesReportDoc(sales, period, branch, onlineOrders, prescriptions)
       <td>${r.receipt_number || r.saleNumber || r.id || '-'}</td>
       <td><span style="color:${isM ? '#1d4ed8' : '#374151'};font-weight:600">${isM ? '👤 Member' : '🚶 Walk-in'}</span></td>
       <td>${r.customerName || r.customer_name || r.fullName || r.distributor_name || 'Walk-in'}</td>
-      <td>${rNB ? `NB#${rNB}` : '-'}</td>
+      <td>${rNB || '-'}</td>
       <td>${r.paymentMethod || r.payment_method || '-'}</td>
       <td style="font-weight:700;color:#166534;text-align:right">${fmtC(r.total || r.totalAmount || r.total_amount || 0)}</td>
       <td>${r.created_at ? new Date(r.created_at).toLocaleDateString('en-NA') : '-'}</td>
@@ -2504,7 +2504,7 @@ ${sectionTitle('Walk-in Sales Breakdown')}
   ${statCard('Other Payments', fmtC(walkinTotal - cashTotal - cardTotal), `${filtered.length - cashSales.length - cardSales.length} transactions`, '#92400e')}
 </div>
 <table>
-  <thead><tr><th>Receipt #</th><th>Customer Type</th><th>Customer</th><th>NB#</th><th>Payment</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
+  <thead><tr><th>Receipt #</th><th>Customer Type</th><th>Customer</th><th>NB/DZ#</th><th>Payment</th><th style="text-align:right">Amount</th><th>Date</th></tr></thead>
   <tbody>${walkinRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:12px">No walk-in sales in this period</td></tr>'}</tbody>
   ${filtered.length > 0 ? `<tfoot><tr class="total-row"><td colspan="4"><strong>WALK-IN TOTAL</strong></td><td></td><td style="text-align:right"><strong>${fmtC(walkinTotal)}</strong></td><td></td></tr></tfoot>` : ''}
 </table>
@@ -6368,7 +6368,7 @@ function BonusTab() {
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
-        <input type="text" placeholder="Search NB or Name..." value={bonusSearch} onChange={e => setBonusSearch(e.target.value)}
+        <input type="text" placeholder="Search NB/DZ or Name..." value={bonusSearch} onChange={e => setBonusSearch(e.target.value)}
           className="flex-1 min-w-[200px] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
         <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
           className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none">
@@ -7318,7 +7318,7 @@ function FieldProgramTab() {
               <div style={{ background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: 12, padding: 16 }}>
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 10 }}>Distributor Verification *</div>
                 <div style={{ position: 'relative' }}>
-                  <input type="text" value={distributorSearch} onChange={e => searchDistributor(e.target.value)} placeholder="Search by NB number or name…" autoComplete="off"
+                  <input type="text" value={distributorSearch} onChange={e => searchDistributor(e.target.value)} placeholder="Search by NB/DZ number or name…" autoComplete="off"
                     style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
                   {distributorResults.length > 0 && (
                     <div style={{ position: 'absolute', zIndex: 100, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px rgba(245,158,11,.15)', top: 'calc(100% + 4px)', left: 0 }}>
@@ -7598,7 +7598,7 @@ function CheckUpBookingTab() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isMember && !selectedDistributor) { setError('Please select the client\'s NB number'); return; }
+    if (isMember && !selectedDistributor) { setError('Please select the client\'s NB/DZ number'); return; }
     if (!form.fullName.trim()) { setError('Please enter the client\'s full name'); return; }
     if (!form.phone.trim()) { setError('Please enter the client\'s phone number'); return; }
     if (!form.declaration) { setError('Please confirm the client\'s declaration'); return; }
@@ -7740,7 +7740,7 @@ function CheckUpBookingTab() {
             <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
               <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Client Type</div>
               <div style={{ display: 'flex', gap: 10 }}>
-                {[{ id: 'member', label: '🏅 Registered Member', sub: 'Has NB number' }, { id: 'non-member', label: '👤 Non-Member', sub: 'Walk-in or referred' }].map(ct => (
+                {[{ id: 'member', label: '🏅 Registered Member', sub: 'Has NB/DZ number' }, { id: 'non-member', label: '👤 Non-Member', sub: 'Walk-in or referred' }].map(ct => (
                   <button key={ct.id} type="button" onClick={() => { setCustomerType(ct.id); setSelectedDistributor(null); setDistributorSearch(''); }}
                     style={{ flex: 1, padding: '10px 14px', border: `2px solid ${customerType === ct.id ? '#c41e3a' : '#e2e8f0'}`, borderRadius: 10, background: customerType === ct.id ? '#fff0f3' : '#fafafa', cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
                     <div style={{ fontWeight: 700, color: customerType === ct.id ? '#c41e3a' : '#374151', fontSize: '0.88rem' }}>{ct.label}</div>
@@ -7753,7 +7753,7 @@ function CheckUpBookingTab() {
             {/* Member NB lookup */}
             {isMember && (
               <div style={{ background: '#fff', border: '1.5px solid #e8d5d8', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151', marginBottom: 10 }}>Member NB Number</div>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151', marginBottom: 10 }}>Member NB/DZ Number</div>
                 {selectedDistributor ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff0f3', border: '1.5px solid #fca5a5', borderRadius: 8, padding: '10px 14px' }}>
                     <div>
@@ -7767,7 +7767,7 @@ function CheckUpBookingTab() {
                     <div style={{ position: 'relative', marginBottom: 8 }}>
                       <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                       <input value={distributorSearch} onChange={e => setDistributorSearch(e.target.value)}
-                        placeholder="Search by NB number or member name..."
+                        placeholder="Search by NB/DZ number or member name..."
                         style={{ width: '100%', paddingLeft: 32, paddingRight: 12, paddingTop: 9, paddingBottom: 9, border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                     <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid #f0e8ea', borderRadius: 8, background: '#fff' }}>
@@ -7816,7 +7816,7 @@ function CheckUpBookingTab() {
                       <input
                         value={refDistSearch}
                         onChange={e => searchRefDistributors(e.target.value)}
-                        placeholder="Search distributor by name or NB number..."
+                        placeholder="Search distributor by name or NB/DZ number..."
                         style={{ width: '100%', paddingLeft: 32, paddingRight: 12, paddingTop: 9, paddingBottom: 9, border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }}
                       />
                       {refDistLoading && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#94a3b8' }}>Searching…</span>}
@@ -7850,7 +7850,7 @@ function CheckUpBookingTab() {
                         style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Referral NB Number (manual)</label>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Referral NB/DZ Number (manual)</label>
                       <input value={referralNB} onChange={e => setReferralNB(e.target.value)} placeholder={`Default: ${DEFAULT_REF_NB}`}
                         style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
@@ -8454,7 +8454,7 @@ function BranchCampaignsTab() {
     const finalFreeQty = isBuyXGetY ? Math.floor(finalPaidQty / buyQty) * getQty : Number(saleForm.free_qty);
 
     if (isMember && !campSelected) {
-      setAlertMsg({ type: 'error', msg: 'Please search and select the member by NB number.' });
+      setAlertMsg({ type: 'error', msg: 'Please search and select the member by NB/DZ number.' });
       return;
     }
     if (!isMember && !nonMemberName.trim()) {
@@ -8641,9 +8641,9 @@ function BranchCampaignsTab() {
               {/* Member NB search */}
               {campMemberType === 'member' ? (
                 <div style={{ position: 'relative' }}>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Search Member by NB# or Name</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Search Member by NB/DZ# or Name</label>
                   <input type="text" value={campSearch} onChange={e => searchCampMember(e.target.value)}
-                    placeholder="Type NB number or name…" autoComplete="off"
+                    placeholder="Type NB/DZ number or name…" autoComplete="off"
                     style={{ width: '100%', padding: '9px 12px', border: '1.5px solid', borderColor: campSelected ? '#16a34a' : '#d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: campSelected ? '#f0fdf4' : '#fff' }} />
                   {campResults.length > 0 && (
                     <div style={{ position: 'absolute', zIndex: 100, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.13)', top: '100%', left: 0, right: 0, maxHeight: 200, overflowY: 'auto' }}>
@@ -8682,7 +8682,7 @@ function BranchCampaignsTab() {
                   <div style={{ position: 'relative' }}>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Referring Member (optional)</label>
                     <input type="text" value={campRefSearch} onChange={e => searchCampRef(e.target.value)}
-                      placeholder="Search referring member by NB# or name…" autoComplete="off"
+                      placeholder="Search referring member by NB/DZ# or name…" autoComplete="off"
                       style={{ width: '100%', padding: '9px 12px', border: '1.5px solid', borderColor: campRefSelected ? '#16a34a' : '#d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: campRefSelected ? '#f0fdf4' : '#fff' }} />
                     {campRefResults.length > 0 && (
                       <div style={{ position: 'absolute', zIndex: 100, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.13)', top: '100%', left: 0, right: 0, maxHeight: 180, overflowY: 'auto' }}>

@@ -28,7 +28,7 @@ export function DistributorLoginModal({ open, onClose }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!nbNumber.trim() || !password) {
-      setError('Please enter your NB number and password');
+      setError('Please enter your NB/DZ number and password');
       return;
     }
     setError('');
@@ -49,7 +49,7 @@ export function DistributorLoginModal({ open, onClose }) {
   const handleNBLookup = async () => {
     const code = regForm.nb_number.trim().toUpperCase();
     if (!code) {
-      setError('Please enter your NB number');
+      setError('Please enter your NB or DZ number');
       return;
     }
     setError('');
@@ -64,7 +64,7 @@ export function DistributorLoginModal({ open, onClose }) {
       }));
       setLookupDone(true);
     } catch (err) {
-      setError(err.message || 'NB number not found');
+      setError(err.message || 'NB/DZ number not found');
       setDistributorInfo(null);
       setLookupDone(false);
     } finally {
@@ -156,7 +156,7 @@ export function DistributorLoginModal({ open, onClose }) {
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
           <p className="text-xs text-gray-400 text-center">
-            Use your NB number as your username to login
+            Use your NB or DZ number as your username to login
           </p>
         </form>
       ) : (

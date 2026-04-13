@@ -1962,7 +1962,7 @@ function CampaignTypeConditionsForm({ type, conditions, onChange, products = [] 
       </div>
       <MultiProductSelect label="Qualifying Products" value={getArr('products')} onChange={v => set('products', v)} products={products} />
       <Input label="Distributor Code Conditions (e.g. code ending in O)" value={conditions.code_condition || ''} onChange={e => set('code_condition', e.target.value)} placeholder="Optional: e.g. ends_with_O" />
-      <Input label="Specific Distributor Codes (comma-separated)" value={conditions.distributor_codes || ''} onChange={e => set('distributor_codes', e.target.value)} placeholder="e.g. NB78370, NB68030" />
+      <Input label="Specific Distributor Codes (comma-separated)" value={conditions.distributor_codes || ''} onChange={e => set('distributor_codes', e.target.value)} placeholder="e.g. NB78370, DZ001234" />
     </div>
   );
   if (type === 'bv_achievement') return (
@@ -2535,7 +2535,7 @@ function CampaignsTab() {
                           {showAddParticipant && (
                             <div className="p-3 border border-blue-200 rounded-lg bg-blue-50 space-y-2 mb-3">
                               <div className="grid grid-cols-3 gap-2">
-                                <Input label="NB Code *" value={participantForm.distributor_code} onChange={e => setParticipantForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB78370" />
+                                <Input label="NB/DZ Code *" value={participantForm.distributor_code} onChange={e => setParticipantForm(f => ({ ...f, distributor_code: e.target.value }))} placeholder="e.g. NB78370 or DZ001234" />
                                 <Input label="Name" value={participantForm.distributor_name} onChange={e => setParticipantForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="Full name" />
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>

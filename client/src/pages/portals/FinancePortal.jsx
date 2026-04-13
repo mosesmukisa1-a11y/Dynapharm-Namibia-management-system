@@ -936,10 +936,10 @@ function BonusHistorySubTab() {
         <CardBody>
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Search Distributor (NB Number or Name)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Search Distributor (NB/DZ Number or Name)</label>
               <input value={search} onChange={e => setSearch(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') doSearch(); }}
-                placeholder="e.g. NB001234 or John Doe"
+                placeholder="e.g. NB001234 or DZ001234 or John Doe"
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <Button onClick={doSearch} disabled={loading || !search.trim()}>

@@ -99,7 +99,7 @@ export default function Shop() {
     setOrderError('');
     if (!checkoutForm.name.trim()) { setOrderError('Please enter your full name'); return; }
     if (!checkoutForm.phone.trim()) { setOrderError('Please enter your phone number'); return; }
-    if (isMember && !selectedDistributor) { setOrderError('Please select your NB number from the distributor list'); return; }
+    if (isMember && !selectedDistributor) { setOrderError('Please select your NB/DZ number from the distributor list'); return; }
     if (checkoutForm.deliveryMethod === 'delivery' && !checkoutForm.address.trim()) { setOrderError('Please enter a delivery address'); return; }
 
     try {
@@ -154,7 +154,7 @@ export default function Shop() {
             <p className="text-sm text-gray-500 mb-3">I am a Dynapharm distributor with an NB number</p>
             <ul className="text-xs text-gray-400 space-y-1">
               <li>Distributor Price (DP) applies</li>
-              <li>Select your NB number from the list</li>
+              <li>Select your NB or DZ number from the list</li>
               <li>BV points will be tracked</li>
             </ul>
           </button>
@@ -252,7 +252,7 @@ export default function Shop() {
               <input
                 value={distributorSearch}
                 onChange={e => setDistributorSearch(e.target.value)}
-                placeholder="Search by NB number or distributor name..."
+                placeholder="Search by NB/DZ number or distributor name..."
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
               <div className="max-h-40 overflow-y-auto bg-white rounded-lg border border-gray-200">

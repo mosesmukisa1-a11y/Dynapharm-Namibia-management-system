@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const code = (searchParams.get('code') || '').trim().toUpperCase();
 
     if (!code) {
-      return res.status(400).json({ error: 'NB number is required' });
+      return res.status(400).json({ error: 'NB/DZ number is required' });
     }
 
     const distributor = await getOne(
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     );
 
     if (!distributor) {
-      return res.status(404).json({ error: 'NB number not found in the system. Please contact your branch for registration.' });
+      return res.status(404).json({ error: 'NB/DZ number not found in the system. Please contact your branch for registration.' });
     }
 
     const existingUser = await getOne(
@@ -36,9 +36,9 @@ export default async function handler(req, res) {
 
     if (existingUser) {
       if (existingUser.is_active) {
-        return res.status(409).json({ error: 'An account already exists for this NB number. Please login instead.' });
+        return res.status(409).json({ error: 'An account already exists for this number. Please login instead.' });
       } else {
-        return res.status(409).json({ error: 'An account for this NB number is pending admin approval.' });
+        return res.status(409).json({ error: 'An account for this number is pending admin approval.' });
       }
     }
 
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
     const branch = (body.branch || '').trim() || null;
 
     if (!nbNumber) {
-      return res.status(400).json({ error: 'NB number is required' });
+      return res.status(400).json({ error: 'NB/DZ number is required' });
     }
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -85,7 +85,7 @@ export default async function handler(req, res) {
     );
 
     if (!distributor) {
-      return res.status(404).json({ error: 'NB number not found. Please contact your branch.' });
+      return res.status(404).json({ error: 'NB/DZ number not found. Please contact your branch.' });
     }
 
     const username = nbNumber.toLowerCase();
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
 
     if (existingUser) {
       if (existingUser.is_active) {
-        return res.status(409).json({ error: 'An account already exists for this NB number. Please login.' });
+        return res.status(409).json({ error: 'An account already exists for this number. Please login.' });
       } else {
         return res.status(409).json({ error: 'Your account is already pending admin approval.' });
       }

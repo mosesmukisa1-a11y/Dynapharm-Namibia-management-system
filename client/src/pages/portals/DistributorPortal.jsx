@@ -53,7 +53,7 @@ function MyNetworkTab() {
   if (!nb) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-        Unable to determine your NB number. Please contact the branch.
+        Unable to determine your NB/DZ number. Please contact the branch.
       </div>
     );
   }
@@ -106,10 +106,10 @@ function MyBonusTab() {
           <CardBody>
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your bonus history</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB or DZ number to view your bonus history</label>
                 <input type="text" value={nbInput} onChange={e => setNBInput(e.target.value.toUpperCase())}
                   onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNB(nbInput.trim()); fetchBonuses(nbInput.trim()); } }}
-                  placeholder="e.g. NB001234"
+                  placeholder="e.g. NB001234 or DZ001234"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
               </div>
               <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNB(nb); fetchBonuses(nb); } }}>Look Up</Button>
@@ -367,7 +367,7 @@ function DashboardTab() {
                   value={nbInput}
                   onChange={e => setNBInput(e.target.value.toUpperCase())}
                   onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
-                  placeholder="e.g. NB001234"
+                  placeholder="e.g. NB001234 or DZ001234"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
                 />
               </div>
@@ -1117,7 +1117,7 @@ function BVProfitTab() {
                   value={nbInput}
                   onChange={e => setNBInput(e.target.value.toUpperCase())}
                   onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
-                  placeholder="e.g. NB001234"
+                  placeholder="e.g. NB001234 or DZ001234"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
                 />
               </div>

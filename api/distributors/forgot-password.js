@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     const newPassword = (body?.newPassword || '').trim();
 
     if (!distributorCode) {
-      return res.status(400).json({ error: 'NB number is required' });
+      return res.status(400).json({ error: 'NB/DZ number is required' });
     }
     if (!email) {
       return res.status(400).json({ error: 'Email address is required' });
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     );
 
     if (!user) {
-      return res.status(404).json({ error: 'No account found for this NB number. Please sign up first.' });
+      return res.status(404).json({ error: 'No account found for this NB/DZ number. Please sign up first.' });
     }
 
     const distributor = await getOne(
