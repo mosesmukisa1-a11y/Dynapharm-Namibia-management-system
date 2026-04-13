@@ -21,6 +21,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 const BRANCH_NAME_MAP_D = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabelD = (id) => BRANCH_NAME_MAP_D[id] || (id === 'head_office' ? 'Head Office' : id || '—');
@@ -66,6 +67,7 @@ export default function DirectorPortal() {
     { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'financeApprovals', label: 'Finance Approvals', icon: '💵' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   const apply = () => setApplied({ start: startDate, end: endDate });
@@ -97,6 +99,7 @@ export default function DirectorPortal() {
         {activeTab === 'salary' && <SalaryLedgerTab role="director" />}
         {activeTab === 'financeApprovals' && <FinanceApprovalsTab />}
         {activeTab === 'staff' && <StaffTab />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#1e3a5f" />}
       </div>
     </div>
   );

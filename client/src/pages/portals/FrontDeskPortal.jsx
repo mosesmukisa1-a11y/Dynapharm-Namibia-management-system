@@ -6,6 +6,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus, Package, Eye, Send, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 export default function FrontDeskPortal() {
   const [activeTab, setActiveTab] = useState('appointments');
@@ -22,6 +23,7 @@ export default function FrontDeskPortal() {
     { id: 'notifications', label: 'Notifications', icon: '🔔' },
     { id: 'staffcomm', label: 'Staff Comm', icon: '📢' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   return (
@@ -44,6 +46,7 @@ export default function FrontDeskPortal() {
         {activeTab === 'notifications' && <NotificationsTab />}
         {activeTab === 'staffcomm' && <StaffCommunicationTab />}
         {activeTab === 'staff' && <StaffServicesTab />}
+        {activeTab === 'messages' && <StaffMessagesTab />}
       </div>
     </div>
   );

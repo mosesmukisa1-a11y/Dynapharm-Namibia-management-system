@@ -42,6 +42,7 @@ export default async function handler(req, res) {
     const since = searchParams.get('since');
 
     if (method === 'GET') {
+      const recipientType = searchParams.get('recipient_type');
       if (!req.user && !recipientId) {
         return res.status(400).json({ error: 'recipient_id is required' });
       }
@@ -50,8 +51,12 @@ export default async function handler(req, res) {
       const params = [];
 
       if (recipientId) {
-        params.push(recipientId.toUpperCase().trim());
-        conditions.push(`UPPER(recipient_id) = $${params.length}`);
+        params.push(recipientId.toLowerCase().trim());
+        conditions.push(`LOWER(recipient_id) = $${params.length}`);
+      }
+      if (recipientType) {
+        params.push(recipientType);
+        conditions.push(`recipient_type = $${params.length}`);
       }
       if (unreadOnly) {
         conditions.push('is_read = FALSE');

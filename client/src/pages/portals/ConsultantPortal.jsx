@@ -6,6 +6,7 @@ import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '..
 import { FileText, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -36,6 +37,7 @@ export default function ConsultantPortal() {
     { id: 'followups', label: 'Follow-ups' },
     { id: 'analytics', label: 'Analytics' },
     { id: 'staff', label: 'Staff Services' },
+    { id: 'messages', label: '📨 My Messages' },
   ];
 
   const handleRefreshData = () => {
@@ -83,6 +85,7 @@ export default function ConsultantPortal() {
           {activeSection === 'followups' && <FollowupsSection key={`fol-${refreshKey}`} />}
           {activeSection === 'analytics' && <AnalyticsSection key={`ana-${refreshKey}`} />}
           {activeSection === 'staff' && <StaffServicesSection key={`stf-${refreshKey}`} />}
+          {activeSection === 'messages' && <StaffMessagesTab accentColor="#c41e3a" />}
         </ErrorBoundary>
       </div>
     </div>

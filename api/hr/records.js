@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { query } from '../db.js';
+import { query, getOne, insert } from '../db.js';
 
 const VALID_TYPES = ['warning', 'termination', 'attendance', 'performance'];
 
@@ -152,6 +152,41 @@ export default async function handler(req, res) {
           req.user?.full_name || req.user?.username || null,
         ]
       );
+
+      // Auto-create a staff inbox notification for warnings and terminations
+      if (type === 'warning' || type === 'termination') {
+        try {
+          const staffUser = await getOne(
+            `SELECT username FROM users WHERE LOWER(full_name) = LOWER($1) AND role != 'distributor' LIMIT 1`,
+            [employee_name]
+          );
+          if (staffUser?.username) {
+            const isTermination = type === 'termination';
+            const warnLabel = finalSubtype ? `${finalSubtype} Warning` : 'Warning';
+            const notifTitle = isTermination ? 'Termination Notice' : `HR ${warnLabel}`;
+            const notifMessage = isTermination
+              ? `You have received a termination notice. Effective date: ${effective_date || 'TBD'}. Reason: ${reason || 'See HR for details.'}`
+              : `You have received a ${warnLabel.toLowerCase()} from HR. Reason: ${reason || 'See HR for details.'}`;
+            await insert('notifications', {
+              id: `STAFF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+              recipient_type: 'staff',
+              recipient_id: staffUser.username.toLowerCase(),
+              title: notifTitle,
+              message: notifMessage,
+              type: isTermination ? 'termination' : 'warning',
+              reference_id: String(result.rows[0]?.id || ''),
+              metadata: JSON.stringify({
+                issued_by: req.user?.full_name || req.user?.username || 'HR',
+                record_type: type,
+                subtype: finalSubtype,
+                date: date || new Date().toISOString().slice(0, 10),
+              }),
+            });
+          }
+        } catch (notifErr) {
+          console.warn('[hr/records] Failed to create staff notification (non-critical):', notifErr.message);
+        }
+      }
 
       return res.status(201).json({ success: true, record: result.rows[0] });
     }

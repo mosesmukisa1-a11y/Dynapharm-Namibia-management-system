@@ -10,6 +10,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -196,6 +197,7 @@ export default function BranchPortal() {
     { id: 'bonus', label: 'Bonus', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
     { id: 'registration', label: 'Distributor Registration', icon: '📝' },
     { id: 'outsideReg', label: 'Outside Registrations', icon: '📋' },
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
@@ -282,6 +284,7 @@ export default function BranchPortal() {
           {activeTab === 'bonus' && <BonusTab />}
           {activeTab === 'communication' && <CommunicationTab />}
           {activeTab === 'staff' && <StaffTab />}
+          {activeTab === 'messages' && <StaffMessagesTab />}
           {activeTab === 'registration' && <DistributorRegTab />}
           {activeTab === 'outsideReg' && <OutsideRegistrationsTab />}
           {activeTab === 'fieldProgram' && <FieldProgramTab />}

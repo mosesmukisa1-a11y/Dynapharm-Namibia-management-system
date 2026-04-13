@@ -5,6 +5,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { GraduationCap, Video, Image, Upload, Search, Play, Eye, FileText, Users, BookOpen } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 export default function TrainingPortal() {
   const [activeTab, setActiveTab] = useState('materials');
@@ -18,6 +19,7 @@ export default function TrainingPortal() {
     ...(isTrainer ? [{ id: 'upload', label: 'Upload Content', icon: '📤' }] : []),
     { id: 'schedule', label: 'Schedule', icon: '📅' },
     { id: 'staffServices', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   return (
@@ -30,6 +32,7 @@ export default function TrainingPortal() {
         {activeTab === 'upload' && isTrainer && <UploadTab />}
         {activeTab === 'schedule' && <ScheduleTab isTrainer={isTrainer} />}
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#065f46" />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#065f46" />}
       </div>
     </div>
   );

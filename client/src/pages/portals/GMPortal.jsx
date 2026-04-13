@@ -10,6 +10,7 @@ import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, Do
 import { useAuth } from '../../contexts/AuthContext';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -32,6 +33,7 @@ export default function GMPortal() {
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
     { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
   ];
 
@@ -53,6 +55,7 @@ export default function GMPortal() {
         {activeTab === 'bonus' && <BonusHistoryTab />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#7c3aed" />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Performance — All Branches" />}
       </div>
     </div>

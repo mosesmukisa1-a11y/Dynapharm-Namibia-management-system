@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 import DispatchNote from '../../components/DispatchNote';
 import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -636,6 +637,7 @@ export default function StockPortal() {
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'staffServices', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   const branchOptions = [
@@ -705,6 +707,7 @@ export default function StockPortal() {
         {activeTab === 'adjustments' && <AdjustmentsTab />}
         {activeTab === 'campaigns' && <StockCampaignsTab />}
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#92400e" />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#92400e" />}
       </div>
     </div>
   );

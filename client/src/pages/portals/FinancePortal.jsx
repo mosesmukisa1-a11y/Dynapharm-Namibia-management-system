@@ -8,6 +8,7 @@ import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet,
 import AccountsTab from '../../components/AccountsTab';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
@@ -27,6 +28,7 @@ export default function FinancePortal() {
     { id: 'communication', label: 'Notices', icon: '📢' },
     { id: 'casReview', label: 'CAS Review', icon: '✅' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   return (
@@ -49,6 +51,7 @@ export default function FinancePortal() {
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'casReview' && <CASReviewTab />}
         {activeTab === 'staff' && <StaffTab />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#1d4ed8" />}
       </div>
     </div>
   );

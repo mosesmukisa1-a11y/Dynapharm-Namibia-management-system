@@ -5,6 +5,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus } from 'lucide-react';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
+import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 export default function HRPortal() {
   const [activeTab, setActiveTab] = useState('employees');
@@ -19,6 +20,7 @@ export default function HRPortal() {
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'data', label: 'Data Collection', icon: '📊' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
   return (
@@ -39,6 +41,7 @@ export default function HRPortal() {
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'data' && <DataTab />}
         {activeTab === 'staff' && <StaffServicesTab />}
+        {activeTab === 'messages' && <StaffMessagesTab accentColor="#dc2626" />}
       </div>
     </div>
   );
