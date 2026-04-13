@@ -236,22 +236,26 @@ function autoPopulateBodyChecks(data) {
   });
 
   /* 2. Lifestyle auto-checks */
-  if (data.sleepHours === '<5' || data.sleepHours === '5-6') {
+  const sleepHours = data.sleep_hours || data.sleepHours || '';
+  const stressLevel = data.stress_level || data.stressLevel || '';
+  const exerciseFreq = data.exercise_freq || data.exerciseFreq || '';
+  const waterIntake = data.water_intake || data.waterIntake || '';
+  if (sleepHours === '<5' || sleepHours === 'Less than 5' || sleepHours === '5-6' || sleepHours === '5–6') {
     const sysId = 'Nervous_System';
     newSystems[sysId] = true;
     newChecks[`${sysId}__Difficulty concentrating or brain fog`] = true;
   }
-  if (parseInt(data.stressLevel) >= 7) {
+  if (parseInt(stressLevel) >= 7) {
     const sysId = 'Endocrine_System';
     newSystems[sysId] = true;
     newChecks[`${sysId}__Mood swings or irritability`] = true;
   }
-  if (data.exerciseFreq === 'never' || data.exerciseFreq === '1-2') {
+  if (exerciseFreq === 'never' || exerciseFreq === 'None' || exerciseFreq === '1-2' || exerciseFreq === '1–2x per week') {
     const sysId = 'Cardiovascular_System';
     newSystems[sysId] = true;
     newChecks[`${sysId}__Cold hands and feet or fatigue`] = true;
   }
-  if (data.waterIntake === 'less1') {
+  if (waterIntake === 'less1' || waterIntake === 'Less than 1L/day') {
     const sysId = 'Urinary_System';
     newSystems[sysId] = true;
     newChecks[`${sysId}__Lower back pain`] = true;
@@ -305,16 +309,19 @@ function generateRecommendations(client) {
   }
 
   /* 5. Lifestyle */
-  if (client.sleepHours === '<5' || client.sleepHours === '5-6') {
+  const sh = client.sleepHours || '';
+  if (sh === '<5' || sh === '5-6' || sh === 'Less than 5' || sh === '5–6') {
     RECOMMENDATION_DATABASE.lifestyle.poorSleep.forEach(m => addRec(m, 'Poor sleep quality'));
   }
   if (parseInt(client.stressLevel) >= 7) {
     RECOMMENDATION_DATABASE.lifestyle.highStress.forEach(m => addRec(m, 'High stress level'));
   }
-  if (client.exerciseFreq === 'never' || client.exerciseFreq === '1-2') {
+  const ef = client.exerciseFreq || '';
+  if (ef === 'never' || ef === '1-2' || ef === 'None' || ef === '1–2x per week') {
     RECOMMENDATION_DATABASE.lifestyle.lowExercise.forEach(m => addRec(m, 'Low physical activity'));
   }
-  if (client.waterIntake === 'less1') {
+  const wi = client.waterIntake || '';
+  if (wi === 'less1' || wi === 'Less than 1L/day') {
     RECOMMENDATION_DATABASE.lifestyle.poorWater.forEach(m => addRec(m, 'Low water intake'));
   }
   if (client.age && parseInt(client.age) >= 60) {
@@ -387,13 +394,13 @@ function CheckupsSection() {
     const client = {
       symptoms: flatSymptoms,
       rawSymptomStrings,
-      medicalHistory: data.medicalHistory || [],
+      medicalHistory: data.medical_history || data.medicalHistory || [],
       gender: data.gender || apt.gender || '',
       age: data.age || apt.age || '',
-      sleepHours: data.sleepHours || '',
-      stressLevel: data.stressLevel || '',
-      exerciseFreq: data.exerciseFreq || '',
-      waterIntake: data.waterIntake || '',
+      sleepHours: data.sleep_hours || data.sleepHours || '',
+      stressLevel: data.stress_level || data.stressLevel || '',
+      exerciseFreq: data.exercise_freq || data.exerciseFreq || '',
+      waterIntake: data.water_intake || data.waterIntake || '',
     };
     const recs = generateRecommendations(client);
     setCurrentRecommendations(recs);
@@ -950,12 +957,14 @@ ${consultantNotes ? `
                 <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
                   <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Health Assessment</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' }}>
-                    <div><strong>Primary Reason:</strong> {data.primaryReason || data.reason || 'N/A'}</div>
-                    <div><strong>Water Intake:</strong> {data.waterIntake || 'Not specified'}</div>
-                    <div><strong>Exercise:</strong> {data.exerciseFreq || 'Not specified'}</div>
-                    <div><strong>Sleep:</strong> {data.sleepHours || 'Not specified'}</div>
-                    <div><strong>Stress Level:</strong> {data.stressLevel || 'Not specified'}/10</div>
-                    <div><strong>Medical History:</strong> {Array.isArray(data.medicalHistory) ? data.medicalHistory.join(', ') : 'None'}</div>
+                    <div><strong>Primary Reason:</strong> {data.primary_reason || data.primaryReason || data.reason || 'N/A'}</div>
+                    <div><strong>Water Intake:</strong> {data.water_intake || data.waterIntake || 'Not specified'}</div>
+                    <div><strong>Exercise:</strong> {data.exercise_freq || data.exerciseFreq || 'Not specified'}</div>
+                    <div><strong>Sleep:</strong> {data.sleep_hours || data.sleepHours || 'Not specified'}</div>
+                    <div><strong>Stress Level:</strong> {data.stress_level || data.stressLevel ? `${data.stress_level || data.stressLevel}/10` : 'Not specified'}</div>
+                    <div><strong>Medications:</strong> {data.current_medications || data.currentMedications || 'None'}</div>
+                    <div><strong>Allergies:</strong> {data.allergies || 'None'}</div>
+                    <div><strong>Medical History:</strong> {Array.isArray(data.medical_history || data.medicalHistory) ? (data.medical_history || data.medicalHistory).join(', ') : (data.medical_history || data.medicalHistory || 'None')}</div>
                   </div>
                 </div>
 
