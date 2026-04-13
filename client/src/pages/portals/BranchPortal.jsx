@@ -750,7 +750,7 @@ function WalkInSalesTab() {
                       {sIsM ? '🏅 Member' : '👤 Walk-in'}
                     </span>
                     <span className="text-gray-500 truncate">{saleParams.customerName || '—'}</span>
-                    {saleParams.nbNumber && <span className="text-xs text-gray-400 shrink-0">NB#{saleParams.nbNumber}</span>}
+                    {saleParams.nbNumber && <span className="text-xs text-gray-400 shrink-0">{saleParams.nbNumber}</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
@@ -826,7 +826,7 @@ function WalkInSalesTab() {
                     <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
                     <div style={{ position: 'relative' }}>
                       <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
-                      <input type="text" value={regSearch} placeholder="Search by name or NB#…" onChange={e => searchRegistered(e.target.value)}
+                      <input type="text" value={regSearch} placeholder="Search by name or NB/DZ code…" onChange={e => searchRegistered(e.target.value)}
                         style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', background: '#fff', outline: 'none' }} />
                       {regResults.length > 0 && (
                         <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 28px rgba(196,30,58,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
@@ -834,7 +834,7 @@ function WalkInSalesTab() {
                             <button key={d.id} onClick={() => selectRegistered(d)}
                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fff5f5', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
                               <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
-                              <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.nbNumber || d.distributor_code}</div>
+                              <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>{d.nb_number || d.nbNumber || d.distributor_code}</div>
                             </button>
                           ))}
                         </div>
@@ -844,7 +844,7 @@ function WalkInSalesTab() {
                       <div style={{ marginTop: 8, padding: '10px 12px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #f9a8b4', borderRadius: 10, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <div style={{ fontWeight: 800, color: '#9b1c2e' }}>{selectedReg.name}</div>
-                          <div style={{ color: '#c41e3a', fontSize: '0.74rem', marginTop: 2 }}>NB#{selectedReg.nb_number} · {selectedReg.phone || '—'}</div>
+                          <div style={{ color: '#c41e3a', fontSize: '0.74rem', marginTop: 2 }}>{selectedReg.nb_number} · {selectedReg.phone || '—'}</div>
                         </div>
                         <button type="button" onClick={clearRegistered} style={{ border: 'none', background: '#fecaca', color: '#c41e3a', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
                       </div>
@@ -863,7 +863,7 @@ function WalkInSalesTab() {
                       <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 8 }}>Referral Distributor</div>
                       <div style={{ position: 'relative' }}>
                         <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#f59e0b', fontSize: '0.9rem', pointerEvents: 'none', opacity: noReferral ? 0.4 : 1 }}>🔍</div>
-                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB#…" disabled={noReferral}
+                        <input type="text" value={referralSearch} onChange={e => searchReferrals(e.target.value)} placeholder="Search by name or NB/DZ code…" disabled={noReferral}
                           style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none', opacity: noReferral ? 0.5 : 1, background: noReferral ? '#fef9ee' : '#fff' }} />
                         {referralResults.length > 0 && !noReferral && (
                           <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 170, overflowY: 'auto', boxShadow: '0 8px 28px rgba(245,158,11,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
@@ -871,7 +871,7 @@ function WalkInSalesTab() {
                               <button key={d.id} onClick={() => selectReferral(d)}
                                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fffbeb', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
                                 <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
-                                <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>NB#{d.nb_number || d.nbNumber || d.distributor_code}</div>
+                                <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>{d.nb_number || d.nbNumber || d.distributor_code}</div>
                               </button>
                             ))}
                           </div>
@@ -881,7 +881,7 @@ function WalkInSalesTab() {
                         <div style={{ marginTop: 8, padding: '9px 12px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 9, fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
                             <div style={{ fontWeight: 800, color: '#92400e' }}>{selectedReferral.name}</div>
-                            <div style={{ color: '#d97706', fontSize: '0.75rem', marginTop: 2 }}>NB#{selectedReferral.nb_number}</div>
+                            <div style={{ color: '#d97706', fontSize: '0.75rem', marginTop: 2 }}>{selectedReferral.nb_number}</div>
                           </div>
                           <button type="button" onClick={clearReferral} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 700 }}>×</button>
                         </div>
@@ -1111,7 +1111,7 @@ function WalkInSalesTab() {
                       {isMember ? '🏅 Member' : '👤 Walk-in'}
                     </span>
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {isMember ? (selectedReg?.nb_number ? `NB#${selectedReg.nb_number}` : '') : (newPhone || '')}
+                      {isMember ? (selectedReg?.nb_number || '') : (newPhone || '')}
                     </span>
                   </div>
                   {!isMember && (selectedReferral || noReferral) && (
@@ -7325,7 +7325,7 @@ function FieldProgramTab() {
                       {distributorResults.map((d, i) => (
                         <div key={d.id||i} onClick={() => selectDistributor(d)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #fffbeb', fontSize: '0.85rem' }}>
                           <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.distributor_name||d.name}</div>
-                          <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 2 }}>NB#{d.distributor_code||d.nb_number}{d.mobile_no||d.phone ? ` · ${d.mobile_no||d.phone}` : ''}</div>
+                          <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 2 }}>{d.distributor_code||d.nb_number}{d.mobile_no||d.phone ? ` · ${d.mobile_no||d.phone}` : ''}</div>
                         </div>
                       ))}
                     </div>
@@ -7335,7 +7335,7 @@ function FieldProgramTab() {
                   <div style={{ marginTop: 10, padding: '10px 14px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 9, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: 800, color: '#92400e' }}>{selectedDistributor.distributor_name||selectedDistributor.name}</div>
-                      <div style={{ fontSize: '0.78rem', color: '#d97706', marginTop: 2 }}>NB#{selectedDistributor.distributor_code||selectedDistributor.nb_number} · {selectedDistributor.mobile_no||selectedDistributor.phone||'—'}</div>
+                      <div style={{ fontSize: '0.78rem', color: '#d97706', marginTop: 2 }}>{selectedDistributor.distributor_code||selectedDistributor.nb_number} · {selectedDistributor.mobile_no||selectedDistributor.phone||'—'}</div>
                     </div>
                     <button onClick={() => { setSelectedDistributor(null); setDistributorSearch(''); }} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>×</button>
                   </div>
@@ -8629,7 +8629,7 @@ function BranchCampaignsTab() {
                             onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
                             onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                             <div style={{ fontWeight: 700, fontSize: 13 }}>{nd.name}</div>
-                            <div style={{ fontSize: 11, color: '#9b1c2e' }}>NB#{nd.nb_number} · {nd.phone || '—'}</div>
+                            <div style={{ fontSize: 11, color: '#9b1c2e' }}>{nd.nb_number} · {nd.phone || '—'}</div>
                           </div>
                         );
                       })}
@@ -8639,7 +8639,7 @@ function BranchCampaignsTab() {
                     <div style={{ marginTop: 6, padding: '8px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontWeight: 800, color: '#15803d', fontSize: 13 }}>{campSelected.name}</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>NB#{campSelected.nb_number}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>{campSelected.nb_number}</div>
                       </div>
                       <button type="button" onClick={() => { setCampSelected(null); setCampSearch(''); setCampResults([]); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16 }}>✕</button>
                     </div>
@@ -8668,7 +8668,7 @@ function BranchCampaignsTab() {
                               onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
                               onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                               <div style={{ fontWeight: 700, fontSize: 13 }}>{nd.name}</div>
-                              <div style={{ fontSize: 11, color: '#9b1c2e' }}>NB#{nd.nb_number} · {nd.phone || '—'}</div>
+                              <div style={{ fontSize: 11, color: '#9b1c2e' }}>{nd.nb_number} · {nd.phone || '—'}</div>
                             </div>
                           );
                         })}
@@ -8678,7 +8678,7 @@ function BranchCampaignsTab() {
                       <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ fontSize: 12 }}>
                           <span style={{ fontWeight: 700, color: '#15803d' }}>{campRefSelected.name}</span>
-                          <span style={{ color: '#64748b', marginLeft: 6 }}>NB#{campRefSelected.nb_number}</span>
+                          <span style={{ color: '#64748b', marginLeft: 6 }}>{campRefSelected.nb_number}</span>
                         </div>
                         <button type="button" onClick={() => { setCampRefSelected(null); setCampRefSearch(''); setCampRefResults([]); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>✕</button>
                       </div>

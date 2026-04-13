@@ -202,8 +202,9 @@ export default async function handler(req, res) {
       if (entityTypeParam) {
         params.push(entityTypeParam.toLowerCase());
         whereParts.push(`entity_type = $${params.length}`);
-      } else if (!search) {
-        // Default: exclude branch-type records when not searching
+      } else {
+        // Exclude branch-type records unless explicitly requesting them
+        whereParts.push(`(entity_type IS NULL OR entity_type != 'branch')`);
       }
 
       let queryText = 'SELECT * FROM distributors';

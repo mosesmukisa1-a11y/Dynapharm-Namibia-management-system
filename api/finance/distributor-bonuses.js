@@ -93,7 +93,7 @@ function parseDynapharmCSV(text) {
   let delimiter = ',';
   for (let i = 0; i < Math.min(lines.length, 10); i++) {
     const upper = lines[i].toUpperCase();
-    if (upper.includes('DRN') || (upper.includes('NB') && upper.includes('NAME')) || upper.includes('NAD')) {
+    if (upper.includes('DRN') || upper.includes('DZ') || (upper.includes('NB') && upper.includes('NAME')) || upper.includes('NAD')) {
       headerIdx = i;
       if (upper.includes('|')) delimiter = '|';
       else if (upper.includes(';')) delimiter = ';';
@@ -142,7 +142,7 @@ function normalizeRow(row) {
     return '';
   };
 
-  const nbNumber = getValue('drn', 'nb number', 'nb_number', 'nbnumber', 'distributor_code', 'code').toUpperCase();
+  const nbNumber = getValue('drn', 'dz', 'nb number', 'nb_number', 'nbnumber', 'dz_number', 'dz number', 'distributor_code', 'code').toUpperCase();
   const name = getValue('name', 'distributor name', 'distributor_name', 'full_name');
   // NAD column uses European format — must use parseNamibianAmount
   const rawAmount = getValue('nad', 'amount', 'bonus', 'bonus_amount', 'amount earned');

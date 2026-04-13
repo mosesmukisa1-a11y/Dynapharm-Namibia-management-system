@@ -137,10 +137,10 @@ export function DistributorLoginModal({ open, onClose }) {
         <form onSubmit={handleLogin} className="px-6 pb-6 space-y-4">
           {error && <Alert type="error">{error}</Alert>}
           <Input
-            label="NB Number"
+            label="NB / DZ Number"
             value={nbNumber}
             onChange={e => setNbNumber(e.target.value.toUpperCase())}
-            placeholder="e.g. NB005676"
+            placeholder="e.g. NB005676 or DZ001234"
             required
             autoFocus
           />
@@ -170,14 +170,14 @@ export function DistributorLoginModal({ open, onClose }) {
             <div className="space-y-4">
               {error && <Alert type="error">{error}</Alert>}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800 font-medium">Step 1: Verify your NB Number</p>
-                <p className="text-xs text-blue-600 mt-1">Enter the NB number you received when you joined Dynapharm.</p>
+                <p className="text-sm text-blue-800 font-medium">Step 1: Verify your NB / DZ Number</p>
+                <p className="text-xs text-blue-600 mt-1">Enter the NB or DZ number you received when you joined Dynapharm.</p>
               </div>
               <Input
-                label="NB Number"
+                label="NB / DZ Number"
                 value={regForm.nb_number}
                 onChange={e => setRegForm(f => ({ ...f, nb_number: e.target.value.toUpperCase() }))}
-                placeholder="e.g. NB005676"
+                placeholder="e.g. NB005676 or DZ001234"
                 required
                 autoFocus
               />

@@ -440,7 +440,7 @@ export default function DistributorPerformanceTab({ branchFilter = null, title =
             <div>
               <div style={{ fontWeight: 900, color: '#c41e3a', fontSize: '1.1rem' }}>👤 {selected.distributor_name}</div>
               <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
-                {selected.distributor_code && <span className="font-mono" style={{ color: '#c41e3a', fontWeight: 700, marginRight: 12 }}>NB#{selected.distributor_code}</span>}
+                {selected.distributor_code && <span className="font-mono" style={{ color: '#c41e3a', fontWeight: 700, marginRight: 12 }}>{selected.distributor_code}</span>}
                 {selected.branch && <span style={{ marginRight: 12 }}>📍 {selected.branch}</span>}
                 {selected.mobile_no && <span style={{ marginRight: 12 }}>📞 {selected.mobile_no}</span>}
                 {selected.email && <span>✉️ {selected.email}</span>}
