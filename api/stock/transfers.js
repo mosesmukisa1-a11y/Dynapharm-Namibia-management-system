@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { branchSearchTerms } from '../_lib/branchUtils.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
   const batches = await client.query(
@@ -418,9 +419,9 @@ async function listTransfers(searchParams) {
     conditions.push(`status = $${params.length}`);
   }
   if (toBranch && toBranch !== 'all') {
-    const normalizedBranch = toBranch.replace(/_/g, ' ');
-    params.push(normalizedBranch);
-    conditions.push(`REPLACE(LOWER(to_branch), '_', ' ') = REPLACE(LOWER($${params.length}), '_', ' ')`);
+    const terms = branchSearchTerms(toBranch);
+    params.push(terms.length > 0 ? terms : [toBranch.toLowerCase()]);
+    conditions.push(`LOWER(to_branch) = ANY($${params.length}::text[])`);
   }
   if (fromWarehouse && fromWarehouse !== 'all') {
     params.push(fromWarehouse);

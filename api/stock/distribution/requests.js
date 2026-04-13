@@ -1,5 +1,6 @@
 import { applyAuthCors, getBranchScope } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
+import { branchSearchTermsForMany } from '../../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -20,9 +21,9 @@ export default async function handler(req, res) {
     const params = [];
     if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
     if (branchScope.enforced) {
-      const normalizedBranches = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
-      params.push(normalizedBranches);
-      conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = ANY($${params.length}::text[])`);
+      const terms = branchSearchTermsForMany(branchScope.branches);
+      params.push(terms);
+      conditions.push(`LOWER(requesting_branch) = ANY($${params.length}::text[])`);
     }
 
     const requests = await getMany(

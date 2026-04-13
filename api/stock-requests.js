@@ -1,5 +1,6 @@
 import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { branchSearchTerms, branchSearchTermsForMany, normalizeBranchSlug } from './_lib/branchUtils.js';
 
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;
@@ -249,13 +250,13 @@ export default async function handler(req, res) {
         params.push(id);
       }
       if (branchScope.enforced) {
-        const normalizedBranches = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
-        params.push(normalizedBranches);
-        conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = ANY($${params.length}::text[])`);
+        const terms = branchSearchTermsForMany(branchScope.branches);
+        params.push(terms);
+        conditions.push(`LOWER(requesting_branch) = ANY($${params.length}::text[])`);
       } else if (requestedBranch) {
-        const normalizedBranch = requestedBranch.replace(/_/g, ' ');
-        conditions.push(`REPLACE(LOWER(requesting_branch), '_', ' ') = REPLACE(LOWER($${params.length + 1}), '_', ' ')`);
-        params.push(normalizedBranch);
+        const terms = branchSearchTerms(requestedBranch);
+        params.push(terms.length > 0 ? terms : [requestedBranch.trim().toLowerCase()]);
+        conditions.push(`LOWER(requesting_branch) = ANY($${params.length}::text[])`);
       }
       if (status) {
         conditions.push('status = $' + (params.length + 1));
@@ -352,9 +353,10 @@ export default async function handler(req, res) {
         const items = parseItemsInput(body.items || body.itemsArray);
         const singleBranch = body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager';
         if (branchScope.enforced) {
-          const normalizedRequest = singleBranch.replace(/_/g, ' ').toLowerCase();
-          const normalizedAllowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
-          if (!normalizedAllowed.includes(normalizedRequest)) {
+          const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
+          const requestTerms = branchSearchTerms(singleBranch);
+          const allowed = requestTerms.some(t => allowedTerms.has(t));
+          if (!allowed) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot create stock requests for this branch' });
           }
         }
