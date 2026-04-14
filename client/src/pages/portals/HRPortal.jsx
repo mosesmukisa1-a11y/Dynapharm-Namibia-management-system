@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatDate, formatDateTime, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus } from 'lucide-react';
+import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus, CheckCircle2, XCircle, UserCheck, Building2, AlertCircle, Info, Briefcase } from 'lucide-react';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -153,14 +153,148 @@ function EmployeesTab() {
   );
 }
 
+const QUICK_REJECT_REASONS = [
+  'Operational requirements – cannot release staff at this time',
+  'Insufficient notice period provided',
+  'Leave entitlement exhausted for this cycle',
+  'Overlapping with another approved leave in the same department',
+  'Peak period – coverage cannot be arranged',
+  'Application incomplete or missing supporting documents',
+  'Leave dates conflict with scheduled training or audit',
+];
+
+const LEAVE_TYPE_COLORS = {
+  Annual: 'info',
+  Sick: 'warning',
+  Personal: 'secondary',
+  Maternity: 'success',
+  Paternity: 'success',
+  Unpaid: 'danger',
+};
+
+function LeaveCard({ leave, onApprove, onRejectClick }) {
+  const empNum = leave.employee_id || leave.emp_number || '—';
+  const position = leave.emp_position || '—';
+  const branch = leave.emp_branch || '—';
+  const dept = leave.emp_department || null;
+  const days = leave.working_days ?? 0;
+  const coverage = leave.coverage_staff || [];
+
+  let entitlementInfo = null;
+  if (leave.leave_entitlements && typeof leave.leave_entitlements === 'object') {
+    const key = Object.keys(leave.leave_entitlements).find(
+      k => k.toLowerCase().includes(leave.leave_type?.toLowerCase() || '')
+    );
+    if (key) entitlementInfo = leave.leave_entitlements[key];
+  }
+
+  return (
+    <div className="border border-amber-200 rounded-xl bg-amber-50 overflow-hidden">
+      <div className="flex items-start justify-between gap-4 px-5 py-4 bg-white border-b border-amber-100">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-lg font-bold text-gray-900">{leave.employee_name}</span>
+            {leave.urgent && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                <AlertCircle size={11} /> URGENT
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-1 flex-wrap text-sm text-gray-500">
+            <span className="flex items-center gap-1">
+              <Info size={13} className="text-gray-400" />
+              <span className="font-mono font-semibold text-gray-700">{empNum}</span>
+            </span>
+            <span className="flex items-center gap-1"><Briefcase size={13} />{position}</span>
+            <span className="flex items-center gap-1"><Building2 size={13} />{branch}</span>
+            {dept && <span className="text-gray-400">{dept}</span>}
+          </div>
+        </div>
+        <Badge variant={LEAVE_TYPE_COLORS[leave.leave_type] || 'info'} className="shrink-0 text-sm px-3 py-1">
+          {leave.leave_type}
+        </Badge>
+      </div>
+
+      <div className="px-5 py-4 grid md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-400 mb-2 font-semibold">Leave Period</p>
+          <div className="flex items-center gap-3 text-sm">
+            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[90px]">
+              <p className="text-xs text-gray-400">From</p>
+              <p className="font-semibold text-gray-800">{formatDate(leave.start_date)}</p>
+            </div>
+            <span className="text-gray-400">→</span>
+            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[90px]">
+              <p className="text-xs text-gray-400">To</p>
+              <p className="font-semibold text-gray-800">{formatDate(leave.end_date)}</p>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Calendar size={14} className="text-amber-600" />
+            <span className="text-sm font-semibold text-amber-700">{days} working day{days !== 1 ? 's' : ''}</span>
+            {entitlementInfo != null && (
+              <span className="text-xs text-gray-500">(entitlement: {entitlementInfo})</span>
+            )}
+          </div>
+          {leave.reason && (
+            <div className="mt-3">
+              <p className="text-xs uppercase tracking-wide text-gray-400 mb-1 font-semibold">Reason</p>
+              <p className="text-sm text-gray-700 bg-white border border-gray-100 rounded-lg px-3 py-2">{leave.reason}</p>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-400 mb-2 font-semibold flex items-center gap-1">
+            <UserCheck size={13} /> Available Coverage at {branch}
+          </p>
+          {position === '—' ? (
+            <p className="text-xs text-gray-400 italic">Employee position not set — cannot determine coverage.</p>
+          ) : coverage.length === 0 ? (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              <XCircle size={15} className="text-red-500 shrink-0" />
+              <p className="text-xs text-red-600 font-medium">No available staff with the same position at {branch} during this period.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {coverage.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 bg-white border border-green-100 rounded-lg px-3 py-2">
+                  <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{s.full_name}</p>
+                    <p className="text-xs text-gray-400">{s.employee_id || 'No EMP#'} · {s.position}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="px-5 py-3 border-t border-amber-100 bg-white flex justify-end gap-2">
+        <Button size="sm" variant="success" onClick={() => onApprove(leave.id)}>
+          <CheckCircle2 size={14} className="mr-1" /> Approve
+        </Button>
+        <Button size="sm" variant="danger" onClick={() => onRejectClick(leave)}>
+          <XCircle size={14} className="mr-1" /> Reject
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function LeaveTab() {
   const [employees, setEmployees] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
+  const [form, setForm] = useState({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '', urgent: false });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -183,9 +317,10 @@ function LeaveTab() {
     setError('');
     setSubmitting(true);
     try {
-      await api.hr.createLeave(form);
+      const selectedEmp = employees.find(em => em.full_name === form.employee_name);
+      await api.hr.createLeave({ ...form, employee_id: selectedEmp?.employee_id || selectedEmp?.id || '' });
       setSuccess('Leave request submitted');
-      setForm({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' });
+      setForm({ employee_id: '', employee_name: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '', urgent: false });
       setTimeout(() => setSuccess(''), 3000);
       loadData();
     } catch (err) {
@@ -198,27 +333,40 @@ function LeaveTab() {
   const handleApprove = async (id) => {
     try {
       await api.hr.updateLeave(id, { status: 'approved' });
-      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'approved' } : l));
+      loadData();
     } catch (err) {
       setError(err.message || 'Failed to approve leave');
     }
   };
 
-  const handleReject = async (id) => {
+  const openReject = (leave) => {
+    setRejectTarget(leave);
+    setRejectReason('');
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!rejectTarget) return;
+    setRejectSubmitting(true);
     try {
-      await api.hr.updateLeave(id, { status: 'rejected' });
-      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'rejected' } : l));
+      await api.hr.updateLeave(rejectTarget.id, { status: 'rejected', rejection_reason: rejectReason || 'Rejected by HR' });
+      setRejectTarget(null);
+      loadData();
     } catch (err) {
       setError(err.message || 'Failed to reject leave');
+    } finally {
+      setRejectSubmitting(false);
     }
   };
+
+  const pending = leaves.filter(l => l.status === 'pending');
+  const history = leaves.filter(l => l.status !== 'pending');
 
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Leave Request</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">New Leave Request</h3></CardHeader>
         <CardBody>
           {success && <Alert type="success" className="mb-4">{success}</Alert>}
           {error && <Alert type="error" className="mb-4">{error}</Alert>}
@@ -226,10 +374,13 @@ function LeaveTab() {
             <Select
               label="Employee"
               value={form.employee_name}
-              onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))}
+              onChange={e => {
+                const emp = employees.find(em => em.full_name === e.target.value);
+                setForm(f => ({ ...f, employee_name: e.target.value, employee_id: emp?.employee_id || emp?.id || '' }));
+              }}
               options={[
                 { value: '', label: 'Select Employee' },
-                ...employees.map(emp => ({ value: emp.full_name, label: emp.full_name })),
+                ...employees.map(emp => ({ value: emp.full_name, label: `${emp.full_name}${emp.employee_id ? ' · ' + emp.employee_id : ''}` })),
               ]}
             />
             <Select
@@ -241,6 +392,8 @@ function LeaveTab() {
                 { value: 'Sick', label: 'Sick Leave' },
                 { value: 'Personal', label: 'Personal Leave' },
                 { value: 'Maternity', label: 'Maternity Leave' },
+                { value: 'Paternity', label: 'Paternity Leave' },
+                { value: 'Unpaid', label: 'Unpaid Leave' },
               ]}
             />
             <Input label="Start Date" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} required />
@@ -248,36 +401,105 @@ function LeaveTab() {
             <div className="md:col-span-2">
               <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
             </div>
-            <div className="md:col-span-2 flex justify-end">
-              <Button type="submit">Submit Leave Request</Button>
+            <div className="md:col-span-2 flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                <input type="checkbox" checked={form.urgent} onChange={e => setForm(f => ({ ...f, urgent: e.target.checked }))}
+                  className="w-4 h-4 accent-red-500" />
+                Mark as urgent
+              </label>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Leave Request'}</Button>
             </div>
           </form>
         </CardBody>
       </Card>
 
+      <div>
+        <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <Clock size={17} className="text-amber-500" />
+          Pending Approval
+          {pending.length > 0 && <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>}
+        </h3>
+        {pending.length === 0 ? (
+          <EmptyState icon={<CheckCircle2 size={40} className="text-green-400" />} title="All caught up" description="No leave requests awaiting approval." />
+        ) : (
+          <div className="space-y-4">
+            {pending.map(leaf => (
+              <LeaveCard key={leaf.id} leave={leaf} onApprove={handleApprove} onRejectClick={openReject} />
+            ))}
+          </div>
+        )}
+      </div>
+
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Leave Requests</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">Leave History</h3></CardHeader>
         <Table
           columns={[
-            { header: 'Employee', key: 'employee_name' },
-            { header: 'Type', render: r => <Badge variant="info">{r.leave_type}</Badge> },
-            { header: 'From', render: r => formatDate(r.start_date) },
-            { header: 'To', render: r => formatDate(r.end_date) },
-            { header: 'Reason', key: 'reason' },
+            { header: 'Employee', render: r => (
+              <div>
+                <p className="font-semibold text-gray-800 text-sm">{r.employee_name}</p>
+                <p className="text-xs text-gray-400 font-mono">{r.employee_id || r.emp_number || '—'}</p>
+              </div>
+            )},
+            { header: 'Type', render: r => <Badge variant={LEAVE_TYPE_COLORS[r.leave_type] || 'info'}>{r.leave_type}</Badge> },
+            { header: 'Period', render: r => (
+              <span className="text-sm text-gray-700">{formatDate(r.start_date)} → {formatDate(r.end_date)}</span>
+            )},
+            { header: 'Days', render: r => <span className="font-semibold">{r.working_days ?? '—'}</span> },
             { header: 'Status', render: r => (
               <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status}</Badge>
             )},
-            { header: 'Actions', render: r => r.status === 'pending' ? (
-              <div className="flex gap-1">
-                <Button size="sm" variant="success" onClick={() => handleApprove(r.id)}>Approve</Button>
-                <Button size="sm" variant="danger" onClick={() => handleReject(r.id)}>Reject</Button>
-              </div>
+            { header: 'Rejection Reason', render: r => r.rejection_reason ? (
+              <span className="text-xs text-red-600 max-w-[200px] block">{r.rejection_reason}</span>
             ) : null },
           ]}
-          data={leaves}
-          emptyMessage="No leave requests"
+          data={history}
+          emptyMessage="No leave history"
         />
       </Card>
+
+      {rejectTarget && (
+        <Modal title="Reject Leave Request" onClose={() => setRejectTarget(null)}>
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
+              <p className="text-sm font-semibold text-gray-800">{rejectTarget.employee_name}</p>
+              <p className="text-xs text-gray-500">{rejectTarget.leave_type} · {formatDate(rejectTarget.start_date)} → {formatDate(rejectTarget.end_date)} · {rejectTarget.working_days ?? '?'} working day(s)</p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Quick Reasons</p>
+              <div className="space-y-1.5">
+                {QUICK_REJECT_REASONS.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setRejectReason(r)}
+                    className={`w-full text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                      rejectReason === r
+                        ? 'bg-red-50 border-red-400 text-red-700 font-medium'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-red-200 hover:bg-red-50'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-1">Custom Reason (optional)</p>
+              <Textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="Type a custom reason or edit the selected one above…"
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" onClick={() => setRejectTarget(null)}>Cancel</Button>
+              <Button variant="danger" onClick={handleRejectConfirm} disabled={rejectSubmitting}>
+                {rejectSubmitting ? 'Rejecting…' : 'Confirm Rejection'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
