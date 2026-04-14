@@ -312,6 +312,11 @@ export const api = {
       editRequests: (status = 'pending') => api.get(`/hr/salary-ledger/edit-requests?status=${status}`),
       reviewEdit: (id, action, review_notes = '') => api.patch(`/hr/salary-ledger/edit-requests/${id}`, { action, review_notes }),
     },
+    staffChangeRequests: {
+      list: (status = '') => api.get(`/hr/staff-change-requests${status ? '?status=' + status : ''}`),
+      create: (data) => api.post('/hr/staff-change-requests', data),
+      review: (id, status, gm_note = '') => api.put(`/hr/staff-change-requests?id=${id}`, { id, status, gm_note }),
+    },
   },
 
   director: {

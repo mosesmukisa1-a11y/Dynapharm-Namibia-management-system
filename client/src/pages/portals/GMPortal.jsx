@@ -578,6 +578,9 @@ function ApprovalsTab() {
   const [bonusDeleteRequests, setBonusDeleteRequests] = useState([]);
   const [bonusDeleteModal, setBonusDeleteModal] = useState(null);
   const [bonusDeleteNote, setBonusDeleteNote] = useState('');
+  const [staffChangeRequests, setStaffChangeRequests] = useState([]);
+  const [staffChangeModal, setStaffChangeModal] = useState(null);
+  const [staffChangeNote, setStaffChangeNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -614,7 +617,8 @@ function ApprovalsTab() {
       api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
       api.get('/leave-requests/admin?status=pending').then(d => Array.isArray(d) ? d : []).catch(() => []),
       api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs]) => {
+      api.hr.staffChangeRequests.list('pending').then(d => d.requests || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -626,6 +630,7 @@ function ApprovalsTab() {
       setCasRequests(casReqs);
       setAdminLeaveRequests(adminLeaves);
       setBonusDeleteRequests(bonusDelReqs);
+      setStaffChangeRequests(staffChangeReqs);
     }).finally(() => setLoading(false));
   };
 
@@ -865,6 +870,7 @@ function ApprovalsTab() {
     { id: 'cas_approvals', label: `💵 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
     { id: 'leave_approvals', label: `📅 Leave Approvals${adminLeaveRequests.length > 0 ? ` (${adminLeaveRequests.length})` : ''}` },
     { id: 'bonus_delete', label: `🗑️ Bonus Deletions${bonusDeleteRequests.length > 0 ? ` (${bonusDeleteRequests.length})` : ''}` },
+    { id: 'hr_staff_changes', label: `👥 HR Staff Changes${staffChangeRequests.length > 0 ? ` (${staffChangeRequests.length})` : ''}` },
     { id: 'cash', label: 'Cash' },
     { id: 'leave', label: 'Leave' },
     { id: 'stock', label: 'Stock Movements' },
@@ -1674,8 +1680,129 @@ function ApprovalsTab() {
         </div>
       )}
 
+      {/* HR Staff Change Requests sub-tab */}
+      {approvalTab === 'hr_staff_changes' && (
+        <div className="space-y-4">
+          {staffChangeModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 25px 50px rgba(0,0,0,0.25)', padding: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: staffChangeModal.action === 'approved' ? '#f0fdf4' : '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22 }}>
+                    {staffChangeModal.req.request_type === 'add' ? '👤' : '🚫'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 17, color: '#111827' }}>
+                      {staffChangeModal.action === 'approved' ? 'Approve' : 'Reject'} {staffChangeModal.req.request_type === 'add' ? 'New Employee' : 'Employee Removal'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#6b7280' }}>{staffChangeModal.req.full_name}</div>
+                  </div>
+                </div>
+                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
+                  <div><strong>Position:</strong> {staffChangeModal.req.position || '—'}</div>
+                  <div><strong>Department:</strong> {staffChangeModal.req.department || '—'}</div>
+                  <div><strong>Branch:</strong> {staffChangeModal.req.branch || '—'}</div>
+                  {staffChangeModal.req.hire_date && <div><strong>Hire Date:</strong> {new Date(staffChangeModal.req.hire_date).toLocaleDateString('en-ZA')}</div>}
+                  {staffChangeModal.req.reason && <div style={{ marginTop: 6 }}><strong>HR Reason:</strong> {staffChangeModal.req.reason}</div>}
+                  <div style={{ marginTop: 4, color: '#9ca3af' }}>Requested by <strong>{staffChangeModal.req.requested_by}</strong></div>
+                </div>
+                {staffChangeModal.action === 'approved' && staffChangeModal.req.request_type === 'add' && (
+                  <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '8px 14px', marginBottom: 14, fontSize: 12, color: '#166534' }}>
+                    ✅ Approving will immediately add <strong>{staffChangeModal.req.full_name}</strong> to the employee directory.
+                  </div>
+                )}
+                {staffChangeModal.action === 'approved' && staffChangeModal.req.request_type === 'remove' && (
+                  <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '8px 14px', marginBottom: 14, fontSize: 12, color: '#991b1b' }}>
+                    ⚠️ Approving will deactivate <strong>{staffChangeModal.req.full_name}</strong> in the employee directory.
+                  </div>
+                )}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>GM Note (optional)</label>
+                  <textarea value={staffChangeNote} onChange={e => setStaffChangeNote(e.target.value)} rows={2} placeholder="Add a note for HR…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setStaffChangeModal(null); setStaffChangeNote(''); }} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
+                  <button
+                    disabled={processing}
+                    onClick={async () => {
+                      setProcessing(true);
+                      try {
+                        await api.hr.staffChangeRequests.review(staffChangeModal.req.id, staffChangeModal.action, staffChangeNote);
+                        setMessage(staffChangeModal.action === 'approved'
+                          ? `✅ ${staffChangeModal.req.request_type === 'add' ? `${staffChangeModal.req.full_name} has been added to the employee directory.` : `${staffChangeModal.req.full_name} has been deactivated.`}`
+                          : `❌ Request for ${staffChangeModal.req.full_name} rejected.`);
+                        setStaffChangeRequests(prev => prev.filter(r => r.id !== staffChangeModal.req.id));
+                        setStaffChangeModal(null);
+                        setStaffChangeNote('');
+                      } catch (err) {
+                        setMessage('Error: ' + err.message);
+                      } finally {
+                        setProcessing(false);
+                      }
+                    }}
+                    style={{ flex: 2, padding: '10px', border: 'none', borderRadius: 10, fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1,
+                      background: staffChangeModal.action === 'approved' ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff' }}>
+                    {processing ? '⏳ Processing…' : staffChangeModal.action === 'approved' ? '✅ Confirm Approval' : '❌ Confirm Rejection'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {staffChangeRequests.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
+              <div className="font-semibold text-gray-500 text-lg">No Pending HR Staff Change Requests</div>
+              <div className="text-sm text-gray-400 mt-1">HR can submit add/remove requests from the Employees tab.</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-gray-600 px-1">{staffChangeRequests.length} request{staffChangeRequests.length !== 1 ? 's' : ''} pending your review.</div>
+              {staffChangeRequests.map(r => (
+                <div key={r.id} style={{ background: 'white', borderRadius: 14, border: `2px solid ${r.request_type === 'add' ? '#86efac' : '#fca5a5'}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: '18px 22px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ padding: '3px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
+                          background: r.request_type === 'add' ? '#f0fdf4' : '#fef2f2',
+                          color: r.request_type === 'add' ? '#166534' : '#991b1b',
+                          border: `1px solid ${r.request_type === 'add' ? '#86efac' : '#fca5a5'}` }}>
+                          {r.request_type === 'add' ? '+ ADD EMPLOYEE' : '− REMOVE EMPLOYEE'}
+                        </span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: '#111827', marginBottom: 4 }}>{r.full_name}</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 2 }}>
+                        {[r.position, r.department, r.branch].filter(Boolean).join(' · ')}
+                      </div>
+                      {r.hire_date && <div style={{ fontSize: 12, color: '#9ca3af' }}>Proposed start: {new Date(r.hire_date).toLocaleDateString('en-ZA')}</div>}
+                      {r.reason && (
+                        <div style={{ marginTop: 8, fontSize: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 10px', color: '#374151' }}>
+                          <span style={{ fontWeight: 700 }}>HR Reason:</span> {r.reason}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                        Requested by <strong>{r.requested_by}</strong> · {r.requested_at ? new Date(r.requested_at).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <button onClick={() => { setStaffChangeModal({ req: r, action: 'rejected' }); setStaffChangeNote(''); }}
+                        style={{ padding: '8px 16px', border: '1.5px solid #d1d5db', borderRadius: 9, background: '#f9fafb', color: '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        ❌ Reject
+                      </button>
+                      <button onClick={() => { setStaffChangeModal({ req: r, action: 'approved' }); setStaffChangeNote(''); }}
+                        style={{ padding: '8px 16px', border: 'none', borderRadius: 9, background: r.request_type === 'add' ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#dc2626,#991b1b)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {r.request_type === 'add' ? '✅ Approve Add' : '✅ Approve Removal'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && approvalTab !== 'bonus_delete' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && approvalTab !== 'bonus_delete' && approvalTab !== 'hr_staff_changes' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
 

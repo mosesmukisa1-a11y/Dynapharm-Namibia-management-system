@@ -47,51 +47,105 @@ export default function HRPortal() {
   );
 }
 
+const DEPT_OPTIONS = [
+  { value: '', label: 'Select Department' },
+  { value: 'Operations', label: 'Operations' },
+  { value: 'Sales', label: 'Sales' },
+  { value: 'Finance', label: 'Finance' },
+  { value: 'HR', label: 'Human Resources' },
+  { value: 'IT', label: 'IT' },
+  { value: 'Warehouse', label: 'Warehouse' },
+  { value: 'Health', label: 'Health Services' },
+  { value: 'Security', label: 'Security' },
+  { value: 'Cleaning', label: 'Cleaning' },
+];
+
 function EmployeesTab() {
   const [employees, setEmployees] = useState([]);
+  const [changeRequests, setChangeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ full_name: '', position: '', department: '', branch: '', hire_date: '', phone: '', email: '' });
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [form, setForm] = useState({ full_name: '', position: '', department: '', branch: '', hire_date: '', phone: '', email: '', reason: '' });
+  const [removeReason, setRemoveReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const loadEmployees = () => {
+  const loadData = () => {
     setLoading(true);
-    api.employees.list()
-      .then(d => setEmployees(Array.isArray(d) ? d : d.employees || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.staffChangeRequests.list().then(d => d.requests || []).catch(() => []),
+    ]).then(([emps, reqs]) => {
+      setEmployees(emps);
+      setChangeRequests(reqs);
+    }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadEmployees(); }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const handleCreate = async (e) => {
+  const handleAddRequest = async (e) => {
     e.preventDefault();
-    if (!form.full_name || !form.position) {
-      setError('Name and position are required');
-      return;
-    }
-    setSubmitting(true);
-    setError('');
+    if (!form.full_name || !form.position) { setError('Name and position are required'); return; }
+    setSubmitting(true); setError('');
     try {
-      await api.employees.create(form);
-      setShowModal(false);
-      setForm({ full_name: '', position: '', department: '', branch: '', hire_date: '', phone: '', email: '' });
-      loadEmployees();
-    } catch (err) {
-      setError(err.message || 'Failed to add employee');
-    }
-    setSubmitting(false);
+      await api.hr.staffChangeRequests.create({ request_type: 'add', ...form });
+      setSuccess('Add request submitted — awaiting GM approval.');
+      setShowAddModal(false);
+      setForm({ full_name: '', position: '', department: '', branch: '', hire_date: '', phone: '', email: '', reason: '' });
+      setTimeout(() => setSuccess(''), 5000);
+      loadData();
+    } catch (err) { setError(err.message || 'Failed to submit request'); }
+    finally { setSubmitting(false); }
   };
+
+  const handleRemoveRequest = async () => {
+    if (!removeTarget) return;
+    setSubmitting(true); setError('');
+    try {
+      await api.hr.staffChangeRequests.create({
+        request_type: 'remove',
+        full_name: removeTarget.full_name,
+        employee_row_id: removeTarget.id,
+        position: removeTarget.position,
+        department: removeTarget.department,
+        branch: removeTarget.branch,
+        reason: removeReason,
+      });
+      setSuccess(`Removal request for ${removeTarget.full_name} submitted — awaiting GM approval.`);
+      setRemoveTarget(null);
+      setRemoveReason('');
+      setTimeout(() => setSuccess(''), 5000);
+      loadData();
+    } catch (err) { setError(err.message || 'Failed to submit removal request'); }
+    finally { setSubmitting(false); }
+  };
+
+  const pending = changeRequests.filter(r => r.status === 'pending');
+  const history = changeRequests.filter(r => r.status !== 'pending');
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold text-gray-800">Employee Directory</h3>
-        <Button size="sm" onClick={() => setShowModal(true)}><Plus size={14} /> Add Employee</Button>
+    <div className="space-y-6">
+      {success && <Alert type="success">{success}</Alert>}
+      {error && <Alert type="error">{error}</Alert>}
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
+        <AlertCircle size={18} className="text-amber-600 mt-0.5 shrink-0" />
+        <div className="text-sm text-amber-800">
+          <strong>HR Note:</strong> Adding or removing employees requires GM approval. Submit your request below and the GM will be notified. The change takes effect only after approval.
+        </div>
       </div>
+
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-gray-800">Employee Directory ({employees.filter(e => e.employment_status !== 'inactive').length} active)</h3>
+        <Button size="sm" onClick={() => { setShowAddModal(true); setError(''); }}>
+          <Plus size={14} className="mr-1" /> Request to Add Employee
+        </Button>
+      </div>
+
       <Card>
         <Table
           columns={[
@@ -100,55 +154,126 @@ function EmployeesTab() {
             { header: 'Department', key: 'department' },
             { header: 'Branch', key: 'branch' },
             { header: 'Phone', key: 'phone' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'danger'}>{r.status || 'Active'}</Badge> },
+            { header: 'Status', render: r => (
+              <Badge variant={r.employment_status === 'inactive' ? 'danger' : 'success'}>
+                {r.employment_status === 'inactive' ? 'Inactive' : 'Active'}
+              </Badge>
+            )},
             { header: 'Joined', render: r => formatDate(r.hire_date || r.created_at) },
+            { header: 'Actions', render: r => r.employment_status !== 'inactive' ? (
+              <Button size="sm" variant="danger" onClick={() => { setRemoveTarget(r); setRemoveReason(''); setError(''); }}>
+                Request Removal
+              </Button>
+            ) : null },
           ]}
           data={employees}
           emptyMessage="No employees found"
         />
       </Card>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Employee">
-        <form onSubmit={handleCreate} className="p-6 space-y-4">
+      {pending.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-gray-800">Pending GM Approval</h3>
+              <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>
+            </div>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Type', render: r => (
+                <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>
+                  {r.request_type === 'add' ? '+ Add' : '− Remove'}
+                </Badge>
+              )},
+              { header: 'Employee', render: r => (
+                <div>
+                  <p className="font-semibold text-sm text-gray-800">{r.full_name}</p>
+                  <p className="text-xs text-gray-400">{r.position}{r.branch ? ` · ${r.branch}` : ''}</p>
+                </div>
+              )},
+              { header: 'Reason', render: r => <span className="text-xs text-gray-600">{r.reason || '—'}</span> },
+              { header: 'Requested', render: r => formatDate(r.requested_at) },
+              { header: 'Status', render: () => <Badge variant="warning">Awaiting GM</Badge> },
+            ]}
+            data={pending}
+            emptyMessage=""
+          />
+        </Card>
+      )}
+
+      {history.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Request History</h3></CardHeader>
+          <Table
+            columns={[
+              { header: 'Type', render: r => <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>{r.request_type === 'add' ? '+ Add' : '− Remove'}</Badge> },
+              { header: 'Employee', key: 'full_name' },
+              { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : 'danger'}>{r.status}</Badge> },
+              { header: 'GM Note', render: r => <span className="text-xs text-gray-500">{r.gm_note || '—'}</span> },
+              { header: 'Reviewed By', render: r => <span className="text-xs">{r.reviewed_by || '—'}</span> },
+              { header: 'Date', render: r => formatDate(r.reviewed_at || r.requested_at) },
+            ]}
+            data={history}
+            emptyMessage="No request history"
+          />
+        </Card>
+      )}
+
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Request to Add Employee">
+        <form onSubmit={handleAddRequest} className="p-6 space-y-4">
           {error && <Alert type="error">{error}</Alert>}
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Full Name" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required />
-            <Input label="Position" value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))} required />
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+            This request will be sent to the GM for approval. The employee will only be added to the system after the GM approves.
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Department"
-              value={form.department}
-              onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-              options={[
-                { value: '', label: 'Select Department' },
-                { value: 'Operations', label: 'Operations' },
-                { value: 'Sales', label: 'Sales' },
-                { value: 'Finance', label: 'Finance' },
-                { value: 'HR', label: 'Human Resources' },
-                { value: 'IT', label: 'IT' },
-                { value: 'Warehouse', label: 'Warehouse' },
-                { value: 'Health', label: 'Health Services' },
-              ]}
-            />
-            <Select
-              label="Branch"
-              value={form.branch}
-              onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
-              options={[{ value: '', label: 'Select Branch' }, ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name }))]}
-            />
+            <Input label="Full Name *" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required />
+            <Input label="Position *" value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Department" value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} options={DEPT_OPTIONS} />
+            <Select label="Branch" value={form.branch} onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
+              options={[{ value: '', label: 'Select Branch' }, ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name }))]} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Hire Date" type="date" value={form.hire_date} onChange={e => setForm(f => ({ ...f, hire_date: e.target.value }))} />
             <Input label="Phone" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           </div>
           <Input label="Email" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+          <Textarea label="Reason for Adding *" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="Why is this employee being added? (e.g. replacement hire, new branch opening)" />
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Adding...' : 'Add Employee'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit for GM Approval'}</Button>
           </div>
         </form>
       </Modal>
+
+      {removeTarget && (
+        <Modal title={`Request Removal: ${removeTarget.full_name}`} onClose={() => setRemoveTarget(null)}>
+          <div className="p-6 space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-sm font-semibold text-red-800">You are requesting to deactivate this employee.</p>
+              <p className="text-sm text-red-700 mt-1">
+                <strong>{removeTarget.full_name}</strong> · {removeTarget.position} · {removeTarget.branch || '—'}
+              </p>
+              <p className="text-xs text-red-500 mt-2">This request requires GM approval before any change is made.</p>
+            </div>
+            <Textarea
+              label="Reason for Removal *"
+              value={removeReason}
+              onChange={e => setRemoveReason(e.target.value)}
+              placeholder="State the reason (e.g. resignation, contract ended, termination)…"
+              rows={3}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setRemoveTarget(null)}>Cancel</Button>
+              <Button variant="danger" onClick={handleRemoveRequest} disabled={submitting || !removeReason.trim()}>
+                {submitting ? 'Submitting…' : 'Submit Removal Request'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
