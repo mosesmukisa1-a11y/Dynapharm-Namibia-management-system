@@ -439,6 +439,76 @@ app.patch('/api/cash-requests/:id', async (req, res) => {
   }
 });
 
+// ── Department Expenses (Cleaners, Security, Support Staff) ───────────────────
+app.get('/api/dept-expenses', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const role = req.user?.role || '';
+    const adminRoles = ['admin', 'finance', 'gm', 'director', 'hr_manager', 'hr'];
+    let rows;
+    if (adminRoles.includes(role)) {
+      const { department } = req.query;
+      let sql = 'SELECT * FROM dept_expenses';
+      const params = [];
+      if (department) { params.push(department); sql += ' WHERE department = $1'; }
+      sql += ' ORDER BY created_at DESC LIMIT 500';
+      ({ rows } = await query(sql, params));
+    } else {
+      ({ rows } = await query(
+        'SELECT * FROM dept_expenses WHERE LOWER(submitted_by) = $1 ORDER BY created_at DESC',
+        [username]
+      ));
+    }
+    res.json({ success: true, expenses: rows });
+  } catch (err) {
+    console.error('dept-expenses GET:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/dept-expenses', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const username = (req.user?.sub || req.user?.username || '').toLowerCase();
+    const { department, category, amount, description, date, receipt_ref } = req.body;
+    if (!department || !category || !amount || !description) {
+      return res.status(400).json({ success: false, error: 'Department, category, amount, and description are required' });
+    }
+    const { rows } = await query(
+      `INSERT INTO dept_expenses (submitted_by, department, category, amount, description, date, receipt_ref, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW()) RETURNING *`,
+      [username, department, category, Number(amount), description, date || new Date().toISOString().slice(0, 10), receipt_ref || null]
+    );
+    res.status(201).json({ success: true, expense: rows[0] });
+  } catch (err) {
+    console.error('dept-expenses POST:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/dept-expenses/:id', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const adminRoles = ['admin', 'finance', 'gm', 'director', 'hr_manager', 'hr'];
+    if (!adminRoles.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { id } = req.params;
+    const { status, notes } = req.body;
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const actorName = req.user?.full_name || req.user?.username || role;
+    const { rows } = await query(
+      `UPDATE dept_expenses SET status=$1, reviewed_by=$2, reviewed_at=NOW(), notes=$3, updated_at=NOW() WHERE id=$4 RETURNING *`,
+      [status, actorName, notes || null, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true, expense: rows[0] });
+  } catch (err) {
+    console.error('dept-expenses PATCH:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Stock Adjustment Requests (requires GM approval) ──────────────────────────
 app.get('/api/stock-adjustments', async (req, res) => {
   try {

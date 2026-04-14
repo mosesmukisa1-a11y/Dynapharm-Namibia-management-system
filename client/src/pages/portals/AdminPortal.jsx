@@ -198,7 +198,7 @@ function UsersTab() {
   const [section, setSection] = useState('staff');
   const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [] });
 
-  const STAFF_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer'];
+  const STAFF_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer', 'cleaner', 'security_guard', 'support_staff'];
   const ALL_ROLES = [...STAFF_ROLES, 'distributor'];
 
   const loadUsers = () => {

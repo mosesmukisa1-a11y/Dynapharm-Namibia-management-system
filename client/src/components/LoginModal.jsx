@@ -54,7 +54,8 @@ export function LoginModal({ open, onClose }) {
         user.role === 'mis' ? 'mis' :
         user.role === 'stock' || user.role === 'warehouse' ? 'stock' :
         user.role === 'finance' ? 'finance' :
-        user.role === 'training' || user.role === 'trainer' ? 'training' : 'distributor';
+        user.role === 'training' || user.role === 'trainer' ? 'training' :
+        user.role === 'support_staff' || user.role === 'cleaner' || user.role === 'security_guard' ? 'support-staff' : 'distributor';
       navigate(`/${firstPortal}`);
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -208,6 +209,10 @@ export function LoginModal({ open, onClose }) {
                   <option value="stock_warehouse" disabled style={{color:'#999'}}>── Stock / Warehouse ──</option>
                   <option value="stock">Stock Manager</option>
                   <option value="warehouse">Warehouse Manager</option>
+                  <option value="support_divider" disabled style={{color:'#999'}}>── Support Staff ──</option>
+                  <option value="cleaner">Cleaner</option>
+                  <option value="security_guard">Security Guard</option>
+                  <option value="support_staff">Support Staff (Other)</option>
                 </select>
               </div>
               {showWarehouse && (
