@@ -5227,309 +5227,397 @@ function ValuationTab({ branch }) {
   );
 }
 
-function BarcodeLabelDisplay({ code, name, dp }) {
+// ── Code128 SVG barcode generator ───────────────────────────────────────────
+function code128SVG(value) {
+  if (!value) return '';
+  const CODE128_START_B = 104, CODE128_STOP = 106;
+  const P = [
+    '11011001100','11001101100','11001100110','10010011000','10010001100','10001001100','10011001000','10011000100','10001100100','11001001000',
+    '11001000100','11000100100','10110011100','10011011100','10011001110','10111001100','10011101100','10011100110','11001110010','11001011100',
+    '11001001110','11011100100','11001110100','11100101100','11100100110','11101100100','11100110100','11100110010','11011011000','11011000110',
+    '11000110110','10100011000','10001011000','10001000110','10110001000','10001101000','10001100010','11010001000','11000101000','11000100010',
+    '10110111000','10110001110','10001101110','10111011000','10111000110','10001110110','11101110110','11010001110','11000101110','11011101000',
+    '11011100010','11011101110','11101011000','11101000110','11100010110','11101101000','11101100010','11100011010','11101111010','11001000010',
+    '11110001010','10100110000','10100001100','10010110000','10010000110','10000101100','10000100110','10110010000','10110000100','10011010000',
+    '10011000010','10000110100','10000110010','11000010010','11001010000','11110111010','11000010100','10001111010','10100111100','10010111100',
+    '10010011110','10111100100','10011110100','10011110010','11110100100','11110010100','11110010010','11011011110','11110110110','11110101000',
+    '11110100010','10111011110','10111101110','11101011110','11110101110','11010000100','11010010000','11010011100','1100011101011',
+  ];
+  const cv = c => c.charCodeAt(0) - 32;
+  let chk = CODE128_START_B, bits = P[CODE128_START_B];
+  for (let i = 0; i < value.length; i++) { const v = cv(value[i]); chk += v * (i + 1); bits += P[v]; }
+  bits += P[chk % 103] + P[CODE128_STOP];
+  const bw = 2, bh = 56;
+  let x = 0, rects = '';
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') rects += `<rect x="${x}" y="0" width="${bw}" height="${bh}" fill="black"/>`;
+    x += bw;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${bh + 16}" viewBox="0 0 ${x} ${bh + 16}" style="max-width:240px">${rects}<text x="${x/2}" y="${bh + 12}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">${value}</text></svg>`;
+}
+
+function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {
+  const svg = code ? code128SVG(code.slice(0, 30)) : null;
+  const fmtExp = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{month:'short',year:'numeric'}) : null; } catch { return d; } };
   return (
-    <div className="border border-gray-300 rounded p-3 text-center bg-white w-48 flex-shrink-0">
-      <p className="text-[9px] font-bold text-primary uppercase tracking-wide mb-1">Dynapharm Namibia</p>
-      <p className="text-[10px] font-semibold text-gray-800 leading-tight mb-2 h-8 overflow-hidden">{name}</p>
-      <div className="flex gap-[1px] justify-center mb-1 h-10 items-end mx-auto w-36">
-        {code.split('').map((c, i) => (
-          <div key={i} className="bg-black" style={{ width: ((c.charCodeAt(0) * 7 + i * 13) % 3) + 1 + 'px', height: 25 + ((c.charCodeAt(0) + i) % 10) * 2 + 'px' }} />
-        ))}
-        {Array.from({ length: 12 }, (_, i) => (
-          <div key={`p${i}`} className="bg-black" style={{ width: ((i * 7 + 3) % 3) + 1 + 'px', height: 22 + (i % 6) * 3 + 'px' }} />
-        ))}
-      </div>
-      <p className="text-[11px] font-mono font-bold text-gray-700 tracking-wider">{code}</p>
-      {dp > 0 && <p className="text-[11px] font-bold text-primary mt-1">NAD {formatCurrency(dp)}</p>}
+    <div style={{ border: '1.5px solid #d1d5db', borderRadius: 8, padding: '10px 12px', textAlign: 'center', background: '#fff', width: 200, flexShrink: 0 }}>
+      <div style={{ fontSize: 8, fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>DYNAPHARM NAMIBIA</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, marginBottom: 6, minHeight: 28, overflow: 'hidden' }}>{name}</div>
+      {batch && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 1 }}>Batch: <strong style={{ color: '#374151' }}>{batch}</strong></div>}
+      {expiry && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 1 }}>Exp: <strong style={{ color: '#374151' }}>{fmtExp(expiry)}</strong></div>}
+      {location && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 4 }}>Loc: <strong style={{ color: '#374151' }}>{location}</strong></div>}
+      {svg
+        ? <div dangerouslySetInnerHTML={{ __html: svg }} style={{ display:'flex', justifyContent:'center', margin:'4px 0' }} />
+        : <div style={{ height: 56, background: '#f3f4f6', borderRadius: 4, margin: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af' }}>No barcode assigned</div>
+      }
+      {code && <div style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#374151', letterSpacing: 1 }}>{code}</div>}
+      {dp > 0 && <div style={{ fontSize: 11, fontWeight: 800, color: '#c41e3a', marginTop: 4 }}>NAD {formatCurrency(dp)}</div>}
+      {qty != null && <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>Qty on hand: {qty}</div>}
     </div>
   );
 }
 
 function BarcodeTab() {
-  const [subTab, setSubTab] = useState('lookup');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [batches, setBatches] = useState([]);
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [assignSearch, setAssignSearch] = useState('');
+  const [batches, setBatches]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [search, setSearch]           = useState('');
+  const [locFilter, setLocFilter]     = useState('all');
+  const [codeFilter, setCodeFilter]   = useState('all');
   const [assigningId, setAssigningId] = useState(null);
-  const [assignCode, setAssignCode] = useState('');
-  const [assignAlert, setAssignAlert] = useState(null);
-  const [printSelected, setPrintSelected] = useState({});
-  const [printQty, setPrintQty] = useState({});
+  const [assignCode, setAssignCode]   = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [alert, setAlert]             = useState(null);
+  const [selected, setSelected]       = useState({});
+  const [preview, setPreview]         = useState(null);
 
-  const generateBarcode = (idx) => `DYN-${String(idx).padStart(4, '0')}`;
-
-  const indexedProducts = PRICE_LIST.map((p, idx) => ({ ...p, idx, code: generateBarcode(idx) }));
-
-  const lookupResults = searchTerm.length >= 2
-    ? indexedProducts.filter(p => p.description.toLowerCase().includes(searchTerm.toLowerCase()) || p.code.toLowerCase().includes(searchTerm.toLowerCase()))
-    : [];
-
-  const loadBatches = () => {
-    setBatchLoading(true);
+  const load = () => {
+    setLoading(true);
     api.stock.batches()
       .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
       .catch(() => {})
-      .finally(() => setBatchLoading(false));
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmtDate = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA', { day:'2-digit', month:'short', year:'numeric' }) : '—'; } catch { return d || '—'; } };
+  const fmtLoc  = loc => {
+    const l = (loc || '').toLowerCase();
+    if (l === 'windhoek_warehouse') return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l || b.id === l.replace(/_branch$/, ''));
+    return bd ? bd.name : loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+  const getDP = name => { const p = getLiveProductList().find(p => p.description === name); return p ? Number(p.dp || 0) : 0; };
+  const suggestCode = b => {
+    if (b.batch_no || b.batch_number) return `DYN-${(b.batch_no || b.batch_number).replace(/\s+/g,'').toUpperCase().slice(0,10)}`;
+    const idx = getLiveProductList().findIndex(p => p.description === (b.product_name || b.description));
+    return `DYN-${String(idx >= 0 ? idx : Math.floor(Math.random()*9000)+1000).padStart(4,'0')}`;
   };
 
-  const handleAssignCode = async (batchId) => {
+  const activeBatches = batches.filter(b => {
+    const loc = (b.location || '').toLowerCase();
+    if (loc === 'country_stock') return false;
+    const rem = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    if (rem <= 0) return false;
+    const st = (b.status || '').toLowerCase();
+    if (st === 'expired' || st === 'depleted' || st === 'written_off') return false;
+    return true;
+  });
+
+  const locations = ['all', ...new Set(activeBatches.map(b => (b.location||'').toLowerCase()).filter(Boolean))];
+
+  const filtered = activeBatches.filter(b => {
+    const term = search.toLowerCase();
+    if (term && !(b.product_name||b.description||'').toLowerCase().includes(term) &&
+        !(b.batch_no||b.batch_number||'').toLowerCase().includes(term) &&
+        !(b.barcode||'').toLowerCase().includes(term)) return false;
+    if (locFilter !== 'all' && (b.location||'').toLowerCase() !== locFilter) return false;
+    if (codeFilter === 'assigned'   &&  !b.barcode) return false;
+    if (codeFilter === 'unassigned' &&   b.barcode) return false;
+    return true;
+  });
+
+  const totalAssigned   = activeBatches.filter(b => b.barcode).length;
+  const totalUnassigned = activeBatches.length - totalAssigned;
+
+  const handleSave = async (batchId) => {
     if (!assignCode.trim()) return;
+    setSaving(true);
+    setAlert(null);
     try {
       await api.stock.updateBatch(batchId, { barcode: assignCode.trim() });
-      setAssignAlert({ type: 'success', msg: 'Barcode assigned successfully' });
+      setAlert({ type: 'success', msg: `Barcode ${assignCode.trim()} assigned successfully` });
       setAssigningId(null);
       setAssignCode('');
-      loadBatches();
+      load();
     } catch {
-      setAssignAlert({ type: 'error', msg: 'Failed to assign barcode' });
-    }
+      setAlert({ type: 'error', msg: 'Failed to assign barcode — please try again' });
+    } finally { setSaving(false); }
   };
 
-  const printLabels = () => {
-    const toPrint = indexedProducts.filter(p => printSelected[p.idx] && Number(printQty[p.idx] || 1) > 0);
-    if (!toPrint.length) return;
-    const labels = toPrint.flatMap(p => Array.from({ length: Number(printQty[p.idx] || 1) }, () => `
-      <div class="label">
-        <div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div>
-        <div class="product" style="min-height:24px;overflow:hidden">${p.description}</div>
-        <div class="bars">${barsForCode(p.code)}</div>
-        <div class="code">${p.code}</div>
-        <div class="price">NAD ${formatCurrency(p.dp)}</div>
-      </div>`)).join('');
-    printDocument('Barcode Labels', `<div class="label-grid">${labels}</div>`, false);
+  const makeLabelHTML = (b, qty = 1) => {
+    const name = b.product_name || b.description || '';
+    const bno  = b.batch_no || b.batch_number || '';
+    const exp  = b.expiry_date;
+    const loc  = fmtLoc(b.location || '');
+    const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    const dp   = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
+    const code = b.barcode || '';
+    const svg  = code ? code128SVG(code.slice(0, 30)) : '';
+    const labelCss = `
+      .lbl { border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; width: 200px; text-align: center; display: inline-block; margin: 4px; vertical-align: top; background: #fff; }
+      .lbl-brand { font-size: 8px; font-weight: 800; color: #c41e3a; text-transform: uppercase; letter-spacing: 1px; }
+      .lbl-name  { font-size: 10px; font-weight: 700; color: #1a1a1a; margin: 5px 0; min-height: 28px; line-height: 1.3; }
+      .lbl-meta  { font-size: 9px; color: #6b7280; margin: 1px 0; }
+      .lbl-meta strong { color: #374151; }
+      .lbl-barcode { margin: 5px auto 2px; display: flex; justify-content: center; }
+      .lbl-code  { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #374151; }
+      .lbl-price { font-size: 11px; font-weight: 800; color: #c41e3a; margin-top: 3px; }
+      .lbl-qty   { font-size: 9px; color: #6b7280; margin-top: 2px; }
+    `;
+    const singleLabel = `
+      <div class="lbl">
+        <div class="lbl-brand">DYNAPHARM NAMIBIA</div>
+        <div class="lbl-name">${name}</div>
+        ${bno  ? `<div class="lbl-meta">Batch: <strong>${bno}</strong></div>` : ''}
+        ${exp  ? `<div class="lbl-meta">Expiry: <strong>${fmtDate(exp)}</strong></div>` : ''}
+        <div class="lbl-meta">Location: <strong>${loc}</strong></div>
+        ${svg  ? `<div class="lbl-barcode">${svg}</div>` : '<div style="height:40px;background:#f3f4f6;border-radius:4px;margin:5px 0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#9ca3af">No barcode</div>'}
+        ${code ? `<div class="lbl-code">${code}</div>` : ''}
+        ${dp   ? `<div class="lbl-price">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+        <div class="lbl-qty">Qty on hand: ${rem}</div>
+      </div>`;
+    return { labelCss, html: Array.from({ length: qty }, () => singleLabel).join('') };
   };
 
-  const filteredBatches = batches.filter(b =>
-    !assignSearch || (b.product_name || '').toLowerCase().includes(assignSearch.toLowerCase()) || (b.barcode || '').toLowerCase().includes(assignSearch.toLowerCase())
-  );
+  const printSingle = (b) => {
+    const { labelCss, html } = makeLabelHTML(b);
+    const w = window.open('', '_blank', 'width=600,height=500');
+    w.document.write(`<!DOCTYPE html><html><head><title>Label — ${b.product_name||b.description||''}</title><style>
+      body { font-family: Arial, sans-serif; padding: 16px; }
+      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+      ${labelCss}
+    </style></head><body>
+      ${html}
+      <div class="no-print" style="margin-top:16px;text-align:center">
+        <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print Label</button>
+      </div>
+    </body></html>`);
+    w.document.close();
+  };
 
-  const subTabs = [
-    { id: 'lookup', label: 'Lookup & Print' },
-    { id: 'assign', label: 'Assign Codes' },
-    { id: 'printlabels', label: 'Print Labels' },
-  ];
+  const printSelected_ = () => {
+    const ids = Object.keys(selected).filter(id => selected[id]);
+    if (!ids.length) return;
+    const items = filtered.filter(b => ids.includes(b.id));
+    const { labelCss } = makeLabelHTML(items[0]);
+    const allHtml = items.map(b => makeLabelHTML(b).html).join('');
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html><html><head><title>Barcode Labels (${items.length})</title><style>
+      body { font-family: Arial, sans-serif; padding: 16px; }
+      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+      ${labelCss}
+    </style></head><body>
+      <div style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — Barcode Labels (${items.length} batch${items.length>1?'es':''})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${allHtml}</div>
+      <div class="no-print" style="margin-top:16px;text-align:center">
+        <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All Labels</button>
+      </div>
+    </body></html>`);
+    w.document.close();
+  };
+
+  const toggleAll = () => {
+    const allIds = filtered.map(b => b.id);
+    const allSelected = allIds.every(id => selected[id]);
+    const next = {};
+    if (!allSelected) allIds.forEach(id => { next[id] = true; });
+    setSelected(next);
+  };
+  const numSelected = Object.values(selected).filter(Boolean).length;
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-gray-200">
-        {subTabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => { setSubTab(t.id); if (t.id === 'assign') loadBatches(); }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${subTab === t.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* ── Stats ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3">
+        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-green-800">{activeBatches.length}</div>
+          <div className="text-xs font-semibold text-green-700">Active Batches</div>
+        </div>
+        <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-blue-800">{totalAssigned}</div>
+          <div className="text-xs font-semibold text-blue-700">Barcodes Assigned</div>
+        </div>
+        <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold text-yellow-800">{totalUnassigned}</div>
+          <div className="text-xs font-semibold text-yellow-700">Awaiting Barcode</div>
+        </div>
       </div>
 
-      {subTab === 'lookup' && (
-        <div className="space-y-4">
-          <Card>
-            <CardBody>
-              <div className="relative max-w-lg">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                  placeholder="Search by product name or code (e.g. DYN-0001)..."
-                  value={searchTerm}
-                  onChange={e => { setSearchTerm(e.target.value); setSelectedProduct(null); }}
-                />
-              </div>
-            </CardBody>
-          </Card>
-
-          {selectedProduct && (
-            <Card className="border-primary/30">
-              <CardBody>
-                <div className="flex flex-col md:flex-row gap-6">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-lg font-bold text-gray-800">{selectedProduct.description}</h3>
-                      <Button size="sm" variant="secondary" onClick={() => {
-                        printDocument(`Label — ${selectedProduct.description}`, `<div class="label-grid"><div class="label"><div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div><div class="product">${selectedProduct.description}</div><div class="bars">${barsForCode(selectedProduct.code)}</div><div class="code">${selectedProduct.code}</div><div class="price">NAD ${formatCurrency(selectedProduct.dp)}</div></div></div>`);
-                      }}><Printer size={14} /> Print Label</Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-blue-50 p-3 rounded-lg text-center">
-                        <p className="text-xs text-blue-600">DP Price</p>
-                        <p className="text-lg font-bold text-blue-800">{formatCurrency(selectedProduct.dp)}</p>
-                      </div>
-                      <div className="bg-green-50 p-3 rounded-lg text-center">
-                        <p className="text-xs text-green-600">CP Price</p>
-                        <p className="text-lg font-bold text-green-800">{formatCurrency(selectedProduct.cp)}</p>
-                      </div>
-                      <div className="bg-purple-50 p-3 rounded-lg text-center">
-                        <p className="text-xs text-purple-600">BV</p>
-                        <p className="text-lg font-bold text-purple-800">{selectedProduct.bv}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center justify-center">
-                    <BarcodeLabelDisplay code={selectedProduct.code} name={selectedProduct.description} dp={selectedProduct.dp} />
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
-          {lookupResults.length > 0 && !selectedProduct && (
-            <Card>
-              <CardHeader><h3 className="font-bold text-gray-800">Results ({lookupResults.length})</h3></CardHeader>
-              <Table
-                columns={[
-                  { header: 'Code', render: r => <span className="font-mono text-xs font-bold text-gray-700">{r.code}</span> },
-                  { header: 'Product', key: 'description' },
-                  { header: 'DP', render: r => formatCurrency(r.dp) },
-                  { header: 'CP', render: r => formatCurrency(r.cp) },
-                  { header: 'BV', key: 'bv' },
-                  { header: 'Actions', render: r => (
-                    <div className="flex gap-1">
-                      <Button size="sm" onClick={() => setSelectedProduct(r)}>View</Button>
-                      <Button size="sm" variant="secondary" onClick={() => {
-                        printDocument(`Label — ${r.description}`, `<div class="label-grid"><div class="label"><div class="product" style="font-weight:bold;font-size:9px;color:#8b0000">DYNAPHARM NAMIBIA</div><div class="product">${r.description}</div><div class="bars">${barsForCode(r.code)}</div><div class="code">${r.code}</div><div class="price">NAD ${formatCurrency(r.dp)}</div></div></div>`);
-                      }}><Printer size={12} /></Button>
-                    </div>
-                  )},
-                ]}
-                data={lookupResults}
-                emptyMessage="No products found"
-              />
-            </Card>
-          )}
-
-          {searchTerm.length >= 2 && lookupResults.length === 0 && (
-            <EmptyState icon={<Search size={48} />} title="No products found" description={`No products matching "${searchTerm}"`} />
-          )}
-          {searchTerm.length < 2 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {indexedProducts.slice(0, 12).map(p => (
-                <button key={p.idx} onClick={() => setSelectedProduct(p)} className="text-left hover:shadow-md transition-shadow">
-                  <BarcodeLabelDisplay code={p.code} name={p.description} dp={p.dp} />
-                </button>
-              ))}
+      {/* ── Filters + Bulk Actions ─────────────────────────────────────── */}
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary"
+                placeholder="Search product, batch#, barcode…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-          )}
-        </div>
-      )}
-
-      {subTab === 'assign' && (
-        <div className="space-y-4">
-          {assignAlert && <Alert type={assignAlert.type} className="mb-2">{assignAlert.msg}</Alert>}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center flex-wrap gap-2">
-                <h3 className="font-bold text-gray-800">Assign Barcodes to Batches</h3>
-                <Button size="sm" variant="secondary" onClick={loadBatches}>{batchLoading ? 'Loading...' : 'Refresh'}</Button>
-              </div>
-            </CardHeader>
-            <CardBody className="pb-2">
-              <p className="text-sm text-gray-500 mb-3">Each batch record from stock imports can have a specific barcode assigned. You can override or assign a custom code below.</p>
-              <div className="relative max-w-md mb-4">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" placeholder="Filter by product or barcode..." value={assignSearch} onChange={e => setAssignSearch(e.target.value)} />
-              </div>
-            </CardBody>
-            {batchLoading ? <LoadingSpinner /> : (
-              <Table
-                columns={[
-                  { header: 'Batch #', render: r => <span className="font-mono text-xs">{r.batch_number || r.id || '-'}</span> },
-                  { header: 'Product', key: 'product_name' },
-                  { header: 'Location', key: 'location' },
-                  { header: 'Qty', key: 'quantity' },
-                  { header: 'Current Code', render: r => (
-                    <span className={`font-mono text-xs ${r.barcode ? 'text-green-700 font-bold' : 'text-gray-400'}`}>{r.barcode || 'Not assigned'}</span>
-                  )},
-                  { header: 'Assign', render: r => assigningId === r.id ? (
-                    <div className="flex gap-1 items-center">
-                      <input
-                        className="px-2 py-1 rounded border border-gray-300 text-xs w-28 focus:outline-none focus:ring-1 focus:border-primary"
-                        value={assignCode}
-                        onChange={e => setAssignCode(e.target.value)}
-                        placeholder="e.g. DYN-0001"
-                        autoFocus
-                      />
-                      <Button size="sm" variant="success" onClick={() => handleAssignCode(r.id)}>Save</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setAssigningId(null)}>✕</Button>
-                    </div>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => { setAssigningId(r.id); setAssignCode(r.barcode || generateBarcode(indexedProducts.findIndex(p => p.description === r.product_name))); }}><Tag size={12} /> {r.barcode ? 'Change' : 'Assign'}</Button>
-                  )},
-                ]}
-                data={filteredBatches}
-                emptyMessage={batchLoading ? '' : 'No batches found — import stock first'}
-              />
+            <select className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary bg-white"
+              value={locFilter} onChange={e => setLocFilter(e.target.value)}>
+              <option value="all">All Locations</option>
+              {locations.filter(l => l !== 'all').map(l => <option key={l} value={l}>{fmtLoc(l)}</option>)}
+            </select>
+            <select className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary bg-white"
+              value={codeFilter} onChange={e => setCodeFilter(e.target.value)}>
+              <option value="all">All Barcodes</option>
+              <option value="assigned">Assigned only</option>
+              <option value="unassigned">Unassigned only</option>
+            </select>
+            <Button size="sm" variant="secondary" onClick={load}>↺ Refresh</Button>
+            {numSelected > 0 && (
+              <Button size="sm" onClick={printSelected_} style={{ background: '#c41e3a', color: '#fff' }}>
+                <Printer size={14} /> Print {numSelected} Label{numSelected > 1 ? 's' : ''}
+              </Button>
             )}
-          </Card>
-        </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* ── Label Preview modal ────────────────────────────────────────── */}
+      {preview && (
+        <Modal open={!!preview} onClose={() => setPreview(null)} title="Label Preview" size="sm">
+          <div className="p-6 flex flex-col items-center gap-4">
+            <BarcodeLabelDisplay
+              code={preview.barcode || ''}
+              name={preview.product_name || preview.description}
+              batch={preview.batch_no || preview.batch_number}
+              expiry={preview.expiry_date}
+              location={fmtLoc(preview.location)}
+              qty={Number(preview.remaining_quantity ?? preview.remainingQuantity ?? preview.quantity ?? 0)}
+              dp={getDP(preview.product_name || preview.description) || Number(preview.unit_price || 0)}
+            />
+            <Button onClick={() => { printSingle(preview); setPreview(null); }} style={{ background: '#c41e3a', color: '#fff' }}>
+              <Printer size={14} /> Print This Label
+            </Button>
+          </div>
+        </Modal>
       )}
 
-      {subTab === 'printlabels' && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center flex-wrap gap-2">
-                <h3 className="font-bold text-gray-800">Print Label Sheet</h3>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => {
-                    const allSelected = {};
-                    const allQty = {};
-                    indexedProducts.forEach(p => { allSelected[p.idx] = true; allQty[p.idx] = 1; });
-                    setPrintSelected(allSelected);
-                    setPrintQty(allQty);
-                  }}>Select All</Button>
-                  <Button size="sm" variant="secondary" onClick={() => { setPrintSelected({}); setPrintQty({}); }}>Clear</Button>
-                  <Button size="sm" onClick={printLabels} disabled={Object.keys(printSelected).filter(k => printSelected[k]).length === 0}>
-                    <Printer size={14} /> Print {Object.keys(printSelected).filter(k => printSelected[k]).length > 0 ? `(${Object.keys(printSelected).filter(k => printSelected[k]).length})` : ''} Labels
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardBody>
-              <p className="text-sm text-gray-500 mb-4">Select products and set how many copies of each label to print.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {indexedProducts.map(p => (
-                  <label key={p.idx} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${printSelected[p.idx] ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <input type="checkbox" checked={!!printSelected[p.idx]} onChange={e => setPrintSelected(prev => ({ ...prev, [p.idx]: e.target.checked }))} className="accent-primary" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{p.description}</p>
-                      <p className="text-xs font-mono text-gray-500">{p.code}</p>
-                    </div>
-                    {printSelected[p.idx] && (
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-500">×</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="99"
-                          value={printQty[p.idx] || 1}
-                          onChange={e => setPrintQty(prev => ({ ...prev, [p.idx]: e.target.value }))}
-                          onClick={e => e.preventDefault()}
-                          className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:border-primary text-center"
-                        />
-                      </div>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </CardBody>
-          </Card>
-
-          {Object.keys(printSelected).some(k => printSelected[k]) && (
-            <Card>
-              <CardHeader><h3 className="font-bold text-gray-800">Preview</h3></CardHeader>
-              <CardBody>
-                <div className="flex flex-wrap gap-3">
-                  {indexedProducts.filter(p => printSelected[p.idx]).map(p => (
-                    <BarcodeLabelDisplay key={p.idx} code={p.code} name={p.description} dp={p.dp} />
+      {/* ── Main Table ────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h3 className="font-bold text-gray-800">
+              Active Batch Barcodes
+              <span className="text-xs font-normal text-gray-400 ml-2">({filtered.length} batch{filtered.length !== 1 ? 'es' : ''})</span>
+            </h3>
+            <div className="text-xs text-gray-500">Country stock excluded · Only available batches with remaining qty shown</div>
+          </div>
+        </CardHeader>
+        {loading ? <LoadingSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                  <th className="px-3 py-2.5 text-left" style={{ width: 36 }}>
+                    <input type="checkbox" className="accent-primary cursor-pointer"
+                      checked={filtered.length > 0 && filtered.every(b => selected[b.id])}
+                      onChange={toggleAll} />
+                  </th>
+                  {['Product','Batch #','Expiry','Location','Qty on Hand','Barcode','Actions'].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wide">{h}</th>
                   ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0
+                  ? <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No active batches found — import stock or adjust filters</td></tr>
+                  : filtered.map((b, i) => {
+                      const name    = b.product_name || b.description || '—';
+                      const bno     = b.batch_no || b.batch_number || '—';
+                      const rem     = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+                      const dp      = getDP(name) || Number(b.unit_price || 0);
+                      const isEditing = assigningId === b.id;
+                      const expDate = b.expiry_date ? new Date(b.expiry_date) : null;
+                      const isExpiringSoon = expDate && expDate < new Date(Date.now() + 90 * 86400000);
+                      return (
+                        <tr key={b.id} style={{ background: selected[b.id] ? '#fef2f2' : i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                          <td className="px-3 py-2.5 border-b">
+                            <input type="checkbox" className="accent-primary cursor-pointer"
+                              checked={!!selected[b.id]} onChange={e => setSelected(p => ({ ...p, [b.id]: e.target.checked }))} />
+                          </td>
+                          <td className="px-3 py-2.5 border-b font-medium text-gray-800 max-w-[180px]">
+                            <div className="truncate text-sm" title={name}>{name}</div>
+                            {dp > 0 && <div className="text-xs text-gray-400">DP: N$ {Math.round(dp).toLocaleString('en-ZA')}</div>}
+                          </td>
+                          <td className="px-3 py-2.5 border-b font-mono text-xs text-gray-600">{bno}</td>
+                          <td className="px-3 py-2.5 border-b text-xs" style={{ color: isExpiringSoon ? '#dc2626' : '#374151', fontWeight: isExpiringSoon ? 700 : 400 }}>
+                            {fmtDate(b.expiry_date)}
+                            {isExpiringSoon && <div className="text-xs text-red-500">⚠ &lt;90 days</div>}
+                          </td>
+                          <td className="px-3 py-2.5 border-b text-xs text-gray-600">{fmtLoc(b.location)}</td>
+                          <td className="px-3 py-2.5 border-b font-bold text-gray-800">{rem.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 border-b" style={{ minWidth: 180 }}>
+                            {isEditing ? (
+                              <div className="flex gap-1 items-center">
+                                <input className="px-2 py-1 rounded border border-gray-300 text-xs w-32 font-mono focus:outline-none focus:ring-1 focus:border-primary"
+                                  value={assignCode} onChange={e => setAssignCode(e.target.value)}
+                                  placeholder="e.g. DYN-0001" autoFocus
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSave(b.id); if (e.key === 'Escape') setAssigningId(null); }} />
+                                <button onClick={() => handleSave(b.id)} disabled={saving || !assignCode.trim()}
+                                  className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                  style={{ background: '#166534', color: '#fff', opacity: saving ? 0.6 : 1 }}>{saving ? '…' : '✓'}</button>
+                                <button onClick={() => setAssigningId(null)}
+                                  className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                  style={{ background: '#f3f4f6', color: '#374151' }}>✕</button>
+                              </div>
+                            ) : b.barcode ? (
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #86efac' }}>{b.barcode}</span>
+                                <button onClick={() => { setAssigningId(b.id); setAssignCode(b.barcode); }}
+                                  className="text-xs px-1.5 py-0.5 rounded border-none cursor-pointer" style={{ background: '#eff6ff', color: '#1d4ed8' }} title="Edit barcode">✏</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setAssigningId(b.id); setAssignCode(suggestCode(b)); }}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1"
+                                style={{ background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
+                                <Tag size={11} /> Assign Code
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 border-b">
+                            <div className="flex gap-1">
+                              <button onClick={() => setPreview(b)} title="Preview label"
+                                className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                style={{ background: '#f8fafc', color: '#374151', border: '1px solid #e2e8f0' }}>👁</button>
+                              <button onClick={() => printSingle(b)} title="Print label now"
+                                className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer flex items-center gap-1"
+                                style={{ background: b.barcode ? '#fff0f3' : '#f3f4f6', color: b.barcode ? '#c41e3a' : '#9ca3af', border: b.barcode ? '1px solid #fecaca' : '1px solid #e5e7eb' }}>
+                                <Printer size={11} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                }
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Bulk selection hint ────────────────────────────────────────── */}
+      {numSelected > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl" style={{ background: '#c41e3a', color: '#fff' }}>
+          <span className="font-semibold text-sm">{numSelected} batch{numSelected > 1 ? 'es' : ''} selected</span>
+          <button onClick={printSelected_} className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#fff', color: '#c41e3a' }}>
+            <Printer size={14} /> Print Labels
+          </button>
+          <button onClick={() => setSelected({})} className="text-white/70 hover:text-white text-lg border-none bg-transparent cursor-pointer">✕</button>
         </div>
       )}
     </div>
