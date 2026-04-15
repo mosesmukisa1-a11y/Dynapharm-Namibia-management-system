@@ -1833,6 +1833,33 @@ server.on('error', (error) => {
     } catch (e) {
       console.warn('[distributor bonus tables init]', e.message);
     }
+    // ── Supplier Purchase Orders ──────────────────────────────────────────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS supplier_purchase_orders (
+          id SERIAL PRIMARY KEY,
+          order_ref VARCHAR(60) NOT NULL UNIQUE,
+          product_name VARCHAR(255) NOT NULL,
+          quantity_ordered INTEGER NOT NULL,
+          days_remaining NUMERIC(10,1),
+          daily_rate NUMERIC(10,4),
+          priority_label VARCHAR(80),
+          location VARCHAR(120),
+          notes TEXT,
+          status VARCHAR(40) NOT NULL DEFAULT 'draft',
+          requested_by VARCHAR(255),
+          requested_by_name VARCHAR(255),
+          submitted_by VARCHAR(255),
+          submitted_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_spo_status ON supplier_purchase_orders (status)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_spo_product ON supplier_purchase_orders (product_name)`);
+    } catch (e) {
+      console.warn('[supplier_purchase_orders init]', e.message);
+    }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {

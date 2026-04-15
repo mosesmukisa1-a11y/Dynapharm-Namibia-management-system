@@ -41,16 +41,25 @@ export default async function handler(req, res) {
         const totalSales = salesByProduct[name] || 0;
         const avgDailyUsage = totalSales / days;
         const daysRemaining = avgDailyUsage > 0 ? inv.totalQty / avgDailyUsage : 999;
-        const shouldReorder = daysRemaining < 14 || inv.totalQty < 5;
+        // Flag anything under 6 months (180 days) of supply, or critically low qty
+        const shouldReorder = daysRemaining < 180 || inv.totalQty < 5;
         if (!shouldReorder) return null;
+        // Suggested order covers 6 months minus what's already in stock
+        const sixMonthNeed = avgDailyUsage > 0 ? Math.ceil(avgDailyUsage * 180) : (inv.totalQty < 5 ? 180 : 0);
+        const recommendedReorderQty = Math.max(0, sixMonthNeed - inv.totalQty);
         return {
           productName: name,
           currentQty: inv.totalQty,
           avgDailyUsage: parseFloat(avgDailyUsage.toFixed(2)),
           daysRemaining: parseFloat(Math.min(daysRemaining, 999).toFixed(1)),
-          recommendedReorderQty: Math.max(24, Math.ceil(avgDailyUsage * 30)),
+          monthsRemaining: parseFloat(Math.min(daysRemaining / 30, 99).toFixed(1)),
+          recommendedReorderQty: recommendedReorderQty > 0 ? recommendedReorderQty : Math.max(24, Math.ceil(avgDailyUsage * 180)),
           locations: inv.locations,
-          urgency: daysRemaining < 3 ? 'critical' : daysRemaining < 7 ? 'high' : 'medium',
+          urgency: daysRemaining <= 0 ? 'out_of_stock'
+            : daysRemaining < 14  ? 'critical'
+            : daysRemaining < 30  ? 'urgent'
+            : daysRemaining < 90  ? 'reorder_now'
+            : 'plan_ahead',
         };
       })
       .filter(Boolean)

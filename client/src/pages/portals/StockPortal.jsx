@@ -39,9 +39,10 @@ const stockAI = {
 
   getPriority: (daysOfStock, qty = 1) => {
     if (qty <= 0 || daysOfStock <= 0) return { label: 'OUT OF STOCK', color: '#dc2626', bg: '#fef2f2', score: 100 };
-    if (daysOfStock <= 7) return { label: 'CRITICAL', color: '#dc2626', bg: '#fef2f2', score: 90 };
-    if (daysOfStock <= 14) return { label: 'URGENT', color: '#d97706', bg: '#fffbeb', score: 70 };
-    if (daysOfStock <= 30) return { label: 'REORDER SOON', color: '#ca8a04', bg: '#fefce8', score: 40 };
+    if (daysOfStock <= 14)  return { label: 'CRITICAL',     color: '#dc2626', bg: '#fef2f2', score: 95 };
+    if (daysOfStock <= 30)  return { label: 'URGENT',       color: '#d97706', bg: '#fffbeb', score: 80 };
+    if (daysOfStock <= 90)  return { label: 'REORDER NOW',  color: '#ca8a04', bg: '#fefce8', score: 60 };
+    if (daysOfStock <= 180) return { label: 'PLAN AHEAD',   color: '#2563eb', bg: '#eff6ff', score: 30 };
     return { label: 'OK', color: '#16a34a', bg: '#f0fdf4', score: 0 };
   },
 
@@ -110,7 +111,7 @@ const stockAI = {
       const dailyRate = stockAI.getDailyRate(p.product_name, movements);
       const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
       const priority = stockAI.getPriority(daysOfStock, p.qty);
-      const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 30) : (p.qty < 5 ? 50 : 0);
+      const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 180) : (p.qty < 5 ? 180 : 0);
       return { ...p, dailyRate: dailyRate.toFixed(2), daysOfStock, priority, suggestedOrder };
     }).filter(r => r.priority.score > 0).sort((a, b) => b.priority.score - a.priority.score);
   },
@@ -5626,19 +5627,23 @@ function BarcodeTab() {
 
 function SmartReorderTab({ branch }) {
   const { user } = useAuth();
-  const [batches, setBatches] = useState([]);
-  const [movements, setMovements] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [thresholds, setThresholds] = useState({});
+  const [batches, setBatches]         = useState([]);
+  const [movements, setMovements]     = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [thresholds, setThresholds]   = useState({});
   const [editProduct, setEditProduct] = useState(null);
   const [editThreshold, setEditThreshold] = useState('');
-  const [viewMode, setViewMode] = useState('ai'); // 'ai' | 'classic'
+  const [viewMode, setViewMode]       = useState('ai');
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [orderModal, setOrderModal] = useState(null);
-  const [orderQty, setOrderQty] = useState('');
-  const [orderNote, setOrderNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [orderAlert, setOrderAlert] = useState(null);
+  const [orderModal, setOrderModal]   = useState(null);
+  const [orderQty, setOrderQty]       = useState('');
+  const [orderNote, setOrderNote]     = useState('');
+  const [submitting, setSubmitting]   = useState(false);
+  const [orderAlert, setOrderAlert]   = useState(null);
+  const [poList, setPoList]           = useState([]);
+  const [poLoading, setPoLoading]     = useState(false);
+  const [showPOs, setShowPOs]         = useState(false);
+  const [updatingPo, setUpdatingPo]   = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -5648,20 +5653,32 @@ function SmartReorderTab({ branch }) {
     ]).then(([b, m]) => { setBatches(b); setMovements(m); }).finally(() => setLoading(false));
   }, []);
 
+  const loadPOs = useCallback(() => {
+    setPoLoading(true);
+    api.stock.supplierOrders()
+      .then(d => setPoList(Array.isArray(d) ? d : d.orders || []))
+      .catch(() => {})
+      .finally(() => setPoLoading(false));
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (showPOs) loadPOs(); }, [showPOs, loadPOs]);
 
   if (loading) return <LoadingSpinner />;
 
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = batches.filter(filterBatch);
 
-  // ── Aggregate by product+location ─────────────────
+  // ── Aggregate by product + location, use remaining_quantity ───────────
   const productMap = {};
   filteredBatches.forEach(b => {
-    const key = `${b.product_name}||${b.location || 'unknown'}`;
+    const loc = (b.location || '').toLowerCase();
+    if (loc === 'country_stock') return;
+    const key = `${b.product_name}||${loc || 'unknown'}`;
     if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
-    productMap[key].qty += Number(b.quantity || 0);
-    if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry))) productMap[key].expiry = b.expiry_date;
+    productMap[key].qty += Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry)))
+      productMap[key].expiry = b.expiry_date;
   });
 
   const allItems = Object.values(productMap).map(p => {
@@ -5669,56 +5686,76 @@ function SmartReorderTab({ branch }) {
     const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
     const priority = stockAI.getPriority(daysOfStock, p.qty);
     const threshold = thresholds[p.product_name] || 10;
-    const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 30) : (p.qty < 5 ? 30 : 0);
+    // Suggested order = 6-month supply minus current stock
+    const sixMonthNeed = dailyRate > 0 ? Math.ceil(dailyRate * 180) : (p.qty < 5 ? 180 : 0);
+    const suggestedOrder = Math.max(0, sixMonthNeed - p.qty);
     const classicStatus = p.qty < 5 ? 'Critical' : p.qty < threshold ? 'Low' : 'OK';
     return { ...p, dailyRate, daysOfStock, priority, threshold, suggestedOrder, classicStatus };
   }).sort((a, b) => b.priority.score - a.priority.score);
 
+  // Items that need action = anything with < 6 months stock remaining
   const aiActionable = allItems.filter(i => i.priority.score > 0);
-  const aiFiltered = priorityFilter === 'all' ? aiActionable :
-    priorityFilter === 'critical' ? aiActionable.filter(i => i.priority.score >= 90) :
-    priorityFilter === 'urgent' ? aiActionable.filter(i => i.priority.score >= 70 && i.priority.score < 90) :
-    aiActionable.filter(i => i.priority.score >= 40 && i.priority.score < 70);
+  const aiFiltered = priorityFilter === 'all' ? aiActionable
+    : priorityFilter === 'critical' ? aiActionable.filter(i => i.priority.score >= 90)
+    : priorityFilter === 'urgent'   ? aiActionable.filter(i => i.priority.score >= 70 && i.priority.score < 90)
+    : priorityFilter === 'reorder'  ? aiActionable.filter(i => i.priority.score >= 50 && i.priority.score < 70)
+    :                                  aiActionable.filter(i => i.priority.score > 0  && i.priority.score < 50);
 
-  const outCount = allItems.filter(i => i.qty <= 0).length;
-  const critCount = allItems.filter(i => i.qty > 0 && i.qty < 5).length;
-  const urgentCount = allItems.filter(i => i.daysOfStock > 0 && i.daysOfStock <= 14 && i.qty >= 5).length;
+  const oosCount       = allItems.filter(i => i.qty <= 0).length;
+  const criticalCount  = allItems.filter(i => i.qty > 0 && i.daysOfStock <= 14 && i.daysOfStock < 999).length;
+  const urgentCount    = allItems.filter(i => i.daysOfStock > 14 && i.daysOfStock <= 30).length;
+  const reorderCount   = allItems.filter(i => i.daysOfStock > 30 && i.daysOfStock <= 90).length;
+  const planCount      = allItems.filter(i => i.daysOfStock > 90 && i.daysOfStock <= 180).length;
 
-  const createOrderRequest = async () => {
+  // ── Create Supplier Purchase Order ────────────────────────────────────
+  const createSupplierOrder = async () => {
     if (!orderModal || !orderQty) return;
     setSubmitting(true);
+    setOrderAlert(null);
     try {
-      await api.stock.createTransfer({
-        from_location: 'country_stock',
-        to_location: orderModal.location,
+      await api.stock.createSupplierOrder({
         product_name: orderModal.product_name,
         quantity: Number(orderQty),
-        notes: orderNote || `AI Reorder — ${orderModal.priority.label}. Days left: ${orderModal.daysOfStock === 999 ? 'N/A' : orderModal.daysOfStock}`,
-        requested_by: user?.id,
-        requested_by_name: user?.full_name || user?.username,
+        days_remaining: orderModal.daysOfStock === 999 ? null : orderModal.daysOfStock,
+        daily_rate: orderModal.dailyRate > 0 ? orderModal.dailyRate : null,
+        priority_label: orderModal.priority.label,
+        location: orderModal.location,
+        notes: orderNote || `AI Reorder — ${orderModal.priority.label}. Days remaining: ${orderModal.daysOfStock === 999 ? 'N/A' : orderModal.daysOfStock + 'd'}. Daily rate: ${orderModal.dailyRate > 0 ? orderModal.dailyRate.toFixed(2) + '/day' : 'not calculated'}.`,
+        requested_by: user?.id || user?.username,
+        requested_by_name: user?.full_name || user?.name || user?.username,
       });
-      setOrderAlert({ type: 'success', msg: `Transfer request created: ${Number(orderQty)} × ${orderModal.product_name} from Country Stock → ${fmtLocation(orderModal.location)}` });
+      setOrderAlert({ type: 'success', msg: `Supplier Purchase Order created for ${Number(orderQty)} × ${orderModal.product_name}` });
       setOrderModal(null);
       setOrderQty('');
       setOrderNote('');
-      load();
+      if (showPOs) loadPOs();
     } catch (err) {
-      setOrderAlert({ type: 'error', msg: err.message });
-    } finally {
-      setSubmitting(false);
-    }
+      setOrderAlert({ type: 'error', msg: err.message || 'Failed to create order' });
+    } finally { setSubmitting(false); }
   };
+
+  const updatePoStatus = async (po, status) => {
+    setUpdatingPo(po.id);
+    try {
+      await api.stock.updateSupplierOrder(po.id, { status, submitted_by: user?.full_name || user?.username });
+      loadPOs();
+    } catch {}
+    finally { setUpdatingPo(null); }
+  };
+
+  const fmtDays = d => d == null ? '—' : d === 999 ? '—' : d <= 30 ? `${d}d ⚠` : d <= 90 ? `${d}d` : `${Math.round(d/30)}mo`;
+  const poStatusColor = s => s === 'draft' ? '#94a3b8' : s === 'submitted' ? '#2563eb' : s === 'confirmed' ? '#16a34a' : s === 'received' ? '#059669' : s === 'cancelled' ? '#dc2626' : '#374151';
 
   return (
     <div className="space-y-5">
-      {/* ── Header ─────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-            🤖 AI-Powered Reorder Intelligence
+          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>
+            🤖 AI Supplier Reorder Intelligence
           </h3>
           <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
-            Velocity-based demand forecasting · Predictive stock depletion · Auto-order suggestions
+            Flags products with &lt;6 months stock based on actual daily sales velocity · Generates supplier purchase orders automatically
             {branch !== 'all' && ` · ${fmtLocation(branch)}`}
           </p>
         </div>
@@ -5726,6 +5763,10 @@ function SmartReorderTab({ branch }) {
           <button onClick={() => setViewMode(viewMode === 'ai' ? 'classic' : 'ai')}
             style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
             {viewMode === 'ai' ? '📊 Classic View' : '🤖 AI View'}
+          </button>
+          <button onClick={() => { setShowPOs(s => !s); }}
+            style={{ padding: '6px 14px', background: showPOs ? '#fff' : 'rgba(255,255,255,0.15)', color: showPOs ? '#c41e3a' : '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+            📋 {showPOs ? 'Hide' : 'Show'} PO History
           </button>
           <button onClick={load}
             style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
@@ -5736,81 +5777,168 @@ function SmartReorderTab({ branch }) {
 
       {orderAlert && <Alert type={orderAlert.type} onClose={() => setOrderAlert(null)}>{orderAlert.msg}</Alert>}
 
-      {/* ── AI Stats ───────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div onClick={() => setPriorityFilter('all')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'all' ? '#fff0f3' : '#f8fafc', border: `2px solid ${priorityFilter === 'all' ? '#c41e3a' : '#e2e8f0'}`, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#374151' }}>{aiActionable.length}</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Action Needed</div>
-        </div>
-        <div onClick={() => setPriorityFilter('critical')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'critical' ? '#fef2f2' : '#f8fafc', border: `2px solid ${priorityFilter === 'critical' ? '#dc2626' : '#e2e8f0'}`, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#dc2626' }}>{outCount + critCount}</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Critical / OOS</div>
-        </div>
-        <div onClick={() => setPriorityFilter('urgent')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'urgent' ? '#fffbeb' : '#f8fafc', border: `2px solid ${priorityFilter === 'urgent' ? '#d97706' : '#e2e8f0'}`, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#d97706' }}>{urgentCount}</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Urgent (&lt;14d)</div>
-        </div>
-        <div onClick={() => setPriorityFilter('soon')} style={{ cursor: 'pointer', borderRadius: 12, padding: '12px 14px', background: priorityFilter === 'soon' ? '#fefce8' : '#f8fafc', border: `2px solid ${priorityFilter === 'soon' ? '#ca8a04' : '#e2e8f0'}`, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ca8a04' }}>{aiActionable.length - outCount - critCount - urgentCount}</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Reorder Soon</div>
-        </div>
+      {/* ── Stats — 6-month horizon ──────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'Total Flagged', value: aiActionable.length, color: '#374151', bg: '#f8fafc', border: '#e2e8f0', filter: 'all' },
+          { label: 'Critical / OOS', value: oosCount + criticalCount, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', filter: 'critical' },
+          { label: 'Urgent < 30d',  value: urgentCount,  color: '#d97706', bg: '#fffbeb', border: '#fde68a', filter: 'urgent' },
+          { label: 'Reorder < 90d', value: reorderCount, color: '#ca8a04', bg: '#fefce8', border: '#fef08a', filter: 'reorder' },
+          { label: 'Plan < 6 mo',   value: planCount,    color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', filter: 'plan' },
+        ].map(s => (
+          <div key={s.filter} onClick={() => setPriorityFilter(s.filter)}
+            style={{ cursor: 'pointer', borderRadius: 12, padding: '11px 12px', background: priorityFilter === s.filter ? s.bg : '#f8fafc', border: `2px solid ${priorityFilter === s.filter ? s.border : '#e2e8f0'}`, textAlign: 'center', transition: 'all .15s' }}>
+            <div style={{ fontSize: '1.7rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
       </div>
 
+      {/* ── PO History ────────────────────────────────────────────────────── */}
+      {showPOs && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">📋 Supplier Purchase Orders</h3>
+              <Button size="sm" variant="secondary" onClick={loadPOs}>↺ Refresh</Button>
+            </div>
+          </CardHeader>
+          {poLoading ? <LoadingSpinner /> : poList.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={40} />} title="No supplier orders yet" description="Click '+ Order from Supplier' on any flagged product to create the first order." /></CardBody>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    {['PO Ref', 'Product', 'Location', 'Qty', 'Priority', 'Days at Order', 'Status', 'Requested By', 'Date', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {poList.map((po, i) => (
+                    <tr key={po.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.73rem', fontWeight: 700, color: '#6b21a8' }}>{po.order_ref}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 700, color: '#1e293b', maxWidth: 160 }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po.product_name}</div></td>
+                      <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '0.77rem' }}>{fmtLocation(po.location || '')}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 900, color: '#374151' }}>{po.quantity_ordered?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        {po.priority_label && <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: 99, background: po.priority_label?.includes('CRITICAL') ? '#fef2f2' : po.priority_label?.includes('URGENT') ? '#fffbeb' : '#eff6ff', color: po.priority_label?.includes('CRITICAL') ? '#dc2626' : po.priority_label?.includes('URGENT') ? '#d97706' : '#2563eb' }}>{po.priority_label}</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{fmtDays(po.days_remaining)}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 9px', borderRadius: 99, background: poStatusColor(po.status) + '1a', color: poStatusColor(po.status), textTransform: 'capitalize' }}>{po.status}</span>
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '0.77rem' }}>{po.requested_by_name || po.requested_by || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: '#94a3b8', fontSize: '0.73rem', whiteSpace: 'nowrap' }}>{po.created_at ? new Date(po.created_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }) : '—'}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <div className="flex gap-1 flex-wrap">
+                          {po.status === 'draft' && (
+                            <button onClick={() => updatePoStatus(po, 'submitted')} disabled={updatingPo === po.id}
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              {updatingPo === po.id ? '…' : '→ Submit'}
+                            </button>
+                          )}
+                          {po.status === 'submitted' && (
+                            <button onClick={() => updatePoStatus(po, 'confirmed')} disabled={updatingPo === po.id}
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              {updatingPo === po.id ? '…' : '✓ Confirm'}
+                            </button>
+                          )}
+                          {po.status === 'confirmed' && (
+                            <button onClick={() => updatePoStatus(po, 'received')} disabled={updatingPo === po.id}
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              {updatingPo === po.id ? '…' : '📥 Received'}
+                            </button>
+                          )}
+                          {(po.status === 'draft' || po.status === 'submitted') && (
+                            <button onClick={() => updatePoStatus(po, 'cancelled')} disabled={updatingPo === po.id}
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700, background: '#f1f5f9', color: '#dc2626', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── AI Reorder Queue ────────────────────────────────────────────── */}
       {viewMode === 'ai' ? (
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Brain size={16} className="text-primary" />
-                AI Reorder Queue {priorityFilter !== 'all' && <Badge variant="warning">{priorityFilter} filter</Badge>}
-                {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}
-              </h3>
+              <div>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <Brain size={16} className="text-primary" />
+                  Products Needing Reorder
+                  {priorityFilter !== 'all' && <Badge variant="warning">{priorityFilter} filter</Badge>}
+                  {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">Based on 30-day sales velocity — products with less than 6 months supply remaining</p>
+              </div>
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = (priorityFilter === 'all' ? aiActionable : aiFiltered).map(r =>
-                  `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td style="color:${r.priority.color};font-weight:800">${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder || '—'}</td></tr>`
+                const rows = aiFiltered.map(r =>
+                  `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder || '—'}</td></tr>`
                 ).join('');
-                printDocument('AI Reorder Report', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
+                printDocument('AI Reorder Report — 6-Month Horizon', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
           {aiFiltered.length === 0 ? (
             <CardBody>
-              <EmptyState icon={<CheckCircle size={48} className="text-green-500" />} title="All Stock Levels Healthy" description={`No reorder action needed${branch !== 'all' ? ` for ${fmtLocation(branch)}` : ''}. The AI has analyzed all products.`} />
+              <EmptyState icon={<CheckCircle size={48} className="text-green-500" />} title="All products have 6+ months supply" description={`No reorder action needed${branch !== 'all' ? ` for ${fmtLocation(branch)}` : ''}. The AI has verified all locations.`} />
             </CardBody>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    {['Product', 'Location', 'AI Priority', 'Qty', 'Daily Rate', 'Days Left', 'Suggested Qty', 'Action'].map(h => (
-                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: '0.73rem', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                  <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                    {['Product', 'Location', 'AI Priority', 'Qty on Hand', 'Daily Rate', 'Days Left', 'Months Left', 'Order Qty (6mo)', 'Action'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: '0.73rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {aiFiltered.map((r, i) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '9px 12px', fontWeight: 700, color: '#1e293b' }}>{r.product_name}</td>
-                      <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.77rem' }}>{fmtLocation(r.location)}</td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <span style={{ background: r.priority.bg, color: r.priority.color, borderRadius: 99, padding: '3px 9px', fontWeight: 800, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{r.priority.label}</span>
-                      </td>
-                      <td style={{ padding: '9px 12px', fontWeight: 900, color: r.qty <= 0 ? '#dc2626' : r.qty < 5 ? '#dc2626' : '#374151' }}>{r.qty}</td>
-                      <td style={{ padding: '9px 12px', color: r.dailyRate > 0 ? '#374151' : '#94a3b8', fontSize: '0.8rem' }}>
-                        {r.dailyRate > 0 ? `${r.dailyRate.toFixed(2)}/d` : <span title="No movement data — estimate based on quantity">—</span>}
-                      </td>
-                      <td style={{ padding: '9px 12px', fontWeight: 700, color: r.daysOfStock === 999 ? '#94a3b8' : r.daysOfStock <= 7 ? '#dc2626' : r.daysOfStock <= 14 ? '#d97706' : '#ca8a04' }}>
-                        {r.daysOfStock === 999 ? '—' : `${r.daysOfStock}d`}
-                      </td>
-                      <td style={{ padding: '9px 12px', fontWeight: 800, color: '#7c3aed' }}>{r.suggestedOrder > 0 ? r.suggestedOrder : '—'}</td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <button onClick={() => { setOrderModal(r); setOrderQty(String(r.suggestedOrder || '')); setOrderNote(''); }}
-                          style={{ padding: '5px 12px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                          + Request Order
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {aiFiltered.map((r, i) => {
+                    const monthsLeft = r.daysOfStock === 999 ? null : (r.daysOfStock / 30).toFixed(1);
+                    return (
+                      <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '9px 12px', fontWeight: 700, color: '#1e293b', maxWidth: 180 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.product_name}>{r.product_name}</div>
+                        </td>
+                        <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.77rem' }}>{fmtLocation(r.location)}</td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{ background: r.priority.bg, color: r.priority.color, borderRadius: 99, padding: '3px 9px', fontWeight: 800, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{r.priority.label}</span>
+                        </td>
+                        <td style={{ padding: '9px 12px', fontWeight: 900, color: r.qty <= 0 ? '#dc2626' : r.qty < 5 ? '#d97706' : '#374151' }}>{r.qty.toLocaleString()}</td>
+                        <td style={{ padding: '9px 12px', color: r.dailyRate > 0 ? '#374151' : '#94a3b8', fontSize: '0.8rem' }}>
+                          {r.dailyRate > 0 ? `${r.dailyRate.toFixed(2)}/d` : '—'}
+                        </td>
+                        <td style={{ padding: '9px 12px', fontWeight: 700, color: r.daysOfStock === 999 ? '#94a3b8' : r.daysOfStock <= 14 ? '#dc2626' : r.daysOfStock <= 30 ? '#d97706' : r.daysOfStock <= 90 ? '#ca8a04' : '#2563eb' }}>
+                          {r.daysOfStock === 999 ? '—' : `${r.daysOfStock}d`}
+                        </td>
+                        <td style={{ padding: '9px 12px', fontWeight: 700, color: monthsLeft === null ? '#94a3b8' : Number(monthsLeft) < 1 ? '#dc2626' : Number(monthsLeft) < 3 ? '#d97706' : '#2563eb' }}>
+                          {monthsLeft === null ? '—' : `${monthsLeft} mo`}
+                        </td>
+                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#7c3aed' }}>
+                          {r.suggestedOrder > 0 ? r.suggestedOrder.toLocaleString() : '—'}
+                          {r.suggestedOrder > 0 && r.dailyRate > 0 && <div style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 400 }}>covers ~6 mo</div>}
+                        </td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <button onClick={() => { setOrderModal(r); setOrderQty(String(r.suggestedOrder || '')); setOrderNote(''); }}
+                            style={{ padding: '5px 11px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                            + Order from Supplier
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -5847,39 +5975,52 @@ function SmartReorderTab({ branch }) {
         </Card>
       )}
 
-      {/* ── Order Request Modal ───────────────────── */}
-      <Modal open={!!orderModal} onClose={() => setOrderModal(null)} title={`🤖 AI Order Request — ${orderModal?.product_name}`} size="md">
+      {/* ── Supplier Order Modal ─────────────────────────────────────────── */}
+      <Modal open={!!orderModal} onClose={() => { setOrderModal(null); setOrderAlert(null); }} title={`📦 Supplier Purchase Order — ${orderModal?.product_name}`} size="md">
         <div className="p-6 space-y-4">
-          <Alert type="info">
-            AI recommends ordering <strong>{orderModal?.suggestedOrder || '—'} units</strong> based on a daily consumption rate of <strong>{orderModal?.dailyRate > 0 ? `${orderModal?.dailyRate?.toFixed(2)}/day` : 'unavailable'}</strong>. This covers ~30 days of supply.
-          </Alert>
+          <div style={{ background: 'linear-gradient(135deg,#fff0f3,#fef2f2)', border: '1.5px solid #fecaca', borderRadius: 10, padding: '12px 16px' }}>
+            <div className="text-xs text-red-600 font-bold uppercase tracking-wide mb-2">AI Analysis</div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-gray-500">Current Stock:</span> <strong>{orderModal?.qty?.toLocaleString()} units</strong></div>
+              <div><span className="text-gray-500">Daily Rate:</span> <strong>{orderModal?.dailyRate > 0 ? `${Number(orderModal.dailyRate).toFixed(2)}/day` : 'Not available'}</strong></div>
+              <div><span className="text-gray-500">Days Remaining:</span> <strong style={{ color: orderModal?.daysOfStock <= 30 ? '#dc2626' : orderModal?.daysOfStock <= 90 ? '#d97706' : '#2563eb' }}>{orderModal?.daysOfStock === 999 ? 'Unknown' : `${orderModal?.daysOfStock} days (${(orderModal?.daysOfStock / 30).toFixed(1)} mo)`}</strong></div>
+              <div><span className="text-gray-500">Priority:</span> <strong style={{ color: orderModal?.priority?.color }}>{orderModal?.priority?.label}</strong></div>
+            </div>
+            <div className="text-xs text-gray-500 mt-2">Suggested order covers 6 months of supply. Adjust quantity below as needed.</div>
+          </div>
           {orderAlert && <Alert type={orderAlert.type}>{orderAlert.msg}</Alert>}
-          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px' }}>
-            <div className="text-xs text-gray-500 font-semibold mb-1">Transfer Details</div>
-            <div className="text-sm"><strong>From:</strong> Country Stock</div>
-            <div className="text-sm"><strong>To:</strong> {fmtLocation(orderModal?.location)}</div>
-            <div className="text-sm"><strong>Product:</strong> {orderModal?.product_name}</div>
-            <div className="text-sm"><strong>Current Stock:</strong> {orderModal?.qty} units ({orderModal?.daysOfStock === 999 ? 'demand unknown' : `${orderModal?.daysOfStock} days left`})</div>
+          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px', fontSize: '0.85rem' }}>
+            <div className="text-xs text-gray-500 font-semibold mb-1">Order Details</div>
+            <div><strong>Product:</strong> {orderModal?.product_name}</div>
+            <div><strong>Destination:</strong> {fmtLocation(orderModal?.location || '')}</div>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-semibold text-gray-700">Quantity to Order <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-semibold text-gray-700">
+              Quantity to Order <span className="text-red-500">*</span>
+              {orderModal?.suggestedOrder > 0 && <span className="text-xs text-gray-400 font-normal ml-2">(AI suggestion: {Number(orderModal.suggestedOrder).toLocaleString()} units)</span>}
+            </label>
             <input type="number" min="1" value={orderQty} onChange={e => setOrderQty(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            {orderQty && orderModal?.dailyRate > 0 && (
+              <p className="text-xs text-gray-500">This quantity covers approximately <strong>{Math.round(Number(orderQty) / orderModal.dailyRate)} days</strong> ({(Math.round(Number(orderQty) / orderModal.dailyRate) / 30).toFixed(1)} months) of supply.</p>
+            )}
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-semibold text-gray-700">Notes (optional)</label>
+            <label className="block text-sm font-semibold text-gray-700">Notes for Supplier (optional)</label>
             <textarea rows={2} value={orderNote} onChange={e => setOrderNote(e.target.value)}
-              placeholder="Additional instructions for this order…"
+              placeholder="Delivery instructions, urgency notes, preferred pack size…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-none" />
           </div>
           <div className="flex gap-3 pt-1">
-            <Button onClick={createOrderRequest} disabled={submitting || !orderQty}><Truck size={15} /> {submitting ? 'Creating…' : 'Create Transfer Request'}</Button>
-            <Button variant="secondary" onClick={() => setOrderModal(null)}>Cancel</Button>
+            <Button onClick={createSupplierOrder} disabled={submitting || !orderQty} style={{ background: '#c41e3a', color: '#fff' }}>
+              <Package size={15} /> {submitting ? 'Creating…' : 'Create Supplier Order'}
+            </Button>
+            <Button variant="secondary" onClick={() => { setOrderModal(null); setOrderAlert(null); }}>Cancel</Button>
           </div>
         </div>
       </Modal>
 
-      {/* ── Classic Threshold Edit Modal ─────────── */}
+      {/* ── Classic Threshold Edit Modal ────────────────────────────────── */}
       <Modal open={!!editProduct} onClose={() => setEditProduct(null)} title={`Set Reorder Threshold: ${editProduct}`} size="sm">
         <div className="p-6 space-y-4">
           <Input label="Reorder Threshold (units)" type="number" min="1" value={editThreshold} onChange={e => setEditThreshold(e.target.value)} />
