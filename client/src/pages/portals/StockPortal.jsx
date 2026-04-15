@@ -7334,99 +7334,340 @@ function StockReportsTab({ branch }) {
 }
 
 function RealtimeTab({ branch }) {
-  const [batches, setBatches] = useState([]);
-  const [movements, setMovements] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [batches, setBatches]         = useState([]);
+  const [movements, setMovements]     = useState([]);
+  const [loading, setLoading]         = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [countdown, setCountdown]     = useState(10);
+  const [newIds, setNewIds]           = useState(new Set());
+  const INTERVAL = 10;
 
-  const fetchData = useCallback(() => {
-    Promise.all([
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-    ]).then(([b, m]) => {
+  const fmtAgo = ts => {
+    if (!ts) return '—';
+    const s = Math.floor((Date.now() - new Date(ts)) / 1000);
+    if (s < 60)   return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return new Date(ts).toLocaleDateString('en-ZA',{day:'2-digit',month:'short'});
+  };
+  const fmtTime = ts => { try { return ts ? new Date(ts).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—'; } catch { return '—'; } };
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '—'; } catch { return '—'; } };
+  const daysLeft = d => { if (!d) return null; return Math.ceil((new Date(d) - Date.now()) / 86400000); };
+  const fmtLoc = loc => {
+    const l = (loc||'').toLowerCase();
+    if (!l || l === 'unknown') return '—';
+    if (l === 'country_stock') return 'Country Stock';
+    if (l === 'windhoek_warehouse') return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l);
+    return bd ? bd.name : (loc||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  };
+  const locColor = loc => {
+    const l = (loc||'').toLowerCase();
+    if (l === 'country_stock') return '#6b7280';
+    if (l.includes('warehouse')) return '#2563eb';
+    return '#c41e3a';
+  };
+
+  const mvTypeConfig = type => {
+    const t = (type||'').toLowerCase();
+    if (['transfer_in','receipt','return','stock_receipt'].includes(t))                           return { label:'Transfer In',  color:'#16a34a', bg:'#f0fdf4', dir:'+' };
+    if (['transfer_out','dispatch','redistribution'].includes(t))                                  return { label:'Transfer Out', color:'#2563eb', bg:'#eff6ff', dir:'→' };
+    if (['walkin_sale','walkin_member_sale','walkin_non_member_sale','walk_in_member_sale','walk_in_non_member_sale','sale'].includes(t)) return { label:'Sale',         color:'#c41e3a', bg:'#fff0f3', dir:'−' };
+    if (t === 'prescription_dispense')                                                             return { label:'Dispense',     color:'#7c3aed', bg:'#fdf4ff', dir:'Rx' };
+    if (['adjustment','stock_adjustment'].includes(t))                                             return { label:'Adjustment',   color:'#d97706', bg:'#fffbeb', dir:'±' };
+    if (['write_off','written_off'].includes(t))                                                   return { label:'Write-off',    color:'#dc2626', bg:'#fef2f2', dir:'×' };
+    if (['opening_stock','opening','initial'].includes(t))                                         return { label:'Opening Stock',color:'#0891b2', bg:'#ecfeff', dir:'↑' };
+    return { label: (type||'Unknown').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()), color:'#64748b', bg:'#f8fafc', dir:'•' };
+  };
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [b, m] = await Promise.all([
+        api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+        api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      ]);
+
+      setMovements(prev => {
+        const prevIds = new Set(prev.map(x => x.id));
+        const incoming = Array.isArray(m) ? m : [];
+        const added = incoming.filter(x => x.id && !prevIds.has(x.id)).map(x => x.id);
+        if (added.length > 0) {
+          setNewIds(ids => { const next = new Set([...ids, ...added]); return next; });
+          setTimeout(() => setNewIds(ids => { const next = new Set(ids); added.forEach(id => next.delete(id)); return next; }), 3000);
+        }
+        return incoming;
+      });
       setBatches(b);
-      setMovements(m);
       setLastRefresh(new Date());
-    }).finally(() => setLoading(false));
+    } catch(e) {}
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchData, INTERVAL * 1000);
+    const cd = setInterval(() => setCountdown(c => c <= 1 ? INTERVAL : c - 1), 1000);
+    return () => { clearInterval(iv); clearInterval(cd); };
   }, [fetchData]);
+
+  // ── Filter by branch ────────────────────────────────────────────────────────
+  const filteredBatches = branch === 'all' ? batches : batches.filter(b =>
+    (b.location||'').toLowerCase().replace(/\s+/g,'_') === branch
+  );
+  const filteredMovements = branch === 'all' ? movements : movements.filter(m => {
+    const sl = (m.source_location||m.sourceLocation||'').toLowerCase().replace(/\s+/g,'_');
+    const dl = (m.destination_location||m.destinationLocation||'').toLowerCase().replace(/\s+/g,'_');
+    return sl === branch || dl === branch;
+  });
+
+  // ── Derived stats ───────────────────────────────────────────────────────────
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todayMoves = filteredMovements.filter(m => (m.created_at||m.createdAt||'').slice(0,10) === todayStr);
+  const totalUnits = filteredBatches.reduce((s,b) => s + Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0), 0);
+  const activeBatches = filteredBatches.filter(b => Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0) > 0).length;
+  const lowStockBatches = filteredBatches.filter(b => {
+    const r = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    return r > 0 && r < 10;
+  });
+  const expiredBatches  = filteredBatches.filter(b => { const d = daysLeft(b.expiry_date); return d !== null && d <= 0; });
+  const expiringBatches = filteredBatches.filter(b => { const d = daysLeft(b.expiry_date); return d !== null && d > 0 && d <= 30; });
+  const alertCount = lowStockBatches.length + expiredBatches.length + expiringBatches.length;
+
+  // ── Units moved today ───────────────────────────────────────────────────────
+  const unitsMoved = todayMoves.reduce((s,m) => s + Number(m.quantity||0), 0);
+
+  // ── Recent feed (sorted desc by time, top 50) ──────────────────────────────
+  const feed = [...filteredMovements]
+    .sort((a,b) => new Date(b.created_at||b.createdAt||0) - new Date(a.created_at||a.createdAt||0))
+    .slice(0, 60);
+
+  // ── Stock snapshot by product ───────────────────────────────────────────────
+  const productMap = {};
+  filteredBatches.forEach(b => {
+    const name = b.product_name || b.description || 'Unknown';
+    const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    if (!productMap[name]) productMap[name] = { name, total: 0, locations: {} };
+    productMap[name].total += rem;
+    const lk = (b.location||'unknown').toLowerCase();
+    productMap[name].locations[lk] = (productMap[name].locations[lk] || 0) + rem;
+  });
+  const productSnap = Object.values(productMap).sort((a,b) => b.total - a.total);
 
   if (loading) return <LoadingSpinner />;
 
-  const filterB = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
-  const filterM = (m) => branch === 'all' || (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
-
-  const filteredBatches = batches.filter(filterB);
-  const filteredMovements = movements.filter(filterM);
-
-  const stockByProduct = {};
-  filteredBatches.forEach(b => {
-    const name = b.product_name || 'Unknown';
-    if (!stockByProduct[name]) stockByProduct[name] = { qty: 0, lastMovement: null, location: b.location };
-    stockByProduct[name].qty += Number(b.quantity || 0);
-  });
-
-  filteredMovements.forEach(m => {
-    const name = m.product_name || 'Unknown';
-    if (stockByProduct[name] && (!stockByProduct[name].lastMovement || new Date(m.created_at) > new Date(stockByProduct[name].lastMovement))) {
-      stockByProduct[name].lastMovement = m.created_at;
-    }
-  });
-
-  const stockCards = Object.entries(stockByProduct).map(([name, data]) => ({ name, ...data }));
-  const recentMovements = [...filteredMovements].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
-
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4">
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
         <div>
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Zap size={20} className="text-yellow-500" /> Real-Time Stock Dashboard
-          </h3>
-          <p className="text-xs text-gray-500">Auto-refreshes every 30 seconds | Last: {formatDateTime(lastRefresh)}</p>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
+            <span style={{ width:10, height:10, borderRadius:'50%', background:'#16a34a', display:'inline-block', boxShadow:'0 0 0 3px #bbf7d0', animation:'pulse 2s infinite' }} />
+            <h3 style={{ fontWeight:900, fontSize:'1rem', color:'#1e293b', margin:0 }}>⚡ Live Stock Dashboard</h3>
+          </div>
+          <p style={{ fontSize:'0.72rem', color:'#94a3b8', margin:0 }}>
+            Auto-refreshes every {INTERVAL}s · Next refresh in <strong style={{ color: countdown <= 3 ? '#dc2626' : '#374151' }}>{countdown}s</strong> · Last updated {fmtTime(lastRefresh)}
+          </p>
+          <div style={{ height:3, width:180, background:'#f1f5f9', borderRadius:99, marginTop:4, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${(countdown/INTERVAL)*100}%`, background: countdown <= 3 ? '#dc2626' : '#16a34a', borderRadius:99, transition:'width 1s linear' }} />
+          </div>
         </div>
-        <Button size="sm" variant="secondary" onClick={fetchData}><Zap size={14} /> Refresh Now</Button>
+        <Button size="sm" onClick={() => { fetchData(); setCountdown(INTERVAL); }}>↺ Refresh Now</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {stockCards.map(item => (
-          <Card key={item.name} className="hover:shadow-md transition-shadow">
-            <CardBody>
-              <h4 className="text-sm font-semibold text-gray-800 truncate" title={item.name}>{item.name}</h4>
-              <div className="flex justify-between items-end mt-2">
-                <div>
-                  <p className="text-2xl font-bold text-primary">{item.qty}</p>
-                  <p className="text-xs text-gray-400">in stock</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">{item.lastMovement ? formatDateTime(item.lastMovement) : 'No movements'}</p>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+      {/* ── 4 Stat cards ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { icon:'📦', label:'Total Units in Stock',  value: totalUnits.toLocaleString(),   color:'#1d4ed8', bg:'#eff6ff',  border:'#bfdbfe' },
+          { icon:'🗂️', label:'Active Batches',         value: activeBatches,                  color:'#16a34a', bg:'#f0fdf4',  border:'#86efac' },
+          { icon:'🔄', label:'Movements Today',        value: todayMoves.length,              color:'#d97706', bg:'#fffbeb',  border:'#fde68a' },
+          { icon:'🚨', label:'Alerts',                 value: alertCount,                     color: alertCount > 0 ? '#dc2626' : '#374151', bg: alertCount > 0 ? '#fef2f2' : '#f8fafc', border: alertCount > 0 ? '#fecaca' : '#e2e8f0' },
+        ].map(s => (
+          <div key={s.label} style={{ borderRadius:10, padding:'12px 14px', background:s.bg, border:`1.5px solid ${s.border}` }}>
+            <div style={{ fontSize:'0.75rem', marginBottom:4 }}>{s.icon}</div>
+            <div style={{ fontSize:'1.65rem', fontWeight:900, color:s.color, lineHeight:1 }}>{s.value}</div>
+            <div style={{ fontSize:'0.67rem', color:'#64748b', fontWeight:700, marginTop:2 }}>{s.label}</div>
+          </div>
         ))}
-        {stockCards.length === 0 && <div className="col-span-full"><EmptyState icon={<Package size={48} />} title="No stock data" description="No real-time stock data available" /></div>}
       </div>
 
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Live Movement Feed</h3></CardHeader>
-        <Table
-          columns={[
-            { header: 'Time', render: r => formatDateTime(r.created_at) },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Type', render: r => <Badge variant={r.movement_type === 'in' ? 'success' : r.movement_type === 'out' ? 'danger' : 'warning'}>{r.movement_type || 'Movement'}</Badge> },
-            { header: 'Quantity', key: 'quantity' },
-            { header: 'Location', key: 'location' },
-          ]}
-          data={recentMovements}
-          emptyMessage="No recent movements"
-        />
-      </Card>
+      {/* ── Alerts ───────────────────────────────────────────────────────── */}
+      {alertCount > 0 && (
+        <div className="space-y-2">
+          {expiredBatches.length > 0 && (
+            <div style={{ background:'#fef2f2', border:'1.5px solid #fecaca', borderRadius:10, padding:'10px 14px' }}>
+              <div style={{ fontWeight:800, color:'#dc2626', fontSize:'0.82rem', marginBottom:4 }}>
+                🚫 {expiredBatches.length} Expired Batch{expiredBatches.length !== 1 ? 'es' : ''} — Requires immediate attention
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {expiredBatches.slice(0,8).map((b,i) => (
+                  <span key={i} style={{ background:'#fff', border:'1px solid #fecaca', borderRadius:6, padding:'2px 8px', fontSize:'0.7rem', fontWeight:700, color:'#dc2626' }}>
+                    {b.product_name} · {fmtLoc(b.location)} · exp {fmtDate(b.expiry_date)}
+                  </span>
+                ))}
+                {expiredBatches.length > 8 && <span style={{ fontSize:'0.7rem', color:'#94a3b8' }}>+{expiredBatches.length-8} more</span>}
+              </div>
+            </div>
+          )}
+          {expiringBatches.length > 0 && (
+            <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'10px 14px' }}>
+              <div style={{ fontWeight:800, color:'#d97706', fontSize:'0.82rem', marginBottom:4 }}>
+                ⚠️ {expiringBatches.length} Batch{expiringBatches.length !== 1 ? 'es' : ''} expiring within 30 days
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {expiringBatches.slice(0,8).map((b,i) => (
+                  <span key={i} style={{ background:'#fff', border:'1px solid #fde68a', borderRadius:6, padding:'2px 8px', fontSize:'0.7rem', fontWeight:700, color:'#d97706' }}>
+                    {b.product_name} · {daysLeft(b.expiry_date)}d left · {fmtLoc(b.location)}
+                  </span>
+                ))}
+                {expiringBatches.length > 8 && <span style={{ fontSize:'0.7rem', color:'#94a3b8' }}>+{expiringBatches.length-8} more</span>}
+              </div>
+            </div>
+          )}
+          {lowStockBatches.length > 0 && (
+            <div style={{ background:'#fff7ed', border:'1.5px solid #fdba74', borderRadius:10, padding:'10px 14px' }}>
+              <div style={{ fontWeight:800, color:'#ea580c', fontSize:'0.82rem', marginBottom:4 }}>
+                📉 {lowStockBatches.length} Low Stock Batch{lowStockBatches.length !== 1 ? 'es' : ''} (under 10 units)
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {lowStockBatches.slice(0,8).map((b,i) => {
+                  const rem = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+                  return (
+                    <span key={i} style={{ background:'#fff', border:'1px solid #fdba74', borderRadius:6, padding:'2px 8px', fontSize:'0.7rem', fontWeight:700, color:'#ea580c' }}>
+                      {b.product_name} · {rem} left · {fmtLoc(b.location)}
+                    </span>
+                  );
+                })}
+                {lowStockBatches.length > 8 && <span style={{ fontSize:'0.7rem', color:'#94a3b8' }}>+{lowStockBatches.length-8} more</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Two-column layout: Feed + Snapshot ───────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* ── Live Activity Feed ─────────────────────────────────────────── */}
+        <Card style={{ maxHeight: 580, display:'flex', flexDirection:'column' }}>
+          <CardHeader>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <span style={{ fontWeight:800, color:'#1e293b' }}>Live Activity Feed</span>
+                <span style={{ fontSize:'0.7rem', color:'#94a3b8', marginLeft:6 }}>{feed.length} movements</span>
+              </div>
+              <span style={{ fontSize:'0.68rem', color:'#16a34a', fontWeight:700, background:'#f0fdf4', borderRadius:99, padding:'2px 8px', border:'1px solid #86efac' }}>
+                ● LIVE
+              </span>
+            </div>
+          </CardHeader>
+          <div style={{ overflowY:'auto', flex:1 }}>
+            {feed.length === 0 ? (
+              <div style={{ padding:32, textAlign:'center', color:'#94a3b8', fontSize:'0.82rem' }}>No movements recorded yet</div>
+            ) : (
+              <div>
+                {feed.map((m, i) => {
+                  const id   = m.id;
+                  const cfg  = mvTypeConfig(m.movement_type || m.movementType);
+                  const src  = m.source_location || m.sourceLocation || '';
+                  const dst  = m.destination_location || m.destinationLocation || '';
+                  const ts   = m.created_at || m.createdAt;
+                  const qty  = Number(m.quantity || 0);
+                  const prod = m.product_name || m.productName || '—';
+                  const who  = m.created_by || m.createdBy || '';
+                  const isNew = newIds.has(id);
+                  return (
+                    <div key={id || i} style={{
+                      padding:'10px 14px',
+                      borderBottom:'1px solid #f1f5f9',
+                      background: isNew ? '#f0fdf4' : i%2===0 ? '#fff' : '#fafafa',
+                      transition:'background 1s',
+                      display:'flex', gap:10, alignItems:'flex-start',
+                    }}>
+                      {/* Type badge */}
+                      <div style={{ flexShrink:0, minWidth:70 }}>
+                        <span style={{ background:cfg.bg, color:cfg.color, borderRadius:6, padding:'3px 7px', fontSize:'0.65rem', fontWeight:800, display:'block', textAlign:'center', border:`1px solid ${cfg.color}22` }}>{cfg.label}</span>
+                        <div style={{ fontSize:'0.6rem', color:'#94a3b8', textAlign:'center', marginTop:2 }}>{fmtAgo(ts)}</div>
+                      </div>
+                      {/* Content */}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:800, color:'#1e293b', fontSize:'0.78rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={prod}>{prod}</div>
+                        <div style={{ fontSize:'0.7rem', color:'#64748b', marginTop:1, display:'flex', flexWrap:'wrap', gap:'3px 8px' }}>
+                          {src && <span><span style={{ color:locColor(src) }}>●</span> {fmtLoc(src)}</span>}
+                          {src && dst && <span style={{ color:'#cbd5e1' }}>→</span>}
+                          {dst && <span><span style={{ color:locColor(dst) }}>●</span> {fmtLoc(dst)}</span>}
+                          {who && <span style={{ color:'#94a3b8' }}>· {who}</span>}
+                        </div>
+                        {m.reference_id || m.referenceId ? <div style={{ fontSize:'0.65rem', color:'#94a3b8', marginTop:1, fontFamily:'monospace' }}>{m.reference_id||m.referenceId}</div> : null}
+                      </div>
+                      {/* Qty */}
+                      <div style={{ flexShrink:0, textAlign:'right' }}>
+                        <span style={{ fontWeight:900, fontSize:'0.9rem', color:cfg.color }}>{cfg.dir}{qty.toLocaleString()}</span>
+                        <div style={{ fontSize:'0.6rem', color:'#94a3b8' }}>units</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* ── Stock Snapshot ─────────────────────────────────────────────── */}
+        <Card style={{ maxHeight: 580, display:'flex', flexDirection:'column' }}>
+          <CardHeader>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <span style={{ fontWeight:800, color:'#1e293b' }}>Current Stock Snapshot</span>
+                <span style={{ fontSize:'0.7rem', color:'#94a3b8', marginLeft:6 }}>{productSnap.length} products</span>
+              </div>
+              <div style={{ fontSize:'0.68rem', color:'#64748b' }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#6b7280', display:'inline-block', marginRight:3 }} />C.Stock
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#2563eb', display:'inline-block', marginLeft:8, marginRight:3 }} />WH
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#c41e3a', display:'inline-block', marginLeft:8, marginRight:3 }} />Branch
+              </div>
+            </div>
+          </CardHeader>
+          <div style={{ overflowY:'auto', flex:1 }}>
+            {productSnap.length === 0 ? (
+              <div style={{ padding:32, textAlign:'center', color:'#94a3b8', fontSize:'0.82rem' }}>No stock data available</div>
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
+                <thead style={{ position:'sticky', top:0, zIndex:1 }}>
+                  <tr style={{ background:'#fef2f2', borderBottom:'2px solid #fecaca' }}>
+                    <th style={{ padding:'7px 12px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.68rem' }}>Product</th>
+                    <th style={{ padding:'7px 8px', textAlign:'right', fontWeight:700, color:'#475569', fontSize:'0.68rem', whiteSpace:'nowrap' }}>Total</th>
+                    <th style={{ padding:'7px 12px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.68rem' }}>By Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productSnap.map((p, i) => (
+                    <tr key={p.name} style={{ background: i%2===0?'#fff':'#f9fafb', borderBottom:'1px solid #f1f5f9' }}>
+                      <td style={{ padding:'8px 12px', fontWeight:700, color:'#1e293b', maxWidth:160 }}>
+                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={p.name}>{p.name}</div>
+                      </td>
+                      <td style={{ padding:'8px 8px', textAlign:'right', fontWeight:900, color: p.total <= 0 ? '#dc2626' : p.total < 10 ? '#d97706' : '#16a34a', whiteSpace:'nowrap' }}>
+                        {p.total.toLocaleString()}
+                      </td>
+                      <td style={{ padding:'8px 12px' }}>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:3 }}>
+                          {Object.entries(p.locations).sort(([,a],[,b])=>b-a).map(([lk, qty]) => (
+                            <span key={lk} style={{ background:'#f8fafc', border:`1px solid ${locColor(lk)}33`, borderRadius:99, padding:'1px 6px', fontSize:'0.62rem', fontWeight:800, color:locColor(lk), whiteSpace:'nowrap' }}>
+                              <span style={{ width:5, height:5, borderRadius:'50%', background:locColor(lk), display:'inline-block', marginRight:2, verticalAlign:'middle' }} />
+                              {fmtLoc(lk).replace(' Warehouse','').replace(' WH','')} {qty.toLocaleString()}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Card>
+
+      </div>
     </div>
   );
 }
