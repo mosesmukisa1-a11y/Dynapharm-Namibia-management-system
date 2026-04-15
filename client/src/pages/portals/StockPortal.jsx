@@ -2449,12 +2449,48 @@ function WarehouseTab({ name }) {
             columns={[
               { header: 'Products', render: r => {
                 const items = Array.isArray(r.items) ? r.items : [];
-                if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
+                if (items.length > 0) return (
+                  <div className="space-y-0.5">
+                    {items.map((i, idx) => {
+                      const sent = Number(i.quantity || 0);
+                      const approved = i.quantityApproved ?? i.quantity_approved;
+                      const approvedN = approved != null ? Number(approved) : null;
+                      const amended = approvedN != null && approvedN !== sent;
+                      return (
+                        <div key={idx} style={{ fontSize: '0.78rem' }}>
+                          <span style={{ fontWeight: 600 }}>{i.productName || i.product_name}</span>
+                          <span style={{ color: '#64748b' }}> × {sent}</span>
+                          {approvedN != null && (
+                            <span style={{ marginLeft: 4, fontWeight: 700, color: amended ? '#d97706' : '#16a34a', fontSize: '0.72rem' }}>
+                              {amended ? `→ ${approvedN} approved` : '✓ approved'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
                 return <span className="font-medium">{r.product_name || '—'}</span>;
               }},
-              { header: 'Total Qty', render: r => {
+              { header: 'Sent / Approved', render: r => {
                 const items = Array.isArray(r.items) ? r.items : [];
-                return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                const totalSent = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
+                const hasApproved = items.some(i => (i.quantityApproved ?? i.quantity_approved) != null);
+                const totalApproved = hasApproved ? items.reduce((s, i) => {
+                  const a = i.quantityApproved ?? i.quantity_approved;
+                  return s + Number(a != null ? a : i.quantity || 0);
+                }, 0) : null;
+                const amended = totalApproved != null && totalApproved !== totalSent;
+                return (
+                  <div style={{ lineHeight: 1.4 }}>
+                    <div style={{ fontWeight: 700 }}>{totalSent}</div>
+                    {totalApproved != null && (
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: amended ? '#d97706' : '#16a34a' }}>
+                        {amended ? `→ ${totalApproved} approved` : `✓ ${totalApproved} approved`}
+                      </div>
+                    )}
+                  </div>
+                );
               }},
               { header: 'To Branch', render: r => fmtLocation(r.toBranch || r.to_location) },
               { header: 'Status', render: r => {
@@ -2663,7 +2699,19 @@ function WarehouseTab({ name }) {
           if (t.gmAction || t.gm_action) {
             const action = t.gmAction || t.gm_action;
             const actionLabel = { approve: 'Approved', reject: 'Rejected', amend_approve: 'Amended & Approved', return: 'Returned for Correction' };
-            events.push({ time: t.amendedAt || t.amended_at || t.updatedAt || t.updated_at, action: `GM: ${actionLabel[action] || action}`, detail: t.gmComment || t.gm_comment || '', color: action === 'approve' ? '#16a34a' : action === 'reject' ? '#dc2626' : action === 'amend_approve' ? '#d97706' : '#6366f1' });
+            const approvedItems = items.filter(it => (it.quantityApproved ?? it.quantity_approved) != null);
+            const approvedDetail = approvedItems.length > 0
+              ? approvedItems.map(it => {
+                  const sent = Number(it.quantity || 0);
+                  const approved = Number(it.quantityApproved ?? it.quantity_approved ?? sent);
+                  const name = it.productName || it.product_name || 'Product';
+                  const diff = approved !== sent ? ` (was ${sent})` : '';
+                  return `${name}: ${approved} approved${diff}`;
+                }).join(' · ')
+              : (t.gmComment || t.gm_comment || '');
+            const gmComment = t.gmComment || t.gm_comment;
+            const fullDetail = [approvedDetail, gmComment && approvedItems.length > 0 ? `Comment: ${gmComment}` : ''].filter(Boolean).join(' — ');
+            events.push({ time: t.amendedAt || t.amended_at || t.updatedAt || t.updated_at, action: `GM: ${actionLabel[action] || action}`, detail: fullDetail, color: action === 'approve' ? '#16a34a' : action === 'reject' ? '#dc2626' : action === 'amend_approve' ? '#d97706' : '#6366f1' });
           }
           if (t.amendedByGm || t.amended_by_gm) {
             events.push({ time: t.amendedAt || t.amended_at, action: 'GM Amendment', detail: `Amended by ${t.amendedByGm || t.amended_by_gm}`, color: '#d97706' });
@@ -2713,8 +2761,28 @@ function WarehouseTab({ name }) {
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontSize: '0.78rem' }}>{it.batchNo || it.batch_no || '—'}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '0.78rem', color: (it.expiryDate || it.expiry_date) ? 'inherit' : '#9ca3af' }}>{it.expiryDate || it.expiry_date ? formatDate(it.expiryDate || it.expiry_date) : (it.batchNo || it.batch_no ? 'N/A' : '—')}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{it.quantity}</td>
-                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityApproved || it.quantity_approved ? '#d97706' : '#64748b' }}>{it.quantityApproved || it.quantity_approved || '—'}</td>
-                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: it.quantityReceived || it.quantity_received ? '#16a34a' : '#64748b' }}>{it.quantityReceived || it.quantity_received || '—'}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>
+                          {(() => {
+                            const approved = it.quantityApproved ?? it.quantity_approved;
+                            const sent = Number(it.quantity || 0);
+                            if (approved == null) return <span style={{ color: '#94a3b8' }}>—</span>;
+                            const n = Number(approved);
+                            const changed = n !== sent;
+                            return (
+                              <span style={{ color: changed ? '#d97706' : '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {n}
+                                {changed && <span style={{ fontSize: '0.68rem', color: '#9ca3af', fontWeight: 400 }}>({sent} sent)</span>}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>
+                          {(() => {
+                            const received = it.quantityReceived ?? it.quantity_received;
+                            if (received == null) return <span style={{ color: '#94a3b8' }}>—</span>;
+                            return <span style={{ color: '#16a34a' }}>{Number(received)}</span>;
+                          })()}
+                        </td>
                       </tr>
                     ))}</tbody>
                   </table>
