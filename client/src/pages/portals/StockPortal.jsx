@@ -1048,9 +1048,20 @@ function OverviewTab({ branch }) {
 
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = data.batches.filter(filterBatch);
-  const filteredMovements = branch === 'all' ? data.movements : data.movements.filter(m =>
-    (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch
+  const WAREHOUSE_LOCS = new Set(['country_stock', 'windhoek_warehouse', 'ondangwa_warehouse']);
+  const isWarehouseLoc = (loc) => {
+    if (!loc) return false;
+    const s = loc.toLowerCase().replace(/\s+/g, '_');
+    return WAREHOUSE_LOCS.has(s) || s.includes('warehouse') || s === 'country_stock';
+  };
+  const warehouseMovements = data.movements.filter(m =>
+    isWarehouseLoc(m.source_location) || isWarehouseLoc(m.destination_location)
   );
+  const filteredMovements = branch === 'all'
+    ? warehouseMovements
+    : warehouseMovements.filter(m =>
+        (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch
+      );
 
   const branchTotalQty = data.branchData.reduce((s, br) => s + (br.closing_qty || 0), 0);
   const branchTotalDPC = data.branchData.reduce((s, br) => {
@@ -1229,7 +1240,7 @@ function OverviewTab({ branch }) {
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <h3 className="font-bold text-gray-800">Recent Stock Movements {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}</h3>
+              <h3 className="font-bold text-gray-800">Recent Warehouse Movements {branch !== 'all' && <span className="text-xs text-gray-400 font-normal">— {fmtLocation(branch)}</span>}</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = filteredMovements.slice(0,15).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.movement_type||'Movement'}</td><td>${r.quantity||''}</td><td>${r.source_location||''}</td><td>${r.destination_location||''}</td></tr>`).join('');
                 printDocument('Recent Stock Movements', `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th></tr></thead><tbody>${rows}</tbody></table>`);
