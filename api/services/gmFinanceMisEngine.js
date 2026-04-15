@@ -240,11 +240,26 @@ export async function getBranchSalesRevenue(branchId, start, end) {
  * Company-wide stock summary aggregated from inventory_balances.
  */
 export async function getCompanyStockSummary() {
-  const rows = await getMany(
-    `SELECT location_type, location_id, product_name, expiry_date,
-            closing_qty, stock_value_dp
-     FROM inventory_balances`
-  );
+  // inventory_balances tracks branch stock (updated by stock_movements).
+  // stock_batches is the authoritative source for warehouse/country stock.
+  // We read both and combine — avoiding double-counting by only using
+  // inventory_balances for branches, and stock_batches for warehouses.
+  const [ibRows, batchRows] = await Promise.all([
+    getMany(
+      `SELECT location_type, location_id, product_name, expiry_date,
+              closing_qty, stock_value_dp
+       FROM inventory_balances
+       WHERE location_type = 'branch'`
+    ),
+    getMany(
+      `SELECT location, description as product_name, expiry_date,
+              SUM(COALESCE(remaining_quantity, quantity, 0)) AS qty,
+              SUM(COALESCE(remaining_quantity, quantity, 0) * COALESCE(dpc_unit_value, unit_price, 0)) AS val_dp
+       FROM stock_batches
+       WHERE status IS DISTINCT FROM 'dispatched' AND status IS DISTINCT FROM 'depleted'
+       GROUP BY location, description, expiry_date`
+    ),
+  ]);
 
   let totalQty = 0, totalValueDP = 0;
   let warehouseQty = 0, branchQty = 0, inTransitQty = 0;
@@ -255,14 +270,34 @@ export async function getCompanyStockSummary() {
 
   const productLowStock = new Map();
 
-  for (const r of rows) {
+  // Aggregate warehouse/country stock from stock_batches
+  for (const r of batchRows) {
+    const qty = Number(r.qty || 0);
+    const val = Number(r.val_dp || 0);
+    const loc = (r.location || '').toLowerCase();
+    if (loc === 'country_stock') {
+      totalValueDP += val;
+      // country stock counted separately — added to totalQty at end
+    } else {
+      warehouseQty += qty;
+      totalValueDP += val;
+    }
+    if (r.expiry_date && qty > 0) {
+      const exp = new Date(r.expiry_date);
+      if (exp <= warnDate) expiringCount++;
+    }
+  }
+
+  // Aggregate actual country stock quantity separately
+  const countryRows = batchRows.filter(r => (r.location || '').toLowerCase() === 'country_stock');
+  const countryQty = countryRows.reduce((s, r) => s + Number(r.qty || 0), 0);
+
+  // Aggregate branch stock from inventory_balances
+  for (const r of ibRows) {
     const qty = Number(r.closing_qty || 0);
     const val = Number(r.stock_value_dp || 0);
-
-    if (r.location_type === 'warehouse') { warehouseQty += qty; totalValueDP += val; }
-    else if (r.location_type === 'branch') { branchQty += qty; totalValueDP += val; }
-    else if (r.location_type === 'in_transit') inTransitQty += qty;
-    else if (r.location_type === 'country') { totalQty += qty; totalValueDP += val; continue; }
+    branchQty += qty;
+    totalValueDP += val;
 
     if (qty > 0 && qty < LOW_STOCK_THRESHOLD) {
       if (!productLowStock.has(r.product_name)) {
@@ -276,12 +311,11 @@ export async function getCompanyStockSummary() {
     }
   }
 
-  totalQty = warehouseQty + branchQty + inTransitQty;
-  totalValueDP = totalValueDP || (warehouseQty + branchQty) * 0;
+  totalQty = countryQty + warehouseQty + branchQty + inTransitQty;
 
   return {
     totalQty, totalValueDP, warehouseQty, branchQty, inTransitQty,
-    lowStockCount, expiringCount,
+    countryQty, lowStockCount, expiringCount,
   };
 }
 

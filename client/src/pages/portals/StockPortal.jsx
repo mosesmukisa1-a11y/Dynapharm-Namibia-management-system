@@ -82,7 +82,7 @@ const stockAI = {
     const criticalItems = Object.entries(productMap).filter(([, d]) => d.qty < 5 && d.qty > 0);
     const outItems = Object.entries(productMap).filter(([, d]) => d.qty <= 0);
     const expiringBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
-    const expiredBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
+    const expiredBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.remaining_quantity || b.quantity || 0) > 0);
     const pendingTransfers = transfers.filter(t => t.status === 'pending' || t.status === 'requested');
     const overdueTransfers = transfers.filter(t => {
       const age = (Date.now() - new Date(t.created_at || 0)) / (1000 * 60 * 60 * 24);
@@ -103,7 +103,7 @@ const stockAI = {
     batches.forEach(b => {
       const key = `${b.product_name}||${b.location || 'unknown'}`;
       if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
-      productMap[key].qty += Number(b.quantity || 0);
+      productMap[key].qty += Number(b.remaining_quantity || b.quantity || 0);
       if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry))) productMap[key].expiry = b.expiry_date;
     });
     return Object.values(productMap).map(p => {
@@ -762,15 +762,16 @@ function AICommandCenter({ branch }) {
   const now = new Date();
   const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const ninetyFwd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-  const totalQty = allBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const totalValue = allBatches.reduce((s, b) => s + Number(b.quantity || 0) * (Number(b.unit_price || 0) || getDPCPrice(b.product_name || '')), 0);
-  const expiredBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.quantity) > 0);
+  const effQty = (b) => Number(b.remaining_quantity || b.quantity || 0);
+  const totalQty = allBatches.reduce((s, b) => s + effQty(b), 0);
+  const totalValue = allBatches.reduce((s, b) => s + effQty(b) * (Number(b.unit_price || 0) || getDPCPrice(b.product_name || '')), 0);
+  const expiredBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && effQty(b) > 0);
   const expiringBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
 
   const productTotals = {};
   allBatches.forEach(b => {
     if (!productTotals[b.product_name]) productTotals[b.product_name] = { qty: 0, location: b.location };
-    productTotals[b.product_name].qty += Number(b.quantity || 0);
+    productTotals[b.product_name].qty += effQty(b);
   });
   const criticalProducts = Object.entries(productTotals).filter(([, d]) => d.qty > 0 && d.qty < 5);
   const outProducts = Object.entries(productTotals).filter(([, d]) => d.qty <= 0);

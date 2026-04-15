@@ -448,7 +448,9 @@ function DashboardTab() {
                 <p className="text-xs text-gray-400">{gmSummary.companyStock?.expiringCount || 0} expiring soon</p>
               </div>
             </div>
-            <div className="flex gap-4 text-xs text-gray-500">
+            <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+              <span>Country Stock: {(gmSummary.companyStock?.countryQty || 0).toLocaleString()} units</span>
+              <span>•</span>
               <span>Warehouse: {(gmSummary.companyStock?.warehouseQty || 0).toLocaleString()} units</span>
               <span>•</span>
               <span>Branches: {(gmSummary.companyStock?.branchQty || 0).toLocaleString()} units</span>

@@ -21,8 +21,15 @@ const KATIMA_ALIASES = new Set([
   'katima_mulilo_branch',
 ]);
 
+const OSHAKATI_ALIASES = new Set([
+  'oshakati',
+  'oshakati_branch',
+  'oshakati branch',
+]);
+
 const CANONICAL_WINDHOEK_CBD = 'townshop';
 const CANONICAL_KATIMA = 'katima_mulilo';
+const CANONICAL_OSHAKATI = 'oshakati_branch';
 
 /**
  * Map any known branch alias to its canonical slug.
@@ -35,6 +42,7 @@ export function normalizeBranchSlug(branch) {
   if (!lower) return null;
   if (WINDHOEK_CBD_ALIASES.has(lower)) return CANONICAL_WINDHOEK_CBD;
   if (KATIMA_ALIASES.has(lower)) return CANONICAL_KATIMA;
+  if (OSHAKATI_ALIASES.has(lower)) return CANONICAL_OSHAKATI;
   return lower;
 }
 
@@ -73,6 +81,7 @@ const BRANCH_SEARCH_TERMS = {
   outapi:          ['outapi'],
   okahao:          ['okahao'],
   oshakati_branch: ['oshakati_branch', 'oshakati branch', 'oshakati'],
+  oshakati:        ['oshakati_branch', 'oshakati branch', 'oshakati'],
   otjiwarongo:     ['otjiwarongo'],
   eenhana:         ['eenhana'],
   ondangwa:        ['ondangwa'],
@@ -113,4 +122,4 @@ export function branchSearchTermsForMany(branchIds) {
   return [...new Set(allTerms)];
 }
 
-export { CANONICAL_WINDHOEK_CBD, WINDHOEK_CBD_ALIASES, CANONICAL_KATIMA, KATIMA_ALIASES };
+export { CANONICAL_WINDHOEK_CBD, WINDHOEK_CBD_ALIASES, CANONICAL_KATIMA, KATIMA_ALIASES, CANONICAL_OSHAKATI, OSHAKATI_ALIASES };
