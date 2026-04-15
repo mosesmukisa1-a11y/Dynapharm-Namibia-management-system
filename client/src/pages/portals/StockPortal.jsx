@@ -5026,12 +5026,15 @@ function BranchStockTab({ branch }) {
 
   const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
   const now = new Date();
+  const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const periodLabel = fmtPeriodLabel(period.from, period.to);
+
+  const EMPTY_BRANCH = (b) => ({ name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null });
 
   const allBranchSummaries = BRANCH_DETAILS.map(b => {
     const key = b.id;
     const data = branchData.find(d => d.branch_id === key);
-    if (!data) return { name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null };
+    if (!data) return EMPTY_BRANCH(b);
     const closingQty = data.closing_qty || 0;
     const closingDPC = (data.inventory || []).reduce((s, inv) => {
       const qty = Number(inv.quantity || 0);
@@ -5042,11 +5045,15 @@ function BranchStockTab({ branch }) {
     (data.inventory || []).forEach(inv => {
       const name = inv.product_name || inv.description || 'Unknown';
       const mapKey = `${name}||${inv.batch_no || ''}`;
-      if (!productMap[mapKey]) productMap[mapKey] = { product_name: name, qty: 0, dpcValue: 0, batchNo: inv.batch_no || null, expiryDate: inv.expiry_date || null, expiring: false, source_warehouse: inv.source_warehouse || null };
+      if (!productMap[mapKey]) productMap[mapKey] = { product_name: name, qty: 0, dpcValue: 0, batchNo: inv.batch_no || null, expiryDate: inv.expiry_date || null, expiring: false, expired: false, source_warehouse: inv.source_warehouse || null };
       const qty = Number(inv.quantity || 0);
       productMap[mapKey].qty += qty;
       productMap[mapKey].dpcValue += qty * (Number(inv.unit_price || 0) || getDPCPrice(name));
-      if (inv.expiry_date && new Date(inv.expiry_date) < now) productMap[mapKey].expiring = true;
+      if (inv.expiry_date) {
+        const exp = new Date(inv.expiry_date);
+        if (exp < now && qty > 0) productMap[mapKey].expired = true;
+        else if (exp <= thirtyFwd && qty > 0) productMap[mapKey].expiring = true;
+      }
     });
     Object.values(productMap).forEach(p => products.push(p));
     return {
@@ -5074,7 +5081,7 @@ function BranchStockTab({ branch }) {
       lastMovement: data.last_movement,
       sourceWarehouse: data.source_warehouse,
     };
-  }).filter(Boolean).filter(br => br.batchCount > 0 || br.salesQty > 0 || br.issued > 0 || selectedBranch !== 'all');
+  }).filter(Boolean);
 
   const displayBranches = selectedBranch === 'all' ? allBranchSummaries : allBranchSummaries.filter(b => b.key === selectedBranch);
 
@@ -5190,9 +5197,9 @@ function BranchStockTab({ branch }) {
                     <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.product_name}>{p.product_name}</td>
                       <td style={{ padding: '7px 10px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.74rem' }}>{p.batchNo || '-'}</td>
-                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: p.expiring ? '#c41e3a' : '#6b7280', fontWeight: p.expiring ? 700 : 400, fontSize: '0.74rem' }}>{p.expiryDate ? formatDate(p.expiryDate) : '-'}{p.expiring ? ' (EXP)' : ''}</td>
-                      <td style={{ padding: '7px 10px', fontWeight: 800, color: p.qty === 0 ? '#c41e3a' : p.qty < 5 ? '#d97706' : '#166534', textAlign: 'right' }}>{p.qty}</td>
-                      <td style={{ padding: '7px 10px' }}>{p.qty === 0 ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Out</span> : p.qty < 5 ? <span style={{ color: '#d97706', fontWeight: 700 }}>Low</span> : <span style={{ color: '#166534', fontWeight: 600 }}>OK</span>}</td>
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: p.expired ? '#c41e3a' : p.expiring ? '#d97706' : '#6b7280', fontWeight: (p.expired || p.expiring) ? 700 : 400, fontSize: '0.74rem' }}>{p.expiryDate ? formatDate(p.expiryDate) : '-'}{p.expired ? ' (EXPIRED)' : p.expiring ? ' (EXPIRING)' : ''}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 800, color: p.qty === 0 ? '#c41e3a' : p.qty < 10 ? '#d97706' : '#166534', textAlign: 'right' }}>{p.qty}</td>
+                      <td style={{ padding: '7px 10px' }}>{p.qty === 0 ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Out</span> : p.expired ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Expired</span> : p.qty < 10 ? <span style={{ color: '#d97706', fontWeight: 700 }}>Low</span> : <span style={{ color: '#166534', fontWeight: 600 }}>OK</span>}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', color: '#374151' }}>N$ {dpUnit.toFixed(2)}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#c41e3a' }}>N$ {(p.qty * dpUnit).toFixed(2)}</td>
                       <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: '0.74rem' }}>{p.source_warehouse ? fmtBranch(p.source_warehouse) : '-'}</td>
@@ -5306,51 +5313,65 @@ function BranchStockTab({ branch }) {
             </div>
           )}
           {displayBranches.map(br => (
-            <div key={br.key} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', cursor: 'pointer' }} onClick={() => setDrillBranch(br.key)}>
-              <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={br.key} style={{ background: '#fff', border: `1.5px solid ${br.noData ? '#e5e7eb' : '#f0e8ea'}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', cursor: br.noData ? 'default' : 'pointer', opacity: br.noData ? 0.7 : 1 }} onClick={() => !br.noData && setDrillBranch(br.key)}>
+              <div style={{ background: br.noData ? 'linear-gradient(135deg,#6b7280,#4b5563)' : 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>{br.name}</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.products.length} products</span>
-                  <button onClick={(e) => { e.stopPropagation(); printBranchReport(br); }} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>Print</button>
+                  {br.noData
+                    ? <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.72rem', fontStyle: 'italic' }}>No stock received yet</span>
+                    : <>
+                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.products.length} products</span>
+                        <button onClick={(e) => { e.stopPropagation(); printBranchReport(br); }} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>Print</button>
+                      </>
+                  }
                 </div>
               </div>
-              <div>
-                {[
-                  ['Opening Stock', br.opening, '#1e3a5f'],
-                  ['+ Received / Issued', br.issued, '#166534'],
-                  ['- Sales (units)', br.salesQty, '#c41e3a'],
-                  ['- Prescription Dispensed', br.dispensedQty, '#6d28d9'],
-                  ['- Transfers Out', br.transferredOut, '#92400e'],
-                  ['- Write-offs', br.writeoffs, '#c41e3a'],
-                  ['+ Returns', br.returns, '#166534'],
-                ].map(([label, val, color]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                    <span style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>{label}</span>
-                    <span style={{ fontSize: '0.92rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
-                  <span style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
-                  <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
+              {br.noData ? (
+                <div style={{ padding: '20px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>📦</div>
+                  <p style={{ fontWeight: 600, color: '#6b7280' }}>No stock dispatched to this branch</p>
+                  <p style={{ fontSize: '0.73rem', marginTop: 4 }}>Issue stock from the warehouse to begin tracking</p>
                 </div>
-                <div style={{ padding: '8px 16px', background: '#fafafa', display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, fontSize: '0.72rem', color: '#64748b' }}>
-                  <span>DP Value: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
-                  <span>Revenue: <strong style={{ color: '#166534' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
-                  <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
-                  <span>Dispensed: <strong style={{ color: '#6d28d9' }}>{br.dispensedQty} units</strong></span>
+              ) : (
+                <div>
+                  {[
+                    ['Opening Stock', br.opening, '#1e3a5f'],
+                    ['+ Received / Issued', br.issued, '#166534'],
+                    ['- Sales (units)', br.salesQty, '#c41e3a'],
+                    ['- Prescription Dispensed', br.dispensedQty, '#6d28d9'],
+                    ['- Transfers Out', br.transferredOut, '#92400e'],
+                    ['- Write-offs', br.writeoffs, '#c41e3a'],
+                    ['+ Returns', br.returns, '#166534'],
+                  ].map(([label, val, color]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>{label}</span>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
+                    <span style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
+                    <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
+                  </div>
+                  <div style={{ padding: '8px 16px', background: '#fafafa', display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                    <span>DP Value: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
+                    <span>Revenue: <strong style={{ color: '#166534' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
+                    <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
+                    <span>Dispensed: <strong style={{ color: '#6d28d9' }}>{br.dispensedQty} units</strong></span>
+                  </div>
+                  {(br.expiredQty > 0 || br.expiringQty > 0 || br.lowStockCount > 0) && (
+                    <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.73rem', color: '#c41e3a', fontWeight: 700, display: 'flex', gap: 12 }}>
+                      {br.expiredQty > 0 && <span>{br.expiredQty} expired</span>}
+                      {br.expiringQty > 0 && <span style={{ color: '#d97706' }}>{br.expiringQty} expiring soon</span>}
+                      {br.lowStockCount > 0 && <span style={{ color: '#d97706' }}>{br.lowStockCount} low stock</span>}
+                    </div>
+                  )}
+                  {br.lastMovement && (
+                    <div style={{ padding: '4px 16px 6px', background: '#f8fafc', fontSize: '0.68rem', color: '#94a3b8' }}>
+                      Last movement: {formatDateTime(br.lastMovement)}
+                    </div>
+                  )}
                 </div>
-                {(br.expiryQty > 0 || br.lowStockCount > 0) && (
-                  <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.73rem', color: '#c41e3a', fontWeight: 700, display: 'flex', gap: 12 }}>
-                    {br.expiryQty > 0 && <span>{br.expiryQty} expiring/expired</span>}
-                    {br.lowStockCount > 0 && <span style={{ color: '#d97706' }}>{br.lowStockCount} low stock</span>}
-                  </div>
-                )}
-                {br.lastMovement && (
-                  <div style={{ padding: '4px 16px 6px', background: '#f8fafc', fontSize: '0.68rem', color: '#94a3b8' }}>
-                    Last movement: {formatDateTime(br.lastMovement)}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           ))}
         </div>

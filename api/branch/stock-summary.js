@@ -34,6 +34,10 @@ export default async function handler(req, res) {
     const smWhere = [];
     if (dateFrom) { smParams.push(dateFrom); smWhere.push(`created_at >= $${smParams.length}::timestamp`); }
     if (dateTo) { smParams.push(dateTo + 'T23:59:59'); smWhere.push(`created_at <= $${smParams.length}::timestamp`); }
+    if (branchFilter) {
+      smParams.push(branchFilter); smParams.push(branchFilter);
+      smWhere.push(`(source_location = $${smParams.length - 1} OR destination_location = $${smParams.length})`);
+    }
     if (smWhere.length) smQuery += ' WHERE ' + smWhere.join(' AND ');
     smQuery += ' ORDER BY created_at DESC';
     const stockMovements = await getMany(smQuery, smParams);
@@ -111,7 +115,7 @@ export default async function handler(req, res) {
         if (exp < now && qty > 0) br.expired_qty += qty;
         else if (exp <= thirtyFwd && qty > 0) br.expiring_qty += qty;
       }
-      if (qty > 0 && qty < 5) br.low_stock_count++;
+      if (qty > 0 && qty < 10) br.low_stock_count++;
     }
 
     const smBranches = new Set();
@@ -139,12 +143,18 @@ export default async function handler(req, res) {
 
       const isBranchLoc = (loc) => loc && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
 
+      const isWarehouseLoc = (loc) => !loc || loc.includes('warehouse') || loc === 'country_stock';
+
       if (isBranchLoc(dst)) {
         const br = ensureBranch(dst);
         smBranches.add(dst);
         br.movements.push(movRecord);
-        if (t === 'transfer_in' || t === 'received' || t === 'receive') {
+        // transfer_in OR transfer_out/dispatched FROM a warehouse TO this branch = stock received
+        if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
+            (t === 'transfer_out' && isWarehouseLoc(src)) ||
+            t === 'dispatched' || t === 'import_received') {
           br.qty_received += q;
+          br.qty_transferred_in += q;
           if (sm.source_location) br.source_warehouse = sm.source_location;
         }
         else if (t === 'sale' || t.includes('sale')) br.qty_sold += q;
@@ -157,7 +167,7 @@ export default async function handler(req, res) {
         const br = ensureBranch(src);
         smBranches.add(src);
         if (!br.movements.includes(movRecord)) br.movements.push(movRecord);
-        if (t === 'transfer_out') br.qty_transferred_out += q;
+        if (t === 'transfer_out' || t === 'dispatched') br.qty_transferred_out += q;
         else if (t === 'write_off') br.qty_written_off += q;
         else if (t === 'sale' || t.includes('sale')) br.qty_sold += q;
         else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
@@ -167,7 +177,8 @@ export default async function handler(req, res) {
     }
 
     for (const agg of bimAgg) {
-      if (smBranches.has(agg.branch_id)) continue;
+      const normBimId = normalizeBranchSlug(agg.branch_id) || norm(agg.branch_id);
+      if (smBranches.has(normBimId) || smBranches.has(agg.branch_id)) continue;
       const br = ensureBranch(agg.branch_id);
       const q = Number(agg.total_qty || 0);
       const t = (agg.type || '').toLowerCase();
