@@ -4982,6 +4982,7 @@ function CountryInventoryTab() {
 function ValuationTab({ branch }) {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('product');
 
   useEffect(() => {
     api.stock.batches()
@@ -4992,88 +4993,235 @@ function ValuationTab({ branch }) {
 
   if (loading) return <LoadingSpinner />;
 
-  const getDP = (productName) => {
-    const prod = getLiveProductList().find(p => p.description === productName);
-    return prod ? prod.dp : 0;
+  const getDP  = name => { const p = getLiveProductList().find(p => p.description === name); return p ? Number(p.dp  || 0) : 0; };
+  const getCIF = name => { const p = getLiveProductList().find(p => p.description === name); return p ? Number(p.cif || 0) : 0; };
+
+  const WAREHOUSES = ['windhoek_warehouse', 'ondangwa_warehouse'];
+
+  const activeBatches = batches.filter(b => {
+    const loc = (b.location || '').toLowerCase();
+    if (loc === 'country_stock') return false;
+    const remaining = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    if (remaining <= 0) return false;
+    const st = (b.status || '').toLowerCase();
+    if (st === 'expired' || st === 'depleted' || st === 'written_off') return false;
+    return true;
+  });
+
+  const scopedBatches = branch === 'all' ? activeBatches
+    : activeBatches.filter(b => {
+        const loc = (b.location || '').toLowerCase().replace(/\s+/g, '_');
+        return loc === branch || loc === branch + '_warehouse';
+      });
+
+  const fmtLoc = loc => {
+    const l = (loc || '').toLowerCase();
+    if (l === 'windhoek_warehouse') return 'Windhoek Warehouse';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa Warehouse';
+    const bd = BRANCH_DETAILS.find(b => b.id === l || b.id === l.replace(/_branch$/, ''));
+    if (bd) return bd.name;
+    return loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
-  const filteredBatches = branch === 'all' ? batches : batches.filter(b => (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch);
+  const computeGroup = batches => {
+    const byLoc = {};
+    batches.forEach(b => {
+      const loc = (b.location || 'unknown').toLowerCase();
+      const qty = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+      const dp  = getDP(b.product_name  || b.description) || Number(b.unit_price || b.dpc_unit_value || 0);
+      const cif = getCIF(b.product_name || b.description) || Number(b.cif_unit_cost || 0);
+      if (!byLoc[loc]) byLoc[loc] = { qty: 0, dpValue: 0, cifValue: 0, isWarehouse: WAREHOUSES.includes(loc) };
+      byLoc[loc].qty      += qty;
+      byLoc[loc].dpValue  += qty * dp;
+      byLoc[loc].cifValue += qty * cif;
+    });
+    return byLoc;
+  };
 
-  const VALUATION_GROUPS = ['Windhoek', 'Ondangwa', 'Branches & Other'];
-  const locationGroups = {};
-  filteredBatches.forEach(b => {
-    const l = (b.location || 'unknown').toLowerCase();
-    const loc = l === 'windhoek_warehouse' ? 'Windhoek' : l === 'ondangwa_warehouse' ? 'Ondangwa' : 'Branches & Other';
-    if (!locationGroups[loc]) locationGroups[loc] = { items: 0, value: 0 };
-    const qty = Number(b.quantity || 0);
-    const dp = getDP(b.product_name) || Number(b.unit_price || 0);
-    locationGroups[loc].items += qty;
-    locationGroups[loc].value += qty * dp;
+  const groups = computeGroup(scopedBatches);
+
+  const warehouses = Object.entries(groups).filter(([, g]) => g.isWarehouse);
+  const branchEntries = Object.entries(groups).filter(([, g]) => !g.isWarehouse);
+
+  const whTotals   = warehouses.reduce((s, [, g]) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
+  const brTotals   = branchEntries.reduce((s, [, g]) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
+  const grandQty   = whTotals.qty + brTotals.qty;
+  const grandDP    = whTotals.dp  + brTotals.dp;
+  const grandCIF   = whTotals.cif + brTotals.cif;
+
+  const productMap = {};
+  scopedBatches.forEach(b => {
+    const name = b.product_name || b.description || 'Unknown';
+    const loc  = (b.location || 'unknown').toLowerCase();
+    const qty  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    const dp   = getDP(name)  || Number(b.unit_price || b.dpc_unit_value || 0);
+    const cif  = getCIF(name) || Number(b.cif_unit_cost || 0);
+    const key  = `${name}||${loc}`;
+    if (!productMap[key]) productMap[key] = { product: name, location: fmtLoc(loc), isWarehouse: WAREHOUSES.includes(loc), qty: 0, dpValue: 0, cifValue: 0, dp, cif };
+    productMap[key].qty      += qty;
+    productMap[key].dpValue  += qty * dp;
+    productMap[key].cifValue += qty * cif;
   });
+  const breakdown = Object.values(productMap).sort((a, b) => b.dpValue - a.dpValue);
 
-  const breakdown = filteredBatches.map(b => {
-    const qty = Number(b.quantity || 0);
-    const dp = getDP(b.product_name) || Number(b.unit_price || 0);
-    return { product_name: b.product_name, location: b.location || 'Unknown', quantity: qty, unit_price: dp, total_value: qty * dp };
-  });
-
-  const grandTotal = breakdown.reduce((s, r) => s + r.total_value, 0);
-  const grandItems = breakdown.reduce((s, r) => s + r.quantity, 0);
-
-  const colors = { Windhoek: 'blue', Ondangwa: 'orange', 'Branches & Other': 'green' };
+  const branchSummary = branchEntries
+    .map(([loc, g]) => ({ name: fmtLoc(loc), qty: g.qty, dpValue: g.dpValue, cifValue: g.cifValue }))
+    .sort((a, b) => b.dpValue - a.dpValue);
 
   return (
     <div className="space-y-6">
+      {/* ── Top summary: warehouses + branches ─────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {VALUATION_GROUPS.map(loc => (
-          <StatCard
-            key={loc}
-            title={`${loc} Stock`}
-            value={formatCurrency((locationGroups[loc] || {}).value || 0)}
-            subtitle={`${((locationGroups[loc] || {}).items || 0).toLocaleString()} items`}
-            color={colors[loc]}
-            icon={<Warehouse size={24} />}
-          />
-        ))}
+        {warehouses.length === 0
+          ? <div style={{ border: '1.5px dashed #e5e7eb', borderRadius: 10, padding: '14px 18px', color: '#9ca3af', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Warehouse size={20} /> No warehouse stock on hand
+            </div>
+          : warehouses.map(([loc, g]) => (
+              <StatCard key={loc}
+                title={fmtLoc(loc)}
+                value={`N$ ${Math.round(g.dpValue).toLocaleString('en-ZA')}`}
+                subtitle={`${g.qty.toLocaleString()} units · CIF N$ ${Math.round(g.cifValue).toLocaleString('en-ZA')}`}
+                color="blue"
+                icon={<Warehouse size={22} />}
+              />
+            ))
+        }
+        <StatCard
+          title="All Branches Combined"
+          value={`N$ ${Math.round(brTotals.dp).toLocaleString('en-ZA')}`}
+          subtitle={`${brTotals.qty.toLocaleString()} units across ${branchEntries.length} location${branchEntries.length !== 1 ? 's' : ''}`}
+          color="green"
+          icon={<Package size={22} />}
+        />
       </div>
 
+      {/* ── Grand total banner ──────────────────────────────────────────────── */}
+      <div style={{ background: 'linear-gradient(135deg,#f0fdf4,#ecfdf5)', border: '1.5px solid #86efac', borderRadius: 12, padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Total Stock Value (DP) — Warehouses + Branches</div>
+          <div className="text-3xl font-bold text-emerald-800">N$ {Math.round(grandDP).toLocaleString('en-ZA')}</div>
+          <div className="text-sm text-emerald-600 mt-1">CIF cost N$ {Math.round(grandCIF).toLocaleString('en-ZA')} · Margin N$ {Math.round(grandDP - grandCIF).toLocaleString('en-ZA')}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Total Units on Hand</div>
+          <div className="text-2xl font-bold text-emerald-800">{grandQty.toLocaleString()}</div>
+          <div className="text-xs text-emerald-500 mt-1">Warehouses: {whTotals.qty.toLocaleString()} · Branches: {brTotals.qty.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* ── Branch-by-branch breakdown ──────────────────────────────────────── */}
+      {branchSummary.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">Branch Stock Values</h3>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr style={{ background: '#fef2f2' }}>
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-700 border-b">Branch</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-700 border-b">Units on Hand</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-700 border-b">CIF Value</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-700 border-b">DP Value</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-700 border-b">Margin</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-700 border-b">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {branchSummary.map((br, i) => (
+                  <tr key={br.name} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td className="px-4 py-2.5 font-medium text-gray-800 border-b">{br.name}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-700 border-b">{br.qty.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-600 border-b">N$ {Math.round(br.cifValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-gray-800 border-b">N$ {Math.round(br.dpValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-700 border-b">N$ {Math.round(br.dpValue - br.cifValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-500 border-b">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="h-1.5 rounded-full" style={{ width: `${grandDP > 0 ? Math.min(100, (br.dpValue/grandDP)*100) : 0}%`, background: '#c41e3a' }} />
+                        </div>
+                        <span>{grandDP > 0 ? ((br.dpValue/grandDP)*100).toFixed(1) : 0}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ background: '#fff7ed', borderTop: '2px solid #fb923c', fontWeight: 700 }}>
+                  <td className="px-4 py-2.5">BRANCH TOTALS</td>
+                  <td className="px-4 py-2.5 text-right">{brTotals.qty.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right">N$ {Math.round(brTotals.cif).toLocaleString('en-ZA')}</td>
+                  <td className="px-4 py-2.5 text-right">N$ {Math.round(brTotals.dp).toLocaleString('en-ZA')}</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-700">N$ {Math.round(brTotals.dp - brTotals.cif).toLocaleString('en-ZA')}</td>
+                  <td className="px-4 py-2.5 text-right">{grandDP > 0 ? ((brTotals.dp/grandDP)*100).toFixed(1) : 0}%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Per-product detail ──────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Stock Valuation Breakdown (DP Prices)</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-bold text-gray-800">Product Valuation Detail</h3>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                {[['product','By Product'],['location','By Location']].map(([v,l]) => (
+                  <button key={v} onClick={() => setViewMode(v)}
+                    className="px-3 py-1.5 font-medium border-none cursor-pointer"
+                    style={{ background: viewMode === v ? '#c41e3a' : '#fff', color: viewMode === v ? '#fff' : '#374151' }}>{l}</button>
+                ))}
+              </div>
+            </div>
             <Button size="sm" variant="secondary" onClick={() => {
-              const rows = breakdown.map(r => `<tr><td>${r.product_name||''}</td><td>${r.location||''}</td><td>${r.quantity||0}</td><td>${formatCurrency(r.unit_price||0)}</td><td>${formatCurrency(r.total_value||0)}</td></tr>`).join('');
-              const total = `<tr style="font-weight:bold;background:#f0fdf4"><td colspan="4">Grand Total</td><td>${formatCurrency(grandTotal)}</td></tr>`;
-              printDocument('Stock Valuation Report (DP Prices)', `<table><thead><tr><th>Product</th><th>Location</th><th>Qty</th><th>Unit Price (DP)</th><th>Total Value</th></tr></thead><tbody>${rows}${total}</tbody></table>`, true);
+              const rows = breakdown.map(r => `<tr><td>${r.product}</td><td>${r.location}</td><td style="text-align:right">${r.qty}</td><td style="text-align:right">N$ ${Math.round(r.cif).toLocaleString()}</td><td style="text-align:right">N$ ${Math.round(r.dpValue).toLocaleString()}</td><td style="text-align:right">N$ ${Math.round(r.dpValue-r.cifValue).toLocaleString()}</td></tr>`).join('');
+              const total = `<tr style="font-weight:800;background:#f0fdf4"><td colspan="2">GRAND TOTAL</td><td style="text-align:right">${grandQty.toLocaleString()}</td><td style="text-align:right">N$ ${Math.round(grandCIF).toLocaleString()}</td><td style="text-align:right">N$ ${Math.round(grandDP).toLocaleString()}</td><td style="text-align:right">N$ ${Math.round(grandDP-grandCIF).toLocaleString()}</td></tr>`;
+              printDocument('Stock Valuation Report', `<table><thead><tr><th>Product</th><th>Location</th><th style="text-align:right">Qty</th><th style="text-align:right">CIF Value</th><th style="text-align:right">DP Value</th><th style="text-align:right">Margin</th></tr></thead><tbody>${rows}${total}</tbody></table>`, true);
             }}><Printer size={14} /> Print Report</Button>
           </div>
         </CardHeader>
-        <Table
-          columns={[
-            { header: 'Product', key: 'product_name' },
-            { header: 'Location', key: 'location' },
-            { header: 'Quantity', key: 'quantity' },
-            { header: 'Unit Price (DP)', render: r => formatCurrency(r.unit_price) },
-            { header: 'Total Value', render: r => formatCurrency(r.total_value) },
-          ]}
-          data={breakdown}
-          emptyMessage="No stock data for valuation"
-        />
-      </Card>
-
-      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
-        <CardBody>
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-emerald-600 font-medium">Grand Total Stock Value</p>
-              <p className="text-3xl font-bold text-emerald-800">{formatCurrency(grandTotal)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-emerald-600">Total Items</p>
-              <p className="text-2xl font-bold text-emerald-800">{grandItems.toLocaleString()}</p>
-            </div>
-          </div>
-        </CardBody>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr style={{ background: '#c41e3a' }}>
+                {['Product','Location','Qty on Hand','Unit CIF','Unit DP','Total CIF','Total DP (Value)','Margin'].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-white text-xs font-bold uppercase tracking-wide"
+                    style={{ textAlign: ['Qty on Hand','Unit CIF','Unit DP','Total CIF','Total DP (Value)','Margin'].includes(h) ? 'right' : 'left' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {breakdown.length === 0
+                ? <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No active stock in warehouses or branches</td></tr>
+                : breakdown.map((r, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td className="px-3 py-2.5 font-medium text-gray-800 border-b max-w-[180px]" title={r.product}>
+                      <div className="truncate">{r.product}</div>
+                      {r.isWarehouse && <div className="text-xs text-blue-500 font-normal mt-0.5">warehouse</div>}
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-600 border-b text-xs">{r.location}</td>
+                    <td className="px-3 py-2.5 text-right font-bold text-gray-800 border-b">{r.qty.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.cif > 0 ? `N$ ${r.cif.toLocaleString('en-ZA', {minimumFractionDigits:0,maximumFractionDigits:0})}` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.dp > 0 ? `N$ ${r.dp.toLocaleString('en-ZA', {minimumFractionDigits:0,maximumFractionDigits:0})}` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-600 border-b">{r.cifValue > 0 ? `N$ ${Math.round(r.cifValue).toLocaleString('en-ZA')}` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold border-b" style={{ color: '#c41e3a' }}>N$ {Math.round(r.dpValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-3 py-2.5 text-right text-emerald-700 border-b">N$ {Math.round(r.dpValue - r.cifValue).toLocaleString('en-ZA')}</td>
+                  </tr>
+                ))
+              }
+              {breakdown.length > 0 && (
+                <tr style={{ background: '#fff0f3', borderTop: '2px solid #c41e3a', fontWeight: 800 }}>
+                  <td className="px-3 py-3" colSpan={2}>GRAND TOTAL</td>
+                  <td className="px-3 py-3 text-right">{grandQty.toLocaleString()}</td>
+                  <td colSpan={2}></td>
+                  <td className="px-3 py-3 text-right">N$ {Math.round(grandCIF).toLocaleString('en-ZA')}</td>
+                  <td className="px-3 py-3 text-right" style={{ color: '#c41e3a' }}>N$ {Math.round(grandDP).toLocaleString('en-ZA')}</td>
+                  <td className="px-3 py-3 text-right text-emerald-700">N$ {Math.round(grandDP - grandCIF).toLocaleString('en-ZA')}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </div>
   );
