@@ -995,6 +995,31 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
   }
 });
 
+app.get('/api/branch/inventory-movements', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const limit = Math.min(parseInt(req.query.limit || '500'), 2000);
+    const from = req.query.from || null;
+    const to = req.query.to || null;
+    const params = [limit];
+    let dateFilter = '';
+    if (from) { params.push(from); dateFilter += ` AND created_at >= $${params.length}::date`; }
+    if (to)   { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}::timestamp`; }
+    const rows = await getMany(
+      `SELECT id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at
+       FROM branch_inventory_movements
+       WHERE 1=1 ${dateFilter}
+       ORDER BY created_at DESC LIMIT $1`,
+      params
+    );
+    const fmt = d => d ? (d instanceof Date ? d.toISOString() : String(d)) : null;
+    res.json(rows.map(r => ({ ...r, quantity: Number(r.quantity || 0), created_at: fmt(r.created_at) })));
+  } catch (err) {
+    console.error('[branch/inventory-movements]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/stock/branch/:branchId/movements', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
