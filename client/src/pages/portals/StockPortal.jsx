@@ -6035,133 +6035,415 @@ function SmartReorderTab({ branch }) {
 }
 
 function BatchTab({ branch }) {
-  const [apiBatches, setApiBatches] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [alert, setAlert] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [form, setForm] = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: branch && branch !== 'all' ? branch : 'country_stock' });
+  const [rawBatches, setRawBatches]   = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [search, setSearch]           = useState('');
+  const [locFilter, setLocFilter]     = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [viewMode, setViewMode]       = useState('batch');
+  const [detail, setDetail]           = useState(null);
+  const [showForm, setShowForm]       = useState(false);
+  const [alert, setAlert]             = useState(null);
+  const [form, setForm]               = useState({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: branch && branch !== 'all' ? branch : 'country_stock' });
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api.stock.batches()
-      .then(d => setApiBatches(Array.isArray(d) ? d : d.batches || []))
+      .then(d => setRawBatches(Array.isArray(d) ? d : d.batches || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmtLoc = loc => {
+    const l = (loc || '').toLowerCase();
+    if (l === 'country_stock')       return 'Country Stock';
+    if (l === 'windhoek_warehouse')  return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse')  return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l || b.id === l.replace(/_branch$/, ''));
+    return bd ? bd.name : (loc||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  };
+  const locType = loc => {
+    const l = (loc||'').toLowerCase();
+    if (l === 'country_stock') return 'country';
+    if (l.includes('warehouse')) return 'warehouse';
+    return 'branch';
+  };
+  const locColor = loc => { const t = locType(loc); return t === 'country' ? '#6b7280' : t === 'warehouse' ? '#2563eb' : '#c41e3a'; };
+  const locBg    = loc => { const t = locType(loc); return t === 'country' ? '#f3f4f6' : t === 'warehouse' ? '#eff6ff' : '#fff0f3'; };
+  const daysLeft = d => { if (!d) return null; return Math.ceil((new Date(d) - Date.now()) / 86400000); };
+  const expiryBadge = days => {
+    if (days === null) return { label: 'No expiry', color: '#94a3b8', bg: '#f8fafc' };
+    if (days <= 0)  return { label: 'EXPIRED',   color: '#dc2626', bg: '#fef2f2' };
+    if (days <= 30) return { label: '< 30 days', color: '#dc2626', bg: '#fef2f2' };
+    if (days <= 90) return { label: '< 90 days', color: '#d97706', bg: '#fffbeb' };
+    return { label: 'Good', color: '#16a34a', bg: '#f0fdf4' };
+  };
+  const fmtDate = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '—'; } catch { return d||'—'; } };
+  const getCIF = name => getCIFPrice(name) || 0;
+  const getDP  = name => { const p = getLiveProductList().find(p => p.description === name); return Number(p?.dp || 0); };
+
+  const allBatches = rawBatches.map(b => ({
+    id:           b.id,
+    batch_no:     b.batch_no || b.batch_number || `B-${b.id}`,
+    product_name: b.product_name || b.description || '—',
+    original_qty: Number(b.quantity || 0),
+    remaining:    Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0),
+    consumed:     Math.max(0, Number(b.quantity||0) - Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0)),
+    expiry_date:  b.expiry_date || null,
+    location:     b.location || 'unknown',
+    status:       (b.status || 'active').toLowerCase(),
+    barcode:      b.barcode || null,
+    cif:          Number(b.unit_price || b.cif_unit_cost || getCIF(b.product_name) || 0),
+    dp:           Number(b.dpc_unit_value || getDP(b.product_name) || 0),
+    created_at:   b.created_at,
+  }));
+
+  const branchFiltered = branch === 'all'
+    ? allBatches
+    : allBatches.filter(b => (b.location||'').toLowerCase().replace(/\s+/g,'_') === branch);
+
+  const statusFiltered = branchFiltered.filter(b => {
+    if (statusFilter === 'active')   return b.status !== 'depleted' && b.status !== 'written_off' && b.remaining > 0 && (daysLeft(b.expiry_date) === null || daysLeft(b.expiry_date) > 0);
+    if (statusFilter === 'expired')  return daysLeft(b.expiry_date) !== null && daysLeft(b.expiry_date) <= 0;
+    if (statusFilter === 'depleted') return b.remaining <= 0 || b.status === 'depleted';
+    if (statusFilter === 'expiring') { const d = daysLeft(b.expiry_date); return d !== null && d > 0 && d <= 90; }
+    return true;
+  });
+
+  const locFiltered = locFilter === 'all'
+    ? statusFiltered
+    : statusFiltered.filter(b => (b.location||'').toLowerCase() === locFilter);
+
+  const filtered = !search ? locFiltered : locFiltered.filter(b =>
+    b.product_name.toLowerCase().includes(search.toLowerCase()) ||
+    b.batch_no.toLowerCase().includes(search.toLowerCase()) ||
+    (b.barcode||'').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const locSummary = {};
+  statusFiltered.forEach(b => {
+    const l = (b.location||'unknown').toLowerCase();
+    if (!locSummary[l]) locSummary[l] = { loc: b.location, batches: 0, remaining: 0, cifValue: 0 };
+    locSummary[l].batches++;
+    locSummary[l].remaining += b.remaining;
+    locSummary[l].cifValue  += b.remaining * b.cif;
+  });
+  const sortedLocs = Object.entries(locSummary).sort(([a], [b]) => {
+    const order = { country_stock: 0, windhoek_warehouse: 1, ondangwa_warehouse: 2 };
+    return (order[a] ?? 10) - (order[b] ?? 10);
+  });
+
+  const productMap = {};
+  filtered.forEach(b => {
+    if (!productMap[b.product_name]) productMap[b.product_name] = { name: b.product_name, batches: [], totalRemaining: 0, locations: {} };
+    productMap[b.product_name].batches.push(b);
+    productMap[b.product_name].totalRemaining += b.remaining;
+    const lk = (b.location||'').toLowerCase();
+    productMap[b.product_name].locations[lk] = (productMap[b.product_name].locations[lk] || 0) + b.remaining;
+  });
+  const productRows = Object.values(productMap).sort((a,b) => b.totalRemaining - a.totalRemaining);
+
+  const totalBatches   = statusFiltered.length;
+  const totalRemaining = statusFiltered.reduce((s,b) => s + b.remaining, 0);
+  const expiredCount   = statusFiltered.filter(b => daysLeft(b.expiry_date) !== null && daysLeft(b.expiry_date) <= 0).length;
+  const expiringCount  = statusFiltered.filter(b => { const d = daysLeft(b.expiry_date); return d !== null && d > 0 && d <= 90; }).length;
+  const totalCIF       = statusFiltered.reduce((s,b) => s + b.remaining * b.cif, 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.product_name || !form.quantity) {
-      setAlert({ type: 'error', msg: 'Product and quantity are required' });
-      return;
-    }
+    if (!form.product_name || !form.quantity) { setAlert({ type:'error', msg:'Product and quantity are required' }); return; }
     try {
       await api.stock.createBatch({
-        product_name: form.product_name,
-        quantity: Number(form.quantity),
-        batch_number: `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(apiBatches.length + 1).padStart(3, '0')}`,
-        expiry_date: form.expiry_date || null,
-        unit_price: getCIFPrice(form.product_name),
-        location: form.location,
+        product_name:  form.product_name,
+        quantity:      Number(form.quantity),
+        batch_number:  `BATCH-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(rawBatches.length+1).padStart(3,'0')}`,
+        expiry_date:   form.expiry_date || null,
+        unit_price:    getCIF(form.product_name),
+        location:      form.location,
       });
-      setAlert({ type: 'success', msg: 'Batch created and saved' });
-      setForm({ product_name: '', quantity: '', manufacture_date: '', expiry_date: '', location: branch && branch !== 'all' ? branch : 'country_stock' });
+      setAlert({ type:'success', msg:'Batch created and saved' });
+      setForm({ product_name:'', quantity:'', manufacture_date:'', expiry_date:'', location: branch && branch !== 'all' ? branch : 'country_stock' });
       setShowForm(false);
-      const d = await api.stock.batches().catch(() => []);
-      setApiBatches(Array.isArray(d) ? d : d.batches || []);
-    } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
-    }
-  };
-
-  const getDaysUntilExpiry = (expiryDate) => {
-    if (!expiryDate) return null;
-    const diff = new Date(expiryDate) - new Date();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
-
-  const getExpiryStatus = (days) => {
-    if (days === null) return { label: 'N/A', variant: 'default' };
-    if (days <= 0) return { label: 'Expired', variant: 'danger' };
-    if (days <= 30) return { label: 'Expiring Soon', variant: 'warning' };
-    return { label: 'OK', variant: 'success' };
+      load();
+    } catch (err) { setAlert({ type:'error', msg: err.message }); }
   };
 
   if (loading) return <LoadingSpinner />;
 
-  const allBatches = apiBatches
-    .filter(b => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch)
-    .filter(b => !searchTerm || (b.product_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
-    .map(b => ({
-      batch_number: b.batch_number || b.barcode || '-',
-      product_name: b.product_name,
-      quantity: b.quantity,
-      expiry_date: b.expiry_date,
-      location: b.location || '-',
-    }));
-
   return (
-    <div className="space-y-6">
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">
-              Batch Tracking
-              {branch !== 'all' && <span className="text-xs font-normal text-gray-400 ml-2">— {fmtLocation(branch)}</span>}
-            </h3>
-            <div className="flex gap-2 flex-wrap">
-              <div className="relative">
-                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input className="pl-7 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary"
-                  placeholder="Search product..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-              </div>
-              <Button size="sm" variant="secondary" onClick={() => {
-                const rows = allBatches.map(r => `<tr><td>${r.batch_number||''}</td><td>${r.product_name||''}</td><td>${r.quantity||0}</td><td>${r.expiry_date?formatDate(r.expiry_date):'-'}</td><td>${r.location||''}</td></tr>`).join('');
-                printDocument('Batch Tracking Report', `<table><thead><tr><th>Batch #</th><th>Product</th><th>Qty</th><th>Expiry</th><th>Location</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }}><Printer size={14} /> Print</Button>
-              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Batch</Button>
-            </div>
+    <div className="space-y-4">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'Total Batches',    value: totalBatches,                                  color: '#374151', bg: '#f8fafc',  border: '#e2e8f0' },
+          { label: 'Total Units',      value: totalRemaining.toLocaleString(),                color: '#1d4ed8', bg: '#eff6ff',  border: '#bfdbfe' },
+          { label: 'Expired Batches',  value: expiredCount,                                   color: expiredCount  > 0 ? '#dc2626' : '#374151', bg: expiredCount  > 0 ? '#fef2f2' : '#f8fafc', border: expiredCount  > 0 ? '#fecaca' : '#e2e8f0' },
+          { label: '< 90 Days Expiry', value: expiringCount,                                  color: expiringCount > 0 ? '#d97706' : '#374151', bg: expiringCount > 0 ? '#fffbeb' : '#f8fafc', border: expiringCount > 0 ? '#fde68a' : '#e2e8f0' },
+          { label: 'CIF Value (N$)',   value: `${Math.round(totalCIF).toLocaleString('en-ZA')}`, color: '#16a34a', bg: '#f0fdf4',  border: '#86efac' },
+        ].map(s => (
+          <div key={s.label} style={{ borderRadius: 10, padding: '11px 14px', background: s.bg, border: `1.5px solid ${s.border}` }}>
+            <div style={{ fontSize: '1.45rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 700, marginTop: 2 }}>{s.label}</div>
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Batch #', render: r => <span className="font-mono text-xs font-bold">{r.batch_number}</span> },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Qty', render: r => <span className={Number(r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.quantity}</span> },
-            { header: 'Expiry Date', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
-            { header: 'Location', render: r => <span className="text-xs">{fmtLocation(r.location)}</span> },
-            { header: 'Days Left', render: r => { const d = getDaysUntilExpiry(r.expiry_date); return d !== null ? d : '-'; } },
-            { header: 'Status', render: r => { const s = getExpiryStatus(getDaysUntilExpiry(r.expiry_date)); return <Badge variant={s.variant}>{s.label}</Badge>; } },
-          ]}
-          data={allBatches}
-          emptyMessage={branch !== 'all' ? `No batches at ${fmtLocation(branch)}` : 'No batches tracked'}
-        />
+        ))}
+      </div>
+
+      {/* Location cards */}
+      <div>
+        <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Stock by Location — click to filter</div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setLocFilter('all')}
+            style={{ padding: '6px 14px', borderRadius: 99, border: `2px solid ${locFilter === 'all' ? '#c41e3a' : '#e2e8f0'}`, background: locFilter === 'all' ? '#fff0f3' : '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', color: locFilter === 'all' ? '#c41e3a' : '#374151' }}>
+            All Locations
+          </button>
+          {sortedLocs.map(([lk, s]) => (
+            <button key={lk} onClick={() => setLocFilter(locFilter === lk ? 'all' : lk)}
+              style={{ padding: '6px 14px', borderRadius: 99, border: `2px solid ${locFilter === lk ? locColor(lk) : '#e2e8f0'}`, background: locFilter === lk ? locBg(lk) : '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', color: locFilter === lk ? locColor(lk) : '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: locColor(lk), display: 'inline-block' }} />
+              {fmtLoc(lk)}
+              <span style={{ fontWeight: 900, color: locColor(lk) }}>{s.remaining.toLocaleString()}</span>
+              <span style={{ fontSize: '0.63rem', color: '#94a3b8', fontWeight: 400 }}>units · {s.batches} batches</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary"
+                placeholder="Search product, batch #, barcode…" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <select className="px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:border-primary"
+              value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <option value="active">Active batches</option>
+              <option value="expiring">Expiring &lt; 90d</option>
+              <option value="expired">Expired</option>
+              <option value="depleted">Depleted</option>
+              <option value="all">All batches</option>
+            </select>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+              {[['batch','By Batch'],['product','By Product']].map(([v,l]) => (
+                <button key={v} onClick={() => setViewMode(v)}
+                  style={{ padding: '6px 14px', fontWeight: 700, background: viewMode === v ? '#c41e3a' : '#fff', color: viewMode === v ? '#fff' : '#374151', border: 'none', cursor: 'pointer' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" variant="secondary" onClick={load}>↺ Refresh</Button>
+            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={14} /> New Batch</Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              if (viewMode === 'batch') {
+                const rows = filtered.map(r => `<tr><td>${r.batch_no}</td><td>${r.product_name}</td><td>${fmtLoc(r.location)}</td><td>${r.remaining}</td><td>${r.consumed}</td><td>${r.original_qty}</td><td>${fmtDate(r.expiry_date)}</td><td>N$ ${Math.round(r.remaining*r.cif).toLocaleString()}</td></tr>`).join('');
+                printDocument('Batch Location Tracking', `<table><thead><tr><th>Batch #</th><th>Product</th><th>Location</th><th>Remaining</th><th>Consumed</th><th>Original</th><th>Expiry</th><th>CIF Value</th></tr></thead><tbody>${rows}</tbody></table>`);
+              } else {
+                const rows = productRows.map(r => `<tr><td>${r.name}</td><td>${r.totalRemaining}</td><td>${Object.entries(r.locations).map(([l,q])=>fmtLoc(l)+': '+q).join(' | ')}</td></tr>`).join('');
+                printDocument('Product Location Distribution', `<table><thead><tr><th>Product</th><th>Total Remaining</th><th>Locations</th></tr></thead><tbody>${rows}</tbody></table>`);
+              }
+            }}><Printer size={14} /> Print</Button>
+          </div>
+        </CardBody>
       </Card>
 
+      {/* Batch Detail Modal */}
+      {detail && (
+        <Modal open={!!detail} onClose={() => setDetail(null)} title={`Batch Detail — ${detail.batch_no}`} size="md">
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {[
+                ['Batch #',           detail.batch_no],
+                ['Product',           detail.product_name],
+                ['Current Location',  fmtLoc(detail.location)],
+                ['Status',            detail.status],
+                ['Original Qty',      detail.original_qty.toLocaleString()],
+                ['Remaining Qty',     detail.remaining.toLocaleString()],
+                ['Consumed',          detail.consumed.toLocaleString()],
+                ['Utilisation',       detail.original_qty > 0 ? `${Math.round(detail.consumed/detail.original_qty*100)}%` : '—'],
+                ['CIF Unit',          detail.cif > 0 ? `N$ ${detail.cif.toFixed(2)}` : '—'],
+                ['DP Unit',           detail.dp  > 0 ? `N$ ${detail.dp.toFixed(2)}`  : '—'],
+                ['CIF Value (rem)',   detail.cif > 0 ? `N$ ${Math.round(detail.remaining*detail.cif).toLocaleString('en-ZA')}` : '—'],
+                ['Barcode',           detail.barcode || 'Not assigned'],
+                ['Expiry Date',       fmtDate(detail.expiry_date)],
+                ['Days to Expiry',    daysLeft(detail.expiry_date) !== null ? `${daysLeft(detail.expiry_date)} days` : '—'],
+                ['Imported',          fmtDate(detail.created_at)],
+              ].map(([k, v]) => (
+                <div key={k} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>{k}</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b', marginTop: 1 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {detail.original_qty > 0 && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Remaining: {detail.remaining} / {detail.original_qty}</span>
+                  <span>{Math.round(detail.remaining/detail.original_qty*100)}% left</span>
+                </div>
+                <div style={{ height: 8, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.max(1,Math.round(detail.remaining/detail.original_qty*100))}%`, background: detail.remaining/detail.original_qty < 0.15 ? '#dc2626' : detail.remaining/detail.original_qty < 0.35 ? '#d97706' : '#16a34a', borderRadius: 99 }} />
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Main table */}
+      {viewMode === 'batch' ? (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">
+                Batch Location Tracker
+                <span className="text-xs font-normal text-gray-400 ml-2">({filtered.length} batch{filtered.length !== 1 ? 'es' : ''})</span>
+              </h3>
+              <div className="text-xs text-gray-400">Click any row to view full detail</div>
+            </div>
+          </CardHeader>
+          {filtered.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={40} />} title="No batches found" description="Adjust the location or status filter above" /></CardBody>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                    {['Batch #','Product','Current Location','Original','Remaining','Consumed','Utilisation','CIF Value','Expiry','Status'].map(h => (
+                      <th key={h} style={{ padding: '9px 11px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.71rem', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((b, i) => {
+                    const days = daysLeft(b.expiry_date);
+                    const eb   = expiryBadge(days);
+                    const pct  = b.original_qty > 0 ? Math.round(b.remaining / b.original_qty * 100) : 0;
+                    const cifVal = b.remaining * b.cif;
+                    return (
+                      <tr key={b.id || i} onClick={() => setDetail(b)}
+                        style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom:'1px solid #f1f5f9', cursor:'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#fef2f2'}
+                        onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#f9fafb'}>
+                        <td style={{ padding:'9px 11px', fontFamily:'monospace', fontSize:'0.73rem', fontWeight:700, color:'#6b21a8', whiteSpace:'nowrap' }}>{b.batch_no}</td>
+                        <td style={{ padding:'9px 11px', fontWeight:700, color:'#1e293b', maxWidth:180 }}>
+                          <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={b.product_name}>{b.product_name}</div>
+                        </td>
+                        <td style={{ padding:'9px 11px' }}>
+                          <span style={{ background:locBg(b.location), color:locColor(b.location), borderRadius:99, padding:'3px 9px', fontWeight:800, fontSize:'0.7rem', whiteSpace:'nowrap', border:`1px solid ${locColor(b.location)}30` }}>
+                            <span style={{ width:6, height:6, borderRadius:'50%', background:locColor(b.location), display:'inline-block', marginRight:4, verticalAlign:'middle' }} />
+                            {fmtLoc(b.location)}
+                          </span>
+                        </td>
+                        <td style={{ padding:'9px 11px', color:'#94a3b8' }}>{b.original_qty.toLocaleString()}</td>
+                        <td style={{ padding:'9px 11px', fontWeight:900, color: b.remaining <= 0 ? '#dc2626' : b.remaining < 10 ? '#d97706' : '#16a34a' }}>{b.remaining.toLocaleString()}</td>
+                        <td style={{ padding:'9px 11px', color:'#94a3b8' }}>{b.consumed.toLocaleString()}</td>
+                        <td style={{ padding:'9px 11px', minWidth:90 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                            <div style={{ flex:1, height:6, background:'#f1f5f9', borderRadius:99, overflow:'hidden' }}>
+                              <div style={{ height:'100%', width:`${pct}%`, background: pct<15?'#dc2626':pct<35?'#d97706':'#16a34a', borderRadius:99 }} />
+                            </div>
+                            <span style={{ fontSize:'0.68rem', color:'#64748b', fontWeight:700, minWidth:28, textAlign:'right' }}>{pct}%</span>
+                          </div>
+                        </td>
+                        <td style={{ padding:'9px 11px', fontWeight:700, color:'#374151' }}>{cifVal > 0 ? `N$ ${Math.round(cifVal).toLocaleString('en-ZA')}` : '—'}</td>
+                        <td style={{ padding:'9px 11px', whiteSpace:'nowrap', fontWeight: days !== null && days <= 30 ? 700 : 400, color: days !== null && days <= 30 ? '#dc2626' : '#374151' }}>
+                          {fmtDate(b.expiry_date)}
+                          {days !== null && days > 0 && days <= 30 && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
+                        </td>
+                        <td style={{ padding:'9px 11px' }}>
+                          <span style={{ background:eb.bg, color:eb.color, borderRadius:99, padding:'2px 8px', fontSize:'0.69rem', fontWeight:800, whiteSpace:'nowrap' }}>{eb.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <h3 className="font-bold text-gray-800">
+              Product Location Distribution
+              <span className="text-xs font-normal text-gray-400 ml-2">({productRows.length} product{productRows.length !== 1 ? 's' : ''})</span>
+            </h3>
+          </CardHeader>
+          {productRows.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={40} />} title="No products found" description="Adjust filters above" /></CardBody>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                    {['Product','Total Remaining','Location Breakdown','Batches','Earliest Expiry','Total CIF Value'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.71rem', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {productRows.map((p, i) => {
+                    const earliest = p.batches.filter(b=>b.expiry_date).sort((a,b)=>new Date(a.expiry_date)-new Date(b.expiry_date))[0];
+                    const totalCIF = p.batches.reduce((s,b) => s + b.remaining * b.cif, 0);
+                    const days = earliest ? daysLeft(earliest.expiry_date) : null;
+                    return (
+                      <tr key={p.name} style={{ background: i%2===0?'#fff':'#f9fafb', borderBottom:'1px solid #f1f5f9' }}>
+                        <td style={{ padding:'10px 12px', fontWeight:800, color:'#1e293b', maxWidth:200 }}>
+                          <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={p.name}>{p.name}</div>
+                        </td>
+                        <td style={{ padding:'10px 12px', fontWeight:900, color:'#1d4ed8', fontSize:'0.9rem' }}>{p.totalRemaining.toLocaleString()}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                            {Object.entries(p.locations).sort(([,a],[,b])=>b-a).map(([lk, qty]) => (
+                              <span key={lk} style={{ background:locBg(lk), color:locColor(lk), border:`1px solid ${locColor(lk)}30`, borderRadius:99, padding:'2px 8px', fontSize:'0.69rem', fontWeight:800, whiteSpace:'nowrap' }}>
+                                <span style={{ width:5, height:5, borderRadius:'50%', background:locColor(lk), display:'inline-block', marginRight:3, verticalAlign:'middle' }} />
+                                {fmtLoc(lk)} · {qty.toLocaleString()}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ padding:'10px 12px', color:'#64748b' }}>{p.batches.length}</td>
+                        <td style={{ padding:'10px 12px', whiteSpace:'nowrap', fontWeight: days !== null && days <= 30 ? 700 : 400, color: days !== null && days <= 30 ? '#dc2626' : '#374151' }}>
+                          {earliest ? fmtDate(earliest.expiry_date) : '—'}
+                          {days !== null && days > 0 && days <= 30 && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
+                          {days !== null && days <= 0 && <div style={{ fontSize:'0.65rem', color:'#dc2626', fontWeight:800 }}>EXPIRED</div>}
+                        </td>
+                        <td style={{ padding:'10px 12px', fontWeight:700, color:'#374151' }}>{totalCIF > 0 ? `N$ ${Math.round(totalCIF).toLocaleString('en-ZA')}` : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* New Batch Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="New Batch" size="md">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Product</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-              value={form.product_name}
-              onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
-              required
-            >
-              <option value="">Select product...</option>
+            <select className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
+              value={form.product_name} onChange={e => setForm(f=>({...f,product_name:e.target.value}))} required>
+              <option value="">Select product…</option>
               {getLiveProductList().map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
             </select>
           </div>
-          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required />
-          <Input label="Manufacture Date" type="date" value={form.manufacture_date} onChange={e => setForm(f => ({ ...f, manufacture_date: e.target.value }))} />
-          <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+          <Input label="Quantity" type="number" min="1" value={form.quantity} onChange={e => setForm(f=>({...f,quantity:e.target.value}))} required />
+          <Input label="Manufacture Date" type="date" value={form.manufacture_date} onChange={e => setForm(f=>({...f,manufacture_date:e.target.value}))} />
+          <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f=>({...f,expiry_date:e.target.value}))} />
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Location</label>
             <select className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary"
-              value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}>
+              value={form.location} onChange={e => setForm(f=>({...f,location:e.target.value}))}>
+              <optgroup label="Staging"><option value="country_stock">Country Stock (Staging)</option></optgroup>
               <optgroup label="Warehouses">
-                <option value="country_stock">Country Stock (Main)</option>
                 <option value="windhoek_warehouse">Windhoek Warehouse</option>
                 <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
               </optgroup>
