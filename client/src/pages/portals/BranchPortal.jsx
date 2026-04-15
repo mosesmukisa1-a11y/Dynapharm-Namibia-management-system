@@ -8317,6 +8317,7 @@ function BranchCampaignsTab() {
   const [alertMsg, setAlertMsg] = useState(null);
   const [saleModal, setSaleModal] = useState(null);
   const [inventory, setInventory] = useState([]);
+  const [prices, setPrices] = useState([]);
   const [saleForm, setSaleForm] = useState({ paid_product: '', paid_qty: 1, free_product: '', free_qty: 1, notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('active');
@@ -8420,6 +8421,9 @@ function BranchCampaignsTab() {
     setAlertMsg(null);
     api.stock.branchInventory(`branch=${encodeURIComponent(effectiveBranch)}`).then(d => {
       setInventory(Array.isArray(d) ? d : (d.inventory || []));
+    }).catch(() => {});
+    api.get('/prices').then(d => {
+      setPrices(Array.isArray(d) ? d : (d.prices || d.products || []));
     }).catch(() => {});
   };
 
@@ -8826,6 +8830,44 @@ function BranchCampaignsTab() {
                       </div>
                     </div>
                   </>
+                );
+              })()}
+              {/* ── Price Preview ─────────────────────────────────────────────── */}
+              {(() => {
+                const prodName = (saleForm.paid_product || '').trim().toLowerCase();
+                const row = prices.find(p =>
+                  (p.description || p.name || '').toLowerCase() === prodName
+                );
+                if (!row) return null;
+                const dp  = parseFloat(row.dp)  || 0;
+                const cp  = parseFloat(row.cp)  || 0;
+                const bv  = parseFloat(row.bv)  || 0;
+                const qty = parseInt(saleForm.paid_qty, 10) || 1;
+                const isMem = campMemberType === 'member';
+                const unitPrice   = isMem ? dp : cp;
+                const lineTotal   = Math.round(unitPrice * qty * 100) / 100;
+                const lineBv      = isMem ? Math.round(bv * qty * 100) / 100 : 0;
+                const profit      = isMem ? 0 : Math.round((cp - dp) * qty * 100) / 100;
+                return (
+                  <div style={{ background: isMem ? '#eff6ff' : '#fefce8', border: `1px solid ${isMem ? '#bfdbfe' : '#fde68a'}`, borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 700, color: isMem ? '#1d4ed8' : '#92400e', marginBottom: 6 }}>
+                      {isMem ? '🔵 Member Price Breakdown' : '🟡 Non-Member Price Breakdown'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 18px', color: '#374151' }}>
+                      <span>Unit price ({isMem ? 'DP' : 'CP'}):</span>
+                      <span style={{ fontWeight: 600 }}>N$ {unitPrice.toFixed(2)}</span>
+                      {isMem && <><span>BV per unit:</span><span style={{ fontWeight: 600 }}>{bv.toFixed(2)} pts</span></>}
+                      <span>Qty:</span><span style={{ fontWeight: 600 }}>{qty}</span>
+                      <span style={{ borderTop: '1px dashed #d1d5db', paddingTop: 4 }}>Total:</span>
+                      <span style={{ fontWeight: 700, color: '#15803d', borderTop: '1px dashed #d1d5db', paddingTop: 4 }}>N$ {lineTotal.toFixed(2)}</span>
+                      {isMem && (
+                        <><span>Total BV:</span><span style={{ fontWeight: 700, color: '#1d4ed8' }}>{lineBv.toFixed(2)} pts</span></>
+                      )}
+                      {!isMem && profit > 0 && (
+                        <><span>Branch profit:</span><span style={{ fontWeight: 700, color: '#b45309' }}>N$ {profit.toFixed(2)}</span></>
+                      )}
+                    </div>
+                  </div>
                 );
               })()}
               <div>

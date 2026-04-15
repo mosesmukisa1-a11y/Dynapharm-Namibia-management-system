@@ -1,5 +1,5 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
-import { getOne, getMany, withTransaction } from '../db.js';
+import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 async function parseJsonBody(req) {
@@ -287,36 +287,49 @@ export default async function handler(req, res) {
         free_qty = free_product ? Number(body.free_qty || 1) : 0;
       }
 
-      // Look up DP and BV from product_prices for the paid product
-      const livePrices = await getMany(`SELECT description, dp, bv FROM product_prices`);
+      // ── Pricing: member = DP price + BV; non-member = CP price, no BV ────────
+      const livePrices = await getMany(`SELECT description, dp, cp, bv FROM product_prices`);
       const matchPrice = (name) => livePrices.find(p =>
         p.description && name && p.description.trim().toLowerCase() === name.trim().toLowerCase()
       );
 
-      const paidPrice = matchPrice(paid_product);
-      const paidDp    = Number(paidPrice?.dp || 0);
-      const paidBv    = Number(paidPrice?.bv || 0);
-      const paidTotal = Math.round(paidDp * paid_qty * 100) / 100;
-      const paidBvTotal = Math.round(paidBv * paid_qty * 100) / 100;
+      const paidPrice  = matchPrice(paid_product);
+      const paidDp     = Number(paidPrice?.dp || 0);
+      const paidCp     = Number(paidPrice?.cp || paidPrice?.dp || 0);  // fallback to dp if no cp
+      const paidBv     = Number(paidPrice?.bv || 0);
+
+      // Member pays DP; non-member pays CP (customer / retail price)
+      const paidUnitPrice = isMember ? paidDp : paidCp;
+      const paidTotal     = Math.round(paidUnitPrice * paid_qty * 100) / 100;
+      // BV credited only for member sales
+      const paidBvTotal   = isMember ? Math.round(paidBv * paid_qty * 100) / 100 : 0;
+      // Profit = retail margin earned on non-member sales (cp - dp) × qty
+      const profitAmount  = !isMember ? Math.max(0, Math.round((paidCp - paidDp) * paid_qty * 100) / 100) : 0;
 
       const itemsArray = [
         {
           product_name: paid_product,
           quantity:     paid_qty,
           dp:           paidDp,
-          bv:           paidBv,
-          unit_price:   paidDp,
-          total_dp:     paidTotal,
+          cp:           paidCp,
+          bv:           isMember ? paidBv : 0,
+          unit_price:   paidUnitPrice,
+          total_dp:     Math.round(paidDp * paid_qty * 100) / 100,
+          total_cp:     Math.round(paidCp * paid_qty * 100) / 100,
+          total:        paidTotal,
           total_bv:     paidBvTotal,
           is_free:      false,
+          is_member:    isMember,
         },
         ...(free_product && free_qty > 0 ? [{
           product_name: free_product,
           quantity:     free_qty,
           dp:           0,
+          cp:           0,
           bv:           0,
           unit_price:   0,
           total_dp:     0,
+          total:        0,
           total_bv:     0,
           is_free:      true,
           campaign_free: true,
@@ -327,8 +340,9 @@ export default async function handler(req, res) {
         // Deduct paid stock
         const paidResult = await deductStock(
           client, branch, paid_product, paid_qty,
-          'campaign_sale', `Campaign: ${campaign.name} — paid item`,
-          saleId, paidDp || null, processed_by
+          isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
+          `Campaign: ${campaign.name} — paid item`,
+          saleId, paidUnitPrice || null, processed_by
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -348,7 +362,7 @@ export default async function handler(req, res) {
           throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (short by ${i.short})`).join(', ')}`);
         }
 
-        // Insert into branch_walkin_sales — matches walk-in structure for CSI + reports
+        // Insert into branch_walkin_sales with correct member/non-member totals
         await client.query(
           `INSERT INTO branch_walkin_sales
              (id, branch_id, sale_number, sale_date, customer_name, customer_type,
@@ -366,17 +380,25 @@ export default async function handler(req, res) {
             JSON.stringify(itemsArray),
             JSON.stringify({
               campaign_id,
-              campaign_name: campaign.name,
-              campaign_type: campaign.campaign_type,
-              sale_type:     'campaign_sale',
+              campaign_name:  campaign.name,
+              campaign_type:  campaign.campaign_type,
+              sale_type:      'campaign_sale',
               customer_type,
-              nb_number:     distributor_nb || referral_nb || '',
-              referralNB:    referral_nb || null,
-              nbNumber:      distributor_nb || null,
+              is_member:      isMember,
+              nb_number:      distributor_nb || referral_nb || '',
+              referralNB:     referral_nb || null,
+              nbNumber:       distributor_nb || null,
               paid_product,
               paid_qty,
-              free_product:  free_product || null,
-              free_qty:      free_qty || 0,
+              paid_unit_price: paidUnitPrice,
+              paid_dp:         paidDp,
+              paid_cp:         paidCp,
+              paid_bv:         isMember ? paidBv : 0,
+              total_amount:    paidTotal,
+              total_bv:        paidBvTotal,
+              profit_amount:   profitAmount,
+              free_product:    free_product || null,
+              free_qty:        free_qty || 0,
               notes,
             }),
             JSON.stringify({ campaign_id, campaign_name: campaign.name }),
@@ -386,6 +408,20 @@ export default async function handler(req, res) {
           ]
         );
       });
+
+      // ── Post-transaction: record distributor profit for non-member sales ──────
+      // Mirrors walk-in sales: profit = (CP - DP) × qty goes to referring distributor
+      if (!isMember && profitAmount > 0) {
+        const profitDistrib = referral_nb || 'NB005676';
+        const profitName    = body.referral_name || body.campRefName || 'Dynapharm Namibia';
+        const profitId      = 'BDP-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+        query(   // fire-and-forget (non-critical)
+          `INSERT INTO branch_distributor_profit
+             (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,'pending',NOW(),NOW())`,
+          [profitId, branch, profitDistrib, profitName, saleId, saleNumber, profitAmount]
+        ).catch(e => console.error('[campaignProfit] insert error:', e.message));
+      }
 
       recomputeLocationBalances('branch', branch).catch(e =>
         console.error('[stockEngine] campaign-sale recompute error:', e.message)
@@ -397,17 +433,25 @@ export default async function handler(req, res) {
         sale_number:  saleNumber,
         deductions:   allDeductions,
         receipt: {
-          sale_number:   saleNumber,
+          sale_number:    saleNumber,
           branch,
-          sale_date:     new Date().toISOString(),
-          customer_name: customer_name || '',
+          sale_date:      new Date().toISOString(),
+          customer_name:  customer_name || '',
           customer_type,
-          nb_number:     distributor_nb || referral_nb || '',
-          campaign_name: campaign.name,
-          campaign_type: campaign.campaign_type,
-          items:         itemsArray,
-          total_dp:      paidTotal,
-          total_bv:      paidBvTotal,
+          is_member:      isMember,
+          nb_number:      distributor_nb || referral_nb || '',
+          campaign_name:  campaign.name,
+          campaign_type:  campaign.campaign_type,
+          items:          itemsArray,
+          unit_price:     paidUnitPrice,
+          dp:             paidDp,
+          cp:             paidCp,
+          bv_per_unit:    isMember ? paidBv : 0,
+          total:          paidTotal,
+          total_dp:       Math.round(paidDp * paid_qty * 100) / 100,
+          total_bv:       paidBvTotal,
+          profit_amount:  profitAmount,
+          referral_nb:    referral_nb || null,
           notes,
         },
         message: `Campaign sale processed. ${allDeductions.length} stock deduction(s) recorded.`,
