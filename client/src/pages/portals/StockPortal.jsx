@@ -8658,8 +8658,8 @@ function StockCampaignsTab() {
                         sa[i] = { ...sa[i], product: e.target.value };
                         setForm(f => ({ ...f, stock_assignments: sa }));
                       }} className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300">
-                        <option value="">-- Select --</option>
-                        {products.map(p => <option key={p.id || p.name} value={p.name || p.product_name}>{p.name || p.product_name}</option>)}
+                        <option value="">-- Select product --</option>
+                        {products.map(p => { const n = p.description || p.name || p.product_name || ''; return <option key={p.id || n} value={n}>{n}{p.dp ? ` — N$${p.dp}` : ''}</option>; })}
                       </select>
                     </div>
                     <Input label="Qty Reserved" type="number" min="0" value={a.quantity}
@@ -8749,8 +8749,8 @@ function StockCampaignsTab() {
                       <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
                       <select value={a.product} onChange={e => { const sa = [...editForm.stock_assignments]; sa[i] = { ...sa[i], product: e.target.value }; setEditForm(f => ({ ...f, stock_assignments: sa })); }}
                         className="w-full px-2 py-1.5 rounded-lg border border-gray-300 text-xs">
-                        <option value="">-- Select --</option>
-                        {products.map(p => <option key={p.id || p.name} value={p.name || p.product_name}>{p.name || p.product_name}</option>)}
+                        <option value="">-- Select product --</option>
+                        {products.map(p => { const n = p.description || p.name || p.product_name || ''; return <option key={p.id || n} value={n}>{n}{p.dp ? ` — N$${p.dp}` : ''}</option>; })}
                       </select>
                     </div>
                     <Input label="Qty Reserved" type="number" min="0" value={a.quantity}
@@ -8851,7 +8851,16 @@ function StockCampaignConditionsForm({ type, conditions, onChange, products = []
         <Input label="Buy quantity (X)" type="number" min="1" value={conditions.buy_qty || ''} onChange={e => set('buy_qty', e.target.value)} placeholder="e.g. 1" />
         <Input label="Get quantity free (Y)" type="number" min="1" value={conditions.get_qty || ''} onChange={e => set('get_qty', e.target.value)} placeholder="e.g. 1" />
       </div>
-      <Input label="Qualifying Products (comma-separated, blank = all)" value={conditions.products_text || ''} onChange={e => set('products_text', e.target.value)} placeholder="e.g. Shake, Grow" />
+      <div>
+        <label style={{ display:'block', fontSize:'0.78rem', fontWeight:700, color:'#374151', marginBottom:4 }}>Qualifying Products <span style={{ fontWeight:400, color:'#94a3b8' }}>(leave blank = all products)</span></label>
+        <input list="camp-cond-products" value={conditions.products_text || ''} onChange={e => set('products_text', e.target.value)}
+          placeholder="Type to search or enter product name…"
+          style={{ width:'100%', padding:'7px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:'0.83rem', outline:'none', boxSizing:'border-box' }} />
+        <datalist id="camp-cond-products">
+          {products.map(p => { const n = p.description || p.name || p.product_name || ''; return n ? <option key={n} value={n} /> : null; })}
+        </datalist>
+        <div style={{ fontSize:'0.7rem', color:'#94a3b8', marginTop:3 }}>You can enter multiple names separated by commas</div>
+      </div>
     </div>
   );
   if (type === 'bv_achievement') return (
@@ -8882,7 +8891,15 @@ function StockCampaignPrizeForm({ type, prize, onChange, products = [] }) {
   );
   if (type === 'buy_x_get_y') return (
     <div className="space-y-3">
-      <Input label="Free Product Name" value={prize.free_product || ''} onChange={e => set('free_product', e.target.value)} placeholder="e.g. Shake" />
+      <div>
+        <label style={{ display:'block', fontSize:'0.78rem', fontWeight:700, color:'#374151', marginBottom:4 }}>Free Product <span style={{ fontWeight:400, color:'#94a3b8' }}>(leave blank = same as paid product)</span></label>
+        <input list="camp-prize-products" value={prize.free_product || ''} onChange={e => set('free_product', e.target.value)}
+          placeholder="Type to search product…"
+          style={{ width:'100%', padding:'7px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:'0.83rem', outline:'none', boxSizing:'border-box' }} />
+        <datalist id="camp-prize-products">
+          {products.map(p => { const n = p.description || p.name || p.product_name || ''; return n ? <option key={n} value={n} /> : null; })}
+        </datalist>
+      </div>
       <Input label="Prize Description" value={prize.description || ''} onChange={e => set('description', e.target.value)} placeholder="e.g. Buy 1 Get 1 Free" />
     </div>
   );
