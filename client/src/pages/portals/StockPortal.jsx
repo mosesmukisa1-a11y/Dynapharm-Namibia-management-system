@@ -948,83 +948,381 @@ function FieldStockTab() {
 
 // ── Adjustment Requests History Tab ───────────────────────────────────────────
 function AdjustmentsTab() {
-  const [adjustments, setAdjustments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const { user } = useAuth();
+  const [adjustments, setAdjustments]   = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [filter, setFilter]             = useState('pending');
+  const [acting, setActing]             = useState({});    // { [id]: 'approving'|'rejecting' }
+  const [gmNotes, setGmNotes]           = useState({});    // { [id]: string }
+  const [showNotes, setShowNotes]       = useState({});    // { [id]: bool }
+  const [alert, setAlert]               = useState(null);
+  const [detail, setDetail]             = useState(null);
+
+  const isGM = ['gm','manager','admin','superadmin','GM','Manager','Admin','SuperAdmin'].some(r =>
+    (user?.role || user?.position || '').toLowerCase().includes(r.toLowerCase())
+  );
 
   const load = () => {
     setLoading(true);
     api.get('/stock-adjustments')
-      .then(d => setAdjustments(Array.isArray(d) ? d : []))
+      .then(d => setAdjustments(Array.isArray(d) ? d.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)) : []))
       .catch(() => setAdjustments([]))
       .finally(() => setLoading(false));
   };
-
   useEffect(() => { load(); }, []);
 
-  const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
-  const pendingCount = adjustments.filter(a => a.status === 'pending').length;
-
-  const statusBadge = (s) => {
-    if (s === 'pending') return <Badge variant="warning"><Clock size={11} className="inline mr-1" />Pending GM</Badge>;
-    if (s === 'approved') return <Badge variant="success"><CheckCircle size={11} className="inline mr-1" />Approved</Badge>;
-    if (s === 'rejected') return <Badge variant="danger"><XCircle size={11} className="inline mr-1" />Rejected</Badge>;
-    return <Badge>{s}</Badge>;
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const fmtDateTime = ts => { try { return ts ? new Date(ts).toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'; } catch { return '—'; } };
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '—'; } catch { return '—'; } };
+  const timeAgo = ts => { if (!ts) return '—'; const s = Math.floor((Date.now()-new Date(ts))/1000); if(s<60) return `${s}s ago`; if(s<3600) return `${Math.floor(s/60)}m ago`; if(s<86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; };
+  const fmtField = f => (f||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const fmtLoc = loc => {
+    const l = (loc||'').toLowerCase();
+    if (l === 'country_stock') return 'Country Stock';
+    if (l === 'windhoek_warehouse') return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l);
+    return bd ? bd.name : (loc||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   };
+  const targetLabel = t => {
+    if (t === 'import' || t === 'country_stock') return 'Import / Country Stock Batch';
+    if (t === 'warehouse') return 'Warehouse Batch';
+    if (t === 'distribution') return 'Distribution Record';
+    return fmtField(t);
+  };
+  const fieldDesc = (field, oldV, newV) => {
+    if (field === 'remaining_quantity' || field === 'quantity') return `Change stock quantity from ${oldV||'—'} → ${newV} units`;
+    if (field === 'expiry_date')  return `Change expiry date from ${fmtDate(oldV)} → ${fmtDate(newV)}`;
+    if (field === 'unit_price')   return `Change unit cost from N$ ${oldV} → N$ ${newV}`;
+    if (field === 'batch_number') return `Change batch # from "${oldV}" → "${newV}"`;
+    if (field === 'notes')        return `Update notes`;
+    return `Change ${fmtField(field)} from "${oldV}" → "${newV}"`;
+  };
+
+  // ── Actions ──────────────────────────────────────────────────────────────────
+  const handleApprove = async (adj) => {
+    setActing(a => ({...a, [adj.id]:'approving'}));
+    try {
+      await api.stock.approveAdjustment(adj.id, { gm_notes: gmNotes[adj.id] || '' });
+      setAlert({ type:'success', msg:`✅ Request ${adj.adj_number} approved — changes applied immediately to ${targetLabel(adj.target_type)}` });
+      setShowNotes(n => ({...n, [adj.id]:false}));
+      load();
+    } catch(e) {
+      setAlert({ type:'error', msg:`Failed to approve: ${e.message}` });
+    } finally {
+      setActing(a => ({...a, [adj.id]:undefined}));
+    }
+  };
+
+  const handleReject = async (adj) => {
+    if (!gmNotes[adj.id]?.trim()) {
+      setShowNotes(n => ({...n, [adj.id]:true}));
+      setAlert({ type:'error', msg:'Please enter a reason for rejection in the GM Notes field before rejecting.' });
+      return;
+    }
+    setActing(a => ({...a, [adj.id]:'rejecting'}));
+    try {
+      await api.stock.rejectAdjustment(adj.id, { gm_notes: gmNotes[adj.id] || '' });
+      setAlert({ type:'success', msg:`❌ Request ${adj.adj_number} rejected.` });
+      setShowNotes(n => ({...n, [adj.id]:false}));
+      load();
+    } catch(e) {
+      setAlert({ type:'error', msg:`Failed to reject: ${e.message}` });
+    } finally {
+      setActing(a => ({...a, [adj.id]:undefined}));
+    }
+  };
+
+  // ── Stats ────────────────────────────────────────────────────────────────────
+  const pending  = adjustments.filter(a => a.status === 'pending');
+  const today    = new Date().toISOString().slice(0,10);
+  const approvedToday = adjustments.filter(a => a.status === 'approved' && (a.approved_at||'').slice(0,10) === today);
+  const rejected = adjustments.filter(a => a.status === 'rejected');
+  const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
 
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
-      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div style={{ background:'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius:14, padding:'16px 22px', color:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
         <div>
-          <h3 style={{ fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✏️ Stock Edit Requests</h3>
-          <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '2px 0 0' }}>All correction requests submitted for GM approval. Use the Edit button on any stock record to create a new request.</p>
+          <h3 style={{ fontWeight:900, fontSize:'1.08rem', margin:0 }}>✏️ Stock Edit Requests</h3>
+          <p style={{ fontSize:'0.8rem', opacity:0.8, margin:'3px 0 0' }}>
+            All correction requests submitted for GM approval. {isGM ? 'As GM, you can approve or reject below.' : 'Requests you submit appear here for GM review.'}
+          </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {pendingCount > 0 && <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 99, padding: '4px 12px', fontSize: '0.78rem', fontWeight: 800 }}>⏳ {pendingCount} Awaiting GM</span>}
-          <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🔄 Refresh</button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          {pending.length > 0 && <span style={{ background:'#fbbf24', color:'#78350f', borderRadius:99, padding:'5px 14px', fontSize:'0.8rem', fontWeight:800 }}>⏳ {pending.length} Awaiting GM</span>}
+          <button onClick={load} style={{ padding:'7px 16px', background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.35)', borderRadius:99, fontSize:'0.82rem', fontWeight:700, cursor:'pointer' }}>↺ Refresh</button>
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {['all','pending','approved','rejected'].map(s => (
+      {/* ── Stat cards ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label:'Pending GM Approval', value:pending.length,       color:'#d97706', bg:'#fffbeb', border:'#fde68a' },
+          { label:'Approved Today',      value:approvedToday.length,  color:'#16a34a', bg:'#f0fdf4', border:'#86efac' },
+          { label:'Rejected',            value:rejected.length,       color:'#dc2626', bg:'#fef2f2', border:'#fecaca' },
+          { label:'Total Requests',      value:adjustments.length,    color:'#374151', bg:'#f8fafc', border:'#e2e8f0' },
+        ].map(s => (
+          <div key={s.label} style={{ borderRadius:10, padding:'11px 14px', background:s.bg, border:`1.5px solid ${s.border}` }}>
+            <div style={{ fontSize:'1.6rem', fontWeight:900, color:s.color, lineHeight:1 }}>{s.value}</div>
+            <div style={{ fontSize:'0.69rem', color:'#64748b', fontWeight:700, marginTop:2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filter tabs ─────────────────────────────────────────────────── */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        {[['pending','Pending',pending.length],['approved','Approved',null],['rejected','Rejected',null],['all','All',adjustments.length]].map(([s,l,cnt]) => (
           <button key={s} onClick={() => setFilter(s)}
-            style={{ padding: '6px 16px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem',
-              background: filter === s ? '#c41e3a' : '#f1f5f9', color: filter === s ? '#fff' : '#475569' }}>
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-            {s === 'pending' && pendingCount > 0 && ` (${pendingCount})`}
+            style={{ padding:'7px 18px', borderRadius:99, border:'none', cursor:'pointer', fontWeight:700, fontSize:'0.83rem',
+              background:filter===s ? '#c41e3a' : '#f1f5f9', color:filter===s ? '#fff' : '#475569' }}>
+            {l}{cnt !== null ? ` (${cnt})` : ''}
           </button>
         ))}
       </div>
 
-      <Card>
-        <Table
-          columns={[
-            { header: 'Ref #', render: r => <span className="font-mono text-xs font-bold text-primary">{r.adj_number}</span> },
-            { header: 'Product', render: r => <span className="font-medium text-sm">{r.product_name || '—'}</span> },
-            { header: 'Type', render: r => <Badge variant="info" className="text-xs">{r.target_type}</Badge> },
-            { header: 'Field', render: r => <span className="text-xs font-semibold text-gray-600">{(r.field_to_adjust||'').replace(/_/g,' ')}</span> },
-            { header: 'Change', render: r => (
-              <span className="text-xs">
-                <span className="line-through text-gray-400">{r.old_value}</span>
-                <span className="mx-1 text-gray-400">→</span>
-                <span className="font-bold text-green-700">{r.new_value}</span>
-              </span>
-            )},
-            { header: 'Reason', render: r => <span className="text-xs text-gray-500 max-w-[160px] block truncate" title={r.reason}>{r.reason}</span> },
-            { header: 'Status', render: r => statusBadge(r.status) },
-            { header: 'GM Notes', render: r => r.gm_notes ? <span className="text-xs text-gray-600 italic">{r.gm_notes}</span> : <span className="text-gray-300 text-xs">—</span> },
-            { header: 'Date', render: r => <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span> },
-          ]}
-          data={filtered}
-          emptyMessage="No adjustment requests found. Use the ✏️ Edit button on any stock record to request a correction."
-        />
-      </Card>
+      {/* ── Pending requests as full detail cards ────────────────────────── */}
+      {filter === 'pending' && (
+        <div className="space-y-3">
+          {pending.length === 0 ? (
+            <Card><CardBody><EmptyState icon={<CheckCircle size={40} />} title="No pending requests" description="All caught up! No stock edit requests are awaiting approval." /></CardBody></Card>
+          ) : pending.map(adj => (
+            <div key={adj.id} style={{ border:'2px solid #fde68a', borderRadius:14, background:'#fff', overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+              {/* ── Card header ── */}
+              <div style={{ background:'linear-gradient(90deg,#fffbeb,#fef9c3)', padding:'12px 18px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
+                <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                  <span style={{ background:'#fbbf24', color:'#78350f', borderRadius:99, padding:'3px 10px', fontWeight:800, fontSize:'0.73rem' }}>⏳ PENDING APPROVAL</span>
+                  <span style={{ fontFamily:'monospace', fontSize:'0.75rem', fontWeight:800, color:'#6b21a8' }}>{adj.adj_number}</span>
+                  <span style={{ fontSize:'0.72rem', color:'#64748b' }}>Submitted {timeAgo(adj.created_at)}</span>
+                </div>
+                <button onClick={() => setDetail(adj)}
+                  style={{ fontSize:'0.72rem', color:'#2563eb', fontWeight:700, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:6, padding:'3px 10px', cursor:'pointer' }}>
+                  View Full Detail
+                </button>
+              </div>
+
+              {/* ── Two column: requester + request details ── */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:0 }}>
+                {/* Who is requesting */}
+                <div style={{ padding:'16px 20px', borderRight:'1px solid #f1f5f9' }}>
+                  <div style={{ fontSize:'0.68rem', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>👤 Requested By</div>
+                  <div style={{ fontWeight:900, color:'#1e293b', fontSize:'1rem', marginBottom:2 }}>{adj.requested_by_name || adj.requested_by || 'Unknown'}</div>
+                  {adj.requested_by && adj.requested_by !== adj.requested_by_name && (
+                    <div style={{ fontSize:'0.72rem', color:'#94a3b8', fontFamily:'monospace' }}>ID: {adj.requested_by}</div>
+                  )}
+                  {adj.location && (
+                    <div style={{ marginTop:6 }}>
+                      <span style={{ background:'#fff0f3', color:'#c41e3a', border:'1px solid #fecaca', borderRadius:99, padding:'2px 8px', fontSize:'0.7rem', fontWeight:800 }}>
+                        📍 {fmtLoc(adj.location)}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ marginTop:8, fontSize:'0.72rem', color:'#64748b' }}>
+                    <div><span style={{ color:'#94a3b8' }}>Date:</span> {fmtDateTime(adj.created_at)}</div>
+                    <div style={{ marginTop:2 }}><span style={{ color:'#94a3b8' }}>Request type:</span> {targetLabel(adj.target_type)}</div>
+                    {adj.target_id && <div style={{ marginTop:2 }}><span style={{ color:'#94a3b8' }}>Target ID:</span> <span style={{ fontFamily:'monospace', fontSize:'0.68rem' }}>{adj.target_id}</span></div>}
+                  </div>
+                </div>
+
+                {/* What is being requested */}
+                <div style={{ padding:'16px 20px' }}>
+                  <div style={{ fontSize:'0.68rem', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>📦 What is Being Requested</div>
+                  {adj.product_name && (
+                    <div style={{ fontWeight:800, color:'#1e293b', fontSize:'0.92rem', marginBottom:6 }}>{adj.product_name}</div>
+                  )}
+                  {/* Change being requested */}
+                  <div style={{ background:'#f8fafc', borderRadius:10, padding:'10px 14px', marginBottom:8 }}>
+                    <div style={{ fontSize:'0.7rem', color:'#64748b', fontWeight:700, marginBottom:4 }}>CHANGE REQUESTED:</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca', borderRadius:6, padding:'4px 10px', fontWeight:800, fontSize:'0.82rem' }}>
+                        {adj.old_value !== undefined && adj.old_value !== null ? String(adj.old_value) : '—'}
+                      </span>
+                      <span style={{ color:'#94a3b8', fontWeight:700, fontSize:'1.1rem' }}>→</span>
+                      <span style={{ background:'#f0fdf4', color:'#16a34a', border:'1px solid #86efac', borderRadius:6, padding:'4px 10px', fontWeight:800, fontSize:'0.82rem' }}>
+                        {adj.new_value !== undefined ? String(adj.new_value) : '—'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:'0.71rem', color:'#64748b', marginTop:5 }}>
+                      Field: <strong>{fmtField(adj.field_to_adjust)}</strong> — {fieldDesc(adj.field_to_adjust, adj.old_value, adj.new_value)}
+                    </div>
+                  </div>
+                  {/* Reason */}
+                  <div style={{ background:'#fefce8', borderRadius:8, padding:'8px 12px', border:'1px solid #fef08a' }}>
+                    <div style={{ fontSize:'0.68rem', color:'#92400e', fontWeight:800, marginBottom:2 }}>REASON / JUSTIFICATION:</div>
+                    <div style={{ fontSize:'0.82rem', color:'#1e293b', fontWeight:600 }}>{adj.reason || 'No reason provided'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── GM Action area (only visible to GMs) ── */}
+              {isGM && (
+                <div style={{ background:'#f8fafc', borderTop:'1px solid #e2e8f0', padding:'14px 20px' }}>
+                  <div style={{ fontSize:'0.72rem', fontWeight:800, color:'#64748b', marginBottom:8, textTransform:'uppercase' }}>GM Action</div>
+                  {/* Notes input */}
+                  {(showNotes[adj.id] || gmNotes[adj.id]) && (
+                    <div style={{ marginBottom:10 }}>
+                      <textarea rows={2} value={gmNotes[adj.id]||''} onChange={e => setGmNotes(n => ({...n,[adj.id]:e.target.value}))}
+                        placeholder="GM notes / reason for approval or rejection (required for rejection)…"
+                        style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:'0.82rem', resize:'vertical', outline:'none', fontFamily:'inherit' }} />
+                    </div>
+                  )}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    {!showNotes[adj.id] && !gmNotes[adj.id] && (
+                      <button onClick={() => setShowNotes(n=>({...n,[adj.id]:true}))}
+                        style={{ padding:'6px 12px', background:'#f1f5f9', border:'1px solid #d1d5db', borderRadius:7, fontSize:'0.76rem', fontWeight:700, cursor:'pointer', color:'#64748b' }}>
+                        + Add GM Notes
+                      </button>
+                    )}
+                    <button onClick={() => handleApprove(adj)} disabled={!!acting[adj.id]}
+                      style={{ padding:'8px 20px', background: acting[adj.id]==='approving' ? '#86efac' : '#16a34a', color:'#fff', border:'none', borderRadius:8, fontWeight:800, fontSize:'0.84rem', cursor:'pointer', display:'flex', alignItems:'center', gap:6, opacity:acting[adj.id]?0.7:1 }}>
+                      <CheckCircle size={15} /> {acting[adj.id]==='approving' ? 'Approving & Applying…' : 'Approve & Apply Change'}
+                    </button>
+                    <button onClick={() => handleReject(adj)} disabled={!!acting[adj.id]}
+                      style={{ padding:'8px 20px', background: acting[adj.id]==='rejecting' ? '#fca5a5' : '#dc2626', color:'#fff', border:'none', borderRadius:8, fontWeight:800, fontSize:'0.84rem', cursor:'pointer', display:'flex', alignItems:'center', gap:6, opacity:acting[adj.id]?0.7:1 }}>
+                      <XCircle size={15} /> {acting[adj.id]==='rejecting' ? 'Rejecting…' : 'Reject Request'}
+                    </button>
+                    <span style={{ fontSize:'0.7rem', color:'#94a3b8' }}>Approval applies the change to stock immediately. Rejection requires GM notes.</span>
+                  </div>
+                </div>
+              )}
+              {!isGM && (
+                <div style={{ background:'#f8fafc', borderTop:'1px solid #e2e8f0', padding:'10px 20px', fontSize:'0.75rem', color:'#94a3b8' }}>
+                  ⏳ Awaiting GM review. You will be notified once a decision is made.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Approved / Rejected / All — table view ──────────────────────── */}
+      {filter !== 'pending' && (
+        <Card>
+          <CardHeader>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+              <h3 style={{ fontWeight:800, color:'#1e293b' }}>
+                {filter === 'approved' ? '✅ Approved Requests' : filter === 'rejected' ? '❌ Rejected Requests' : '📋 All Requests'}
+                <span style={{ fontSize:'0.72rem', color:'#94a3b8', fontWeight:400, marginLeft:8 }}>({filtered.length})</span>
+              </h3>
+              <div style={{ fontSize:'0.72rem', color:'#64748b' }}>Click any row for full details</div>
+            </div>
+          </CardHeader>
+          {filtered.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={36} />} title="No records" description="No requests match this filter" /></CardBody>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.8rem' }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', borderBottom:'2px solid #e2e8f0' }}>
+                    {['Ref #','Requested By','Product','Location','Change','Reason','Status','Decided By','GM Notes','Date'].map(h => (
+                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.68rem', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((adj, i) => (
+                    <tr key={adj.id} onClick={() => setDetail(adj)} style={{ background:i%2===0?'#fff':'#f9fafb', borderBottom:'1px solid #f1f5f9', cursor:'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background='#fef2f2'}
+                      onMouseLeave={e => e.currentTarget.style.background=i%2===0?'#fff':'#f9fafb'}>
+                      <td style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:'0.71rem', fontWeight:800, color:'#6b21a8', whiteSpace:'nowrap' }}>{adj.adj_number}</td>
+                      <td style={{ padding:'8px 12px', fontWeight:700, color:'#1e293b', whiteSpace:'nowrap' }}>
+                        {adj.requested_by_name || adj.requested_by || '—'}
+                        {adj.location && <div style={{ fontSize:'0.65rem', color:'#c41e3a', fontWeight:700 }}>{fmtLoc(adj.location)}</div>}
+                      </td>
+                      <td style={{ padding:'8px 12px', maxWidth:180 }}>
+                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={adj.product_name}>{adj.product_name || '—'}</div>
+                        <div style={{ fontSize:'0.65rem', color:'#94a3b8' }}>{targetLabel(adj.target_type)}</div>
+                      </td>
+                      <td style={{ padding:'8px 12px', fontSize:'0.72rem', color:'#64748b' }}>{fmtLoc(adj.location)}</td>
+                      <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                        <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:4, padding:'1px 5px', fontSize:'0.7rem', fontWeight:700 }}>{String(adj.old_value||'—')}</span>
+                        <span style={{ color:'#94a3b8', margin:'0 4px' }}>→</span>
+                        <span style={{ background:'#f0fdf4', color:'#16a34a', borderRadius:4, padding:'1px 5px', fontSize:'0.7rem', fontWeight:700 }}>{String(adj.new_value||'—')}</span>
+                        <div style={{ fontSize:'0.63rem', color:'#94a3b8', marginTop:1 }}>{fmtField(adj.field_to_adjust)}</div>
+                      </td>
+                      <td style={{ padding:'8px 12px', maxWidth:160 }}>
+                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'0.75rem', color:'#64748b' }} title={adj.reason}>{adj.reason||'—'}</div>
+                      </td>
+                      <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                        {adj.status==='approved' && <span style={{ background:'#f0fdf4', color:'#16a34a', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800, border:'1px solid #86efac' }}>✅ Approved</span>}
+                        {adj.status==='rejected' && <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800, border:'1px solid #fecaca' }}>❌ Rejected</span>}
+                        {adj.status==='pending'  && <span style={{ background:'#fffbeb', color:'#d97706', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800, border:'1px solid #fde68a' }}>⏳ Pending</span>}
+                      </td>
+                      <td style={{ padding:'8px 12px', fontSize:'0.72rem', color:'#64748b', whiteSpace:'nowrap' }}>
+                        {adj.approved_by_name || adj.approved_by || '—'}
+                        {adj.approved_at && <div style={{ fontSize:'0.63rem', color:'#94a3b8' }}>{fmtDate(adj.approved_at)}</div>}
+                      </td>
+                      <td style={{ padding:'8px 12px', maxWidth:140 }}>
+                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'0.72rem', color:'#64748b', fontStyle:'italic' }} title={adj.gm_notes}>{adj.gm_notes || <span style={{ color:'#e2e8f0' }}>—</span>}</div>
+                      </td>
+                      <td style={{ padding:'8px 12px', fontSize:'0.72rem', color:'#94a3b8', whiteSpace:'nowrap' }}>{fmtDateTime(adj.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── Full Detail Modal ─────────────────────────────────────────────── */}
+      {detail && (
+        <Modal open={!!detail} onClose={() => setDetail(null)} title={`Edit Request — ${detail.adj_number}`} size="md">
+          <div className="p-6 space-y-4">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {[
+                ['Ref Number',    detail.adj_number],
+                ['Status',        (detail.status||'').toUpperCase()],
+                ['Requested By',  detail.requested_by_name || detail.requested_by || '—'],
+                ['Requester ID',  detail.requested_by || '—'],
+                ['Branch / Location', fmtLoc(detail.location)],
+                ['Request Type',  targetLabel(detail.target_type)],
+                ['Target Record', detail.target_id || '—'],
+                ['Product',       detail.product_name || '—'],
+                ['Field Changed', fmtField(detail.field_to_adjust)],
+                ['Old Value',     String(detail.old_value ?? '—')],
+                ['New Value',     String(detail.new_value ?? '—')],
+                ['Reason',        detail.reason || '—'],
+                ['Submitted',     fmtDateTime(detail.created_at)],
+                ['Decided By',    detail.approved_by_name || detail.approved_by || '—'],
+                ['Decision Date', fmtDateTime(detail.approved_at)],
+                ['GM Notes',      detail.gm_notes || '—'],
+              ].map(([k,v]) => (
+                <div key={k} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                  <div style={{ fontSize:'0.65rem', color:'#94a3b8', fontWeight:700, textTransform:'uppercase' }}>{k}</div>
+                  <div style={{ fontSize:'0.86rem', fontWeight:700, color:'#1e293b', marginTop:1, wordBreak:'break-word' }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {detail.status === 'pending' && isGM && (
+              <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'14px 16px' }}>
+                <div style={{ fontWeight:800, color:'#92400e', fontSize:'0.8rem', marginBottom:8 }}>Take Action</div>
+                <textarea rows={2} value={gmNotes[detail.id]||''} onChange={e => setGmNotes(n=>({...n,[detail.id]:e.target.value}))}
+                  placeholder="GM notes (required for rejection)…"
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:'0.82rem', resize:'vertical', fontFamily:'inherit', marginBottom:10 }} />
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={() => { handleApprove(detail); setDetail(null); }} disabled={!!acting[detail.id]}
+                    style={{ padding:'8px 20px', background:'#16a34a', color:'#fff', border:'none', borderRadius:8, fontWeight:800, fontSize:'0.84rem', cursor:'pointer' }}>
+                    ✅ Approve & Apply
+                  </button>
+                  <button onClick={() => { handleReject(detail); setDetail(null); }} disabled={!!acting[detail.id]}
+                    style={{ padding:'8px 20px', background:'#dc2626', color:'#fff', border:'none', borderRadius:8, fontWeight:800, fontSize:'0.84rem', cursor:'pointer' }}>
+                    ❌ Reject
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
-
 export default function StockPortal() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('aiDashboard');
