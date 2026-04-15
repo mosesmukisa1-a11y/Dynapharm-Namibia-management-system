@@ -18,8 +18,43 @@ function genId(prefix = 'CAMP') {
   return `${prefix}-${ts}-${rand}`;
 }
 
+// Normalise branch identifier the same way inventory.js does so that
+// 'oshakati', 'oshakati_branch', 'Oshakati Branch', etc. all resolve
+// to whichever value is actually stored in branch_inventory_batches.
+async function resolveBranchId(raw) {
+  if (!raw) return raw;
+  const key = raw.toLowerCase().replace(/\s+/g, '_');
+  const stripped = key.replace(/_branch$/, '');
+  const candidates = [key];
+  if (!key.endsWith('_branch')) candidates.push(key + '_branch');
+  if (stripped !== key) candidates.push(stripped);
+  if (key === 'katima_mulilo') candidates.push('katima');
+  if (key === 'katima') candidates.push('katima_mulilo');
+
+  // Exact match first
+  const exact = await getOne(
+    `SELECT branch_id FROM branch_inventory_batches WHERE branch_id = ANY($1) LIMIT 1`,
+    [candidates]
+  );
+  if (exact) return exact.branch_id;
+
+  // Case-insensitive / space-normalised fallback
+  const ci = await getOne(
+    `SELECT branch_id FROM branch_inventory_batches
+     WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1) LIMIT 1`,
+    [candidates]
+  );
+  return ci ? ci.branch_id : key;
+}
+
+// Deduct `qty` units of `productName` from branch_inventory_batches (FIFO by expiry).
+// Falls back to inventory_balances when no batch rows exist so that stock tracked
+// only via the central stock-engine path is still deductable.
 async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy) {
   let remaining = qty;
+  const deductions = [];
+
+  // ── Primary path: branch_inventory_batches ──────────────────────────────
   const batches = (await client.query(
     `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
      WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2)) AND quantity > 0
@@ -28,7 +63,6 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
     [branchId, productName]
   )).rows;
 
-  const deductions = [];
   for (const batch of batches) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, Number(batch.quantity));
@@ -44,6 +78,78 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
        unitPrice || null, saleId, noteStr, createdBy || '']
     );
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
+    remaining -= take;
+  }
+
+  if (remaining <= 0) return { deductions, short: 0 };
+
+  // ── Fallback: inventory_balances ────────────────────────────────────────
+  // Products that arrived via the centralised stock engine may not have a
+  // branch_inventory_batches row yet.  Check inventory_balances and, if the
+  // stock is there, either top-up an existing batch or insert a new one so
+  // the deduction is still properly recorded.
+  const stripped     = branchId.replace(/_branch$/, '');
+  const ibCandidates = [branchId];
+  if (!branchId.endsWith('_branch')) ibCandidates.push(branchId + '_branch');
+  if (stripped !== branchId) ibCandidates.push(stripped);
+
+  const ibRows = (await client.query(
+    `SELECT product_name, batch_no, expiry_date,
+            GREATEST(closing_qty, 0) AS available_qty, unit_dp
+     FROM inventory_balances
+     WHERE location_type = 'branch'
+       AND location_id = ANY($1)
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+       AND closing_qty > 0
+     ORDER BY expiry_date ASC NULLS LAST`,
+    [ibCandidates, productName]
+  )).rows;
+
+  for (const ib of ibRows) {
+    if (remaining <= 0) break;
+    const available = Number(ib.available_qty);
+    if (available <= 0) continue;
+    const take = Math.min(remaining, available);
+
+    // Upsert a branch_inventory_batches row so it is deductable and auditable.
+    // The table's unique constraint is on (branch_id, product_name, batch_no, expiry_date).
+    const upsertResult = await client.query(
+      `INSERT INTO branch_inventory_batches
+         (id, branch_id, product_name, batch_no, expiry_date, quantity, unit, unit_price, status, created_at, updated_at)
+       VALUES (
+         $1, $2, $3, $4, $5, $6::numeric, 'units', $7, 'in_stock', NOW(), NOW()
+       )
+       ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
+       DO UPDATE SET
+         quantity   = GREATEST(branch_inventory_batches.quantity, $6::numeric),
+         unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
+         updated_at = NOW()
+       RETURNING id, product_name, batch_no`,
+      [
+        'BIB-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+        branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null,
+        available,
+        ib.unit_dp ? Number(ib.unit_dp) : (unitPrice || null),
+      ]
+    );
+
+    const bibId = upsertResult.rows[0]?.id;
+    if (!bibId) continue;
+
+    // Now deduct from that row
+    await client.query(
+      `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
+      [take, bibId]
+    );
+
+    const bimId = 'BIM-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    await client.query(
+      `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+      [bimId, branchId, movType, ib.product_name, ib.batch_no || '', take,
+       unitPrice || null, saleId, noteStr + ' [from inventory_balances]', createdBy || '']
+    );
+    deductions.push({ product_name: ib.product_name, batch_no: ib.batch_no, quantity: take, movement_type: movType, source: 'inventory_balances' });
     remaining -= take;
   }
 
@@ -63,7 +169,7 @@ export default async function handler(req, res) {
 
       const campaign_id    = body.campaign_id;
       const campaign_name  = body.campaign_name;
-      const branch         = body.branch || body.branch_id;
+      const rawBranch      = body.branch || body.branch_id;
       const notes          = body.notes || '';
       const processed_by   = body.processed_by || body.created_by || '';
 
@@ -74,7 +180,7 @@ export default async function handler(req, res) {
       const distributor_nb = isMember ? (body.nb_number || body.distributor_code || '') : null;
       const referral_nb    = !isMember ? (body.referral_nb || body.distributor_code || '') : null;
 
-      if (!campaign_id || !branch) {
+      if (!campaign_id || !rawBranch) {
         return res.status(400).json({ success: false, error: 'campaign_id and branch are required' });
       }
 
@@ -82,9 +188,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Member NB/DZ number is required for member campaign sales' });
       }
 
-      if (branchScope.enforced && !branchScope.branches.includes(branch)) {
+      if (branchScope.enforced && !branchScope.branches.includes(rawBranch)) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot process sales for this branch' });
       }
+
+      // Resolve branch ID to the exact value stored in branch_inventory_batches
+      // (handles 'oshakati' vs 'oshakati_branch', capitalisation differences, etc.)
+      const branch = await resolveBranchId(rawBranch);
 
       const campaign = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [campaign_id]);
       if (!campaign) return res.status(404).json({ success: false, error: 'Campaign not found' });
@@ -107,7 +217,7 @@ export default async function handler(req, res) {
           ? campaign.target_branches.filter(b => b && b !== 'all')
           : (Array.isArray(campCondRaw.target_branches) ? campCondRaw.target_branches.filter(b => b && b !== 'all') : []);
         const allTargeted = [...new Set([...assignedBranches, ...targetBranches])];
-        if (allTargeted.length > 0 && !allTargeted.includes(branch)) {
+        if (allTargeted.length > 0 && !allTargeted.includes(rawBranch) && !allTargeted.includes(branch)) {
           return res.status(403).json({ success: false, error: 'This campaign does not target the specified branch' });
         }
       }
@@ -145,7 +255,7 @@ export default async function handler(req, res) {
         const getQty = Number(campConditions.get_qty || 1);
         const campaignFreeProduct = campPrize.free_product || free_product || '';
 
-        // Normalize products — handle both conditions.products (array) and conditions.products_text (string)
+        // Normalise products
         let productsText = (campConditions.products_text || '').trim();
         if (!productsText && Array.isArray(campConditions.products) && campConditions.products.length > 0) {
           productsText = campConditions.products.join(', ');
@@ -153,8 +263,6 @@ export default async function handler(req, res) {
 
         if (productsText) {
           const eligibleProducts = productsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
-          // Only enforce eligibility if at least one entry in products_text matches a real product in the price list.
-          // This prevents blocking when products_text was accidentally set to a note/description rather than a product name.
           const allPrices = await getMany(`SELECT LOWER(TRIM(description)) AS desc FROM product_prices`);
           const knownProductNames = new Set(allPrices.map(r => r.desc));
           const hasRealProducts = eligibleProducts.some(ep => knownProductNames.has(ep));
@@ -173,8 +281,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // If no free_product is configured in the prize, default to the same product as paid
-        // (the most common "buy X get Y free" pattern — e.g. "Buy 2 DYNA-RH, get 1 DYNA-RH free")
         free_product = campaignFreeProduct || paid_product;
         free_qty     = Math.floor(paid_qty / buyQty) * getQty;
       } else {
@@ -193,7 +299,6 @@ export default async function handler(req, res) {
       const paidTotal = Math.round(paidDp * paid_qty * 100) / 100;
       const paidBvTotal = Math.round(paidBv * paid_qty * 100) / 100;
 
-      // Build items array with proper dp/bv; free items marked is_free:true, dp:0, bv:0
       const itemsArray = [
         {
           product_name: paid_product,
@@ -228,7 +333,7 @@ export default async function handler(req, res) {
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
 
-        // Deduct free stock
+        // Deduct free stock (only if there IS a free product configured)
         if (free_product && free_qty > 0) {
           const freeResult = await deductStock(
             client, branch, free_product, free_qty,
