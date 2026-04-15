@@ -140,43 +140,98 @@ export default async function handler(req, res) {
           ? `Receipt of ${dispatchNoteId}. Note: ${item.discrepancyNote}`
           : `Receipt of ${dispatchNoteId}`;
 
-        // 1. Write to stock_movements
+        // Look up unit_dp and unit_cif from the source warehouse batch for accurate value tracking.
+        let unitDP = Number(item.unitDP || item.unit_dp || 0);
+        let unitCIF = Number(item.unitCIF || item.unit_cif || 0);
+        if (sourceLocation && (!unitDP || !unitCIF)) {
+          const batchVal = await client.query(
+            `SELECT dpc_unit_value, cif_unit_cost FROM stock_batches
+             WHERE location = $1
+               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+               AND COALESCE(batch_no, '') = $3
+               AND remaining_quantity > 0
+             ORDER BY import_date ASC, created_at ASC LIMIT 1`,
+            [sourceLocation, productName, batchNo]
+          );
+          if (batchVal.rows.length > 0) {
+            if (!unitDP) unitDP = Number(batchVal.rows[0].dpc_unit_value || 0);
+            if (!unitCIF) unitCIF = Number(batchVal.rows[0].cif_unit_cost || 0);
+          }
+        }
+
+        // 1. Write to stock_movements (branch_receipt with full value data)
         const movId = generateId('SM');
         await client.query(
           `INSERT INTO stock_movements
              (id, product_name, batch_no, expiry_date, quantity,
               movement_type, source_location, source_location_type,
               destination_location, destination_location_type,
-              unit_dp, reference_id, notes, created_by,
+              unit_dp, unit_cif, reference_id, notes, created_by,
               movement_date, status, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,'branch_receipt',$6,'warehouse',$7,'branch',$8,$9,$10,$11,NOW(),'posted',NOW(),NOW())`,
+           VALUES ($1,$2,$3,$4,$5,'branch_receipt',$6,'warehouse',$7,'branch',$8,$9,$10,$11,$12,NOW(),'posted',NOW(),NOW())`,
           [movId, productName, batchNo, expirySqlDate, qtyReceived,
            sourceLocation, branchId,
-           Number(item.unitDP || item.unit_dp || 0),
+           unitDP || null, unitCIF || null,
            dispatchNoteId, notes, receivedBy || 'system']
         );
 
-        // 2. Upsert into branch_inventory_batches
+        // 2. Deduct FIFO from source warehouse stock_batches
+        if (sourceLocation) {
+          const warehouseBatches = await client.query(
+            `SELECT id, remaining_quantity FROM stock_batches
+             WHERE location = $1
+               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+               AND COALESCE(batch_no, '') = $3
+               AND remaining_quantity > 0
+             ORDER BY import_date ASC, created_at ASC
+             FOR UPDATE`,
+            [sourceLocation, productName, batchNo]
+          );
+          let toDeduct = qtyReceived;
+          for (const row of warehouseBatches.rows) {
+            if (toDeduct <= 0) break;
+            const take = Math.min(toDeduct, Number(row.remaining_quantity));
+            await client.query(
+              `UPDATE stock_batches
+               SET remaining_quantity = remaining_quantity - $1,
+                   dispatched_quantity = COALESCE(dispatched_quantity, 0) + $1,
+                   updated_at = NOW()
+               WHERE id = $2`,
+              [take, row.id]
+            );
+            toDeduct -= take;
+          }
+          if (toDeduct > 0) {
+            console.warn(`[confirm-receipt] Warehouse batch shortfall for ${productName}/${batchNo} at ${sourceLocation}: ${toDeduct} units not deducted (batch may have been created outside system)`);
+          }
+        }
+
+        // 3. Upsert into branch_inventory_batches (carry unit_price for DP value tracking)
         const batchId = generateId('BIB');
         await client.query(
-          `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5::date, $6, 'in_stock', NOW(), NOW())
+          `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, source_warehouse, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, 'in_stock', NOW(), NOW())
            ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO UPDATE
-             SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-          [batchId, branchId, productName, batchNo, expirySqlDate, qtyReceived]
+             SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity,
+                 unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
+                 source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
+                 updated_at = NOW()`,
+          [batchId, branchId, productName, batchNo, expirySqlDate, qtyReceived,
+           unitDP || null, sourceLocation || null]
         );
 
-        // 3. Insert into branch_inventory_movements
+        // 4. Insert into branch_inventory_movements
         const bimId = generateId('BIM');
         await client.query(
-          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
-           VALUES ($1, $2, 'receive', $3, $4, $5, $6, $7, $8, NOW())`,
-          [bimId, branchId, productName, batchNo, qtyReceived, dispatchNoteId,
+          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
+           VALUES ($1, $2, 'receive', $3, $4, $5, $6, $7, $8, $9, NOW())`,
+          [bimId, branchId, productName, batchNo, qtyReceived, unitDP || null,
+           dispatchNoteId,
            `Received from warehouse — dispatch ${dispatchNoteId}${item.discrepancyNote ? ` (${item.discrepancyNote})` : ''}`,
            receivedBy || 'system']
         );
 
-        result.push({ productName, batchNo, expiryDate, qtyReceived });
+        result.push({ productName, batchNo, expiryDate, qtyReceived, unitDP, unitCIF });
       }
 
       // Update dispatch status within the same transaction.

@@ -47,25 +47,40 @@ export default async function handler(req, res) {
     return res.status(422).json({ success: false, error: 'Dispatch validation failed', validationErrors });
   }
 
-  // Check stock availability for each batch using case-insensitive, trimmed matching.
-  // Falls back to stock_movements net quantity when inventory_balances returns 0 (stale cache).
+  // Check stock availability. Primary source: stock_batches.remaining_quantity (authoritative physical stock).
+  // Fallback 1: inventory_balances (movement-derived cache). Fallback 2: stock_movements net.
   const stockErrors = [];
   for (const item of items) {
     const productName = (item.productName || item.product_name || '').trim();
     if (!productName) continue;
     const batchNo = (item.batchNo || '').trim();
 
-    const available = await getOne(
-      `SELECT COALESCE(closing_qty, 0) as qty FROM inventory_balances
-       WHERE location_type = 'warehouse'
-         AND LOWER(TRIM(location_id)) = LOWER(TRIM($1))
-         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-         AND COALESCE(batch_no, '') = $3`,
+    // Primary: stock_batches.remaining_quantity — the most reliable physical stock figure
+    const batchRow = await getOne(
+      `SELECT COALESCE(SUM(remaining_quantity), 0) AS qty
+       FROM stock_batches
+       WHERE LOWER(TRIM(location)) = LOWER(TRIM($1))
+         AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+         AND COALESCE(batch_no, '') = $3
+         AND status != 'expired'`,
       [sourceWarehouseId, productName, batchNo]
     );
-    let availQty = Number(available?.qty || 0);
+    let availQty = Number(batchRow?.qty || 0);
 
-    // Fallback: if inventory_balances is 0 or missing, derive from stock_movements net
+    // Fallback 1: inventory_balances
+    if (availQty <= 0) {
+      const ibRow = await getOne(
+        `SELECT COALESCE(closing_qty, 0) AS qty FROM inventory_balances
+         WHERE location_type = 'warehouse'
+           AND LOWER(TRIM(location_id)) = LOWER(TRIM($1))
+           AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+           AND COALESCE(batch_no, '') = $3`,
+        [sourceWarehouseId, productName, batchNo]
+      );
+      availQty = Number(ibRow?.qty || 0);
+    }
+
+    // Fallback 2: derive from stock_movements net
     if (availQty <= 0) {
       const INWARD_TYPES = ['supplier_import_receipt', 'warehouse_receipt', 'branch_receipt', 'transfer_in', 'received', 'return_in', 'positive_adjustment'];
       const OUTWARD_TYPES = ['warehouse_dispatch', 'transfer_out', 'reserved', 'walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'online_order_fulfilment', 'prescription_dispense', 'write_off', 'return_out', 'negative_adjustment', 'sale', 'field_use'];
@@ -87,8 +102,7 @@ export default async function handler(req, res) {
       }
       const movementsNet = inward - outward;
       if (movementsNet > 0) {
-        // Cache is stale — recompute in background and use movements-derived qty
-        console.warn(`[dispatch/create] inventory_balances stale for ${productName}/${batchNo} at ${sourceWarehouseId}. Recomputing.`);
+        console.warn(`[dispatch/create] stock_batches empty for ${productName}/${batchNo} at ${sourceWarehouseId}; falling back to movements net (${movementsNet}). Recomputing.`);
         recomputeInventoryBalance({
           locationType: 'warehouse',
           locationId: sourceWarehouseId,

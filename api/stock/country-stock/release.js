@@ -81,18 +81,37 @@ export default async function handler(req, res) {
     aggregated.get(key).quantity += Number(item.quantity);
   }
 
+  // Check stock availability against stock_batches.remaining_quantity (the authoritative physical stock record).
+  // inventory_balances is a movement-derived cache and may not reflect stock imported directly via the
+  // warehouse portal (no corresponding inward movement). Falling back to inventory_balances as secondary
+  // only when no stock_batches rows exist for this product+batch.
   const stockErrors = [];
   for (const [, agg] of aggregated) {
-    const balance = await getOne(
-      `SELECT COALESCE(closing_qty, 0) AS qty
-       FROM inventory_balances
-       WHERE location_type = 'country'
-         AND location_id = 'country_stock'
-         AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
-         AND COALESCE(batch_no, '') = $2`,
+    const batchAvail = await getOne(
+      `SELECT COALESCE(SUM(remaining_quantity), 0) AS qty
+       FROM stock_batches
+       WHERE location = 'country_stock'
+         AND LOWER(TRIM(description)) = LOWER(TRIM($1))
+         AND COALESCE(batch_no, '') = $2
+         AND status != 'expired'`,
       [agg.productName, agg.batchNo]
     );
-    const available = Number(balance?.qty ?? 0);
+    let available = Number(batchAvail?.qty ?? 0);
+
+    // Secondary fallback: if no stock_batches rows found, check inventory_balances
+    if (available <= 0) {
+      const ibBalance = await getOne(
+        `SELECT COALESCE(closing_qty, 0) AS qty
+         FROM inventory_balances
+         WHERE location_type = 'country'
+           AND location_id = 'country_stock'
+           AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+           AND COALESCE(batch_no, '') = $2`,
+        [agg.productName, agg.batchNo]
+      );
+      available = Number(ibBalance?.qty ?? 0);
+    }
+
     if (available < agg.quantity) {
       stockErrors.push(
         `${agg.productName} batch ${agg.batchNo || 'N/A'}: requested ${agg.quantity}, available at country stock: ${available}`
@@ -114,28 +133,32 @@ export default async function handler(req, res) {
       const { productName, batchNo, quantity, unitDP } = agg;
       let { expiryDate } = agg;
 
-      if (!expiryDate) {
-        const expiryLookup = await client.query(
-          `SELECT expiry_date
-           FROM stock_batches
-           WHERE location = 'country_stock'
-             AND LOWER(TRIM(description)) = LOWER(TRIM($1))
-             AND COALESCE(batch_no, '') = $2
-             AND expiry_date IS NOT NULL
-           ORDER BY import_date ASC, created_at ASC
-           LIMIT 1`,
-          [productName, batchNo]
-        );
-        if (expiryLookup.rows.length > 0) {
-          expiryDate = expiryLookup.rows[0].expiry_date;
-        }
+      // Look up the source batch for expiry, DP value, CIF value, and supplier linkage
+      const sourceBatchLookup = await client.query(
+        `SELECT expiry_date, dpc_unit_value, cif_unit_cost, supplier_import_id, import_reference
+         FROM stock_batches
+         WHERE location = 'country_stock'
+           AND LOWER(TRIM(description)) = LOWER(TRIM($1))
+           AND COALESCE(batch_no, '') = $2
+           AND remaining_quantity > 0
+         ORDER BY import_date ASC, created_at ASC
+         LIMIT 1`,
+        [productName, batchNo]
+      );
+      const srcBatchMeta = sourceBatchLookup.rows[0] || {};
+      if (!expiryDate && srcBatchMeta.expiry_date) {
+        expiryDate = srcBatchMeta.expiry_date;
       }
+      // Use caller-supplied unitDP if provided, otherwise read from batch
+      const resolvedUnitDP = unitDP || Number(srcBatchMeta.dpc_unit_value || 0) || undefined;
+      const resolvedUnitCIF = Number(srcBatchMeta.cif_unit_cost || 0) || undefined;
 
       const commonFields = {
         productName, batchNo, expiryDate, quantity,
         referenceId: refId,
         notes: releaseNote,
-        unitDP,
+        unitDP: resolvedUnitDP,
+        unitCIF: resolvedUnitCIF,
         createdBy: releasedBy || 'system',
       };
 
@@ -193,7 +216,9 @@ export default async function handler(req, res) {
       }
 
       const sourceBatchResult = await client.query(
-        `SELECT description, batch_no, expiry_date, import_date, product_id, supplier_name, import_reference
+        `SELECT description, batch_no, expiry_date, import_date, product_id,
+                supplier_name, import_reference, supplier_import_id,
+                dpc_unit_value, cif_unit_cost
          FROM stock_batches
          WHERE location = 'country_stock'
            AND LOWER(TRIM(description)) = LOWER(TRIM($1))
@@ -210,9 +235,11 @@ export default async function handler(req, res) {
           `INSERT INTO stock_batches
              (id, barcode, description, batch_no, expiry_date, quantity, remaining_quantity,
               dispatched_quantity, import_date, location, status, product_id, warehouse_id,
-              supplier_name, import_reference, metadata, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$6, 0,$7,$8,'available',$9,$8,$10,$11,
-             jsonb_build_object('released_from','country_stock','release_ref',$12::text),
+              supplier_name, import_reference, supplier_import_id,
+              dpc_unit_value, cif_unit_cost,
+              metadata, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$6, 0,$7,$8,'available',$9,$8,$10,$11,$12,$13,$14,
+             jsonb_build_object('released_from','country_stock','release_ref',$15::text),
              NOW(),NOW())
            ON CONFLICT DO NOTHING`,
           [
@@ -221,6 +248,8 @@ export default async function handler(req, res) {
             quantity,
             sb.import_date, warehouseId,
             sb.product_id, sb.supplier_name, sb.import_reference,
+            sb.supplier_import_id || null,
+            sb.dpc_unit_value || null, sb.cif_unit_cost || null,
             refId,
           ]
         );
