@@ -1684,6 +1684,9 @@ server.on('error', (error) => {
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS referral_nb VARCHAR(50)`,
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS distributor_nb VARCHAR(50)`,
       // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
+      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatch_warehouse VARCHAR(100)`,
+      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(255)`,
+      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ`,
       `ALTER TABLE finance_cash_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
       // file_uploads: description and category for training content
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS description TEXT`,

@@ -4312,7 +4312,13 @@ function OrdersTab({ branch }) {
           created_by: user?.full_name || user?.username,
         });
       }
-      await api.stock.updateRequest(dispatchRequest.id, { status: 'dispatched', updated_by: user?.full_name || user?.username });
+      await api.stock.updateRequest(dispatchRequest.id, {
+        status: 'dispatched',
+        dispatch_warehouse: dispatchWH,
+        dispatched_by: user?.full_name || user?.username,
+        dispatched_at: new Date().toISOString(),
+        updated_by: user?.full_name || user?.username,
+      });
       setDispatchRequest(null);
       setAlert({ type: 'success', msg: `Transfer submitted for GM approval: ${fmtLocation(dispatchWH)} → ${branchName}. Once approved, branch can receive the delivery.` });
       setTimeout(() => loadRequests(), 100);
@@ -4677,15 +4683,57 @@ function OrdersTab({ branch }) {
         const r = viewOrderDispatchNote;
         const branchName = r.requestingBranch || r.requesting_branch || '';
         const items = Array.isArray(r.items) ? r.items : [];
+        const statusMap = {
+          pending: 'pending_approval',
+          approved: 'approved',
+          dispatched: 'approved',
+          received: 'received',
+          fulfilled: 'received',
+          rejected: 'rejected',
+        };
+        const mappedStatus = statusMap[r.status] || 'pending_approval';
+        const hasApproval = ['approved', 'dispatched', 'received', 'fulfilled'].includes(r.status);
+        const hasReceipt  = r.status === 'received' || r.status === 'fulfilled';
+        const priority    = r.priority || r.urgency || 'normal';
+        const noteParts   = [
+          r.notes,
+          priority !== 'normal' ? `Priority: ${priority.toUpperCase()}` : '',
+        ].filter(Boolean);
         const transferView = {
-          id: r.requestNumber || r.id,
-          created_at: r.createdAt || r.created_at,
+          id: r.id,
+          dispatchReference: r.requestNumber || `RQ-${String(r.id).padStart(6, '0')}`,
+          created_at:    r.createdAt    || r.created_at    || null,
+          dispatched_at: r.dispatchedAt || r.dispatched_at || r.updated_at || null,
           from_location: r.dispatch_warehouse || r.dispatchWarehouse || 'country_stock',
-          to_location: branchName.toLowerCase().replace(/\s+/g, '_'),
-          items: items.map(i => ({ productName: i.productName || i.productId, quantity: i.quantity, batch_no: i.batch_no })),
-          status: r.status,
-          dispatch_notes: r.notes,
-          created_by: r.createdBy || r.created_by,
+          to_location:   branchName.toLowerCase().replace(/\s+/g, '_'),
+          status:        mappedStatus,
+          dispatchNotes: noteParts.length ? noteParts.join(' | ') : undefined,
+          created_by:    r.createdBy    || r.created_by    || null,
+          dispatched_by: r.dispatchedBy || r.dispatched_by || r.updated_by || null,
+          preparedByRole: 'Stock Controller',
+          gmAction:      hasApproval ? 'approve' : null,
+          gmApprovedBy:  r.approvedBy  || r.approved_by   || null,
+          gmApprovedAt:  r.approvedAt  || r.approved_at   || null,
+          receiptStatus: hasReceipt ? 'received' : null,
+          signatureName: r.receivedBy  || r.received_by   || null,
+          branchReceiptNote: r.receiptNote || r.receipt_note || null,
+          discrepancyFlag: r.discrepancyFlag || r.discrepancy_flag || false,
+          items: items.map(i => ({
+            productName:       i.productName       || i.product_name   || i.productId || '—',
+            productCode:       i.productCode       || i.product_code   || i.sku       || '',
+            batchNo:           i.batchNo           || i.batch_no       || '',
+            expiryDate:        i.expiryDate        || i.expiry_date    || null,
+            unit:              i.unit              || 'units',
+            quantity:          Number(i.quantity   || 0),
+            quantityApproved:  i.quantityApproved  != null ? Number(i.quantityApproved)
+                             : i.quantity_approved != null ? Number(i.quantity_approved)
+                             : hasApproval ? Number(i.quantity || 0) : null,
+            quantityReceived:  i.quantityReceived  != null ? Number(i.quantityReceived)
+                             : i.quantity_received != null ? Number(i.quantity_received)
+                             : hasReceipt ? Number(i.quantity || 0) : null,
+            discrepancyNote:   i.discrepancyNote   || i.discrepancy_note || '',
+            lineNote:          i.lineNote          || i.line_note        || '',
+          })),
         };
         return <DispatchNote transfer={transferView} onClose={() => setViewOrderDispatchNote(null)} />;
       })()}
